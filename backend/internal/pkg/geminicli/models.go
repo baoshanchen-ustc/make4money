@@ -15,7 +15,7 @@ var DefaultModels = []Model{
 	{ID: "gemini-3-flash-preview", Type: "model", DisplayName: "Gemini 3 Flash (Preview)", CreatedAt: ""},
 	{ID: "gemini-2.5-pro", Type: "model", DisplayName: "Gemini 2.5 Pro", CreatedAt: ""},
 	{ID: "gemini-2.5-flash", Type: "model", DisplayName: "Gemini 2.5 Flash", CreatedAt: ""},
-	{ID: "gemini-2.0-pro-exp-02-05", Type: "model", DisplayName: "Gemini 2.0 Pro (Exp)", CreatedAt: ""},
+	{ID: "gemini-2.0-pro", Type: "model", DisplayName: "Gemini 2.0 Pro", CreatedAt: ""},
 	{ID: "gemini-2.0-flash", Type: "model", DisplayName: "Gemini 2.0 Flash", CreatedAt: ""},
 	{ID: "gemini-1.5-pro", Type: "model", DisplayName: "Gemini 1.5 Pro", CreatedAt: ""},
 	{ID: "gemini-1.5-flash", Type: "model", DisplayName: "Gemini 1.5 Flash", CreatedAt: ""},
