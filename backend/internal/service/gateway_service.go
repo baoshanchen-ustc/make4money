@@ -969,6 +969,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if line == "event: error" {
+			return nil, errors.New("have error in stream")
+		}
 
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if sseDataRe.MatchString(line) {
