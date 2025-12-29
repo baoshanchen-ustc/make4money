@@ -695,6 +695,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if req.Stream {
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, req.Model)
 		if err != nil {
+			if err.Error() == "have error in stream" {
+				return nil, &UpstreamFailoverError{
+					StatusCode: 403,
+				}
+			}
 			return nil, err
 		}
 		usage = streamResult.usage
