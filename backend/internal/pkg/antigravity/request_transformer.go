@@ -249,6 +249,10 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 				continue
 			}
 			// 保留原有 signature（Claude 模型需要有效的 signature）
+			part := GeminiPart{
+				Text:    block.Thinking,
+				Thought: true,
+			}
 			if block.Signature != "" {
 				part.ThoughtSignature = block.Signature
 				parts = append(parts, part)
