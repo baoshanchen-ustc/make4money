@@ -669,8 +669,12 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { formatDateTime } from '@/utils/format'
+import { useSEO, seoConfigs } from '@/composables/useSEO'
 
 const { t } = useI18n()
+
+// SEO Configuration
+useSEO(seoConfigs.dashboard)
 import { usageAPI, type UserDashboardStats } from '@/api/usage'
 import type { UsageLog, TrendDataPoint, ModelStat } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'

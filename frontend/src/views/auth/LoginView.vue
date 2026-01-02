@@ -240,8 +240,12 @@ import { AuthLayout } from '@/components/layout'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import { getPublicSettings } from '@/api/auth'
+import { useSEO, seoConfigs } from '@/composables/useSEO'
 
 const { t } = useI18n()
+
+// SEO Configuration
+useSEO(seoConfigs.login)
 
 // ==================== Router & Stores ====================
 

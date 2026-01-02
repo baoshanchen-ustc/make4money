@@ -50,6 +50,60 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/pricing',
+    name: 'Pricing',
+    component: () => import('@/views/PricingView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Pricing'
+    }
+  },
+  {
+    path: '/docs',
+    name: 'Docs',
+    component: () => import('@/views/docs/DocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Documentation'
+    }
+  },
+  {
+    path: '/docs/quick-start',
+    name: 'DocsQuickStart',
+    component: () => import('@/views/docs/QuickStartView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Quick Start'
+    }
+  },
+  {
+    path: '/docs/api-reference',
+    name: 'DocsApiReference',
+    component: () => import('@/views/docs/ApiReferenceView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'API Reference'
+    }
+  },
+  {
+    path: '/docs/examples',
+    name: 'DocsExamples',
+    component: () => import('@/views/docs/ExamplesView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Code Examples'
+    }
+  },
+  {
+    path: '/features',
+    name: 'Features',
+    component: () => import('@/views/FeaturesView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Features'
+    }
+  },
+  {
     path: '/email-verify',
     name: 'EmailVerify',
     component: () => import('@/views/auth/EmailVerifyView.vue'),

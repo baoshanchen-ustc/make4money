@@ -10,6 +10,20 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    hero: {
+      badge: 'Serving 1000+ Developers',
+      title: 'Claude Code API Gateway',
+      subtitle: 'Stable, efficient, pay-as-you-go AI API access solution',
+      feature1: '99.9% uptime guarantee, 24/7 stable operation',
+      feature2: 'No complex registration, start in 3 minutes',
+      feature3: 'Transparent billing, pay only for what you use',
+      cta: 'Start for Free',
+      viewPricing: 'View Pricing'
+    },
+    coreValues: {
+      title: 'Why Choose Sub2API?',
+      subtitle: 'Professional AI API gateway service, let you focus on product development'
+    },
     tags: {
       subscriptionToApi: 'Subscription to API',
       stickySession: 'Sticky Session',
@@ -36,8 +50,260 @@ export default {
       antigravity: 'Antigravity',
       more: 'More'
     },
+    quickStart: {
+      title: 'Quick Start in 3 Minutes',
+      subtitle: 'Three simple steps to access AI API services',
+      step1: {
+        title: 'Sign Up',
+        desc: 'Quick registration with email, get free trial credits'
+      },
+      step2: {
+        title: 'Generate API Key',
+        desc: 'One-click generation of exclusive API key in dashboard'
+      },
+      step3: {
+        title: 'Start Calling',
+        desc: 'Copy sample code, replace API Key and start using'
+      }
+    },
+    pricing: {
+      title: 'Flexible Pricing Plans',
+      subtitle: 'Pay-as-you-go, transparent billing, no hidden fees',
+      basic: {
+        name: 'Pay-as-you-go',
+        desc: 'Perfect for individual developers and small projects'
+      },
+      pro: {
+        name: 'Monthly Plan',
+        desc: 'Ideal for SMEs and growing projects'
+      },
+      enterprise: {
+        name: 'Enterprise Custom',
+        desc: 'Designed for large enterprises and high-concurrency scenarios'
+      },
+      viewDetails: 'View Details',
+      popular: 'Popular',
+      getStarted: 'Get Started',
+      custom: 'Custom',
+      contactUs: 'Contact Us'
+    },
+    faq: {
+      title: 'Frequently Asked Questions',
+      subtitle: 'Quickly find answers to your questions',
+      q1: 'How is billing calculated? What are the pricing standards?',
+      a1: 'We charge based on actual token usage with transparent pricing and no hidden fees. We offer both pay-as-you-go and monthly subscription options to suit your needs.',
+      q2: 'Which AI models are supported?',
+      a2: 'Currently supports mainstream AI models including Claude, GPT, and Gemini. We continuously expand model support, stay tuned.',
+      q3: 'Are there usage limits?',
+      a3: 'Different plans have different concurrency and quota limits. Pay-as-you-go has basic concurrency limits, while monthly and enterprise plans enjoy higher concurrency and quotas.',
+      q4: 'How do I get an API Key?',
+      a4: 'After registration and login, you can generate one with a single click on the API Keys page in the dashboard. Support creating multiple keys for managing different projects.',
+      q5: 'How is service stability guaranteed?',
+      a5: 'We guarantee 99.9% service availability using multi-account pool technology. Even if a single account has issues, automatic switching ensures uninterrupted service.'
+    },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    }
+  },
+
+  // Pricing Page
+  pricing: {
+    title: 'Flexible Pricing Plans',
+    subtitle: 'Choose the plan that fits your needs, upgrade or downgrade anytime',
+    basic: {
+      name: 'Pay-as-you-go',
+      subtitle: 'Perfect for individual developers and small projects',
+      starting: 'Starting',
+      billingNote: 'Billed based on actual usage',
+      feature1: 'No minimum spend, pay only for what you use',
+      feature2: 'Support for all mainstream AI models',
+      feature3: 'Basic concurrency limit (5/min)',
+      feature4: 'Basic technical support (email)',
+      feature5: 'Detailed usage statistics'
+    },
+    pro: {
+      name: 'Monthly Plan',
+      subtitle: 'Ideal for SMBs and growing projects',
+      perMonth: '/month',
+      billingNote: 'Equivalent to $0.049/1K tokens',
+      feature1: '<strong>1M tokens/month</strong> included',
+      feature2: 'Overage billed at discounted rate',
+      feature3: 'Higher concurrency limit (50/min)',
+      feature4: 'Priority technical support (ticket + email)',
+      feature5: '99.9% SLA guarantee'
+    },
+    enterprise: {
+      name: 'Enterprise',
+      subtitle: 'For large enterprises and high-concurrency scenarios',
+      billingNote: 'Tailored to your specific needs',
+      feature1: '<strong>Unlimited quota</strong>, scale on demand',
+      feature2: 'Dedicated account manager',
+      feature3: '24/7 technical support (phone + ticket)',
+      feature4: '99.95% SLA guarantee',
+      feature5: 'Custom feature development'
+    },
+    recommended: 'Recommended',
+    getStarted: 'Get Started',
+    subscribe: 'Subscribe Now',
+    custom: 'Custom',
+    contactUs: 'Contact Us',
+    faq: {
+      title: 'Pricing FAQ',
+      q1: 'How is billing calculated?',
+      a1: 'Pay-as-you-go is billed based on actual tokens used; Monthly plan includes a fixed quota with overage billed at discounted rates. Enterprise pricing is customized based on specific needs.',
+      q2: 'Can I upgrade or downgrade anytime?',
+      a2: 'Yes. You can upgrade or downgrade your plan anytime in the dashboard. Upgrades take effect immediately, downgrades take effect at the end of the current billing cycle.',
+      q3: 'What payment methods are supported?',
+      a3: 'Currently we support redemption code top-ups. Enterprise customers can contact us to enable wire transfer and other payment methods.'
+    }
+  },
+
+  // Docs Pages
+  docs: {
+    title: 'API Documentation Center',
+    subtitle: 'Complete API integration guide to help you get started quickly',
+    readMore: 'Read Documentation',
+    popularTopics: 'Popular Topics',
+    navigation: {
+      start: 'Getting Started',
+      reference: 'Reference'
+    },
+    quickStart: {
+      title: 'Quick Start',
+      desc: 'Get started with Claude Code API in 5 minutes',
+      pageTitle: 'Quick Start',
+      lead: 'This guide will help you integrate Claude Code API in 5 minutes and quickly experience our service.',
+      prerequisites: {
+        title: 'Prerequisites'
+      },
+      step1: {
+        title: 'Step 1: Register and Login',
+        desc: 'First, you need to create a Sub2API account. Visit the',
+        desc2: 'and complete registration with your email.',
+        desc3: 'After successful registration, the system will automatically credit your account with trial quota, and you can start using it immediately.'
+      },
+      step2: {
+        title: 'Step 2: Get API Key',
+        desc: 'After logging in, go to the',
+        desc2: 'page in the dashboard:'
+      },
+      step3: {
+        title: 'Step 3: Send Your First Request',
+        desc: 'Now you can use the obtained API Key to call our service. Here is a simple example:',
+        curl: 'Using cURL',
+        python: 'Using Python',
+        javascript: 'Using JavaScript (Node.js)'
+      },
+      response: {
+        title: 'Understanding the Response',
+        desc: 'A successful request will return a JSON response in the following format:'
+      },
+      nextSteps: {
+        title: 'Next Steps',
+        desc: 'Congratulations! You have successfully sent your first request. Next you can:'
+      },
+      faq: {
+        title: 'FAQ',
+        q1: 'What is the API endpoint?',
+        a1: 'Our API base URL is',
+        q2: 'Which models are supported?',
+        a2: 'We support various mainstream AI models including Claude, GPT, Gemini, etc. For a complete list of models, please refer to',
+        q3: 'How to handle errors?',
+        a3: 'All error responses will include detailed error messages and error codes. Please refer to',
+        a3_2: 'to learn how to properly handle errors.',
+        q4: 'Are there rate limits?',
+        a4: 'Yes. Different plans have different rate limits. Free accounts default to 5 requests/minute. For details, please check'
+      },
+      support: {
+        title: 'Get Help',
+        desc: 'If you encounter any problems during use, you can get help through the following ways:'
+      }
+    },
+    apiReference: {
+      title: 'API Reference',
+      desc: 'Complete API endpoints, parameters, and response format documentation'
+    },
+    examples: {
+      title: 'Code Examples',
+      desc: 'Practical code examples in multiple programming languages, ready to copy and use',
+      pageTitle: 'Code Examples',
+      lead: 'Here we provide rich code examples to help you quickly integrate Sub2API services. All examples are ready-to-use code, you just need to replace the API Key to run.',
+      basic: {
+        title: 'Basic Examples',
+        curl: 'cURL - Send Simple Message',
+        python: 'Python - Using Official SDK',
+        javascript: 'JavaScript - Using Official SDK',
+        go: 'Go - Using HTTP Client'
+      },
+      streaming: {
+        title: 'Streaming Responses',
+        desc: 'Streaming responses allow you to receive AI-generated content in real-time, providing a better user experience.',
+        python: 'Python - Streaming Response',
+        javascript: 'JavaScript - Streaming Response'
+      },
+      advanced: {
+        title: 'Advanced Parameters',
+        temperature: 'Adjusting Temperature and Sampling Parameters',
+        system: 'Using System Prompts'
+      },
+      conversation: {
+        title: 'Multi-turn Conversations',
+        desc: 'You can implement multi-turn conversations by including historical messages in the messages array:',
+        python: 'Python - Multi-turn Conversation'
+      },
+      errorHandling: {
+        title: 'Error Handling',
+        desc: 'Proper error handling is crucial for production environments:',
+        python: 'Python - Error Handling',
+        javascript: 'JavaScript - Error Handling'
+      },
+      models: {
+        title: 'Using Different Models',
+        comparison: 'Model Selection Guide'
+      },
+      vision: {
+        title: 'Vision Capabilities (Image Analysis)',
+        desc: 'Claude 3 series models support image analysis. You can pass images via base64 encoding or image URL:',
+        python: 'Python - Analyze Images'
+      },
+      bestPractices: {
+        title: 'Best Practices',
+        p1: '1. Securely Store API Keys',
+        p2: '2. Implement Rate Limiting',
+        p3: '3. Optimize Token Usage'
+      },
+      more: {
+        title: 'More Resources',
+        desc: 'Need more help?'
+      }
+    },
+    topics: {
+      auth: {
+        title: 'Authentication & Authorization',
+        apiKey: 'Get API Key',
+        usage: 'Using API Key',
+        limits: 'Rate Limits'
+      },
+      models: {
+        title: 'Supported Models'
+      },
+      billing: {
+        title: 'Billing & Quota',
+        pricing: 'Pricing Plans',
+        how: 'How Billing Works',
+        topup: 'Top Up Balance'
+      },
+      troubleshooting: {
+        title: 'Troubleshooting',
+        errors: 'Error Code Descriptions',
+        handling: 'Error Handling Examples',
+        support: 'Contact Technical Support'
+      }
+    },
+    cta: {
+      title: 'Ready to Get Started?',
+      subtitle: 'Register now and get free trial quota',
+      button: 'Get Started Free'
     }
   },
 
@@ -88,6 +354,10 @@ export default {
 
   // Common
   common: {
+    home: 'Home',
+    docs: 'Docs',
+    pricing: 'Pricing',
+    getStarted: 'Get Started',
     loading: 'Loading...',
     save: 'Save',
     cancel: 'Cancel',

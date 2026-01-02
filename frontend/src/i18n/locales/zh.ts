@@ -10,6 +10,20 @@ export default {
     login: '登录',
     getStarted: '开始使用',
     goToDashboard: '进入控制台',
+    hero: {
+      badge: '正在为 1000+ 开发者提供服务',
+      title: 'Claude Code API 中转服务',
+      subtitle: '稳定、高效、按需付费的 AI API 接入方案',
+      feature1: '99.9% 可用性保证，7x24 稳定运行',
+      feature2: '无需繁琐注册，3 分钟即可开始使用',
+      feature3: '透明计费，按实际使用量付费',
+      cta: '免费开始使用',
+      viewPricing: '查看定价'
+    },
+    coreValues: {
+      title: '为什么选择 Sub2API？',
+      subtitle: '专业的 AI API 网关服务，让您专注于产品开发'
+    },
     tags: {
       subscriptionToApi: '订阅转 API',
       stickySession: '粘性会话',
@@ -33,8 +47,260 @@ export default {
       antigravity: 'Antigravity',
       more: '更多'
     },
+    quickStart: {
+      title: '3 分钟快速开始',
+      subtitle: '简单三步，立即接入 AI API 服务',
+      step1: {
+        title: '注册账号',
+        desc: '使用邮箱快速注册，免费获得试用额度'
+      },
+      step2: {
+        title: '生成 API Key',
+        desc: '在控制台一键生成专属 API 密钥'
+      },
+      step3: {
+        title: '开始调用',
+        desc: '复制示例代码，替换 API Key 即可使用'
+      }
+    },
+    pricing: {
+      title: '灵活的定价方案',
+      subtitle: '按需付费，透明计费，无隐藏费用',
+      basic: {
+        name: '按量付费',
+        desc: '适合个人开发者和小型项目'
+      },
+      pro: {
+        name: '包月套餐',
+        desc: '适合中小企业和成长型项目'
+      },
+      enterprise: {
+        name: '企业定制',
+        desc: '适合大型企业和高并发场景'
+      },
+      viewDetails: '查看详情',
+      popular: '推荐',
+      getStarted: '立即开始',
+      custom: '定制',
+      contactUs: '联系我们'
+    },
+    faq: {
+      title: '常见问题',
+      subtitle: '快速找到您关心的问题',
+      q1: '如何计费？按什么标准收费？',
+      a1: '我们按照实际使用的 tokens 数量计费，价格透明，无隐藏费用。支持按量付费和包月套餐两种方式，您可以根据实际需求选择。',
+      q2: '支持哪些 AI 模型？',
+      a2: '目前支持 Claude、GPT、Gemini 等主流 AI 模型。我们会持续扩展支持的模型，敬请期待。',
+      q3: '有使用限制吗？',
+      a3: '根据不同套餐有不同的并发限制和额度限制。按量付费套餐有基础并发限制，包月和企业套餐享有更高的并发和额度。',
+      q4: '如何获取 API Key？',
+      a4: '注册并登录后，在控制台的 API Keys 页面可以一键生成。支持创建多个 Key，方便管理不同项目。',
+      q5: '服务稳定性如何保障？',
+      a5: '我们承诺 99.9% 的服务可用性，采用多账号池技术，即使单个账号出现问题也能自动切换，确保服务不间断。'
+    },
     footer: {
       allRightsReserved: '保留所有权利。'
+    }
+  },
+
+  // Pricing Page
+  pricing: {
+    title: '灵活的定价方案',
+    subtitle: '选择最适合您的方案，随时可以升级或降级',
+    basic: {
+      name: '按量付费',
+      subtitle: '适合个人开发者和小型项目',
+      starting: '起步',
+      billingNote: '按实际使用量计费',
+      feature1: '无最低消费，用多少付多少',
+      feature2: '支持所有主流 AI 模型',
+      feature3: '基础并发限制（5个/分钟）',
+      feature4: '基础技术支持（邮件）',
+      feature5: '详细的使用统计'
+    },
+    pro: {
+      name: '包月套餐',
+      subtitle: '适合中小企业和成长型项目',
+      perMonth: '/月',
+      billingNote: '相当于 $0.049/千tokens',
+      feature1: '<strong>100 万 tokens/月</strong> 包含额度',
+      feature2: '超出额度按优惠价计费',
+      feature3: '更高并发限制（50个/分钟）',
+      feature4: '优先技术支持（工单 + 邮件）',
+      feature5: '99.9% SLA 保障'
+    },
+    enterprise: {
+      name: '企业定制',
+      subtitle: '适合大型企业和高并发场景',
+      billingNote: '根据您的需求量身定制',
+      feature1: '<strong>无限额度</strong>，按需扩展',
+      feature2: '专属客户经理',
+      feature3: '24/7 技术支持（电话 + 工单）',
+      feature4: '99.95% SLA 保障',
+      feature5: '定制化功能开发'
+    },
+    recommended: '推荐',
+    getStarted: '免费开始',
+    subscribe: '立即订阅',
+    custom: '定制',
+    contactUs: '联系我们',
+    faq: {
+      title: '定价常见问题',
+      q1: '如何计费？',
+      a1: '按量付费根据实际使用的 tokens 数量计费；包月套餐包含固定额度，超出部分按优惠价计费。企业定制根据具体需求定价。',
+      q2: '可以随时升级或降级吗？',
+      a2: '可以。您可以随时在控制台中升级或降级套餐。升级立即生效，降级在当前计费周期结束后生效。',
+      q3: '支持哪些支付方式？',
+      a3: '目前支持兑换码充值。企业客户可以联系我们开通对公转账等支付方式。'
+    }
+  },
+
+  // Docs Pages
+  docs: {
+    title: 'API 文档中心',
+    subtitle: '完整的 API 接入指南，帮助您快速上手',
+    readMore: '阅读文档',
+    popularTopics: '热门话题',
+    navigation: {
+      start: '开始',
+      reference: '参考'
+    },
+    quickStart: {
+      title: '快速开始',
+      desc: '5 分钟快速接入 Claude Code API，立即开始使用',
+      pageTitle: '快速开始',
+      lead: '本指南将帮助您在 5 分钟内完成 Claude Code API 的接入，让您快速体验我们的服务。',
+      prerequisites: {
+        title: '前提条件'
+      },
+      step1: {
+        title: '步骤 1：注册并登录',
+        desc: '首先，您需要创建一个 Sub2API 账号。访问',
+        desc2: '，使用您的邮箱完成注册。',
+        desc3: '注册成功后，系统会自动为您的账户充值试用额度，您可以立即开始使用。'
+      },
+      step2: {
+        title: '步骤 2：获取 API Key',
+        desc: '登录后，进入控制台的',
+        desc2: '页面：'
+      },
+      step3: {
+        title: '步骤 3：发送第一个请求',
+        desc: '现在您可以使用获取的 API Key 来调用我们的服务了。以下是一个简单的示例：',
+        curl: '使用 cURL',
+        python: '使用 Python',
+        javascript: '使用 JavaScript (Node.js)'
+      },
+      response: {
+        title: '理解响应',
+        desc: '成功的请求将返回如下格式的 JSON 响应：'
+      },
+      nextSteps: {
+        title: '下一步',
+        desc: '恭喜！您已经成功发送了第一个请求。接下来您可以：'
+      },
+      faq: {
+        title: '常见问题',
+        q1: 'API 端点是什么？',
+        a1: '我们的 API 基础 URL 是',
+        q2: '支持哪些模型？',
+        a2: '我们支持 Claude、GPT、Gemini 等多种主流 AI 模型。完整的模型列表请参考',
+        q3: '如何处理错误？',
+        a3: '所有错误响应都会包含详细的错误信息和错误代码。请参考',
+        a3_2: '了解如何正确处理错误。',
+        q4: '有速率限制吗？',
+        a4: '是的。不同套餐有不同的速率限制。免费账户默认为 5 次/分钟。详情请查看'
+      },
+      support: {
+        title: '获取帮助',
+        desc: '如果您在使用过程中遇到任何问题，可以通过以下方式获取帮助：'
+      }
+    },
+    apiReference: {
+      title: 'API 参考',
+      desc: '完整的 API 端点、参数和响应格式说明'
+    },
+    examples: {
+      title: '代码示例',
+      desc: '多种编程语言的实际代码示例，直接复制使用',
+      pageTitle: '代码示例',
+      lead: '这里提供了丰富的代码示例，帮助您快速集成 Sub2API 服务。所有示例都是即用型代码，您只需替换 API Key 即可运行。',
+      basic: {
+        title: '基础示例',
+        curl: 'cURL - 发送简单消息',
+        python: 'Python - 使用官方 SDK',
+        javascript: 'JavaScript - 使用官方 SDK',
+        go: 'Go - 使用 HTTP 客户端'
+      },
+      streaming: {
+        title: '流式响应',
+        desc: '流式响应可以让您实时接收 AI 生成的内容，提供更好的用户体验。',
+        python: 'Python - 流式响应',
+        javascript: 'JavaScript - 流式响应'
+      },
+      advanced: {
+        title: '高级参数',
+        temperature: '调整温度和采样参数',
+        system: '使用系统提示'
+      },
+      conversation: {
+        title: '多轮对话',
+        desc: '通过在 messages 数组中包含历史消息，可以实现多轮对话：',
+        python: 'Python - 多轮对话'
+      },
+      errorHandling: {
+        title: '错误处理',
+        desc: '完善的错误处理对于生产环境至关重要：',
+        python: 'Python - 错误处理',
+        javascript: 'JavaScript - 错误处理'
+      },
+      models: {
+        title: '使用不同模型',
+        comparison: '模型选择指南'
+      },
+      vision: {
+        title: '视觉能力（图像分析）',
+        desc: 'Claude 3 系列模型支持图像分析。您可以通过 base64 编码或图像 URL 传递图片：',
+        python: 'Python - 分析图像'
+      },
+      bestPractices: {
+        title: '最佳实践',
+        p1: '1. 安全存储 API Key',
+        p2: '2. 实现速率限制',
+        p3: '3. 优化 Token 使用'
+      },
+      more: {
+        title: '更多资源',
+        desc: '需要更多帮助？'
+      }
+    },
+    topics: {
+      auth: {
+        title: '认证与授权',
+        apiKey: '获取 API Key',
+        usage: '使用 API Key',
+        limits: '速率限制'
+      },
+      models: {
+        title: '支持的模型'
+      },
+      billing: {
+        title: '计费与额度',
+        pricing: '定价方案',
+        how: '如何计费',
+        topup: '充值余额'
+      },
+      troubleshooting: {
+        title: '故障排查',
+        errors: '错误代码说明',
+        handling: '错误处理示例',
+        support: '联系技术支持'
+      }
+    },
+    cta: {
+      title: '准备好开始了吗？',
+      subtitle: '立即注册，免费获得试用额度',
+      button: '免费开始'
     }
   },
 
@@ -85,6 +351,10 @@ export default {
 
   // Common
   common: {
+    home: '首页',
+    docs: '文档',
+    pricing: '定价',
+    getStarted: '开始使用',
     loading: '加载中...',
     save: '保存',
     cancel: '取消',

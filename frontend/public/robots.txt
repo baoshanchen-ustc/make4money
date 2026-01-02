@@ -1,0 +1,48 @@
+# robots.txt for ai-in.one
+# Sub2API - AI API Gateway Platform
+
+User-agent: *
+
+# Allow public pages
+Allow: /
+Allow: /home
+Allow: /pricing
+Allow: /docs
+Allow: /docs/*
+Allow: /features
+Allow: /blog
+Allow: /blog/*
+Allow: /login
+Allow: /register
+
+# Disallow authenticated pages
+Disallow: /dashboard
+Disallow: /keys
+Disallow: /usage
+Disallow: /subscriptions
+Disallow: /redeem
+Disallow: /profile
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /setup
+
+# Disallow API endpoints
+Disallow: /api/
+Disallow: /v1/
+
+# Allow assets
+Allow: /assets/
+Allow: /*.css$
+Allow: /*.js$
+Allow: /*.png$
+Allow: /*.jpg$
+Allow: /*.jpeg$
+Allow: /*.gif$
+Allow: /*.svg$
+Allow: /*.ico$
+
+# Sitemap location
+Sitemap: https://ai-in.one/sitemap.xml
+
+# Crawl-delay for polite crawling (optional)
+# Crawl-delay: 1

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <!-- Homepage -->
+  <url>
+    <loc>https://ai-in.one/home</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://ai-in.one/zh/home" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-in.one/en/home" />
+  </url>
+
+  <!-- Pricing Page -->
+  <url>
+    <loc>https://ai-in.one/pricing</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://ai-in.one/zh/pricing" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-in.one/en/pricing" />
+  </url>
+
+  <!-- Documentation Pages -->
+  <url>
+    <loc>https://ai-in.one/docs</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://ai-in.one/zh/docs" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-in.one/en/docs" />
+  </url>
+
+  <url>
+    <loc>https://ai-in.one/docs/quick-start</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://ai-in.one/zh/docs/quick-start" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-in.one/en/docs/quick-start" />
+  </url>
+
+  <url>
+    <loc>https://ai-in.one/docs/api-reference</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://ai-in.one/zh/docs/api-reference" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-in.one/en/docs/api-reference" />
+  </url>
+
+  <url>
+    <loc>https://ai-in.one/docs/examples</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://ai-in.one/zh/docs/examples" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-in.one/en/docs/examples" />
+  </url>
+
+  <!-- Features Page -->
+  <url>
+    <loc>https://ai-in.one/features</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://ai-in.one/zh/features" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-in.one/en/features" />
+  </url>
+
+  <!-- Auth Pages (lower priority, but still indexed) -->
+  <url>
+    <loc>https://ai-in.one/login</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <url>
+    <loc>https://ai-in.one/register</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+</urlset>
