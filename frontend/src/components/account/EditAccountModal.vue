@@ -1052,7 +1052,10 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
-    const updatePayload: Record<string, unknown> = { ...form }
+    const updatePayload: Record<string, unknown> = {
+      ...form,
+      proxy_id: form.proxy_id ?? 0
+    }
 
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {

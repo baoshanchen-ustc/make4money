@@ -831,7 +831,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   let credentialsChanged = false
 
   if (enableProxy.value) {
-    updates.proxy_id = proxyId.value
+    updates.proxy_id = proxyId.value ?? 0
   }
 
   if (enableConcurrency.value) {
