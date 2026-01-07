@@ -41,6 +41,8 @@ var ProviderSet = wire.NewSet(
 
 	// Cache implementations
 	NewGatewayCache,
+	wire.Bind(new(service.GatewayCache), new(*gatewayCache)),
+	wire.Bind(new(service.UserAgentCache), new(*gatewayCache)),
 	NewBillingCache,
 	NewAPIKeyCache,
 	NewTempUnschedCache,

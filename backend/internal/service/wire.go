@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -70,6 +71,13 @@ func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountReposi
 	return svc
 }
 
+// ProvideUserAgentUpdater creates and starts UserAgentUpdater.
+func ProvideUserAgentUpdater(cfg *config.Config, cache UserAgentCache) *UserAgentUpdater {
+	updater := NewUserAgentUpdater(cfg, cache)
+	updater.Start(context.Background())
+	return updater
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -86,6 +94,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingService,
 	NewBillingCacheService,
 	NewAdminService,
+	ProvideUserAgentUpdater,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	NewOAuthService,

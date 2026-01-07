@@ -219,6 +219,21 @@ type GatewayConfig struct {
 
 	// Scheduling: 账号调度相关配置
 	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
+
+	// DefaultUserAgent: 默认 User-Agent（优先级：配置文件 > 环境变量 DEFAULT_USER_AGENT > 内置默认值）
+	// 用于模拟 Claude Code 客户端请求，建议与真实 Claude Code 版本保持同步
+	// 示例: "claude-cli/2.0.62 (external, cli)"
+	DefaultUserAgent string `mapstructure:"default_user_agent"`
+
+	// UserAgentAutoUpdate: 是否启用自动更新 User-Agent（从 npm registry 获取最新版本）
+	UserAgentAutoUpdate bool `mapstructure:"user_agent_auto_update"`
+
+	// UserAgentLearnFromRequests: 是否从客户端请求中学习更新的 User-Agent
+	// 当检测到客户端使用更新的 claude-cli 版本时，自动更新
+	UserAgentLearnFromRequests bool `mapstructure:"user_agent_learn_from_requests"`
+
+	// UserAgentUpdateIntervalHours: 自动更新检查间隔（小时），默认 24 小时
+	UserAgentUpdateIntervalHours int `mapstructure:"user_agent_update_interval_hours"`
 }
 
 // GatewaySchedulingConfig accounts scheduling configuration.

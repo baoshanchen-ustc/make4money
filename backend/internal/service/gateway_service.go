@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -135,6 +136,7 @@ type GatewayService struct {
 	httpUpstream        HTTPUpstream
 	deferredService     *DeferredService
 	concurrencyService  *ConcurrencyService
+	userAgentUpdater    *UserAgentUpdater // 可选：User-Agent 自动更新器
 }
 
 // NewGatewayService creates a new GatewayService
@@ -153,6 +155,7 @@ func NewGatewayService(
 	identityService *IdentityService,
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
+	userAgentUpdater *UserAgentUpdater,
 ) *GatewayService {
 	return &GatewayService{
 		accountRepo:         accountRepo,
@@ -169,7 +172,13 @@ func NewGatewayService(
 		identityService:     identityService,
 		httpUpstream:        httpUpstream,
 		deferredService:     deferredService,
+		userAgentUpdater:    userAgentUpdater,
 	}
+}
+
+// SetUserAgentUpdater 设置 User-Agent 自动更新器（可选）
+func (s *GatewayService) SetUserAgentUpdater(updater *UserAgentUpdater) {
+	s.userAgentUpdater = updater
 }
 
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
@@ -304,6 +313,25 @@ func (s *GatewayService) extractTextFromContent(content any) string {
 func (s *GatewayService) hashContent(content string) string {
 	hash := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(hash[:16]) // 32字符
+}
+
+// getDefaultUserAgent 获取有效的默认 User-Agent
+// 优先级：自动更新器 > 配置文件 > 环境变量 DEFAULT_USER_AGENT > 内置默认值
+func (s *GatewayService) getDefaultUserAgent() string {
+	// 1. 如果启用了自动更新，使用更新器的值
+	if s.userAgentUpdater != nil {
+		return s.userAgentUpdater.GetUserAgent()
+	}
+	// 2. 使用配置文件中的值
+	if s.cfg != nil && strings.TrimSpace(s.cfg.Gateway.DefaultUserAgent) != "" {
+		return s.cfg.Gateway.DefaultUserAgent
+	}
+	// 3. 尝试从环境变量获取
+	if envUA := strings.TrimSpace(os.Getenv("DEFAULT_USER_AGENT")); envUA != "" {
+		return envUA
+	}
+	// 4. 使用内置默认值
+	return claude.DefaultHeaders["User-Agent"]
 }
 
 // replaceModelInBody 替换请求体中的model字段
@@ -1402,6 +1430,14 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
+	// 从客户端请求中学习 User-Agent（如果启用了学习功能）
+	if s.userAgentUpdater != nil {
+		clientUA := c.GetHeader("User-Agent")
+		if clientUA != "" {
+			s.userAgentUpdater.LearnFromRequest(clientUA)
+		}
+	}
+
 	// OAuth账号：应用缓存的指纹到请求头（覆盖白名单透传的头）
 	if fingerprint != nil {
 		s.identityService.ApplyFingerprint(req, fingerprint)
@@ -1413,6 +1449,10 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
+	}
+	// 确保有 User-Agent（非 OAuth 账号使用配置的默认 User-Agent）
+	if req.Header.Get("user-agent") == "" || req.Header.Get("user-agent") == "Go-http-client/1.1" {
+		req.Header.Set("user-agent", s.getDefaultUserAgent())
 	}
 
 	// 处理anthropic-beta header（OAuth账号需要特殊处理）
@@ -2304,6 +2344,14 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		}
 	}
 
+	// 从客户端请求中学习 User-Agent（如果启用了学习功能）
+	if s.userAgentUpdater != nil {
+		clientUA := c.GetHeader("User-Agent")
+		if clientUA != "" {
+			s.userAgentUpdater.LearnFromRequest(clientUA)
+		}
+	}
+
 	// OAuth 账号：应用指纹到请求头
 	if account.IsOAuth() && s.identityService != nil {
 		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
@@ -2318,6 +2366,10 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	}
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
+	}
+	// 确保有 User-Agent（非 OAuth 账号使用配置的默认 User-Agent）
+	if req.Header.Get("user-agent") == "" || req.Header.Get("user-agent") == "Go-http-client/1.1" {
+		req.Header.Set("user-agent", s.getDefaultUserAgent())
 	}
 
 	// OAuth 账号：处理 anthropic-beta header

@@ -261,6 +261,7 @@ nano config.yaml
 ```
 
 > **Note:** The `-tags embed` flag embeds the frontend into the binary. Without this flag, the binary will not serve the frontend UI.
+> **Note:** `config.yaml` is a local file and is not tracked; use `deploy/config.example.yaml` as the template.
 
 **Key configuration in `config.yaml`:**
 

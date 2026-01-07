@@ -169,6 +169,22 @@ gateway:
   # Allow failover on selected 400 errors (default: off)
   # 允许在特定 400 错误时进行故障转移（默认：关闭）
   failover_on_400: false
+  # Default User-Agent for upstream requests (can be overridden by env var DEFAULT_USER_AGENT)
+  # 上游请求的默认 User-Agent（可通过环境变量 DEFAULT_USER_AGENT 覆盖）
+  # Keep this synchronized with the actual Claude Code version for best compatibility
+  # 建议与实际的 Claude Code 版本保持同步以获得最佳兼容性
+  # Example: "claude-cli/2.0.62 (external, cli)"
+  # 示例：查看 https://www.npmjs.com/package/@anthropic-ai/claude-code 获取最新版本
+  default_user_agent: "claude-cli/2.0.62 (external, cli)"
+  # Auto-update User-Agent from npm registry (recommended for staying current)
+  # 从 npm registry 自动更新 User-Agent（推荐，保持最新）
+  user_agent_auto_update: true
+  # Learn and update from client requests (automatically adopt newer claude-cli versions)
+  # 从客户端请求中学习并更新（自动采用更新的 claude-cli 版本）
+  user_agent_learn_from_requests: true
+  # Auto-update check interval in hours (default: 24)
+  # 自动更新检查间隔（小时），默认 24 小时
+  user_agent_update_interval_hours: 24
 
 # =============================================================================
 # Concurrency Wait Configuration

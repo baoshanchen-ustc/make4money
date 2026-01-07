@@ -261,6 +261,7 @@ nano config.yaml
 ```
 
 > **注意：** `-tags embed` 参数会将前端嵌入到二进制文件中。不使用此参数编译的程序将不包含前端界面。
+> **注意：** `config.yaml` 为本地配置文件，不纳入版本控制；请以 `deploy/config.example.yaml` 为模板。
 
 **`config.yaml` 关键配置：**
 
