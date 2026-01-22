@@ -118,6 +118,8 @@ tests
 CLAUDE.md
 AGENTS.md
 .claude
+.spec-workflow
+.zcf
 scripts
 .code-review-state
 openspec/
