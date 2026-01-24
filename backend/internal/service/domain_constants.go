@@ -58,9 +58,8 @@ const (
 
 // Subscription status constants
 const (
-	SubscriptionStatusActive    = "active"
-	SubscriptionStatusExpired   = "expired"
-	SubscriptionStatusSuspended = "suspended"
+	SubscriptionStatusActive  = "active"
+	SubscriptionStatusExpired = "expired"
 )
 
 // LinuxDoConnectSyntheticEmailDomain 是 LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）。

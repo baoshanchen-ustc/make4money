@@ -24,7 +24,7 @@ export async function list(
   page: number = 1,
   pageSize: number = 20,
   filters?: {
-    status?: 'active' | 'expired' | 'revoked'
+    status?: 'active' | 'expired'
     user_id?: number
     group_id?: number
   },

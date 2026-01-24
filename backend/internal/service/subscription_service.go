@@ -20,7 +20,6 @@ const MaxValidityDays = 36500
 var (
 	ErrSubscriptionNotFound      = infraerrors.NotFound("SUBSCRIPTION_NOT_FOUND", "subscription not found")
 	ErrSubscriptionExpired       = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
-	ErrSubscriptionSuspended     = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
 	ErrSubscriptionAlreadyExists = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
 	ErrGroupNotSubscriptionType  = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
 	ErrDailyLimitExceeded        = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
@@ -284,7 +283,7 @@ func (s *SubscriptionService) BulkAssignSubscription(ctx context.Context, input 
 	return result, nil
 }
 
-// RevokeSubscription 撤销订阅
+// RevokeSubscription 撤销订阅（直接删除记录）
 func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscriptionID int64) error {
 	// 先获取订阅信息用于失效缓存
 	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
@@ -292,6 +291,7 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 		return err
 	}
 
+	// 直接删除订阅记录
 	if err := s.userSubRepo.Delete(ctx, subscriptionID); err != nil {
 		return err
 	}
@@ -324,18 +324,30 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 		days = -MaxValidityDays
 	}
 
-	// 计算新的过期时间
-	newExpiresAt := sub.ExpiresAt.AddDate(0, 0, days)
-	if newExpiresAt.After(MaxExpiresAt) {
-		newExpiresAt = MaxExpiresAt
-	}
+	now := time.Now()
+	var newExpiresAt time.Time
 
-	// 如果是缩短（负数），检查新的过期时间必须大于当前时间
-	if days < 0 {
-		now := time.Now()
-		if !newExpiresAt.After(now) {
+	// 计算新的过期时间
+	// 如果订阅已过期，从当前时间开始计算；否则从过期时间计算
+	if sub.ExpiresAt.Before(now) {
+		// 订阅已过期：从当前时间开始计算
+		// 如果是缩短（负数），不允许操作
+		if days < 0 {
+			return nil, fmt.Errorf("cannot reduce days for expired subscription")
+		}
+		newExpiresAt = now.AddDate(0, 0, days)
+	} else {
+		// 订阅未过期：从过期时间开始计算
+		newExpiresAt = sub.ExpiresAt.AddDate(0, 0, days)
+
+		// 如果是缩短（负数），检查新的过期时间必须大于当前时间
+		if days < 0 && !newExpiresAt.After(now) {
 			return nil, ErrAdjustWouldExpire
 		}
+	}
+
+	if newExpiresAt.After(MaxExpiresAt) {
+		newExpiresAt = MaxExpiresAt
 	}
 
 	if err := s.userSubRepo.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
@@ -382,6 +394,8 @@ func (s *SubscriptionService) ListUserSubscriptions(ctx context.Context, userID 
 	if err != nil {
 		return nil, err
 	}
+	// 检查并更新过期的订阅状态
+	s.updateExpiredSubscriptionsInList(ctx, subs)
 	normalizeExpiredWindows(subs)
 	return subs, nil
 }
@@ -392,6 +406,8 @@ func (s *SubscriptionService) ListActiveUserSubscriptions(ctx context.Context, u
 	if err != nil {
 		return nil, err
 	}
+	// 检查并更新过期的订阅状态
+	s.updateExpiredSubscriptionsInList(ctx, subs)
 	normalizeExpiredWindows(subs)
 	return subs, nil
 }
@@ -403,6 +419,8 @@ func (s *SubscriptionService) ListGroupSubscriptions(ctx context.Context, groupI
 	if err != nil {
 		return nil, nil, err
 	}
+	// 检查并更新过期的订阅状态
+	s.updateExpiredSubscriptionsInList(ctx, subs)
 	normalizeExpiredWindows(subs)
 	return subs, pag, nil
 }
@@ -414,8 +432,25 @@ func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, user
 	if err != nil {
 		return nil, nil, err
 	}
+	// 检查并更新过期的订阅状态
+	s.updateExpiredSubscriptionsInList(ctx, subs)
 	normalizeExpiredWindows(subs)
 	return subs, pag, nil
+}
+
+// updateExpiredSubscriptionsInList 检查并更新列表中过期的订阅状态（仅影响返回数据）
+// 完全基于 expires_at 判断，不依赖数据库的 status 字段
+func (s *SubscriptionService) updateExpiredSubscriptionsInList(ctx context.Context, subs []UserSubscription) {
+	now := time.Now()
+	for i := range subs {
+		sub := &subs[i]
+		// 直接根据过期时间判断状态
+		if sub.ExpiresAt.Before(now) {
+			sub.Status = SubscriptionStatusExpired
+		} else {
+			sub.Status = SubscriptionStatusActive
+		}
+	}
 }
 
 // normalizeExpiredWindows 将已过期窗口的数据清零（仅影响返回数据，不影响数据库）
@@ -665,16 +700,9 @@ func (s *SubscriptionService) UpdateExpiredSubscriptions(ctx context.Context) (i
 }
 
 // ValidateSubscription 验证订阅是否有效
+// 完全基于 expires_at 判断，不依赖数据库的 status 字段
 func (s *SubscriptionService) ValidateSubscription(ctx context.Context, sub *UserSubscription) error {
-	if sub.Status == SubscriptionStatusExpired {
-		return ErrSubscriptionExpired
-	}
-	if sub.Status == SubscriptionStatusSuspended {
-		return ErrSubscriptionSuspended
-	}
 	if sub.IsExpired() {
-		// 更新状态
-		_ = s.userSubRepo.UpdateStatus(ctx, sub.ID, SubscriptionStatusExpired)
 		return ErrSubscriptionExpired
 	}
 	return nil

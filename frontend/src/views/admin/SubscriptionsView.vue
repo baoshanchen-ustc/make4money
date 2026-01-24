@@ -759,8 +759,7 @@ const columnDropdownRef = ref<HTMLElement | null>(null)
 const statusOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allStatus') },
   { value: 'active', label: t('admin.subscriptions.status.active') },
-  { value: 'expired', label: t('admin.subscriptions.status.expired') },
-  { value: 'revoked', label: t('admin.subscriptions.status.revoked') }
+  { value: 'expired', label: t('admin.subscriptions.status.expired') }
 ])
 
 const subscriptions = ref<UserSubscription[]>([])
