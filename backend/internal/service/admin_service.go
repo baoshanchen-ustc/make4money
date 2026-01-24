@@ -869,7 +869,8 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
-	return account, nil
+	// 重新查询账号，确保返回完整分组信息（含 GroupIDs），避免调度器缓存缺少分组。
+	return s.accountRepo.GetByID(ctx, account.ID)
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
