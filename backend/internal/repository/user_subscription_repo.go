@@ -200,12 +200,13 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 		q = q.Where(usersubscription.GroupIDEQ(*groupID))
 	}
 	// 基于 expires_at 判断状态，而不是依赖 status 字段
-	if status == "active" {
+	switch status {
+	case "active":
 		q = q.Where(usersubscription.ExpiresAtGTE(time.Now()))
-	} else if status == "expired" {
+	case "expired":
 		q = q.Where(usersubscription.ExpiresAtLT(time.Now()))
 	}
-	// status 为空时不添加筛选条件
+	// status 为空或其他值时不添加筛选条件
 
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
