@@ -484,7 +484,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		GroupID:            sub.GroupID,
 		StartsAt:           sub.StartsAt,
 		ExpiresAt:          sub.ExpiresAt,
-		Status:             sub.Status,
+		Status:             sub.GetComputedStatus(), // 使用计算后的状态，而非数据库中的值
 		DailyWindowStart:   sub.DailyWindowStart,
 		WeeklyWindowStart:  sub.WeeklyWindowStart,
 		MonthlyWindowStart: sub.MonthlyWindowStart,
