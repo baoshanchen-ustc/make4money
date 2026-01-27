@@ -585,7 +585,6 @@ func (s *AuthService) RefreshToken(ctx context.Context, oldTokenString string) (
 	return s.GenerateToken(user)
 }
 
-<<<<<<< HEAD
 // AuthenticateWithLDAP 使用 LDAP 认证用户
 // 返回 JWT token 和用户信息
 func (s *AuthService) AuthenticateWithLDAP(ctx context.Context, username, password string) (string, *User, error) {
@@ -619,6 +618,7 @@ func (s *AuthService) AuthenticateWithLDAP(ctx context.Context, username, passwo
 		return "", nil, err
 	}
 
+	log.Printf("[Auth] LDAP login successful for user: %s (email: %s)", user.Username, user.Email)
 	return token, user, nil
 }
 
@@ -742,22 +742,6 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 
 	return siteName, resetURL, true
 }
-	if !user.IsActive() {
-		log.Printf("[Auth] Password reset requested for inactive user: %s", email)
-		return "", "", false
-	}
-
-	// Get site name
-	siteName := "Sub2API"
-	if s.settingService != nil {
-		siteName = s.settingService.GetSiteName(ctx)
-	}
-
-	// Build reset URL base
-	resetURL := fmt.Sprintf("%s/reset-password", strings.TrimSuffix(frontendBaseURL, "/"))
-
-	return siteName, resetURL, true
-}
 
 // RequestPasswordReset 请求密码重置（同步发送）
 // Security: Returns the same response regardless of whether the email exists (prevent user enumeration)
@@ -857,4 +841,3 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	log.Printf("[Auth] Password reset successful for user: %s", email)
 	return nil
 }
->>>>>>> origin/main

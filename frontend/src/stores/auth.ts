@@ -116,6 +116,23 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
+   * LDAP login
+   * @param credentials - LDAP credentials (username and password)
+   * @returns Promise resolving to the auth response
+   * @throws Error if login fails
+   */
+  async function ldapLogin(credentials: { username: string; password: string }): Promise<AuthResponse> {
+    try {
+      const response = await authAPI.ldapLogin(credentials)
+      setAuthFromResponse(response)
+      return response
+    } catch (error) {
+      clearAuth()
+      throw error
+    }
+  }
+
+  /**
    * Complete login with 2FA code
    * @param tempToken - Temporary token from initial login
    * @param totpCode - 6-digit TOTP code
@@ -285,6 +302,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Actions
     login,
+    ldapLogin,
     login2FA,
     register,
     setToken,
