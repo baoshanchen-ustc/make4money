@@ -21,6 +21,9 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        GOPROXY: https://proxy.golang.org,direct
+        GOSUMDB: sum.golang.org
     container_name: sub2api
     restart: unless-stopped
     ulimits:
@@ -32,8 +35,6 @@ services:
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
-      # Mount custom config.yaml (optional, overrides auto-generated config)
-      - ./config.yaml:/app/data/config.yaml:ro
     environment:
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
