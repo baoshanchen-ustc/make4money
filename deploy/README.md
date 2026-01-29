@@ -34,6 +34,7 @@ cd sub2api/deploy
 # Configure environment
 cp .env.example .env
 nano .env  # Set POSTGRES_PASSWORD (required)
+# Optional: change BIND_HOST/SERVER_PORT if 8080 is taken (e.g., BIND_HOST=127.0.0.1, SERVER_PORT=18080)
 
 # Start all services
 docker-compose up -d
@@ -62,6 +63,32 @@ When using Docker Compose with `AUTO_SETUP=true`:
    ```bash
    docker-compose logs sub2api | grep "admin password"
    ```
+
+### Local build vs. prebuilt image
+
+- `docker-compose.yml` pulls the published image `weishaw/sub2api:latest`.
+- `docker-compose-test.yml` builds from this repository. It now sets Go module proxies (`GOPROXY=https://proxy.golang.org,direct`, `GOSUMDB=sum.golang.org`) to avoid regional DNS issues. Use it when developing locally:
+  ```bash
+  docker compose -f docker-compose-test.yml up -d --build
+  ```
+- The test compose no longer mounts `deploy/config.yaml` by default to prevent accidental overrides; the app writes its generated config to the `sub2api_data` volume.
+
+### Remote access via tunnels (optional)
+
+- **Cloudflare Tunnel**: add the override and start with a tunnel token:
+  ```bash
+  export CF_TUNNEL_TOKEN=your_token_here
+  docker compose -f docker-compose-test.yml -f docker-compose.tunnel-cloudflare.yml up -d
+  ```
+  The `cloudflared` sidecar proxies `sub2api:8080`; configure hostname/routes in Cloudflare Zero Trust. Token mode avoids mounting credentials.
+
+- **Tailscale**: add the override with an auth key:
+  ```bash
+  export TS_AUTHKEY=tskey-xxxxxxxxxxxxxxxxxxxx
+  # Optional: set TS_EXTRA_ARGS to advertise routes, e.g. --advertise-routes=127.0.0.1/32
+  docker compose -f docker-compose-test.yml -f docker-compose.tunnel-tailscale.yml up -d
+  ```
+  The sidecar keeps Sub2API bound to loopback; peers reach it through Tailscale userspace networking unless you advertise routes.
 
 ### Database Migration Notes (PostgreSQL)
 

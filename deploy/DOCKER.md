@@ -49,6 +49,19 @@ volumes:
   redis_data:
 ```
 
+### Local build tips
+
+- The test compose (`deploy/docker-compose-test.yml`) builds the image from this repo and now passes Go module proxy args to avoid regional DNS issues:
+  ```yaml
+  build:
+    context: ..
+    dockerfile: Dockerfile
+    args:
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+  ```
+- By default the test compose no longer mounts `deploy/config.yaml`; the app writes its generated config into the `sub2api_data` volume. Mount a custom config only when you intentionally want to override the generated one.
+
 ## Environment Variables
 
 | Variable | Description | Required | Default |
