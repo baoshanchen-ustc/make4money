@@ -187,7 +187,9 @@ SECURITY_URL_ALLOWLIST_ENABLED=false
 # 生产环境：保持 false 或仅使用 HTTPS URL
 SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
 
-# 是否允许私有 IP 地址用于上游/定价/CRS（内网部署时使用）
+# 是否允许私有 IP 地址用于上游/定价/CRS（推荐：false）
+# ⚠️ 警告：设为 true 可能允许 SSRF 攻击访问内部服务
+#          （例如 AWS/GCP/Azure 的元数据服务 169.254.169.254）
 SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false
 ```
 

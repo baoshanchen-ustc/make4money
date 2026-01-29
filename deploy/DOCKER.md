@@ -51,7 +51,7 @@ volumes:
 
 ### Local build tips
 
-- The test compose (`deploy/docker-compose-test.yml`) builds the image from this repo and now passes Go module proxy args to avoid regional DNS issues:
+- The build override (`deploy/docker-compose.build.yml`) builds the image from this repo and now passes Go module proxy args to avoid regional DNS issues:
   ```yaml
   build:
     context: ..
@@ -60,7 +60,7 @@ volumes:
       GOPROXY: https://proxy.golang.org,direct
       GOSUMDB: sum.golang.org
   ```
-- By default the test compose no longer mounts `deploy/config.yaml`; the app writes its generated config into the `sub2api_data` volume. Mount a custom config only when you intentionally want to override the generated one.
+- By default the build override no longer mounts `deploy/config.yaml`; the app writes its generated config into the `sub2api_data` volume. Mount a custom config only when you intentionally want to override the generated one.
 
 ## Environment Variables
 
@@ -82,6 +82,24 @@ volumes:
 - `x.y.z` - Specific version
 - `x.y` - Latest patch of minor version
 - `x` - Latest minor of major version
+
+## Maintenance
+
+### Viewing Configuration
+
+Since the application writes its configuration to a volume, you can view the active configuration by executing a command within the running container:
+
+```bash
+docker compose exec sub2api cat /app/data/config.yaml
+```
+
+### Retrieving Admin Password
+
+If you did not provide an `ADMIN_PASSWORD` in your environment, the system auto-generates one on the first run. You can retrieve it using:
+
+```bash
+docker compose exec sub2api cat /app/data/.initial_admin_password
+```
 
 ## Links
 

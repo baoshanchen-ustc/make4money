@@ -1,0 +1,19 @@
+# =============================================================================
+# Sub2API Build-only Override
+# =============================================================================
+# This file is intended to be used with the main docker-compose.yml file:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# =============================================================================
+
+services:
+  sub2api:
+    image: sub2api:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        GOPROXY: https://proxy.golang.org,direct
+        GOSUMDB: sum.golang.org
+    environment:
+      # Allow private IP addresses for CRS sync (false by default for security)
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}

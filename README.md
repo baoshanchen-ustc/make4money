@@ -180,7 +180,9 @@ SECURITY_URL_ALLOWLIST_ENABLED=false
 # PRODUCTION: Keep this false or use HTTPS URLs only
 SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
 
-# Allow private IP addresses for upstream/pricing/CRS (for internal deployments)
+# Allow private IP addresses for upstream/pricing/CRS (Recommended: false)
+# ⚠️ WARNING: Setting this to true can allow SSRF attacks to reach internal services
+#             (e.g., AWS/GCP/Azure metadata services at 169.254.169.254)
 SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false
 ```
 

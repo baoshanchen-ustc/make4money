@@ -523,8 +523,17 @@ func AutoSetupFromEnv() error {
 			return fmt.Errorf("failed to generate admin password: %w", err)
 		}
 		cfg.Admin.Password = password
-		fmt.Printf("Generated admin password (one-time): %s\n", cfg.Admin.Password)
-		fmt.Println("IMPORTANT: Save this password! It will not be shown again.")
+
+		// Write initial password to a one-time file instead of logging to stdout
+		pwdFile := "/app/data/.initial_admin_password"
+		if err := os.WriteFile(pwdFile, []byte(password), 0600); err != nil {
+			log.Printf("Warning: failed to write initial password to %s: %v", pwdFile, err)
+			// Fallback to log if file write fails, but this is a security risk
+			fmt.Printf("Generated admin password (one-time): %s\n", cfg.Admin.Password)
+		} else {
+			log.Printf("Initial admin password has been written to %s", pwdFile)
+		}
+		fmt.Println("IMPORTANT: Check /app/data/.initial_admin_password for the admin password! It will not be shown in logs.")
 	}
 
 	// Test database connection

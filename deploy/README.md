@@ -39,8 +39,8 @@ nano .env  # Set POSTGRES_PASSWORD (required)
 # Start all services
 docker-compose up -d
 
-# View logs (check for auto-generated admin password)
-docker-compose logs -f sub2api
+# Get auto-generated admin password
+docker compose exec sub2api cat /app/data/.initial_admin_password
 
 # Access Web UI
 # http://localhost:8080
@@ -59,26 +59,26 @@ When using Docker Compose with `AUTO_SETUP=true`:
 
 2. No manual Setup Wizard needed - just configure `.env` and start
 
-3. If `ADMIN_PASSWORD` is not set, check logs for the generated password:
+3. If `ADMIN_PASSWORD` is not set, retrieve the generated password:
    ```bash
-   docker-compose logs sub2api | grep "admin password"
+   docker compose exec sub2api cat /app/data/.initial_admin_password
    ```
 
 ### Local build vs. prebuilt image
 
 - `docker-compose.yml` pulls the published image `weishaw/sub2api:latest`.
-- `docker-compose-test.yml` builds from this repository. It now sets Go module proxies (`GOPROXY=https://proxy.golang.org,direct`, `GOSUMDB=sum.golang.org`) to avoid regional DNS issues. Use it when developing locally:
+- `docker-compose.build.yml` is a minimal override to build from source. It sets Go module proxies (`GOPROXY=https://proxy.golang.org,direct`, `GOSUMDB=sum.golang.org`) to avoid regional DNS issues. Use it with the main compose file:
   ```bash
-  docker compose -f docker-compose-test.yml up -d --build
+  docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
   ```
-- The test compose no longer mounts `deploy/config.yaml` by default to prevent accidental overrides; the app writes its generated config to the `sub2api_data` volume.
+- The build override no longer mounts `deploy/config.yaml` by default to prevent accidental overrides; the app writes its generated config to the `sub2api_data` volume.
 
 ### Remote access via tunnels (optional)
 
 - **Cloudflare Tunnel**: add the override and start with a tunnel token:
   ```bash
   export CF_TUNNEL_TOKEN=your_token_here
-  docker compose -f docker-compose-test.yml -f docker-compose.tunnel-cloudflare.yml up -d
+  docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.tunnel-cloudflare.yml up -d
   ```
   The `cloudflared` sidecar proxies `sub2api:8080`; configure hostname/routes in Cloudflare Zero Trust. Token mode avoids mounting credentials.
 
@@ -86,7 +86,7 @@ When using Docker Compose with `AUTO_SETUP=true`:
   ```bash
   export TS_AUTHKEY=tskey-xxxxxxxxxxxxxxxxxxxx
   # Optional: set TS_EXTRA_ARGS to advertise routes, e.g. --advertise-routes=127.0.0.1/32
-  docker compose -f docker-compose-test.yml -f docker-compose.tunnel-tailscale.yml up -d
+  docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.tunnel-tailscale.yml up -d
   ```
   The sidecar keeps Sub2API bound to loopback; peers reach it through Tailscale userspace networking unless you advertise routes.
 
@@ -146,6 +146,7 @@ docker-compose down -v
 | `ADMIN_EMAIL` | No | `admin@sub2api.local` | Admin email |
 | `ADMIN_PASSWORD` | No | *(auto-generated)* | Admin password |
 | `JWT_SECRET` | No | *(auto-generated)* | JWT secret |
+| `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS` | No | `false` | Allow private/local IP addresses for upstream/pricing/CRS. Set to `false` in production to prevent SSRF attacks against internal services (like cloud metadata services). |
 | `TZ` | No | `Asia/Shanghai` | Timezone |
 | `GEMINI_OAUTH_CLIENT_ID` | No | *(builtin)* | Google OAuth client ID (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_CLIENT_SECRET` | No | *(builtin)* | Google OAuth client secret (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |

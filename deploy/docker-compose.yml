@@ -132,7 +132,8 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - sub2api-network
+      - frontend-network
+      - backend-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -159,7 +160,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-sub2api}
       - TZ=${TZ:-Asia/Shanghai}
     networks:
-      - sub2api-network
+      - backend-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
       interval: 10s
@@ -194,7 +195,7 @@ services:
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
-      - sub2api-network
+      - backend-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -217,5 +218,7 @@ volumes:
 # Networks
 # =============================================================================
 networks:
-  sub2api-network:
+  frontend-network:
+    driver: bridge
+  backend-network:
     driver: bridge
