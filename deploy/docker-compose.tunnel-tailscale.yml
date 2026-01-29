@@ -1,0 +1,28 @@
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: sub2api-tailscale
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:?TS_AUTHKEY is required}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=${TS_EXTRA_ARGS:---hostname=sub2api-tailscale --accept-dns=false}
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+    networks:
+      - sub2api-network
+    depends_on:
+      sub2api:
+        condition: service_healthy
+
+networks:
+  sub2api-network:
+    external: true
+    name: deploy_sub2api-network
+
+volumes:
+  tailscale_state:
+    driver: local
