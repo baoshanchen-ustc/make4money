@@ -32,7 +32,14 @@ const (
 	// OpenAI Platform API for API Key accounts (fallback)
 	openaiPlatformAPIURL   = "https://api.openai.com/v1/responses"
 	openaiStickySessionTTL = time.Hour // 粘性会话TTL
+	openaiChatAPIURL       = "https://api.openai.com/v1/chat/completions"
 )
+
+// OpenAIChatCompletionsBodyKey stores the original chat-completions payload in gin.Context.
+const OpenAIChatCompletionsBodyKey = "openai_chat_completions_body"
+
+// OpenAIChatCompletionsIncludeUsageKey stores stream_options.include_usage in gin.Context.
+const OpenAIChatCompletionsIncludeUsageKey = "openai_chat_completions_include_usage"
 
 // openaiSSEDataRe matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
@@ -46,6 +53,19 @@ var openaiAllowedHeaders = map[string]bool{
 	"user-agent":      true,
 	"originator":      true,
 	"session_id":      true,
+}
+
+// OpenAI chat-completions allowed headers (extend responses whitelist).
+var openaiChatAllowedHeaders = map[string]bool{
+	"accept-language":     true,
+	"content-type":        true,
+	"conversation_id":     true,
+	"user-agent":          true,
+	"originator":          true,
+	"session_id":          true,
+	"openai-organization": true,
+	"openai-project":      true,
+	"openai-beta":         true,
 }
 
 // OpenAICodexUsageSnapshot represents Codex API usage limits from response headers
@@ -743,6 +763,23 @@ func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, re
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+
+	if c != nil && account != nil && account.Type == AccountTypeAPIKey {
+		if raw, ok := c.Get(OpenAIChatCompletionsBodyKey); ok {
+			if rawBody, ok := raw.([]byte); ok && len(rawBody) > 0 {
+				includeUsage := false
+				if v, ok := c.Get(OpenAIChatCompletionsIncludeUsageKey); ok {
+					if flag, ok := v.(bool); ok {
+						includeUsage = flag
+					}
+				}
+				if passthroughWriter, ok := c.Writer.(interface{ SetPassthrough() }); ok {
+					passthroughWriter.SetPassthrough()
+				}
+				return s.forwardChatCompletions(ctx, c, account, rawBody, includeUsage, startTime)
+			}
+		}
+	}
 
 	// Parse request body once (avoid multiple parse/serialize cycles)
 	var reqBody map[string]any
