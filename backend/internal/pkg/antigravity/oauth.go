@@ -22,8 +22,8 @@ const (
 	ClientID     = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
 	ClientSecret = "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"
 
-	// 固定的 redirect_uri（用户需手动复制 code）
-	RedirectURI = "http://localhost:8085/callback"
+	// Default RedirectURI (can be overridden)
+	DefaultRedirectURI = "http://localhost:8085/callback"
 
 	// OAuth scopes
 	Scopes = "https://www.googleapis.com/auth/cloud-platform " +
@@ -133,6 +133,7 @@ type OAuthSession struct {
 	State        string    `json:"state"`
 	CodeVerifier string    `json:"code_verifier"`
 	ProxyURL     string    `json:"proxy_url,omitempty"`
+RedirectURI  string    `json:"redirect_uri,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -248,10 +249,13 @@ func base64URLEncode(data []byte) string {
 }
 
 // BuildAuthorizationURL 构建 Google OAuth 授权 URL
-func BuildAuthorizationURL(state, codeChallenge string) string {
+func BuildAuthorizationURL(state, codeChallenge, redirectURI string) string {
+	if redirectURI == "" {
+		redirectURI = DefaultRedirectURI
+	}
 	params := url.Values{}
 	params.Set("client_id", ClientID)
-	params.Set("redirect_uri", RedirectURI)
+	params.Set("redirect_uri", redirectURI)
 	params.Set("response_type", "code")
 	params.Set("scope", Scopes)
 	params.Set("state", state)

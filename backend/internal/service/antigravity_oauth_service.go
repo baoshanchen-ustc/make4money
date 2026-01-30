@@ -30,7 +30,7 @@ type AntigravityAuthURLResult struct {
 }
 
 // GenerateAuthURL 生成 Google OAuth 授权链接
-func (s *AntigravityOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64) (*AntigravityAuthURLResult, error) {
+func (s *AntigravityOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, redirectURI string) (*AntigravityAuthURLResult, error) {
 	state, err := antigravity.GenerateState()
 	if err != nil {
 		return nil, fmt.Errorf("生成 state 失败: %w", err)
@@ -58,12 +58,13 @@ func (s *AntigravityOAuthService) GenerateAuthURL(ctx context.Context, proxyID *
 		State:        state,
 		CodeVerifier: codeVerifier,
 		ProxyURL:     proxyURL,
+		RedirectURI:  redirectURI,
 		CreatedAt:    time.Now(),
 	}
 	s.sessionStore.Set(sessionID, session)
 
 	codeChallenge := antigravity.GenerateCodeChallenge(codeVerifier)
-	authURL := antigravity.BuildAuthorizationURL(state, codeChallenge)
+	authURL := antigravity.BuildAuthorizationURL(state, codeChallenge, redirectURI)
 
 	return &AntigravityAuthURLResult{
 		AuthURL:   authURL,
@@ -103,6 +104,11 @@ func (s *AntigravityOAuthService) ExchangeCode(ctx context.Context, input *Antig
 		return nil, fmt.Errorf("state 无效")
 	}
 
+	redirectURI := session.RedirectURI
+	if redirectURI == "" {
+		redirectURI = antigravity.DefaultRedirectURI
+	}
+
 	// 确定代理 URL
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
@@ -115,7 +121,7 @@ func (s *AntigravityOAuthService) ExchangeCode(ctx context.Context, input *Antig
 	client := antigravity.NewClient(proxyURL)
 
 	// 交换 token
-	tokenResp, err := client.ExchangeCode(ctx, input.Code, session.CodeVerifier)
+	tokenResp, err := client.ExchangeCode(ctx, input.Code, session.CodeVerifier, redirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("token 交换失败: %w", err)
 	}

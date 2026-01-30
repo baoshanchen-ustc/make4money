@@ -186,12 +186,12 @@ func shouldFallbackToNextURL(err error, statusCode int) bool {
 }
 
 // ExchangeCode 用 authorization code 交换 token
-func (c *Client) ExchangeCode(ctx context.Context, code, codeVerifier string) (*TokenResponse, error) {
+func (c *Client) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI string) (*TokenResponse, error) {
 	params := url.Values{}
 	params.Set("client_id", ClientID)
 	params.Set("client_secret", ClientSecret)
 	params.Set("code", code)
-	params.Set("redirect_uri", RedirectURI)
+	params.Set("redirect_uri", redirectURI)
 	params.Set("grant_type", "authorization_code")
 	params.Set("code_verifier", codeVerifier)
 
