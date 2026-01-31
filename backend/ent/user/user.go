@@ -67,6 +67,10 @@ const (
 	EdgeAttributeValues = "attribute_values"
 	// EdgePromoCodeUsages holds the string denoting the promo_code_usages edge name in mutations.
 	EdgePromoCodeUsages = "promo_code_usages"
+	// EdgeRechargeOrders holds the string denoting the recharge_orders edge name in mutations.
+	EdgeRechargeOrders = "recharge_orders"
+	// EdgeBalanceLogs holds the string denoting the balance_logs edge name in mutations.
+	EdgeBalanceLogs = "balance_logs"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -125,6 +129,20 @@ const (
 	PromoCodeUsagesInverseTable = "promo_code_usages"
 	// PromoCodeUsagesColumn is the table column denoting the promo_code_usages relation/edge.
 	PromoCodeUsagesColumn = "user_id"
+	// RechargeOrdersTable is the table that holds the recharge_orders relation/edge.
+	RechargeOrdersTable = "recharge_orders"
+	// RechargeOrdersInverseTable is the table name for the RechargeOrder entity.
+	// It exists in this package in order to avoid circular dependency with the "rechargeorder" package.
+	RechargeOrdersInverseTable = "recharge_orders"
+	// RechargeOrdersColumn is the table column denoting the recharge_orders relation/edge.
+	RechargeOrdersColumn = "user_id"
+	// BalanceLogsTable is the table that holds the balance_logs relation/edge.
+	BalanceLogsTable = "balance_logs"
+	// BalanceLogsInverseTable is the table name for the BalanceLog entity.
+	// It exists in this package in order to avoid circular dependency with the "balancelog" package.
+	BalanceLogsInverseTable = "balance_logs"
+	// BalanceLogsColumn is the table column denoting the balance_logs relation/edge.
+	BalanceLogsColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -437,6 +455,34 @@ func ByPromoCodeUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByRechargeOrdersCount orders the results by recharge_orders count.
+func ByRechargeOrdersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newRechargeOrdersStep(), opts...)
+	}
+}
+
+// ByRechargeOrders orders the results by recharge_orders terms.
+func ByRechargeOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRechargeOrdersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByBalanceLogsCount orders the results by balance_logs count.
+func ByBalanceLogsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newBalanceLogsStep(), opts...)
+	}
+}
+
+// ByBalanceLogs orders the results by balance_logs terms.
+func ByBalanceLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newBalanceLogsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -504,6 +550,20 @@ func newPromoCodeUsagesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PromoCodeUsagesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PromoCodeUsagesTable, PromoCodeUsagesColumn),
+	)
+}
+func newRechargeOrdersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RechargeOrdersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, RechargeOrdersTable, RechargeOrdersColumn),
+	)
+}
+func newBalanceLogsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(BalanceLogsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, BalanceLogsTable, BalanceLogsColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {

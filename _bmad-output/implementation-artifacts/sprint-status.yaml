@@ -61,7 +61,7 @@ development_status:
   3-1-receive-wechat-callback: done             # Epic 3
   3-2-callback-signature-decrypt: done  # Epic 3
   3-3-order-status-balance-update: done          # Epic 3
-  3-4-balance-change-log: ready-for-dev          # Epic 3
+  3-4-balance-change-log: done                    # Epic 3
   4-1-query-single-order: ready-for-dev          # Epic 4
   4-6-frontend-order-polling: ready-for-dev      # Epic 4
   4-7-paying-countdown: ready-for-dev            # Epic 4

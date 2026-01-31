@@ -1,6 +1,6 @@
 # Story 3.4: 余额变动日志记录
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -10,17 +10,17 @@ Status: ready-for-dev
 
 ## Acceptance Criteria
 
-- [ ] AC1: 插入 balance_logs 表记录
-- [ ] AC2: 记录字段：user_id, change_type(recharge), amount, balance_before, balance_after
-- [ ] AC3: 记录 related_order_no 关联订单号
-- [ ] AC4: 记录 operator_type(system) 和 description
-- [ ] AC5: 日志表只允许插入，不允许修改删除（应用层控制）
+- [x] AC1: 插入 balance_logs 表记录
+- [x] AC2: 记录字段：user_id, change_type(recharge), amount, balance_before, balance_after
+- [x] AC3: 记录 related_order_no 关联订单号
+- [x] AC4: 记录 operator_type(system) 和 description
+- [x] AC5: 日志表只允许插入，不允许修改删除（应用层控制）
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: 创建 `backend/ent/schema/balance_log.go` Schema
-- [ ] Task 2: 实现余额日志服务
-- [ ] Task 3: 在事务中插入日志
+- [x] Task 1: 创建 `backend/ent/schema/balance_log.go` Schema
+- [x] Task 2: 实现余额日志服务
+- [x] Task 3: 在事务中插入日志
 
 ## Dev Notes
 
@@ -36,12 +36,27 @@ Status: ready-for-dev
 
 ### Agent Model Used
 
-(待开发时填写)
+Claude Opus 4.5 (claude-opus-4-5-20251101)
 
 ### Completion Notes List
 
-(待开发时填写)
+1. 创建了 `balance_log.go` Ent Schema，包含所有必要字段
+2. 在 `user.go` Schema 中添加了 `balance_logs` 反向边
+3. 创建了 `balance_log_service.go` 定义模型和 Repository 接口
+4. 创建了 `balance_log_repo.go` 实现 Repository
+5. 在 `repository/wire.go` 中注册了 NewBalanceLogRepository
+6. 修改了 `payment_callback_service.go`:
+   - 添加 BalanceLogRepository 依赖
+   - 在事务中先查询用户当前余额
+   - 更新余额后插入余额变动日志
+7. Repository 只实现了 Create 方法（只允许插入，不允许修改删除）
 
 ### File List
 
-(待开发时填写)
+- backend/ent/schema/balance_log.go (新增)
+- backend/ent/schema/user.go (修改 - 添加 balance_logs edge)
+- backend/internal/service/balance_log_service.go (新增)
+- backend/internal/repository/balance_log_repo.go (新增)
+- backend/internal/repository/wire.go (修改)
+- backend/internal/service/payment_callback_service.go (修改)
+- backend/cmd/server/wire_gen.go (自动生成)

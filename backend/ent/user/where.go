@@ -1269,6 +1269,52 @@ func HasPromoCodeUsagesWith(preds ...predicate.PromoCodeUsage) predicate.User {
 	})
 }
 
+// HasRechargeOrders applies the HasEdge predicate on the "recharge_orders" edge.
+func HasRechargeOrders() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, RechargeOrdersTable, RechargeOrdersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasRechargeOrdersWith applies the HasEdge predicate on the "recharge_orders" edge with a given conditions (other predicates).
+func HasRechargeOrdersWith(preds ...predicate.RechargeOrder) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newRechargeOrdersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasBalanceLogs applies the HasEdge predicate on the "balance_logs" edge.
+func HasBalanceLogs() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, BalanceLogsTable, BalanceLogsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasBalanceLogsWith applies the HasEdge predicate on the "balance_logs" edge with a given conditions (other predicates).
+func HasBalanceLogsWith(preds ...predicate.BalanceLog) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newBalanceLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUserAllowedGroups applies the HasEdge predicate on the "user_allowed_groups" edge.
 func HasUserAllowedGroups() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

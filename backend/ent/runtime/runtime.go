@@ -8,6 +8,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/balancelog"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentcallback"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
@@ -212,6 +213,61 @@ func init() {
 	accountgroupDescCreatedAt := accountgroupFields[3].Descriptor()
 	// accountgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountgroup.DefaultCreatedAt = accountgroupDescCreatedAt.Default.(func() time.Time)
+	balancelogMixin := schema.BalanceLog{}.Mixin()
+	balancelogMixinFields0 := balancelogMixin[0].Fields()
+	_ = balancelogMixinFields0
+	balancelogFields := schema.BalanceLog{}.Fields()
+	_ = balancelogFields
+	// balancelogDescCreatedAt is the schema descriptor for created_at field.
+	balancelogDescCreatedAt := balancelogMixinFields0[0].Descriptor()
+	// balancelog.DefaultCreatedAt holds the default value on creation for the created_at field.
+	balancelog.DefaultCreatedAt = balancelogDescCreatedAt.Default.(func() time.Time)
+	// balancelogDescUpdatedAt is the schema descriptor for updated_at field.
+	balancelogDescUpdatedAt := balancelogMixinFields0[1].Descriptor()
+	// balancelog.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	balancelog.DefaultUpdatedAt = balancelogDescUpdatedAt.Default.(func() time.Time)
+	// balancelog.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	balancelog.UpdateDefaultUpdatedAt = balancelogDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// balancelogDescUserID is the schema descriptor for user_id field.
+	balancelogDescUserID := balancelogFields[0].Descriptor()
+	// balancelog.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	balancelog.UserIDValidator = balancelogDescUserID.Validators[0].(func(int64) error)
+	// balancelogDescChangeType is the schema descriptor for change_type field.
+	balancelogDescChangeType := balancelogFields[1].Descriptor()
+	// balancelog.ChangeTypeValidator is a validator for the "change_type" field. It is called by the builders before save.
+	balancelog.ChangeTypeValidator = func() func(string) error {
+		validators := balancelogDescChangeType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(change_type string) error {
+			for _, fn := range fns {
+				if err := fn(change_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// balancelogDescRelatedOrderNo is the schema descriptor for related_order_no field.
+	balancelogDescRelatedOrderNo := balancelogFields[5].Descriptor()
+	// balancelog.RelatedOrderNoValidator is a validator for the "related_order_no" field. It is called by the builders before save.
+	balancelog.RelatedOrderNoValidator = balancelogDescRelatedOrderNo.Validators[0].(func(string) error)
+	// balancelogDescDescription is the schema descriptor for description field.
+	balancelogDescDescription := balancelogFields[6].Descriptor()
+	// balancelog.DefaultDescription holds the default value on creation for the description field.
+	balancelog.DefaultDescription = balancelogDescDescription.Default.(string)
+	// balancelogDescOperatorID is the schema descriptor for operator_id field.
+	balancelogDescOperatorID := balancelogFields[7].Descriptor()
+	// balancelog.DefaultOperatorID holds the default value on creation for the operator_id field.
+	balancelog.DefaultOperatorID = balancelogDescOperatorID.Default.(int64)
+	// balancelogDescOperatorType is the schema descriptor for operator_type field.
+	balancelogDescOperatorType := balancelogFields[8].Descriptor()
+	// balancelog.DefaultOperatorType holds the default value on creation for the operator_type field.
+	balancelog.DefaultOperatorType = balancelogDescOperatorType.Default.(string)
+	// balancelog.OperatorTypeValidator is a validator for the "operator_type" field. It is called by the builders before save.
+	balancelog.OperatorTypeValidator = balancelogDescOperatorType.Validators[0].(func(string) error)
 	groupMixin := schema.Group{}.Mixin()
 	groupMixinHooks1 := groupMixin[1].Hooks()
 	group.Hooks[0] = groupMixinHooks1[0]

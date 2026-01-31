@@ -12,9 +12,11 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/balancelog"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/ent/rechargeorder"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -417,6 +419,36 @@ func (_u *UserUpdate) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate {
 	return _u.AddPromoCodeUsageIDs(ids...)
 }
 
+// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by IDs.
+func (_u *UserUpdate) AddRechargeOrderIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddRechargeOrderIDs(ids...)
+	return _u
+}
+
+// AddRechargeOrders adds the "recharge_orders" edges to the RechargeOrder entity.
+func (_u *UserUpdate) AddRechargeOrders(v ...*RechargeOrder) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddRechargeOrderIDs(ids...)
+}
+
+// AddBalanceLogIDs adds the "balance_logs" edge to the BalanceLog entity by IDs.
+func (_u *UserUpdate) AddBalanceLogIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddBalanceLogIDs(ids...)
+	return _u
+}
+
+// AddBalanceLogs adds the "balance_logs" edges to the BalanceLog entity.
+func (_u *UserUpdate) AddBalanceLogs(v ...*BalanceLog) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddBalanceLogIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
@@ -588,6 +620,48 @@ func (_u *UserUpdate) RemovePromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePromoCodeUsageIDs(ids...)
+}
+
+// ClearRechargeOrders clears all "recharge_orders" edges to the RechargeOrder entity.
+func (_u *UserUpdate) ClearRechargeOrders() *UserUpdate {
+	_u.mutation.ClearRechargeOrders()
+	return _u
+}
+
+// RemoveRechargeOrderIDs removes the "recharge_orders" edge to RechargeOrder entities by IDs.
+func (_u *UserUpdate) RemoveRechargeOrderIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveRechargeOrderIDs(ids...)
+	return _u
+}
+
+// RemoveRechargeOrders removes "recharge_orders" edges to RechargeOrder entities.
+func (_u *UserUpdate) RemoveRechargeOrders(v ...*RechargeOrder) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveRechargeOrderIDs(ids...)
+}
+
+// ClearBalanceLogs clears all "balance_logs" edges to the BalanceLog entity.
+func (_u *UserUpdate) ClearBalanceLogs() *UserUpdate {
+	_u.mutation.ClearBalanceLogs()
+	return _u
+}
+
+// RemoveBalanceLogIDs removes the "balance_logs" edge to BalanceLog entities by IDs.
+func (_u *UserUpdate) RemoveBalanceLogIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveBalanceLogIDs(ids...)
+	return _u
+}
+
+// RemoveBalanceLogs removes "balance_logs" edges to BalanceLog entities.
+func (_u *UserUpdate) RemoveBalanceLogs(v ...*BalanceLog) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveBalanceLogIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1127,6 +1201,96 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.RechargeOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedRechargeOrdersIDs(); len(nodes) > 0 && !_u.mutation.RechargeOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RechargeOrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.BalanceLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.BalanceLogsTable,
+			Columns: []string{user.BalanceLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedBalanceLogsIDs(); len(nodes) > 0 && !_u.mutation.BalanceLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.BalanceLogsTable,
+			Columns: []string{user.BalanceLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.BalanceLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.BalanceLogsTable,
+			Columns: []string{user.BalanceLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -1529,6 +1693,36 @@ func (_u *UserUpdateOne) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserUpdateOne
 	return _u.AddPromoCodeUsageIDs(ids...)
 }
 
+// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by IDs.
+func (_u *UserUpdateOne) AddRechargeOrderIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddRechargeOrderIDs(ids...)
+	return _u
+}
+
+// AddRechargeOrders adds the "recharge_orders" edges to the RechargeOrder entity.
+func (_u *UserUpdateOne) AddRechargeOrders(v ...*RechargeOrder) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddRechargeOrderIDs(ids...)
+}
+
+// AddBalanceLogIDs adds the "balance_logs" edge to the BalanceLog entity by IDs.
+func (_u *UserUpdateOne) AddBalanceLogIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddBalanceLogIDs(ids...)
+	return _u
+}
+
+// AddBalanceLogs adds the "balance_logs" edges to the BalanceLog entity.
+func (_u *UserUpdateOne) AddBalanceLogs(v ...*BalanceLog) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddBalanceLogIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
@@ -1700,6 +1894,48 @@ func (_u *UserUpdateOne) RemovePromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePromoCodeUsageIDs(ids...)
+}
+
+// ClearRechargeOrders clears all "recharge_orders" edges to the RechargeOrder entity.
+func (_u *UserUpdateOne) ClearRechargeOrders() *UserUpdateOne {
+	_u.mutation.ClearRechargeOrders()
+	return _u
+}
+
+// RemoveRechargeOrderIDs removes the "recharge_orders" edge to RechargeOrder entities by IDs.
+func (_u *UserUpdateOne) RemoveRechargeOrderIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveRechargeOrderIDs(ids...)
+	return _u
+}
+
+// RemoveRechargeOrders removes "recharge_orders" edges to RechargeOrder entities.
+func (_u *UserUpdateOne) RemoveRechargeOrders(v ...*RechargeOrder) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveRechargeOrderIDs(ids...)
+}
+
+// ClearBalanceLogs clears all "balance_logs" edges to the BalanceLog entity.
+func (_u *UserUpdateOne) ClearBalanceLogs() *UserUpdateOne {
+	_u.mutation.ClearBalanceLogs()
+	return _u
+}
+
+// RemoveBalanceLogIDs removes the "balance_logs" edge to BalanceLog entities by IDs.
+func (_u *UserUpdateOne) RemoveBalanceLogIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveBalanceLogIDs(ids...)
+	return _u
+}
+
+// RemoveBalanceLogs removes "balance_logs" edges to BalanceLog entities.
+func (_u *UserUpdateOne) RemoveBalanceLogs(v ...*BalanceLog) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveBalanceLogIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -2262,6 +2498,96 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.RechargeOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedRechargeOrdersIDs(); len(nodes) > 0 && !_u.mutation.RechargeOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RechargeOrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.BalanceLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.BalanceLogsTable,
+			Columns: []string{user.BalanceLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedBalanceLogsIDs(); len(nodes) > 0 && !_u.mutation.BalanceLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.BalanceLogsTable,
+			Columns: []string{user.BalanceLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.BalanceLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.BalanceLogsTable,
+			Columns: []string{user.BalanceLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

@@ -18,11 +18,13 @@ import (
 // - 订单状态检查和更新
 // - 金额验证
 // - 用户余额增加
+// - 余额变动日志记录
 type PaymentCallbackService struct {
 	entClient       *dbent.Client
 	redisClient     *redis.Client
 	orderRepo       RechargeOrderRepository
 	userRepo        UserRepository
+	balanceLogRepo  BalanceLogRepository
 }
 
 // NewPaymentCallbackService 创建支付回调业务处理服务
@@ -31,12 +33,14 @@ func NewPaymentCallbackService(
 	redisClient *redis.Client,
 	orderRepo RechargeOrderRepository,
 	userRepo UserRepository,
+	balanceLogRepo BalanceLogRepository,
 ) *PaymentCallbackService {
 	return &PaymentCallbackService{
-		entClient:   entClient,
-		redisClient: redisClient,
-		orderRepo:   orderRepo,
-		userRepo:    userRepo,
+		entClient:      entClient,
+		redisClient:    redisClient,
+		orderRepo:      orderRepo,
+		userRepo:       userRepo,
+		balanceLogRepo: balanceLogRepo,
 	}
 }
 
@@ -178,7 +182,15 @@ func (s *PaymentCallbackService) processPaymentInTransaction(
 	// 使用事务上下文
 	txCtx := dbent.NewTxContext(ctx, tx)
 
-	// 4.1 更新订单状态
+	// 4.1 查询用户当前余额（用于日志记录）
+	user, err := s.userRepo.GetByID(txCtx, order.UserID)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("get user: %w", err)
+	}
+	balanceBefore := user.Balance
+
+	// 4.2 更新订单状态
 	now := time.Now()
 	order.Status = OrderStatusPaid
 	order.WeChatTransactionID = &transactionID
@@ -189,13 +201,29 @@ func (s *PaymentCallbackService) processPaymentInTransaction(
 		return fmt.Errorf("update order: %w", err)
 	}
 
-	// 4.2 增加用户余额
+	// 4.3 增加用户余额
 	if err := s.userRepo.UpdateBalance(txCtx, order.UserID, order.Amount); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("update user balance: %w", err)
 	}
 
-	// TODO: 4.3 插入余额变动日志（在 Story 3-4 实现）
+	// 4.4 插入余额变动日志
+	balanceAfter := balanceBefore + order.Amount
+	balanceLog := &BalanceLog{
+		UserID:         order.UserID,
+		ChangeType:     BalanceChangeTypeRecharge,
+		Amount:         order.Amount,
+		BalanceBefore:  balanceBefore,
+		BalanceAfter:   balanceAfter,
+		RelatedOrderNo: &order.OrderNo,
+		Description:    fmt.Sprintf("充值 %.2f 元", order.Amount),
+		OperatorID:     0,
+		OperatorType:   OperatorTypeSystem,
+	}
+	if err := s.balanceLogRepo.Create(txCtx, balanceLog); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("create balance log: %w", err)
+	}
 
 	// 提交事务
 	if err := tx.Commit(); err != nil {

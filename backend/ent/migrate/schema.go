@@ -204,6 +204,62 @@ var (
 			},
 		},
 	}
+	// BalanceLogsColumns holds the columns for the "balance_logs" table.
+	BalanceLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "change_type", Type: field.TypeString, Size: 20},
+		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "balance_before", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "balance_after", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "related_order_no", Type: field.TypeString, Nullable: true, Size: 50},
+		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "operator_id", Type: field.TypeInt64, Default: 0},
+		{Name: "operator_type", Type: field.TypeString, Size: 20, Default: "system"},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// BalanceLogsTable holds the schema information for the "balance_logs" table.
+	BalanceLogsTable = &schema.Table{
+		Name:       "balance_logs",
+		Columns:    BalanceLogsColumns,
+		PrimaryKey: []*schema.Column{BalanceLogsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "balance_logs_users_balance_logs",
+				Columns:    []*schema.Column{BalanceLogsColumns[11]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "balancelog_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLogsColumns[11]},
+			},
+			{
+				Name:    "balancelog_change_type",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLogsColumns[3]},
+			},
+			{
+				Name:    "balancelog_related_order_no",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLogsColumns[7]},
+			},
+			{
+				Name:    "balancelog_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLogsColumns[1]},
+			},
+			{
+				Name:    "balancelog_user_id_change_type",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceLogsColumns[11], BalanceLogsColumns[3]},
+			},
+		},
+	}
 	// GroupsColumns holds the columns for the "groups" table.
 	GroupsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -948,6 +1004,7 @@ var (
 		APIKeysTable,
 		AccountsTable,
 		AccountGroupsTable,
+		BalanceLogsTable,
 		GroupsTable,
 		PaymentCallbacksTable,
 		PromoCodesTable,
@@ -980,6 +1037,10 @@ func init() {
 	AccountGroupsTable.ForeignKeys[1].RefTable = GroupsTable
 	AccountGroupsTable.Annotation = &entsql.Annotation{
 		Table: "account_groups",
+	}
+	BalanceLogsTable.ForeignKeys[0].RefTable = UsersTable
+	BalanceLogsTable.Annotation = &entsql.Annotation{
+		Table: "balance_logs",
 	}
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",

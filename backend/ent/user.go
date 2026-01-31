@@ -77,11 +77,15 @@ type UserEdges struct {
 	AttributeValues []*UserAttributeValue `json:"attribute_values,omitempty"`
 	// PromoCodeUsages holds the value of the promo_code_usages edge.
 	PromoCodeUsages []*PromoCodeUsage `json:"promo_code_usages,omitempty"`
+	// RechargeOrders holds the value of the recharge_orders edge.
+	RechargeOrders []*RechargeOrder `json:"recharge_orders,omitempty"`
+	// BalanceLogs holds the value of the balance_logs edge.
+	BalanceLogs []*BalanceLog `json:"balance_logs,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [9]bool
+	loadedTypes [11]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -156,10 +160,28 @@ func (e UserEdges) PromoCodeUsagesOrErr() ([]*PromoCodeUsage, error) {
 	return nil, &NotLoadedError{edge: "promo_code_usages"}
 }
 
+// RechargeOrdersOrErr returns the RechargeOrders value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) RechargeOrdersOrErr() ([]*RechargeOrder, error) {
+	if e.loadedTypes[8] {
+		return e.RechargeOrders, nil
+	}
+	return nil, &NotLoadedError{edge: "recharge_orders"}
+}
+
+// BalanceLogsOrErr returns the BalanceLogs value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) BalanceLogsOrErr() ([]*BalanceLog, error) {
+	if e.loadedTypes[9] {
+		return e.BalanceLogs, nil
+	}
+	return nil, &NotLoadedError{edge: "balance_logs"}
+}
+
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[8] {
+	if e.loadedTypes[10] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
@@ -363,6 +385,16 @@ func (_m *User) QueryAttributeValues() *UserAttributeValueQuery {
 // QueryPromoCodeUsages queries the "promo_code_usages" edge of the User entity.
 func (_m *User) QueryPromoCodeUsages() *PromoCodeUsageQuery {
 	return NewUserClient(_m.config).QueryPromoCodeUsages(_m)
+}
+
+// QueryRechargeOrders queries the "recharge_orders" edge of the User entity.
+func (_m *User) QueryRechargeOrders() *RechargeOrderQuery {
+	return NewUserClient(_m.config).QueryRechargeOrders(_m)
+}
+
+// QueryBalanceLogs queries the "balance_logs" edge of the User entity.
+func (_m *User) QueryBalanceLogs() *BalanceLogQuery {
+	return NewUserClient(_m.config).QueryBalanceLogs(_m)
 }
 
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the User entity.
