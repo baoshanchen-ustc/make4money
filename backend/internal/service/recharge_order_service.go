@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 // 订单状态常量
@@ -66,6 +67,20 @@ type CreateRechargeOrderRequest struct {
 	PaymentChannel string  `json:"payment_channel"`
 }
 
+// ListRechargeOrdersRequest 查询充值订单列表请求
+type ListRechargeOrdersRequest struct {
+	pagination.PaginationParams
+	Status    string     // 可选：按状态筛选
+	StartTime *time.Time // 可选：开始时间
+	EndTime   *time.Time // 可选：结束时间
+}
+
+// ListRechargeOrdersResult 查询充值订单列表结果
+type ListRechargeOrdersResult struct {
+	Orders     []*RechargeOrder
+	Pagination *pagination.PaginationResult
+}
+
 // RechargeOrderRepository 充值订单仓储接口
 type RechargeOrderRepository interface {
 	Create(ctx context.Context, order *RechargeOrder) error
@@ -73,6 +88,7 @@ type RechargeOrderRepository interface {
 	GetByOrderNo(ctx context.Context, orderNo string) (*RechargeOrder, error)
 	Update(ctx context.Context, order *RechargeOrder) error
 	ExistsByOrderNo(ctx context.Context, orderNo string) (bool, error)
+	ListByUserID(ctx context.Context, userID int64, req *ListRechargeOrdersRequest) (*ListRechargeOrdersResult, error)
 }
 
 // RechargeOrderService 充值订单服务
@@ -224,4 +240,17 @@ func (s *RechargeOrderService) UpdatePaymentResult(ctx context.Context, orderNo 
 	order.PrepayID = prepayID
 
 	return s.repo.Update(ctx, order)
+}
+
+// ListUserOrders 获取用户的充值订单列表
+func (s *RechargeOrderService) ListUserOrders(ctx context.Context, userID int64, req *ListRechargeOrdersRequest) (*ListRechargeOrdersResult, error) {
+	// 设置默认分页参数
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.PageSize < 1 {
+		req.PageSize = 10
+	}
+
+	return s.repo.ListByUserID(ctx, userID, req)
 }

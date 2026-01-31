@@ -58,6 +58,32 @@ export interface InitiatePaymentResponse {
   jsapi_params?: JSAPIPaymentParams // JSAPI 支付调起参数
 }
 
+// 订单列表请求参数
+export interface ListOrdersRequest {
+  page?: number
+  page_size?: number
+  status?: string
+  start_time?: string // RFC3339 或 YYYY-MM-DD 格式
+  end_time?: string   // RFC3339 或 YYYY-MM-DD 格式
+}
+
+// 订单列表项
+export interface OrderListItem {
+  order_no: string
+  amount: number
+  status: string
+  created_at: string
+  paid_at?: string
+}
+
+// 订单列表响应
+export interface ListOrdersResponse {
+  orders: OrderListItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
 // ==================== API Functions ====================
 
 export const rechargeAPI = {
@@ -91,6 +117,14 @@ export const rechargeAPI = {
    */
   async initiatePayment(orderNo: string, data?: InitiatePaymentRequest): Promise<InitiatePaymentResponse> {
     const response = await apiClient.post<InitiatePaymentResponse>(`/recharge/orders/${orderNo}/pay`, data || {})
+    return response.data
+  },
+
+  /**
+   * 获取充值记录列表
+   */
+  async listOrders(params?: ListOrdersRequest): Promise<ListOrdersResponse> {
+    const response = await apiClient.get<ListOrdersResponse>('/recharge/orders', { params })
     return response.data
   }
 }

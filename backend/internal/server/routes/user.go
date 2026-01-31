@@ -92,6 +92,7 @@ func RegisterUserRoutes(
 		recharge := authenticated.Group("/recharge")
 		{
 			recharge.POST("/validate-amount", h.Recharge.ValidateAmount)
+			recharge.GET("/orders", h.Recharge.ListOrders)
 			recharge.POST("/orders", h.Recharge.CreateOrder)
 			recharge.GET("/orders/:order_no", h.Recharge.GetOrder)
 			recharge.POST("/orders/:order_no/pay", h.Recharge.InitiatePayment)

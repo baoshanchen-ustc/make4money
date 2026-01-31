@@ -2,6 +2,7 @@ package recharge
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -379,4 +380,151 @@ func (h *RechargeHandler) InitiatePayment(c *gin.Context) {
 		JSAPIParams:    payResult.JSAPIParams,
 	}
 	response.Success(c, resp)
+}
+
+// ListOrdersRequest 订单列表请求参数
+type ListOrdersRequest struct {
+	Page      int    `form:"page"`
+	PageSize  int    `form:"page_size"`
+	Status    string `form:"status"`
+	StartTime string `form:"start_time"` // RFC3339 格式
+	EndTime   string `form:"end_time"`   // RFC3339 格式
+}
+
+// OrderListItem 订单列表项
+type OrderListItem struct {
+	OrderNo   string     `json:"order_no"`
+	Amount    float64    `json:"amount"`
+	Status    string     `json:"status"`
+	CreatedAt time.Time  `json:"created_at"`
+	PaidAt    *time.Time `json:"paid_at,omitempty"`
+}
+
+// ListOrdersResponse 订单列表响应
+type ListOrdersResponse struct {
+	Orders   []OrderListItem `json:"orders"`
+	Total    int64           `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"page_size"`
+}
+
+// ListOrders 获取充值记录列表（需认证）
+// GET /api/v1/recharge/orders
+func (h *RechargeHandler) ListOrders(c *gin.Context) {
+	// 从 context 获取用户 ID
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.Unauthorized(c, "未登录")
+		return
+	}
+
+	// 解析请求参数
+	var req ListOrdersRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.BadRequest(c, "请求参数无效")
+		return
+	}
+
+	// 设置默认分页参数
+	page := req.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := req.PageSize
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	// 验证状态参数
+	if req.Status != "" {
+		validStatuses := map[string]bool{
+			service.OrderStatusPending:   true,
+			service.OrderStatusPaid:      true,
+			service.OrderStatusFailed:    true,
+			service.OrderStatusExpired:   true,
+			service.OrderStatusCancelled: true,
+		}
+		if !validStatuses[req.Status] {
+			response.BadRequest(c, "无效的订单状态")
+			return
+		}
+	}
+
+	// 解析时间范围
+	var startTime, endTime *time.Time
+	if req.StartTime != "" {
+		t, err := time.Parse(time.RFC3339, req.StartTime)
+		if err != nil {
+			// 尝试解析日期格式
+			t, err = time.Parse("2006-01-02", req.StartTime)
+			if err != nil {
+				response.BadRequest(c, "开始时间格式无效")
+				return
+			}
+		}
+		startTime = &t
+	}
+	if req.EndTime != "" {
+		t, err := time.Parse(time.RFC3339, req.EndTime)
+		if err != nil {
+			// 尝试解析日期格式，并设置为当天结束
+			t, err = time.Parse("2006-01-02", req.EndTime)
+			if err != nil {
+				response.BadRequest(c, "结束时间格式无效")
+				return
+			}
+			t = t.Add(24*time.Hour - time.Second)
+		}
+		endTime = &t
+	}
+
+	// 构建查询请求
+	listReq := &service.ListRechargeOrdersRequest{
+		Status:    req.Status,
+		StartTime: startTime,
+		EndTime:   endTime,
+	}
+	listReq.Page = page
+	listReq.PageSize = pageSize
+
+	// 查询订单列表
+	result, err := h.rechargeOrderService.ListUserOrders(c.Request.Context(), userID.(int64), listReq)
+	if err != nil {
+		response.InternalError(c, "查询订单失败")
+		return
+	}
+
+	// 转换响应
+	orders := make([]OrderListItem, len(result.Orders))
+	for i, order := range result.Orders {
+		orders[i] = OrderListItem{
+			OrderNo:   order.OrderNo,
+			Amount:    order.Amount,
+			Status:    order.Status,
+			CreatedAt: order.CreatedAt,
+			PaidAt:    order.PaidAt,
+		}
+	}
+
+	response.Success(c, ListOrdersResponse{
+		Orders:   orders,
+		Total:    result.Pagination.Total,
+		Page:     result.Pagination.Page,
+		PageSize: result.Pagination.PageSize,
+	})
+}
+
+// parseIntParam 解析整数参数
+func parseIntParam(s string, defaultVal int) int {
+	if s == "" {
+		return defaultVal
+	}
+	val, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultVal
+	}
+	return val
 }

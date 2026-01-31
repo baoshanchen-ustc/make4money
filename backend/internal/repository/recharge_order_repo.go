@@ -104,6 +104,51 @@ func (r *rechargeOrderRepository) ExistsByOrderNo(ctx context.Context, orderNo s
 	return exists, nil
 }
 
+func (r *rechargeOrderRepository) ListByUserID(ctx context.Context, userID int64, req *service.ListRechargeOrdersRequest) (*service.ListRechargeOrdersResult, error) {
+	query := r.client.RechargeOrder.Query().
+		Where(rechargeorder.UserIDEQ(userID))
+
+	// 状态筛选
+	if req.Status != "" {
+		query = query.Where(rechargeorder.StatusEQ(req.Status))
+	}
+
+	// 时间范围筛选
+	if req.StartTime != nil {
+		query = query.Where(rechargeorder.CreatedAtGTE(*req.StartTime))
+	}
+	if req.EndTime != nil {
+		query = query.Where(rechargeorder.CreatedAtLTE(*req.EndTime))
+	}
+
+	// 获取总数
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 按创建时间倒序，分页
+	orders, err := query.
+		Order(dbent.Desc(rechargeorder.FieldCreatedAt)).
+		Offset(req.Offset()).
+		Limit(req.Limit()).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 转换结果
+	result := make([]*service.RechargeOrder, len(orders))
+	for i, order := range orders {
+		result[i] = rechargeOrderEntityToService(order)
+	}
+
+	return &service.ListRechargeOrdersResult{
+		Orders:     result,
+		Pagination: paginationResultFromTotal(int64(total), req.PaginationParams),
+	}, nil
+}
+
 func rechargeOrderEntityToService(m *dbent.RechargeOrder) *service.RechargeOrder {
 	if m == nil {
 		return nil

@@ -151,6 +151,8 @@ export default {
     processing: '处理中...',
     contactSupport: '联系客服',
     add: '添加',
+    previousPage: '上一页',
+    nextPage: '下一页',
     invalidEmail: '请输入有效的邮箱地址',
     optional: '可选',
     selectOption: '请选择',
@@ -3460,6 +3462,22 @@ export default {
     failedReasonUnknown: '未知错误，请重试',
     retryRecharge: '重新充值',
     statusCancelled: '已取消'
+  },
+
+  // Recharge Records Page
+  rechargeRecords: {
+    title: '充值记录',
+    description: '查看您的历史充值订单',
+    filterStatus: '订单状态',
+    filterStartDate: '开始日期',
+    filterEndDate: '结束日期',
+    allStatus: '全部状态',
+    resetFilters: '重置',
+    noRecords: '暂无充值记录',
+    noRecordsDesc: '您还没有任何充值订单记录',
+    goRecharge: '去充值',
+    paidAt: '支付时间',
+    totalRecords: '共 {count} 条记录'
   },
 
   // User Subscriptions Page

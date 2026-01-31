@@ -154,6 +154,8 @@ export default {
     processing: 'Processing...',
     contactSupport: 'Contact Support',
     add: 'Add',
+    previousPage: 'Previous',
+    nextPage: 'Next',
     invalidEmail: 'Please enter a valid email address',
     optional: 'optional',
     selectOption: 'Select an option',
@@ -3311,6 +3313,22 @@ export default {
     failedReasonUnknown: 'Unknown error, please try again',
     retryRecharge: 'Retry Recharge',
     statusCancelled: 'Cancelled'
+  },
+
+  // Recharge Records Page
+  rechargeRecords: {
+    title: 'Recharge Records',
+    description: 'View your recharge order history',
+    filterStatus: 'Order Status',
+    filterStartDate: 'Start Date',
+    filterEndDate: 'End Date',
+    allStatus: 'All Status',
+    resetFilters: 'Reset',
+    noRecords: 'No Recharge Records',
+    noRecordsDesc: 'You have no recharge order records yet',
+    goRecharge: 'Go Recharge',
+    paidAt: 'Paid at',
+    totalRecords: '{count} records in total'
   },
 
   // User Subscriptions Page

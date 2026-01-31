@@ -258,6 +258,19 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'recharge.failedSubtitle'
     }
   },
+  {
+    path: '/recharge/records',
+    name: 'RechargeRecords',
+    component: () => import('@/views/user/RechargeRecordsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresRecharge: true,
+      title: 'Recharge Records',
+      titleKey: 'rechargeRecords.title',
+      descriptionKey: 'rechargeRecords.description'
+    }
+  },
 
   // ==================== Admin Routes ====================
   {

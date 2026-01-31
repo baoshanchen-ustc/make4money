@@ -73,8 +73,8 @@ development_status:
 
   # Sprint 3: 订单管理 + 基础防护 (5 stories)
   # 目标: 防止订单悬挂和基础滥用
-  sprint-3: backlog
-  4-2-recharge-records-list: ready-for-dev       # Epic 4
+  sprint-3: in-progress
+  4-2-recharge-records-list: done                  # Epic 4
   4-3-cancel-unpaid-order: ready-for-dev         # Epic 4
   4-4-order-expire-auto: ready-for-dev           # Epic 4
   4-5-wechat-close-order: ready-for-dev          # Epic 4
