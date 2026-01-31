@@ -87,5 +87,12 @@ func RegisterUserRoutes(
 			usageReport.PUT("/config", h.UsageReport.UpdateConfig)
 			usageReport.POST("/test", h.UsageReport.SendTestReport)
 		}
+
+		// 充值（需认证的接口）
+		recharge := authenticated.Group("/recharge")
+		{
+			recharge.POST("/validate-amount", h.Recharge.ValidateAmount)
+			recharge.POST("/orders", h.Recharge.CreateOrder)
+		}
 	}
 }

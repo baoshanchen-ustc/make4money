@@ -287,4 +287,6 @@ var ProviderSet = wire.NewSet(
 	NewTotpService,
 	NewUserUsageReportService,
 	ProvideUserUsageReportScheduler,
+	NewWeChatPayService,
+	NewRechargeOrderService,
 )

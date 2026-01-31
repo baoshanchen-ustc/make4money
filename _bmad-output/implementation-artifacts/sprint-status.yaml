@@ -43,14 +43,14 @@
 development_status:
   # Sprint 1: 配置基础 + 下单流程 (7 stories)
   # 目标: 用户可进入充值页面、选择金额、创建订单
-  sprint-1: in-progress
+  sprint-1: done
   1-1-load-wechat-pay-config: done                # Epic 1
   1-6-recharge-menu-visibility: done               # Epic 1
   2-1-recharge-page-balance-display: done          # Epic 2
   2-2-amount-selector: done                      # Epic 2
-  2-3-amount-range-validation: review             # Epic 2
+  2-3-amount-range-validation: done             # Epic 2
   2-4-payment-method-order-submit: done # Epic 2
-  2-5-recharge-order-creation: ready-for-dev     # Epic 2
+  2-5-recharge-order-creation: done     # Epic 2
   sprint-1-retrospective: optional
 
   # Sprint 2: 支付集成 + 结果页面 (11 stories)

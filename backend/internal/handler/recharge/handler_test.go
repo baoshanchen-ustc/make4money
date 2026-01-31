@@ -21,7 +21,8 @@ func TestGetConfig_Disabled(t *testing.T) {
 		},
 	}
 	wechatPayService := service.NewWeChatPayService(cfg)
-	handler := NewRechargeHandler(wechatPayService)
+	// rechargeOrderService 为 nil（GetConfig 不需要它）
+	handler := NewRechargeHandler(wechatPayService, nil)
 
 	router := gin.New()
 	router.GET("/api/v1/recharge/config", handler.GetConfig)
@@ -77,7 +78,7 @@ func TestGetConfig_Returns_JSON_Structure(t *testing.T) {
 		},
 	}
 	wechatPayService := service.NewWeChatPayService(cfg)
-	handler := NewRechargeHandler(wechatPayService)
+	handler := NewRechargeHandler(wechatPayService, nil)
 
 	router := gin.New()
 	router.GET("/api/v1/recharge/config", handler.GetConfig)

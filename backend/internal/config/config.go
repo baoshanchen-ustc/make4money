@@ -37,6 +37,19 @@ const (
 	ConnectionPoolIsolationAccountProxy = "account_proxy"
 )
 
+// WeChatPayConfig 微信支付敏感配置
+// 安全要求：所有敏感字段仅从config.yaml加载，不暴露到API
+type WeChatPayConfig struct {
+	Enabled           bool   `mapstructure:"enabled"`             // 是否启用微信支付
+	AppID             string `mapstructure:"app_id"`              // 微信应用ID（公众号/小程序）
+	MchID             string `mapstructure:"mch_id"`              // 商户号
+	APIv3Key          string `mapstructure:"api_v3_key"`          // APIv3密钥（32字符）
+	CertSerialNo      string `mapstructure:"cert_serial_no"`      // 商户证书序列号
+	PrivateKeyPath    string `mapstructure:"private_key_path"`    // 商户私钥文件路径
+	NotifyURL         string `mapstructure:"notify_url"`          // 支付回调地址
+	OrderExpireMinutes int   `mapstructure:"order_expire_minutes"` // 订单过期时间（分钟），默认30分钟
+}
+
 type Config struct {
 	Server       ServerConfig               `mapstructure:"server"`
 	CORS         CORSConfig                 `mapstructure:"cors"`
@@ -63,6 +76,7 @@ type Config struct {
 	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini       GeminiConfig               `mapstructure:"gemini"`
 	Update       UpdateConfig               `mapstructure:"update"`
+	WeChatPay    WeChatPayConfig            `mapstructure:"wechat_pay"`
 }
 
 type GeminiConfig struct {
@@ -897,6 +911,16 @@ func setDefaults() {
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
+
+	// WeChatPay
+	viper.SetDefault("wechat_pay.enabled", false)
+	viper.SetDefault("wechat_pay.app_id", "")
+	viper.SetDefault("wechat_pay.mch_id", "")
+	viper.SetDefault("wechat_pay.api_v3_key", "")
+	viper.SetDefault("wechat_pay.cert_serial_no", "")
+	viper.SetDefault("wechat_pay.private_key_path", "")
+	viper.SetDefault("wechat_pay.notify_url", "")
+	viper.SetDefault("wechat_pay.order_expire_minutes", 30)
 }
 
 func (c *Config) Validate() error {
@@ -1226,6 +1250,42 @@ func (c *Config) Validate() error {
 	}
 	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
 		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")
+	}
+	if c.WeChatPay.Enabled {
+		if strings.TrimSpace(c.WeChatPay.AppID) == "" {
+			return fmt.Errorf("wechat_pay.app_id is required when enabled")
+		}
+		if strings.TrimSpace(c.WeChatPay.MchID) == "" {
+			return fmt.Errorf("wechat_pay.mch_id is required when enabled")
+		}
+		if strings.TrimSpace(c.WeChatPay.APIv3Key) == "" {
+			return fmt.Errorf("wechat_pay.api_v3_key is required when enabled")
+		}
+		if len(c.WeChatPay.APIv3Key) != 32 {
+			return fmt.Errorf("wechat_pay.api_v3_key must be exactly 32 characters")
+		}
+		if strings.TrimSpace(c.WeChatPay.CertSerialNo) == "" {
+			return fmt.Errorf("wechat_pay.cert_serial_no is required when enabled")
+		}
+		if strings.TrimSpace(c.WeChatPay.PrivateKeyPath) == "" {
+			return fmt.Errorf("wechat_pay.private_key_path is required when enabled")
+		}
+		info, err := os.Stat(c.WeChatPay.PrivateKeyPath)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("wechat_pay.private_key_path file does not exist: %s", c.WeChatPay.PrivateKeyPath)
+		}
+		if err != nil {
+			return fmt.Errorf("wechat_pay.private_key_path stat error: %w", err)
+		}
+		if perm := info.Mode().Perm(); perm&0077 != 0 {
+			log.Printf("Warning: wechat_pay.private_key_path has overly permissive mode %04o, recommend 0600", perm)
+		}
+		if strings.TrimSpace(c.WeChatPay.NotifyURL) == "" {
+			return fmt.Errorf("wechat_pay.notify_url is required when enabled")
+		}
+		if err := ValidateAbsoluteHTTPURL(c.WeChatPay.NotifyURL); err != nil {
+			return fmt.Errorf("wechat_pay.notify_url invalid: %w", err)
+		}
 	}
 	return nil
 }
