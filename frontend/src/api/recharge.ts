@@ -28,6 +28,7 @@ export interface RechargeOrder {
   payment_channel: string
   qrcode_url?: string // Native 支付二维码 URL
   prepay_id?: string // JSAPI 预支付 ID
+  paid_at?: string // 支付时间
   created_at: string
   expire_at: string
 }
@@ -48,6 +49,14 @@ export const rechargeAPI = {
    */
   async createOrder(data: CreateOrderRequest): Promise<RechargeOrder> {
     const response = await apiClient.post<RechargeOrder>('/recharge/orders', data)
+    return response.data
+  },
+
+  /**
+   * 获取订单详情
+   */
+  async getOrder(orderNo: string): Promise<RechargeOrder> {
+    const response = await apiClient.get<RechargeOrder>(`/recharge/orders/${orderNo}`)
     return response.data
   }
 }

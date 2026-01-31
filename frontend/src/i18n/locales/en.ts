@@ -3284,7 +3284,8 @@ export default {
     statusPaid: 'Paid',
     statusFailed: 'Failed',
     statusExpired: 'Expired',
-    statusUnknown: 'Unknown'
+    statusUnknown: 'Unknown',
+    waitingPayment: 'Waiting for payment...'
   },
 
   // User Subscriptions Page

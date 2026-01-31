@@ -3433,7 +3433,8 @@ export default {
     statusPaid: '已支付',
     statusFailed: '支付失败',
     statusExpired: '已过期',
-    statusUnknown: '未知'
+    statusUnknown: '未知',
+    waitingPayment: '等待支付中...'
   },
 
   // User Subscriptions Page

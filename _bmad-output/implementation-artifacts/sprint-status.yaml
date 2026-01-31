@@ -63,7 +63,7 @@ development_status:
   3-3-order-status-balance-update: done          # Epic 3
   3-4-balance-change-log: done                    # Epic 3
   4-1-query-single-order: done                    # Epic 4
-  4-6-frontend-order-polling: ready-for-dev      # Epic 4
+  4-6-frontend-order-polling: done                # Epic 4
   4-7-paying-countdown: ready-for-dev            # Epic 4
   4-8-recharge-success-page: ready-for-dev       # Epic 4
   4-9-recharge-failed-page: ready-for-dev        # Epic 4

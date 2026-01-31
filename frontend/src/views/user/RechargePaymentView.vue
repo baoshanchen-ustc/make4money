@@ -58,6 +58,11 @@
             @generated="onQRCodeGenerated"
             @error="onQRCodeError"
           />
+          <!-- 轮询状态指示器 -->
+          <div v-if="isPolling" class="mt-4 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+            <div class="h-4 w-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
+            <span>{{ t('recharge.waitingPayment') }}</span>
+          </div>
         </div>
 
         <!-- 二维码加载中（无 qrcode_url 但是 native 支付） -->
@@ -74,10 +79,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
-import type { RechargeOrder } from '@/api/recharge'
+import { rechargeAPI, type RechargeOrder } from '@/api/recharge'
 import QRCodeDisplay from '@/components/user/recharge/QRCodeDisplay.vue'
 
 const { t } = useI18n()
@@ -92,6 +97,13 @@ const loading = ref(true)
 
 // 订单信息
 const order = ref<RechargeOrder | null>(null)
+
+// 轮询相关
+const POLL_INTERVAL = 3000 // 3秒
+const MAX_POLL_COUNT = 40 // 最多轮询40次（2分钟）
+let pollTimer: ReturnType<typeof setInterval> | null = null
+const pollCount = ref(0)
+const isPolling = ref(false)
 
 // 订单状态样式
 const statusClass = computed(() => {
@@ -139,26 +151,80 @@ const onQRCodeError = (error: Error) => {
   console.error('[RechargePayment] QR code generation failed:', error)
 }
 
-// 加载订单信息
-onMounted(async () => {
+// 停止轮询
+const stopPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+  isPolling.value = false
+}
+
+// 处理订单状态变化
+const handleStatusChange = (status: string) => {
+  if (status === 'paid') {
+    stopPolling()
+    router.push({ name: 'RechargeSuccess', params: { orderNo: orderNo.value } })
+  } else if (status === 'failed' || status === 'expired') {
+    stopPolling()
+    router.push({ name: 'RechargeFailed', params: { orderNo: orderNo.value } })
+  }
+}
+
+// 轮询订单状态
+const pollOrderStatus = async () => {
   try {
-    // TODO: Story 2-8 实现订单查询 API
-    // 目前使用模拟数据
-    order.value = {
-      id: 1,
-      order_no: orderNo.value,
-      amount: 100,
-      status: 'pending',
-      payment_method: 'wechat_pay',
-      payment_channel: 'native',
-      qrcode_url: 'weixin://wxpay/bizpayurl?pr=demo123', // 模拟的二维码 URL
-      created_at: new Date().toISOString(),
-      expire_at: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    pollCount.value++
+    console.log(`[RechargePayment] Polling order status (${pollCount.value}/${MAX_POLL_COUNT})`)
+
+    const result = await rechargeAPI.getOrder(orderNo.value)
+    order.value = result
+
+    // 检查状态变化
+    handleStatusChange(result.status)
+
+    // 检查是否达到最大轮询次数
+    if (pollCount.value >= MAX_POLL_COUNT) {
+      console.log('[RechargePayment] Max poll count reached, stopping polling')
+      stopPolling()
     }
   } catch (error) {
-    console.error('Failed to load order:', error)
+    console.error('[RechargePayment] Failed to poll order status:', error)
+  }
+}
+
+// 开始轮询
+const startPolling = () => {
+  if (pollTimer) return
+  isPolling.value = true
+  pollTimer = setInterval(pollOrderStatus, POLL_INTERVAL)
+}
+
+// 加载订单信息
+const loadOrder = async () => {
+  try {
+    const result = await rechargeAPI.getOrder(orderNo.value)
+    order.value = result
+
+    // 检查初始状态
+    handleStatusChange(result.status)
+
+    // 如果订单状态为 pending，开始轮询
+    if (result.status === 'pending') {
+      startPolling()
+    }
+  } catch (error) {
+    console.error('[RechargePayment] Failed to load order:', error)
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadOrder()
+})
+
+onUnmounted(() => {
+  stopPolling()
 })
 </script>
