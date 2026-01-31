@@ -590,3 +590,50 @@ func parseIntParam(s string, defaultVal int) int {
 	}
 	return val
 }
+
+// SyncOrderStatusResponse 同步订单状态响应
+type SyncOrderStatusResponse struct {
+	OrderNo      string `json:"order_no"`
+	Status       string `json:"status"`        // 本地订单状态: pending/paid/failed/expired/refunded
+	WeChatStatus string `json:"wechat_status"` // 微信侧原始状态
+	SyncedAt     string `json:"synced_at"`     // 同步时间（RFC3339格式）
+}
+
+// SyncOrderStatus 同步订单状态（需认证）
+// 手动调用微信支付查询接口同步订单状态
+// POST /api/v1/recharge/orders/:order_no/sync
+func (h *RechargeHandler) SyncOrderStatus(c *gin.Context) {
+	// 从 context 获取用户 ID
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.Unauthorized(c, "未登录")
+		return
+	}
+
+	orderNo := c.Param("order_no")
+	if orderNo == "" {
+		response.BadRequest(c, "订单号不能为空")
+		return
+	}
+
+	// 调用服务层同步订单状态
+	result, err := h.rechargeOrderService.SyncOrderStatus(c.Request.Context(), userID.(int64), orderNo)
+	if err != nil {
+		log.Printf("[RechargeHandler] sync order status failed: order_no=%s, user_id=%d, error=%v",
+			orderNo, userID.(int64), err)
+		if !response.ErrorFrom(c, err) {
+			response.InternalError(c, "同步订单状态失败")
+		}
+		return
+	}
+
+	log.Printf("[RechargeHandler] sync order status success: order_no=%s, status=%s, wechat_status=%s",
+		orderNo, result.Status, result.WeChatStatus)
+
+	response.Success(c, SyncOrderStatusResponse{
+		OrderNo:      result.OrderNo,
+		Status:       result.Status,
+		WeChatStatus: result.WeChatStatus,
+		SyncedAt:     result.SyncedAt.Format(time.RFC3339),
+	})
+}

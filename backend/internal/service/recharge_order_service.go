@@ -41,6 +41,7 @@ var (
 	ErrInvalidAmount            = infraerrors.BadRequest("INVALID_AMOUNT", "invalid recharge amount")
 	ErrOrderCannotBeCancelled   = infraerrors.BadRequest("ORDER_CANNOT_BE_CANCELLED", "order cannot be cancelled")
 	ErrOrderCancelConflict      = infraerrors.Conflict("ORDER_CANCEL_CONFLICT", "order status has changed")
+	ErrOrderNotBelongToUser     = infraerrors.Forbidden("ORDER_NOT_BELONG_TO_USER", "order does not belong to you")
 )
 
 // RechargeOrder 充值订单模型
@@ -303,4 +304,71 @@ func (s *RechargeOrderService) CancelOrder(ctx context.Context, userID int64, or
 	}
 
 	return nil
+}
+
+// SyncOrderStatusResult 同步订单状态结果
+type SyncOrderStatusResult struct {
+	OrderNo      string    // 订单号
+	Status       string    // 本地订单状态
+	WeChatStatus string    // 微信侧原始状态
+	SyncedAt     time.Time // 同步时间
+}
+
+// SyncOrderStatus 同步订单状态
+// 调用微信支付查询接口获取真实支付状态，与本地订单状态进行对比
+func (s *RechargeOrderService) SyncOrderStatus(ctx context.Context, userID int64, orderNo string) (*SyncOrderStatusResult, error) {
+	// 1. 查询本地订单
+	order, err := s.repo.GetByOrderNo(ctx, orderNo)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 验证订单归属
+	if order.UserID != userID {
+		return nil, ErrOrderNotBelongToUser
+	}
+
+	// 3. 如果订单已经是终态，直接返回（无需查询微信）
+	if order.Status != OrderStatusPending {
+		return &SyncOrderStatusResult{
+			OrderNo:      orderNo,
+			Status:       order.Status,
+			WeChatStatus: "",
+			SyncedAt:     time.Now(),
+		}, nil
+	}
+
+	// 4. 调用微信支付查询接口
+	wechatResult, err := s.wechatPayService.QueryOrder(ctx, orderNo)
+	if err != nil {
+		return nil, fmt.Errorf("query wechat order: %w", err)
+	}
+
+	// 5. 根据微信状态映射本地状态
+	localStatus := mapWeChatStatusToLocal(wechatResult.TradeState)
+
+	return &SyncOrderStatusResult{
+		OrderNo:      orderNo,
+		Status:       localStatus,
+		WeChatStatus: wechatResult.TradeState,
+		SyncedAt:     time.Now(),
+	}, nil
+}
+
+// mapWeChatStatusToLocal 将微信支付状态映射为本地状态
+func mapWeChatStatusToLocal(wechatStatus string) string {
+	switch wechatStatus {
+	case "SUCCESS":
+		return OrderStatusPaid
+	case "REFUND":
+		return "refunded"
+	case "NOTPAY", "USERPAYING":
+		return OrderStatusPending
+	case "CLOSED":
+		return OrderStatusExpired
+	case "PAYERROR":
+		return OrderStatusFailed
+	default:
+		return OrderStatusPending
+	}
 }

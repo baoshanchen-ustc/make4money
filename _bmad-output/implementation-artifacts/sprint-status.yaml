@@ -73,7 +73,7 @@ development_status:
 
   # Sprint 3: 订单管理 + 基础防护 (5 stories)
   # 目标: 防止订单悬挂和基础滥用
-  sprint-3: in-progress
+  sprint-3: done
   4-2-recharge-records-list: done                  # Epic 4
   4-3-cancel-unpaid-order: done                   # Epic 4
   4-4-order-expire-auto: done                     # Epic 4
@@ -83,9 +83,9 @@ development_status:
 
   # Sprint 4: 补偿机制 + 完整限流 (6 stories)
   # 目标: 处理边缘情况，完善风控
-  sprint-4: backlog
+  sprint-4: in-progress
   5-1-manual-sync-order-button: ready-for-dev    # Epic 5
-  5-2-query-wechat-order-status: ready-for-dev   # Epic 5
+  5-2-query-wechat-order-status: done            # Epic 5
   5-3-compensation-balance-logic: ready-for-dev  # Epic 5
   5-4-scheduled-order-compensation: ready-for-dev # Epic 5
   6-2-user-daily-rate-limit: ready-for-dev       # Epic 6

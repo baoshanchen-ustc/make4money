@@ -530,6 +530,63 @@ func safeString(s *string) string {
 	return *s
 }
 
+// WeChatQueryOrderResult 微信订单查询结果
+type WeChatQueryOrderResult struct {
+	TradeState     string // SUCCESS, REFUND, NOTPAY, CLOSED, PAYERROR, USERPAYING
+	TransactionID  string // 微信支付订单号
+	TradeStateDesc string // 状态描述
+}
+
+// QueryOrder 查询微信支付订单状态
+// 使用商户订单号查询订单在微信侧的真实状态
+func (s *WeChatPayService) QueryOrder(ctx context.Context, orderNo string) (*WeChatQueryOrderResult, error) {
+	// 检查是否已初始化
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("wechat pay is not enabled or not initialized")
+	}
+
+	// 获取客户端
+	client, err := s.GetClient()
+	if err != nil {
+		log.Printf("[WeChatPay] Failed to get client for query order: %v", err)
+		return nil, fmt.Errorf("get wechat pay client: %w", err)
+	}
+
+	svc := native.NativeApiService{Client: client}
+
+	// 使用商户订单号查询
+	resp, result, err := svc.QueryOrderByOutTradeNo(ctx, native.QueryOrderByOutTradeNoRequest{
+		OutTradeNo: core.String(orderNo),
+		Mchid:      core.String(s.cfg.WeChatPay.MchID),
+	})
+
+	if err != nil {
+		log.Printf("[WeChatPay] Query order failed: order_no=%s, error=%v", orderNo, err)
+		return nil, fmt.Errorf("query order: %w", err)
+	}
+
+	// 检查 HTTP 状态码
+	if result.Response.StatusCode != 200 {
+		log.Printf("[WeChatPay] Query order returned non-200: order_no=%s, status=%d",
+			orderNo, result.Response.StatusCode)
+		return nil, fmt.Errorf("query order returned status %d", result.Response.StatusCode)
+	}
+
+	if resp.TradeState == nil {
+		log.Printf("[WeChatPay] Query order returned nil trade_state: order_no=%s", orderNo)
+		return nil, fmt.Errorf("query order returned nil trade_state")
+	}
+
+	log.Printf("[WeChatPay] Query order result: order_no=%s, trade_state=%s, transaction_id=%s",
+		orderNo, *resp.TradeState, safeString(resp.TransactionId))
+
+	return &WeChatQueryOrderResult{
+		TradeState:     *resp.TradeState,
+		TransactionID:  safeString(resp.TransactionId),
+		TradeStateDesc: safeString(resp.TradeStateDesc),
+	}, nil
+}
+
 // CloseOrder 关闭微信支付订单
 // 调用微信支付 API 关闭订单，防止已过期订单仍被支付
 // 返回 nil 表示关闭成功，返回 error 表示关闭失败

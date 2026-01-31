@@ -97,6 +97,7 @@ func RegisterUserRoutes(
 			recharge.GET("/orders/:order_no", h.Recharge.GetOrder)
 			recharge.POST("/orders/:order_no/pay", h.Recharge.InitiatePayment)
 			recharge.POST("/orders/:order_no/cancel", h.Recharge.CancelOrder)
+			recharge.POST("/orders/:order_no/sync", h.Recharge.SyncOrderStatus)
 		}
 	}
 }
