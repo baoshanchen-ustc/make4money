@@ -3242,7 +3242,15 @@ export default {
     description: 'Top up your account balance',
     subtitle: 'Recharge your balance online, automatically credited after payment',
     currentBalance: 'Current Balance',
-    comingSoon: 'Recharge feature is coming soon. Stay tuned.'
+    comingSoon: 'Recharge feature is coming soon. Stay tuned.',
+    // Amount selector
+    amount: 'Recharge Amount',
+    customAmount: 'Custom Amount',
+    selectAmount: 'Select recharge amount ¥{amount}',
+    amountRange: 'Range: ¥{min} - ¥{max}',
+    invalidAmount: 'Please enter a valid amount',
+    amountTooSmall: 'Minimum amount is ¥{min}',
+    amountTooLarge: 'Maximum amount is ¥{max}'
   },
 
   // User Subscriptions Page

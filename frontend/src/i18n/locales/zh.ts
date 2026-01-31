@@ -3391,7 +3391,15 @@ export default {
     description: '为您的账户余额充值',
     subtitle: '在线充值余额，支付完成后自动到账',
     currentBalance: '当前余额',
-    comingSoon: '充值功能即将上线，敬请期待。'
+    comingSoon: '充值功能即将上线，敬请期待。',
+    // Amount selector
+    amount: '充值金额',
+    customAmount: '自定义金额',
+    selectAmount: '选择充值金额{amount}元',
+    amountRange: '充值范围：¥{min} - ¥{max}',
+    invalidAmount: '请输入有效金额',
+    amountTooSmall: '最小充值金额为 ¥{min}',
+    amountTooLarge: '最大充值金额为 ¥{max}'
   },
 
   // User Subscriptions Page

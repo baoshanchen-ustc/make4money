@@ -28,7 +28,7 @@
         <span class="mt-2 block text-5xl font-bold">¥{{ formattedBalance }}</span>
       </div>
 
-      <!-- 充值表单区域（后续 Story 实现） -->
+      <!-- 充值表单区域 -->
       <div class="rounded-2xl bg-white p-6 shadow-card dark:bg-dark-800">
         <h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
           {{ t('recharge.title') }}
@@ -37,8 +37,16 @@
           {{ t('recharge.subtitle') }}
         </p>
 
-        <!-- 占位提示 -->
-        <div class="flex flex-col items-center justify-center py-8 text-center">
+        <!-- 金额选择器 -->
+        <AmountSelector
+          v-model="selectedAmount"
+          :default-amounts="rechargeStore.defaultAmounts"
+          :min-amount="rechargeStore.minAmount"
+          :max-amount="rechargeStore.maxAmount"
+        />
+
+        <!-- 支付按钮区域（后续 Story 实现） -->
+        <div class="mt-6 flex flex-col items-center justify-center py-4 text-center">
           <svg
             class="mb-4 h-12 w-12 text-gray-300 dark:text-gray-600"
             fill="none"
@@ -62,13 +70,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAuthStore } from '@/stores'
+import { useAuthStore, useRechargeStore } from '@/stores'
+import AmountSelector from '@/components/user/recharge/AmountSelector.vue'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const rechargeStore = useRechargeStore()
 
 // 页面加载状态
 const loading = ref(true)
+
+// 选中的充值金额
+const selectedAmount = ref<number | null>(null)
 
 // 用户余额
 const balance = computed(() => authStore.user?.balance ?? 0)
@@ -79,8 +92,8 @@ const formattedBalance = computed(() => balance.value.toFixed(2))
 // 页面加载时刷新用户数据以获取最新余额
 onMounted(async () => {
   try {
-    // 刷新用户数据获取最新余额
-    await authStore.refreshUser()
+    // 并行加载用户数据和充值配置
+    await Promise.all([authStore.refreshUser(), rechargeStore.fetchConfig()])
   } catch (error) {
     console.error('Failed to refresh user data:', error)
   } finally {
