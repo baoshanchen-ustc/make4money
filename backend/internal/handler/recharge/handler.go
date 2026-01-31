@@ -517,6 +517,44 @@ func (h *RechargeHandler) ListOrders(c *gin.Context) {
 	})
 }
 
+// CancelOrderResponse 取消订单响应
+type CancelOrderResponse struct {
+	OrderNo string `json:"order_no"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+// CancelOrder 取消未支付订单（需认证）
+// POST /api/v1/recharge/orders/:order_no/cancel
+func (h *RechargeHandler) CancelOrder(c *gin.Context) {
+	// 从 context 获取用户 ID
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.Unauthorized(c, "未登录")
+		return
+	}
+
+	orderNo := c.Param("order_no")
+	if orderNo == "" {
+		response.BadRequest(c, "订单号不能为空")
+		return
+	}
+
+	// 取消订单
+	if err := h.rechargeOrderService.CancelOrder(c.Request.Context(), userID.(int64), orderNo); err != nil {
+		if !response.ErrorFrom(c, err) {
+			response.InternalError(c, "取消订单失败")
+		}
+		return
+	}
+
+	response.Success(c, CancelOrderResponse{
+		OrderNo: orderNo,
+		Status:  service.OrderStatusFailed,
+		Message: "订单已取消",
+	})
+}
+
 // parseIntParam 解析整数参数
 func parseIntParam(s string, defaultVal int) int {
 	if s == "" {

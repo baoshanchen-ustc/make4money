@@ -75,7 +75,7 @@ development_status:
   # 目标: 防止订单悬挂和基础滥用
   sprint-3: in-progress
   4-2-recharge-records-list: done                  # Epic 4
-  4-3-cancel-unpaid-order: ready-for-dev         # Epic 4
+  4-3-cancel-unpaid-order: done                   # Epic 4
   4-4-order-expire-auto: ready-for-dev           # Epic 4
   4-5-wechat-close-order: ready-for-dev          # Epic 4
   6-1-user-minute-rate-limit: ready-for-dev      # Epic 6

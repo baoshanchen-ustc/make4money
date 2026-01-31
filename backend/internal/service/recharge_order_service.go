@@ -35,10 +35,12 @@ const (
 )
 
 var (
-	ErrRechargeOrderNotFound = infraerrors.NotFound("RECHARGE_ORDER_NOT_FOUND", "recharge order not found")
-	ErrRechargeOrderExpired  = infraerrors.BadRequest("RECHARGE_ORDER_EXPIRED", "recharge order has expired")
-	ErrRechargeNotEnabled    = infraerrors.BadRequest("RECHARGE_NOT_ENABLED", "recharge is not enabled")
-	ErrInvalidAmount         = infraerrors.BadRequest("INVALID_AMOUNT", "invalid recharge amount")
+	ErrRechargeOrderNotFound    = infraerrors.NotFound("RECHARGE_ORDER_NOT_FOUND", "recharge order not found")
+	ErrRechargeOrderExpired     = infraerrors.BadRequest("RECHARGE_ORDER_EXPIRED", "recharge order has expired")
+	ErrRechargeNotEnabled       = infraerrors.BadRequest("RECHARGE_NOT_ENABLED", "recharge is not enabled")
+	ErrInvalidAmount            = infraerrors.BadRequest("INVALID_AMOUNT", "invalid recharge amount")
+	ErrOrderCannotBeCancelled   = infraerrors.BadRequest("ORDER_CANNOT_BE_CANCELLED", "order cannot be cancelled")
+	ErrOrderCancelConflict      = infraerrors.Conflict("ORDER_CANCEL_CONFLICT", "order status has changed")
 )
 
 // RechargeOrder 充值订单模型
@@ -89,6 +91,10 @@ type RechargeOrderRepository interface {
 	Update(ctx context.Context, order *RechargeOrder) error
 	ExistsByOrderNo(ctx context.Context, orderNo string) (bool, error)
 	ListByUserID(ctx context.Context, userID int64, req *ListRechargeOrdersRequest) (*ListRechargeOrdersResult, error)
+	// UpdateStatusWithCondition 使用乐观锁更新订单状态
+	// 只有当订单当前状态等于 expectedStatus 时才更新为 newStatus
+	// 返回受影响的行数，如果为 0 则表示状态已改变（并发冲突）
+	UpdateStatusWithCondition(ctx context.Context, id int64, expectedStatus, newStatus, notes string) (int64, error)
 }
 
 // RechargeOrderService 充值订单服务
@@ -253,4 +259,43 @@ func (s *RechargeOrderService) ListUserOrders(ctx context.Context, userID int64,
 	}
 
 	return s.repo.ListByUserID(ctx, userID, req)
+}
+
+// CancelOrder 取消未支付订单
+// 只能取消状态为 pending 的订单
+// 取消后状态变为 failed，并记录取消原因
+func (s *RechargeOrderService) CancelOrder(ctx context.Context, userID int64, orderNo string) error {
+	// 获取订单并校验权限
+	order, err := s.repo.GetByOrderNo(ctx, orderNo)
+	if err != nil {
+		return err
+	}
+
+	// 校验用户权限：只能取消自己的订单
+	if order.UserID != userID {
+		return ErrRechargeOrderNotFound
+	}
+
+	// 检查订单状态：只能取消 pending 状态的订单
+	if order.Status != OrderStatusPending {
+		return ErrOrderCannotBeCancelled
+	}
+
+	// 检查订单是否已过期
+	if time.Now().After(order.ExpireAt) {
+		return ErrRechargeOrderExpired
+	}
+
+	// 使用并发安全的条件更新
+	rowsAffected, err := s.repo.UpdateStatusWithCondition(ctx, order.ID, OrderStatusPending, OrderStatusFailed, "用户主动取消")
+	if err != nil {
+		return fmt.Errorf("cancel order: %w", err)
+	}
+
+	// 如果没有更新到任何行，说明订单状态已经改变（并发冲突）
+	if rowsAffected == 0 {
+		return ErrOrderCancelConflict
+	}
+
+	return nil
 }

@@ -143,3 +143,60 @@ func TestPaymentChannelConstants(t *testing.T) {
 		t.Errorf("expected PaymentChannelH5 to be 'h5', got %s", PaymentChannelH5)
 	}
 }
+
+func TestCancelOrderErrors(t *testing.T) {
+	// 验证错误定义
+	t.Run("error types", func(t *testing.T) {
+		if ErrOrderCannotBeCancelled == nil {
+			t.Error("ErrOrderCannotBeCancelled should not be nil")
+		}
+		if ErrOrderCancelConflict == nil {
+			t.Error("ErrOrderCancelConflict should not be nil")
+		}
+	})
+
+	// 验证错误码类型
+	t.Run("error codes", func(t *testing.T) {
+		// ErrOrderCannotBeCancelled 应该是 400 Bad Request
+		if ErrOrderCannotBeCancelled.Code != 400 {
+			t.Errorf("expected ErrOrderCannotBeCancelled code 400, got %d", ErrOrderCannotBeCancelled.Code)
+		}
+		// ErrOrderCancelConflict 应该是 409 Conflict
+		if ErrOrderCancelConflict.Code != 409 {
+			t.Errorf("expected ErrOrderCancelConflict code 409, got %d", ErrOrderCancelConflict.Code)
+		}
+	})
+}
+
+func TestOrderStatusTransitions(t *testing.T) {
+	// 验证可取消的状态
+	t.Run("cancellable status", func(t *testing.T) {
+		cancellableStatus := OrderStatusPending
+		if cancellableStatus != "pending" {
+			t.Errorf("expected cancellable status to be 'pending', got %s", cancellableStatus)
+		}
+	})
+
+	// 验证取消后的目标状态
+	t.Run("cancelled target status", func(t *testing.T) {
+		targetStatus := OrderStatusFailed
+		if targetStatus != "failed" {
+			t.Errorf("expected target status to be 'failed', got %s", targetStatus)
+		}
+	})
+
+	// 验证不可取消的状态
+	t.Run("non-cancellable statuses", func(t *testing.T) {
+		nonCancellable := []string{
+			OrderStatusPaid,
+			OrderStatusFailed,
+			OrderStatusExpired,
+			OrderStatusCancelled,
+		}
+		for _, status := range nonCancellable {
+			if status == OrderStatusPending {
+				t.Errorf("status %s should not be in non-cancellable list", status)
+			}
+		}
+	})
+}

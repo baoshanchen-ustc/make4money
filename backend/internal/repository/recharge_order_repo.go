@@ -149,6 +149,25 @@ func (r *rechargeOrderRepository) ListByUserID(ctx context.Context, userID int64
 	}, nil
 }
 
+// UpdateStatusWithCondition 使用乐观锁更新订单状态
+// 只有当订单当前状态等于 expectedStatus 时才更新为 newStatus
+// 返回受影响的行数，如果为 0 则表示状态已改变（并发冲突）
+func (r *rechargeOrderRepository) UpdateStatusWithCondition(ctx context.Context, id int64, expectedStatus, newStatus, notes string) (int64, error) {
+	client := clientFromContext(ctx, r.client)
+	rowsAffected, err := client.RechargeOrder.Update().
+		Where(
+			rechargeorder.IDEQ(id),
+			rechargeorder.StatusEQ(expectedStatus),
+		).
+		SetStatus(newStatus).
+		SetNotes(notes).
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int64(rowsAffected), nil
+}
+
 func rechargeOrderEntityToService(m *dbent.RechargeOrder) *service.RechargeOrder {
 	if m == nil {
 		return nil
