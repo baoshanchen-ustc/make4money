@@ -289,4 +289,5 @@ var ProviderSet = wire.NewSet(
 	ProvideUserUsageReportScheduler,
 	NewWeChatPayService,
 	NewRechargeOrderService,
+	NewPaymentCallbackService,
 )
