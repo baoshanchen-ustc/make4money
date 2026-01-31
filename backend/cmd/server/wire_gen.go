@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/handler/recharge"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -177,7 +178,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userUsageReportRepository := repository.NewUserUsageReportRepository(client, db)
 	userUsageReportService := service.NewUserUsageReportService(userRepository, usageService, settingService, emailService, userUsageReportRepository)
 	userUsageReportHandler := handler.NewUserUsageReportHandler(userUsageReportService, settingService, userRepository)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, userUsageReportHandler)
+	weChatPayService := service.NewWeChatPayService(configConfig)
+	rechargeHandler := recharge.NewRechargeHandler(weChatPayService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, userUsageReportHandler, rechargeHandler)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)

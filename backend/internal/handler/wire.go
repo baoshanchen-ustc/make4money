@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/handler/recharge"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/google/wire"
@@ -72,6 +73,7 @@ func ProvideHandlers(
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	usageReportHandler *UserUsageReportHandler,
+	rechargeHandler *recharge.RechargeHandler,
 ) *Handlers {
 	return &Handlers{
 		Auth:          authHandler,
@@ -86,6 +88,7 @@ func ProvideHandlers(
 		Setting:       settingHandler,
 		Totp:          totpHandler,
 		UsageReport:   usageReportHandler,
+		Recharge:      rechargeHandler,
 	}
 }
 
@@ -103,6 +106,7 @@ var ProviderSet = wire.NewSet(
 	NewTotpHandler,
 	NewUserUsageReportHandler,
 	ProvideSettingHandler,
+	recharge.NewRechargeHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

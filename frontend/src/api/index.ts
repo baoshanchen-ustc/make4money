@@ -17,6 +17,7 @@ export { redeemAPI, type RedeemHistoryItem } from './redeem'
 export { userGroupsAPI } from './groups'
 export { totpAPI } from './totp'
 export { usageReportAPI } from './usageReport'
+export { rechargeAPI, type RechargeConfig } from './recharge'
 
 // Admin APIs
 export { adminAPI } from './admin'

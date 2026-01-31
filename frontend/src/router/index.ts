@@ -6,6 +6,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import { useRechargeStore } from '@/stores/recharge'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 
@@ -205,6 +206,19 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'purchase.description'
     }
   },
+  {
+    path: '/recharge',
+    name: 'Recharge',
+    component: () => import('@/views/user/RechargeView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresRecharge: true,
+      title: 'Recharge',
+      titleKey: 'recharge.title',
+      descriptionKey: 'recharge.description'
+    }
+  },
 
   // ==================== Admin Routes ====================
   {
@@ -392,7 +406,7 @@ const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
 
@@ -453,11 +467,26 @@ router.beforeEach((to, _from, next) => {
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',
-      '/redeem'
+      '/redeem',
+      '/recharge'
     ]
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {
       // 简易模式下访问受限页面,重定向到仪表板
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    }
+  }
+
+  // 充值功能检查：需要 requiresRecharge 的路由需要充值功能启用
+  if (to.meta.requiresRecharge) {
+    const rechargeStore = useRechargeStore()
+    // 确保配置已加载
+    if (!rechargeStore.loaded) {
+      await rechargeStore.fetchConfig()
+    }
+    // 如果充值功能未启用，重定向到仪表板
+    if (!rechargeStore.isEnabled) {
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
     }

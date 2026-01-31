@@ -151,7 +151,7 @@
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
+import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore, useRechargeStore } from '@/stores'
 import { useTheme } from '@/composables/useTheme'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 
@@ -163,6 +163,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
+const rechargeStore = useRechargeStore()
 const { isDark, themeMode, toggleTheme } = useTheme()
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
@@ -463,6 +464,21 @@ const ChevronDoubleRightIcon = {
     )
 }
 
+const WalletIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3'
+        })
+      ]
+    )
+}
+
 // User navigation items (for regular users)
 const userNavItems = computed(() => {
   const items = [
@@ -476,6 +492,16 @@ const userNavItems = computed(() => {
             path: '/purchase',
             label: t('nav.buySubscription'),
             icon: CreditCardIcon,
+            hideInSimpleMode: true
+          }
+        ]
+      : []),
+    ...(rechargeStore.isEnabled
+      ? [
+          {
+            path: '/recharge',
+            label: t('nav.recharge'),
+            icon: WalletIcon,
             hideInSimpleMode: true
           }
         ]
@@ -498,6 +524,16 @@ const personalNavItems = computed(() => {
             path: '/purchase',
             label: t('nav.buySubscription'),
             icon: CreditCardIcon,
+            hideInSimpleMode: true
+          }
+        ]
+      : []),
+    ...(rechargeStore.isEnabled
+      ? [
+          {
+            path: '/recharge',
+            label: t('nav.recharge'),
+            icon: WalletIcon,
             hideInSimpleMode: true
           }
         ]
@@ -584,6 +620,8 @@ onMounted(() => {
   if (isAdmin.value) {
     adminSettingsStore.fetch()
   }
+  // 加载充值配置（决定菜单可见性）
+  rechargeStore.fetchConfig()
 })
 </script>
 

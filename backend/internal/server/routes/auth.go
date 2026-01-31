@@ -54,6 +54,12 @@ func RegisterAuthRoutes(
 		settings.GET("/public", h.Setting.GetPublicSettings)
 	}
 
+	// 充值配置（无需认证）
+	recharge := v1.Group("/recharge")
+	{
+		recharge.GET("/config", h.Recharge.GetConfig)
+	}
+
 	// 需要认证的当前用户信息
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))

@@ -220,6 +220,7 @@ export default {
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
     buySubscription: 'Purchase Subscription',
+    recharge: 'Recharge',
     docs: 'Docs'
   },
 
@@ -3233,6 +3234,13 @@ export default {
     notConfiguredTitle: 'Purchase URL not configured',
     notConfiguredDesc:
       'The administrator enabled the entry but has not configured a purchase URL. Please contact admin.'
+  },
+
+  // Recharge Page
+  recharge: {
+    title: 'Recharge',
+    description: 'Top up your account balance',
+    comingSoon: 'Recharge feature is coming soon. Stay tuned.'
   },
 
   // User Subscriptions Page

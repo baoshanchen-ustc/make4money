@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/handler/recharge"
 )
 
 // AdminHandlers contains all admin-related HTTP handlers
@@ -39,6 +40,7 @@ type Handlers struct {
 	Setting       *SettingHandler
 	Totp          *TotpHandler
 	UsageReport   *UserUsageReportHandler
+	Recharge      *recharge.RechargeHandler
 }
 
 // BuildInfo contains build-time information

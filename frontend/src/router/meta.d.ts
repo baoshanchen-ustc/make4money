@@ -20,6 +20,12 @@ declare module 'vue-router' {
     requiresAdmin?: boolean
 
     /**
+     * Whether this route requires recharge feature to be enabled
+     * @default false
+     */
+    requiresRecharge?: boolean
+
+    /**
      * Page title for this route
      */
     title?: string

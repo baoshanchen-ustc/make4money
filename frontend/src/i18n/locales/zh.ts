@@ -217,6 +217,7 @@ export default {
     github: 'GitHub',
     mySubscriptions: '我的订阅',
     buySubscription: '购买订阅',
+    recharge: '充值',
     docs: '文档'
   },
 
@@ -3382,6 +3383,13 @@ export default {
     notEnabledDesc: '管理员暂未开启购买订阅入口，请联系管理员。',
     notConfiguredTitle: '购买链接未配置',
     notConfiguredDesc: '管理员已开启入口，但尚未配置购买订阅链接，请联系管理员。'
+  },
+
+  // Recharge Page
+  recharge: {
+    title: '充值',
+    description: '为您的账户余额充值',
+    comingSoon: '充值功能即将上线，敬请期待。'
   },
 
   // User Subscriptions Page
