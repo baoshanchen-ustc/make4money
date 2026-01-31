@@ -1,6 +1,8 @@
 package recharge
 
 import (
+	"net/http"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -43,11 +45,52 @@ func (h *RechargeHandler) GetConfig(c *gin.Context) {
 		return
 	}
 
-	// 使用默认配置值（后续 Story 1.3 实现动态配置后可替换）
+	// 从 service 获取充值配置
+	cfg := h.wechatPayService.GetRechargeConfig()
 	response.Success(c, RechargeConfigResponse{
 		Enabled:        true,
-		MinAmount:      1.0,
-		MaxAmount:      1000.0,
-		DefaultAmounts: []float64{10, 50, 100, 200, 500},
+		MinAmount:      cfg.MinAmount,
+		MaxAmount:      cfg.MaxAmount,
+		DefaultAmounts: cfg.DefaultAmounts,
+	})
+}
+
+// ValidateAmountRequest 金额验证请求
+type ValidateAmountRequest struct {
+	Amount float64 `json:"amount" binding:"required,gt=0"`
+}
+
+// ValidateAmountResponse 金额验证响应
+type ValidateAmountResponse struct {
+	Valid   bool   `json:"valid"`
+	Message string `json:"message,omitempty"`
+}
+
+// ValidateAmount 验证充值金额（需认证）
+// POST /api/v1/recharge/validate-amount
+func (h *RechargeHandler) ValidateAmount(c *gin.Context) {
+	var req ValidateAmountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "请输入有效的金额")
+		return
+	}
+
+	// 检查微信支付是否启用
+	if !h.wechatPayService.IsEnabled() {
+		response.Error(c, http.StatusServiceUnavailable, "充值功能暂未开放")
+		return
+	}
+
+	// 验证金额范围
+	if err := h.wechatPayService.ValidateRechargeAmount(req.Amount); err != nil {
+		response.Success(c, ValidateAmountResponse{
+			Valid:   false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	response.Success(c, ValidateAmountResponse{
+		Valid: true,
 	})
 }

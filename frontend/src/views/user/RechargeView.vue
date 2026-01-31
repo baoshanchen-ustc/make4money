@@ -45,23 +45,45 @@
           :max-amount="rechargeStore.maxAmount"
         />
 
-        <!-- 支付按钮区域（后续 Story 实现） -->
-        <div class="mt-6 flex flex-col items-center justify-center py-4 text-center">
-          <svg
-            class="mb-4 h-12 w-12 text-gray-300 dark:text-gray-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
+        <!-- 提交按钮 -->
+        <div class="mt-6">
+          <button
+            type="button"
+            :disabled="!isAmountValid || submitting"
+            :aria-label="submitButtonText"
+            class="btn btn-primary w-full py-3 text-base font-medium transition-all duration-200"
+            :class="{
+              'opacity-50 cursor-not-allowed': !isAmountValid || submitting,
+              'hover:shadow-lg': isAmountValid && !submitting
+            }"
+            @click="handleSubmit"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"
-            />
-          </svg>
-          <p class="text-gray-400 dark:text-gray-500">{{ t('recharge.comingSoon') }}</p>
+            <span v-if="submitting" class="flex items-center justify-center gap-2">
+              <svg class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              {{ t('recharge.submitting') }}
+            </span>
+            <span v-else>{{ submitButtonText }}</span>
+          </button>
         </div>
+
+        <!-- 支付方式提示（后续 Story 实现） -->
+        <p class="mt-4 text-center text-sm text-gray-400 dark:text-gray-500">
+          {{ t('recharge.comingSoon') }}
+        </p>
       </div>
     </div>
   </main>
@@ -83,11 +105,52 @@ const loading = ref(true)
 // 选中的充值金额
 const selectedAmount = ref<number | null>(null)
 
+// 提交中状态
+const submitting = ref(false)
+
 // 用户余额
 const balance = computed(() => authStore.user?.balance ?? 0)
 
 // 格式化余额显示（保留两位小数）
 const formattedBalance = computed(() => balance.value.toFixed(2))
+
+// 金额有效性验证
+const isAmountValid = computed(() => {
+  if (selectedAmount.value === null) {
+    return false
+  }
+  const amount = selectedAmount.value
+  return amount >= rechargeStore.minAmount && amount <= rechargeStore.maxAmount
+})
+
+// 提交按钮文案
+const submitButtonText = computed(() => {
+  if (selectedAmount.value !== null && isAmountValid.value) {
+    return t('recharge.submitButton', { amount: selectedAmount.value })
+  }
+  return t('recharge.submitButtonDefault')
+})
+
+// 提交处理（后续 Story 实现具体逻辑）
+const handleSubmit = async () => {
+  if (!isAmountValid.value || submitting.value) {
+    return
+  }
+
+  submitting.value = true
+
+  try {
+    // TODO: Story 2-4/2-5 实现订单创建逻辑
+    console.log('Creating order for amount:', selectedAmount.value)
+
+    // 模拟异步操作（后续替换为真实 API 调用）
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  } catch (error) {
+    console.error('Failed to create order:', error)
+  } finally {
+    submitting.value = false
+  }
+}
 
 // 页面加载时刷新用户数据以获取最新余额
 onMounted(async () => {

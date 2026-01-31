@@ -48,7 +48,7 @@ development_status:
   1-6-recharge-menu-visibility: done               # Epic 1
   2-1-recharge-page-balance-display: done          # Epic 2
   2-2-amount-selector: done                      # Epic 2
-  2-3-amount-range-validation: ready-for-dev     # Epic 2
+  2-3-amount-range-validation: review             # Epic 2
   2-4-payment-method-order-submit: ready-for-dev # Epic 2
   2-5-recharge-order-creation: ready-for-dev     # Epic 2
   sprint-1-retrospective: optional

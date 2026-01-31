@@ -3250,7 +3250,11 @@ export default {
     amountRange: 'Range: ¥{min} - ¥{max}',
     invalidAmount: 'Please enter a valid amount',
     amountTooSmall: 'Minimum amount is ¥{min}',
-    amountTooLarge: 'Maximum amount is ¥{max}'
+    amountTooLarge: 'Maximum amount is ¥{max}',
+    // Submit button
+    submitButton: 'Recharge ¥{amount}',
+    submitButtonDefault: 'Select Amount',
+    submitting: 'Processing...'
   },
 
   // User Subscriptions Page

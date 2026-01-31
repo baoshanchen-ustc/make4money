@@ -3399,7 +3399,11 @@ export default {
     amountRange: '充值范围：¥{min} - ¥{max}',
     invalidAmount: '请输入有效金额',
     amountTooSmall: '最小充值金额为 ¥{min}',
-    amountTooLarge: '最大充值金额为 ¥{max}'
+    amountTooLarge: '最大充值金额为 ¥{max}',
+    // Submit button
+    submitButton: '立即充值 ¥{amount}',
+    submitButtonDefault: '请选择金额',
+    submitting: '处理中...'
   },
 
   // User Subscriptions Page

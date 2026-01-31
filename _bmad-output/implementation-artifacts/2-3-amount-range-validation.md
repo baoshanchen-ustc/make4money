@@ -1,6 +1,6 @@
 # Story 2.3: 充值金额范围验证
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -10,27 +10,31 @@ Status: ready-for-dev
 
 ## Acceptance Criteria
 
-- [ ] AC1: 前端验证：金额 ≥ min_amount 且 ≤ max_amount
-- [ ] AC2: 后端验证：金额范围校验
-- [ ] AC3: 金额不在范围内时显示错误提示
-- [ ] AC4: 提交按钮在金额无效时禁用
-- [ ] AC5: 错误提示明确说明允许范围
+- [x] AC1: 前端验证：金额 ≥ min_amount 且 ≤ max_amount
+- [x] AC2: 后端验证：金额范围校验
+- [x] AC3: 金额不在范围内时显示错误提示
+- [x] AC4: 提交按钮在金额无效时禁用
+- [x] AC5: 错误提示明确说明允许范围
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: 实现前端金额验证逻辑
-- [ ] Task 2: 实现后端金额验证逻辑
-- [ ] Task 3: 实现错误提示展示
+- [x] Task 1: 实现前端金额验证逻辑
+- [x] Task 2: 实现后端金额验证逻辑
+- [x] Task 3: 实现错误提示展示
 
 ## Dev Notes
 
 ### 前端验证
 
-前端 computed 属性计算金额有效性
+- `RechargeView.vue` 中添加 `isAmountValid` computed 属性
+- 提交按钮根据 `isAmountValid` 禁用/启用
+- 按钮文案动态显示选择金额或默认提示
 
 ### 后端验证
 
-后端在创建订单时校验金额范围
+- `WeChatPayService.ValidateRechargeAmount()` 方法验证金额范围
+- `RechargeHandler.ValidateAmount()` API 端点供前端调用（可选）
+- 后续 Story 2-5 创建订单时会调用此验证
 
 ### References
 
@@ -40,12 +44,41 @@ Status: ready-for-dev
 
 ### Agent Model Used
 
-(待开发时填写)
+Claude Opus 4.5
 
 ### Completion Notes List
 
-(待开发时填写)
+1. **Task 1 完成**: 前端金额验证
+   - 添加 `isAmountValid` computed 验证金额范围
+   - 实现提交按钮禁用逻辑
+   - 添加动态按钮文案（显示金额或默认提示）
+   - 添加 submitting 状态和 loading 动画
+
+2. **Task 2 完成**: 后端金额验证
+   - `WeChatPayService.GetRechargeConfig()` 获取充值配置
+   - `WeChatPayService.ValidateRechargeAmount()` 验证金额范围
+   - `RechargeHandler.ValidateAmount()` API 端点（可选调用）
+   - 更新 `GetConfig()` 使用 service 方法获取配置
+
+3. **Task 3 完成**: 错误提示
+   - 复用 Story 2-2 的 AmountSelector 组件错误提示
+   - 添加 i18n 支持的提交按钮文案
+
+### Code Review 修复
+
+- [x] M1: 移除未使用的 amountSelectorRef
 
 ### File List
 
-(待开发时填写)
+**修改文件:**
+- `frontend/src/views/user/RechargeView.vue` - 添加金额验证和提交按钮
+- `frontend/src/i18n/locales/zh.ts` - 添加提交按钮相关文案
+- `frontend/src/i18n/locales/en.ts` - 添加提交按钮相关英文文案
+- `backend/internal/service/wechat_pay_service.go` - 添加金额验证方法
+- `backend/internal/service/wechat_pay_service_test.go` - 添加验证测试
+- `backend/internal/handler/recharge/handler.go` - 添加 ValidateAmount API
+
+## Change Log
+
+- 2026-02-01: Story 实现完成，所有 AC 满足，前后端测试通过
+- 2026-02-01: Code Review 完成，移除未使用变量
