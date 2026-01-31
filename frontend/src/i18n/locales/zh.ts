@@ -3434,7 +3434,9 @@ export default {
     statusFailed: '支付失败',
     statusExpired: '已过期',
     statusUnknown: '未知',
-    waitingPayment: '等待支付中...'
+    waitingPayment: '等待支付中...',
+    remainingTime: '剩余时间',
+    countdown: '剩余 {time}'
   },
 
   // User Subscriptions Page

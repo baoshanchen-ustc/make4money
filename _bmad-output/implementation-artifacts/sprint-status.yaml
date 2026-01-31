@@ -64,7 +64,7 @@ development_status:
   3-4-balance-change-log: done                    # Epic 3
   4-1-query-single-order: done                    # Epic 4
   4-6-frontend-order-polling: done                # Epic 4
-  4-7-paying-countdown: ready-for-dev            # Epic 4
+  4-7-paying-countdown: done                     # Epic 4
   4-8-recharge-success-page: ready-for-dev       # Epic 4
   4-9-recharge-failed-page: ready-for-dev        # Epic 4
   # 可选: 2-8-jsapi-pay-invoke (如果主要用户在微信内)

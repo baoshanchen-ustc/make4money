@@ -45,6 +45,14 @@
               {{ statusText }}
             </span>
           </div>
+          <!-- 倒计时（仅在待支付状态显示） -->
+          <div v-if="order?.status === 'pending' && order?.expire_at" class="flex justify-between text-sm">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('recharge.remainingTime') }}</span>
+            <OrderCountdown
+              :expire-at="order.expire_at"
+              @expired="onCountdownExpired"
+            />
+          </div>
         </div>
 
         <!-- 支付二维码区域 -->
@@ -84,6 +92,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { rechargeAPI, type RechargeOrder } from '@/api/recharge'
 import QRCodeDisplay from '@/components/user/recharge/QRCodeDisplay.vue'
+import OrderCountdown from '@/components/user/recharge/OrderCountdown.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -149,6 +158,13 @@ const onQRCodeGenerated = () => {
 // 二维码生成失败
 const onQRCodeError = (error: Error) => {
   console.error('[RechargePayment] QR code generation failed:', error)
+}
+
+// 倒计时归零
+const onCountdownExpired = () => {
+  console.log('[RechargePayment] Order countdown expired')
+  stopPolling()
+  router.push({ name: 'RechargeFailed', params: { orderNo: orderNo.value } })
 }
 
 // 停止轮询

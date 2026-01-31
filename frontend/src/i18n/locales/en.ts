@@ -3285,7 +3285,9 @@ export default {
     statusFailed: 'Failed',
     statusExpired: 'Expired',
     statusUnknown: 'Unknown',
-    waitingPayment: 'Waiting for payment...'
+    waitingPayment: 'Waiting for payment...',
+    remainingTime: 'Remaining Time',
+    countdown: '{time} remaining'
   },
 
   // User Subscriptions Page
