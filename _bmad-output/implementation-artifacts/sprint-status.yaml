@@ -94,12 +94,12 @@ development_status:
 
   # Sprint 5: 管理端配置 (5 stories, 可选)
   # 目标: 运营可动态调整配置
-  sprint-5: in-progress
+  sprint-5: done
   1-2-admin-payment-status-display: done # Epic 1
   1-3-admin-recharge-config: done       # Epic 1
   1-4-config-realtime-effect: done      # Epic 1
   1-5-config-priority: done             # Epic 1
-  3-5-recharge-success-notification: ready-for-dev # Epic 3
+  3-5-recharge-success-notification: done # Epic 3
   sprint-5-retrospective: optional
 
   # Sprint 6: 退款管理 (4 stories, 预留)

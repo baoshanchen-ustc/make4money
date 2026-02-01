@@ -182,7 +182,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userUsageReportHandler := handler.NewUserUsageReportHandler(userUsageReportService, settingService, userRepository)
 	rechargeOrderRepository := repository.NewRechargeOrderRepository(client)
 	balanceLogRepository := repository.NewBalanceLogRepository(client)
-	paymentCallbackService := service.NewPaymentCallbackService(client, redisClient, rechargeOrderRepository, userRepository, balanceLogRepository)
+	paymentCallbackService := service.NewPaymentCallbackService(client, redisClient, rechargeOrderRepository, userRepository, balanceLogRepository, emailService)
 	rechargeOrderService := service.NewRechargeOrderService(configConfig, rechargeOrderRepository, weChatPayService, paymentCallbackService)
 	rechargeRateLimitService := service.NewRechargeRateLimitService(configConfig, redisClient)
 	rechargeHandler := recharge.NewRechargeHandler(weChatPayService, rechargeOrderService, rechargeRateLimitService, turnstileService)
@@ -205,7 +205,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userUsageReportScheduler := service.ProvideUserUsageReportScheduler(userUsageReportService, settingService, userUsageReportRepository, redisClient)
 	orderExpireScheduler := service.ProvideOrderExpireScheduler(rechargeOrderRepository, weChatPayService)
 	orderCompensationScheduler := service.ProvideOrderCompensationScheduler(configConfig, rechargeOrderRepository, weChatPayService, paymentCallbackService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, pricingService, emailQueueService, billingCacheService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, userUsageReportScheduler, orderExpireScheduler, orderCompensationScheduler)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, pricingService, emailQueueService, billingCacheService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, userUsageReportScheduler, orderExpireScheduler, orderCompensationScheduler, settingService)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -250,6 +250,7 @@ func provideCleanup(
 	usageReportScheduler *service.UserUsageReportScheduler,
 	orderExpireScheduler *service.OrderExpireScheduler,
 	orderCompensationScheduler *service.OrderCompensationScheduler,
+	settingService *service.SettingService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -259,6 +260,12 @@ func provideCleanup(
 			name string
 			fn   func() error
 		}{
+			{"SettingService", func() error {
+				if settingService != nil {
+					settingService.Stop()
+				}
+				return nil
+			}},
 			{"OrderCompensationScheduler", func() error {
 				if orderCompensationScheduler != nil {
 					orderCompensationScheduler.Stop()

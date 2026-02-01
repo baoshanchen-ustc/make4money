@@ -19,12 +19,14 @@ import (
 // - 金额验证
 // - 用户余额增加
 // - 余额变动日志记录
+// - 异步发送充值成功通知
 type PaymentCallbackService struct {
 	entClient       *dbent.Client
 	redisClient     *redis.Client
 	orderRepo       RechargeOrderRepository
 	userRepo        UserRepository
 	balanceLogRepo  BalanceLogRepository
+	emailService    *EmailService
 }
 
 // NewPaymentCallbackService 创建支付回调业务处理服务
@@ -34,6 +36,7 @@ func NewPaymentCallbackService(
 	orderRepo RechargeOrderRepository,
 	userRepo UserRepository,
 	balanceLogRepo BalanceLogRepository,
+	emailService *EmailService,
 ) *PaymentCallbackService {
 	return &PaymentCallbackService{
 		entClient:      entClient,
@@ -41,6 +44,7 @@ func NewPaymentCallbackService(
 		orderRepo:      orderRepo,
 		userRepo:       userRepo,
 		balanceLogRepo: balanceLogRepo,
+		emailService:   emailService,
 	}
 }
 
@@ -327,6 +331,10 @@ func (s *PaymentCallbackService) ProcessPaymentSuccess(
 	result.Success = true
 	log.Printf("[PaymentCallback] Payment processed successfully: order_no=%s, user_id=%d, amount=%.2f, source=%s",
 		params.OrderNo, order.UserID, order.Amount, params.Source)
+
+	// 6. 异步发送充值成功通知
+	go s.sendRechargeSuccessNotification(result)
+
 	return result
 }
 
@@ -415,4 +423,100 @@ func (s *PaymentCallbackService) processPaymentInTransactionWithDesc(
 	}
 
 	return nil
+}
+
+// sendRechargeSuccessNotification 异步发送充值成功通知
+// 通过邮件通知用户充值结果，不阻塞回调响应
+func (s *PaymentCallbackService) sendRechargeSuccessNotification(result *ProcessPaymentResult) {
+	if s.emailService == nil {
+		log.Printf("[PaymentCallback] Email service not available, skip notification: order_no=%s",
+			result.OrderNo)
+		return
+	}
+
+	// 使用新的 context（原 context 可能已超时或取消）
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 获取用户信息
+	user, err := s.userRepo.GetByID(ctx, result.UserID)
+	if err != nil {
+		log.Printf("[PaymentCallback] Failed to get user for notification: order_no=%s, user_id=%d, error=%v",
+			result.OrderNo, result.UserID, err)
+		return
+	}
+
+	// 检查用户是否有邮箱
+	if user.Email == "" {
+		log.Printf("[PaymentCallback] User has no email, skip notification: order_no=%s, user_id=%d",
+			result.OrderNo, result.UserID)
+		return
+	}
+
+	// 构建邮件内容
+	subject := "充值成功通知"
+	body := s.buildRechargeSuccessEmailBody(result, user.Balance)
+
+	// 发送邮件（失败只记录日志）
+	if err := s.emailService.SendEmail(ctx, user.Email, subject, body); err != nil {
+		log.Printf("[PaymentCallback] Failed to send notification email: order_no=%s, email=%s, error=%v",
+			result.OrderNo, user.Email, err)
+		return
+	}
+
+	log.Printf("[PaymentCallback] Notification email sent: order_no=%s, email=%s",
+		result.OrderNo, user.Email)
+}
+
+// buildRechargeSuccessEmailBody 构建充值成功邮件内容
+func (s *PaymentCallbackService) buildRechargeSuccessEmailBody(result *ProcessPaymentResult, currentBalance float64) string {
+	paidAt := time.Now().Format("2006-01-02 15:04:05")
+
+	return fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .info-row { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .label { color: #666; }
+        .value { font-weight: bold; }
+        .amount { color: #4CAF50; font-size: 24px; }
+        .footer { padding: 20px; text-align: center; color: #888; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>💰 充值成功</h2>
+        </div>
+        <div class="content">
+            <div class="info-row">
+                <span class="label">充值金额：</span>
+                <span class="value amount">¥%.2f</span>
+            </div>
+            <div class="info-row">
+                <span class="label">订单号：</span>
+                <span class="value">%s</span>
+            </div>
+            <div class="info-row">
+                <span class="label">到账时间：</span>
+                <span class="value">%s</span>
+            </div>
+            <div class="info-row">
+                <span class="label">当前余额：</span>
+                <span class="value">¥%.2f</span>
+            </div>
+        </div>
+        <div class="footer">
+            <p>感谢您的支持！如有问题，请联系客服。</p>
+        </div>
+    </div>
+</body>
+</html>
+`, result.Amount, result.OrderNo, paidAt, currentBalance)
 }
