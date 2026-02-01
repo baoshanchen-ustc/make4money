@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"math/big"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/redis/go-redis/v9"
 )
 
 // 订单状态常量
@@ -136,6 +139,8 @@ type RechargeOrderRepository interface {
 	UpdateRefundResult(ctx context.Context, refundNo string, refundStatus string, refundedAt *time.Time) error
 	// GetByRefundNo 根据退款单号获取订单
 	GetByRefundNo(ctx context.Context, refundNo string) (*RechargeOrder, error)
+	// MarkOrderRefunded 将订单标记为已退款（在事务中使用）
+	MarkOrderRefunded(ctx context.Context, orderNo string, notes string) error
 }
 
 // RechargeOrderService 充值订单服务
@@ -144,6 +149,10 @@ type RechargeOrderService struct {
 	repo                   RechargeOrderRepository
 	wechatPayService       *WeChatPayService
 	paymentCallbackService *PaymentCallbackService
+	entClient              *dbent.Client
+	userRepo               UserRepository
+	balanceLogRepo         BalanceLogRepository
+	redisClient            *redis.Client
 }
 
 // NewRechargeOrderService 创建充值订单服务
@@ -152,12 +161,20 @@ func NewRechargeOrderService(
 	repo RechargeOrderRepository,
 	wechatPayService *WeChatPayService,
 	paymentCallbackService *PaymentCallbackService,
+	entClient *dbent.Client,
+	userRepo UserRepository,
+	balanceLogRepo BalanceLogRepository,
+	redisClient *redis.Client,
 ) *RechargeOrderService {
 	return &RechargeOrderService{
 		cfg:                    cfg,
 		repo:                   repo,
 		wechatPayService:       wechatPayService,
 		paymentCallbackService: paymentCallbackService,
+		entClient:              entClient,
+		userRepo:               userRepo,
+		balanceLogRepo:         balanceLogRepo,
+		redisClient:            redisClient,
 	}
 }
 
@@ -545,9 +562,21 @@ func (s *RechargeOrderService) RefundOrder(ctx context.Context, params RefundOrd
 		// 仍然返回成功，因为微信侧已退款
 	}
 
-	// 9. 如果退款成功，更新订单状态为 refunded
+	// 9. 如果退款成功，处理余额扣减和订单状态更新
 	if localRefundStatus == RefundStatusSuccess {
-		_, _ = s.repo.UpdateStatusWithCondition(ctx, order.ID, OrderStatusPaid, "refunded", fmt.Sprintf("退款成功: %s", refundNo))
+		err = s.processRefundSuccess(ctx, ProcessRefundSuccessParams{
+			OrderNo:  params.OrderNo,
+			RefundNo: refundNo,
+			Amount:   order.Amount,
+			Reason:   params.Reason,
+			AdminID:  params.AdminID,
+			UserID:   order.UserID,
+		})
+		if err != nil {
+			log.Printf("[RechargeOrderService] RefundOrder: processRefundSuccess failed: order_no=%s, error=%v",
+				params.OrderNo, err)
+			// 不返回错误，因为微信退款已成功
+		}
 	}
 
 	return &RefundOrderResult{
@@ -596,10 +625,152 @@ func (s *RechargeOrderService) HandleRefundCallback(ctx context.Context, notific
 		return fmt.Errorf("update refund result failed: %w", err)
 	}
 
-	// 5. 如果退款成功，更新订单状态
+	// 5. 如果退款成功，处理余额扣减并更新订单状态
 	if localRefundStatus == RefundStatusSuccess {
-		_, _ = s.repo.UpdateStatusWithCondition(ctx, order.ID, OrderStatusPaid, "refunded", fmt.Sprintf("退款回调成功: %s", notification.OutRefundNo))
+		adminID := int64(0)
+		if order.RefundAdminID != nil {
+			adminID = *order.RefundAdminID
+		}
+		reason := ""
+		if order.RefundReason != nil {
+			reason = *order.RefundReason
+		}
+		err = s.processRefundSuccess(ctx, ProcessRefundSuccessParams{
+			OrderNo:  order.OrderNo,
+			RefundNo: notification.OutRefundNo,
+			Amount:   order.Amount,
+			Reason:   reason,
+			AdminID:  adminID,
+			UserID:   order.UserID,
+		})
+		if err != nil {
+			log.Printf("[RechargeOrderService] HandleRefundCallback: processRefundSuccess failed: order_no=%s, error=%v",
+				order.OrderNo, err)
+			// 不返回错误，因为退款已经成功，只是本地处理失败
+		}
 	}
+
+	return nil
+}
+
+// 分布式锁常量
+const (
+	refundLockKeyPrefix = "recharge:refund:"
+	refundLockTTL       = 30 * time.Second
+)
+
+// ProcessRefundSuccessParams 处理退款成功的参数
+type ProcessRefundSuccessParams struct {
+	OrderNo  string
+	RefundNo string
+	Amount   float64
+	Reason   string
+	AdminID  int64
+	UserID   int64
+}
+
+// processRefundSuccess 处理退款成功
+// 在事务中：扣减用户余额 + 记录余额日志 + 更新订单状态
+func (s *RechargeOrderService) processRefundSuccess(ctx context.Context, params ProcessRefundSuccessParams) error {
+	orderNo := params.OrderNo
+
+	// 1. 获取分布式锁（如果 Redis 可用）
+	if s.redisClient != nil {
+		lockKey := refundLockKeyPrefix + orderNo
+		locked, err := s.redisClient.SetNX(ctx, lockKey, "1", refundLockTTL).Result()
+		if err != nil {
+			log.Printf("[RechargeOrderService] processRefundSuccess: acquire lock failed: order_no=%s, error=%v",
+				orderNo, err)
+			// 锁获取失败，继续处理（依赖数据库事务保证一致性）
+		} else if !locked {
+			// 其他进程正在处理
+			log.Printf("[RechargeOrderService] processRefundSuccess: order being processed by another goroutine: order_no=%s",
+				orderNo)
+			return nil
+		} else {
+			// 成功获取锁，确保释放
+			defer func() {
+				if err := s.redisClient.Del(ctx, lockKey).Err(); err != nil {
+					log.Printf("[RechargeOrderService] processRefundSuccess: release lock failed: order_no=%s, error=%v",
+						orderNo, err)
+				}
+			}()
+		}
+	}
+
+	// 2. 开启数据库事务
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction failed: %w", err)
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			_ = tx.Rollback()
+			panic(r)
+		}
+	}()
+
+	// 使用事务上下文
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	// 3. 查询用户当前余额
+	user, err := s.userRepo.GetByID(txCtx, params.UserID)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("query user failed: %w", err)
+	}
+
+	balanceBefore := user.Balance
+	balanceAfter := balanceBefore - params.Amount
+
+	// 4. 检查余额是否足够（允许余额为负）
+	if balanceAfter < 0 {
+		log.Printf("[RechargeOrderService] processRefundSuccess: user balance insufficient for refund, allowing negative balance: "+
+			"user_id=%d, balance_before=%.2f, refund_amount=%.2f, balance_after=%.2f, order_no=%s",
+			params.UserID, balanceBefore, params.Amount, balanceAfter, orderNo)
+		// 继续处理，允许余额为负（用户可能已消费部分）
+	}
+
+	// 5. 更新用户余额（扣减）
+	if err := s.userRepo.UpdateBalance(txCtx, params.UserID, -params.Amount); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("update user balance failed: %w", err)
+	}
+
+	// 6. 记录余额变动日志
+	description := fmt.Sprintf("充值退款 - %s", params.Reason)
+	balanceLog := &BalanceLog{
+		UserID:         params.UserID,
+		ChangeType:     BalanceChangeTypeRefund,
+		Amount:         -params.Amount, // 负数表示扣减
+		BalanceBefore:  balanceBefore,
+		BalanceAfter:   balanceAfter,
+		RelatedOrderNo: &params.OrderNo,
+		Description:    description,
+		OperatorID:     params.AdminID,
+		OperatorType:   OperatorTypeAdmin,
+	}
+	if err := s.balanceLogRepo.Create(txCtx, balanceLog); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("create balance log failed: %w", err)
+	}
+
+	// 7. 更新订单状态为 refunded
+	notes := fmt.Sprintf("退款成功: %s (余额: %.2f -> %.2f)", params.RefundNo, balanceBefore, balanceAfter)
+	if err := s.repo.MarkOrderRefunded(txCtx, params.OrderNo, notes); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("mark order refunded failed: %w", err)
+	}
+
+	// 提交事务
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction failed: %w", err)
+	}
+
+	log.Printf("[RechargeOrderService] processRefundSuccess: refund processed successfully: "+
+		"order_no=%s, user_id=%d, amount=%.2f, balance_before=%.2f, balance_after=%.2f, admin_id=%d",
+		orderNo, params.UserID, params.Amount, balanceBefore, balanceAfter, params.AdminID)
 
 	return nil
 }

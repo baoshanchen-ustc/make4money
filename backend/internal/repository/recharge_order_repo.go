@@ -430,3 +430,17 @@ func (r *rechargeOrderRepository) GetByRefundNo(ctx context.Context, refundNo st
 	}
 	return rechargeOrderEntityToService(m), nil
 }
+
+// MarkOrderRefunded 将订单标记为已退款（支持事务上下文）
+func (r *rechargeOrderRepository) MarkOrderRefunded(ctx context.Context, orderNo string, notes string) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.RechargeOrder.Update().
+		Where(
+			rechargeorder.OrderNoEQ(orderNo),
+			rechargeorder.StatusEQ(service.OrderStatusPaid),
+		).
+		SetStatus("refunded").
+		SetNotes(notes).
+		Save(ctx)
+	return err
+}
