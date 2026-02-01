@@ -82,6 +82,7 @@ func provideCleanup(
 	usageReportScheduler *service.UserUsageReportScheduler,
 	orderExpireScheduler *service.OrderExpireScheduler,
 	orderCompensationScheduler *service.OrderCompensationScheduler,
+	settingService *service.SettingService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -92,6 +93,12 @@ func provideCleanup(
 			name string
 			fn   func() error
 		}{
+			{"SettingService", func() error {
+				if settingService != nil {
+					settingService.Stop()
+				}
+				return nil
+			}},
 			{"OrderCompensationScheduler", func() error {
 				if orderCompensationScheduler != nil {
 					orderCompensationScheduler.Stop()

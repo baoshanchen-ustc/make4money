@@ -3213,6 +3213,34 @@ export default {
       failedToSave: 'Failed to save settings',
       failedToTestSmtp: 'SMTP connection test failed',
       failedToSendTestEmail: 'Failed to send test email'
+    },
+
+    // Recharge Orders Management
+    recharge: {
+      title: 'Recharge Orders',
+      description: 'Manage user recharge orders and process refunds',
+      noRecordsDesc: 'No matching recharge orders found',
+      filterUserId: 'User ID',
+      filterUserIdPlaceholder: 'Enter user ID to filter',
+      orderNo: 'Order No.',
+      userId: 'User ID',
+      amount: 'Amount',
+      status: 'Status',
+      createdAt: 'Created At',
+      paidAt: 'Paid At',
+      actions: 'Actions',
+      orderDetail: 'Order Details',
+      paymentMethod: 'Payment Method',
+      transactionId: 'Transaction ID',
+      notes: 'Notes',
+      refund: 'Refund',
+      refundConfirm: 'Confirm Refund',
+      refundConfirmMessage: 'Are you sure you want to refund order {orderNo}? Amount: ¥{amount}',
+      refundReason: 'Refund Reason',
+      refundReasonPlaceholder: 'Please enter refund reason (2-500 characters)',
+      confirmRefund: 'Confirm Refund',
+      refundSuccess: 'Refund request submitted',
+      refundFailed: 'Refund failed'
     }
   },
 
@@ -3324,6 +3352,8 @@ export default {
     statusFailed: 'Failed',
     statusExpired: 'Expired',
     statusUnknown: 'Unknown',
+    statusCancelled: 'Cancelled',
+    statusRefunded: 'Refunded',
     waitingPayment: 'Waiting for payment...',
     remainingTime: 'Remaining Time',
     countdown: '{time} remaining',
@@ -3349,7 +3379,6 @@ export default {
     failedReasonCancelled: 'Order was cancelled',
     failedReasonUnknown: 'Unknown error, please try again',
     retryRecharge: 'Retry Recharge',
-    statusCancelled: 'Cancelled',
     // Manual sync
     paying: {
       syncStatus: 'Check Order Status',

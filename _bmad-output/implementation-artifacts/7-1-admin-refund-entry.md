@@ -1,6 +1,6 @@
 # Story 7.1: 管理端退款入口
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -10,37 +10,37 @@ Status: ready-for-dev
 
 ## Acceptance Criteria
 
-- [ ] AC1: 管理端订单详情页显示「退款」按钮
-- [ ] AC2: 仅 `paid` 状态订单可退款
-- [ ] AC3: 退款前需要输入退款原因
-- [ ] AC4: 退款操作需要二次确认
-- [ ] AC5: 退款后按钮变为已退款状态
+- [x] AC1: 管理端订单详情页显示「退款」按钮
+- [x] AC2: 仅 `paid` 状态订单可退款
+- [x] AC3: 退款前需要输入退款原因
+- [x] AC4: 退款操作需要二次确认
+- [x] AC5: 退款后按钮变为已退款状态
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: 后端 - 创建退款 API (AC: 1, 2)
-  - [ ] 1.1 创建 `backend/internal/handler/admin/recharge_handler.go`
-  - [ ] 1.2 实现 POST `/api/v1/admin/recharge/orders/:order_no/refund`
-  - [ ] 1.3 添加请求/响应 DTO
+- [x] Task 1: 后端 - 创建退款 API (AC: 1, 2)
+  - [x] 1.1 创建 `backend/internal/handler/admin/recharge_handler.go`
+  - [x] 1.2 实现 POST `/api/v1/admin/recharge/orders/:order_no/refund`
+  - [x] 1.3 添加请求/响应 DTO
 
-- [ ] Task 2: 后端 - 退款权限验证 (AC: 2)
-  - [ ] 2.1 检查订单状态是否为 `paid`
-  - [ ] 2.2 验证管理员权限
+- [x] Task 2: 后端 - 退款权限验证 (AC: 2)
+  - [x] 2.1 检查订单状态是否为 `paid`
+  - [x] 2.2 验证管理员权限
 
-- [ ] Task 3: 前端 - 订单详情页增加退款功能 (AC: 1, 3, 4, 5)
-  - [ ] 3.1 创建管理端订单详情页（如不存在）
-  - [ ] 3.2 添加「退款」按钮
-  - [ ] 3.3 创建退款确认对话框
-  - [ ] 3.4 退款原因输入框
-  - [ ] 3.5 显示退款状态
+- [x] Task 3: 前端 - 订单详情页增加退款功能 (AC: 1, 3, 4, 5)
+  - [x] 3.1 创建管理端订单详情页
+  - [x] 3.2 添加「退款」按钮
+  - [x] 3.3 创建退款确认对话框
+  - [x] 3.4 退款原因输入框
+  - [x] 3.5 显示退款状态
 
-- [ ] Task 4: 前端 - API 客户端 (AC: 1)
-  - [ ] 4.1 在管理端 API 中添加退款方法
-  - [ ] 4.2 定义 TypeScript 类型
+- [x] Task 4: 前端 - API 客户端 (AC: 1)
+  - [x] 4.1 在管理端 API 中添加退款方法
+  - [x] 4.2 定义 TypeScript 类型
 
-- [ ] Task 5: 国际化 (AC: 1-5)
-  - [ ] 5.1 添加退款相关中文翻译
-  - [ ] 5.2 添加退款相关英文翻译
+- [x] Task 5: 国际化 (AC: 1-5)
+  - [x] 5.1 添加退款相关中文翻译
+  - [x] 5.2 添加退款相关英文翻译
 
 ## Dev Notes
 

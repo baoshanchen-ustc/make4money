@@ -42,6 +42,7 @@ var (
 	ErrOrderCannotBeCancelled   = infraerrors.BadRequest("ORDER_CANNOT_BE_CANCELLED", "order cannot be cancelled")
 	ErrOrderCancelConflict      = infraerrors.Conflict("ORDER_CANCEL_CONFLICT", "order status has changed")
 	ErrOrderNotBelongToUser     = infraerrors.Forbidden("ORDER_NOT_BELONG_TO_USER", "order does not belong to you")
+	ErrOrderNotRefundable       = infraerrors.BadRequest("ORDER_NOT_REFUNDABLE", "only paid orders can be refunded")
 )
 
 // RechargeOrder 充值订单模型
@@ -92,6 +93,8 @@ type RechargeOrderRepository interface {
 	Update(ctx context.Context, order *RechargeOrder) error
 	ExistsByOrderNo(ctx context.Context, orderNo string) (bool, error)
 	ListByUserID(ctx context.Context, userID int64, req *ListRechargeOrdersRequest) (*ListRechargeOrdersResult, error)
+	// ListAll 获取所有订单（管理端使用）
+	ListAll(ctx context.Context, req *ListRechargeOrdersRequest) (*ListRechargeOrdersResult, error)
 	// UpdateStatusWithCondition 使用乐观锁更新订单状态
 	// 只有当订单当前状态等于 expectedStatus 时才更新为 newStatus
 	// 返回受影响的行数，如果为 0 则表示状态已改变（并发冲突）
@@ -401,4 +404,63 @@ func mapWeChatStatusToLocal(wechatStatus string) string {
 	default:
 		return OrderStatusPending
 	}
+}
+
+// ListAllOrders 获取所有订单（管理端使用）
+func (s *RechargeOrderService) ListAllOrders(ctx context.Context, req *ListRechargeOrdersRequest) (*ListRechargeOrdersResult, error) {
+	// 设置默认分页参数
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.PageSize < 1 {
+		req.PageSize = 20
+	}
+
+	return s.repo.ListAll(ctx, req)
+}
+
+// RefundOrderParams 退款参数
+type RefundOrderParams struct {
+	OrderNo string
+	Reason  string
+	AdminID int64
+}
+
+// RefundOrderResult 退款结果
+type RefundOrderResult struct {
+	OrderNo      string
+	Status       string
+	RefundStatus string
+}
+
+// RefundOrder 退款订单（骨架，实际退款逻辑在 Story 7.2-7.4 实现）
+// 当前实现：仅验证订单状态是否为 paid，返回 pending 状态
+// 后续 Story 将实现：调用微信退款 API、扣减用户余额、更新订单状态和日志
+func (s *RechargeOrderService) RefundOrder(ctx context.Context, params RefundOrderParams) (*RefundOrderResult, error) {
+	// 1. 查询订单
+	order, err := s.repo.GetByOrderNo(ctx, params.OrderNo)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. 验证订单状态：只有 paid 状态可以退款
+	if order.Status != OrderStatusPaid {
+		return nil, ErrOrderNotRefundable
+	}
+
+	// 3. TODO: 调用微信退款 API（Story 7.2 实现）
+	// 4. TODO: 扣减用户余额（Story 7.3 实现）
+	// 5. TODO: 更新订单状态和日志（Story 7.4 实现）
+
+	// 暂时返回待处理状态，记录退款原因
+	notes := fmt.Sprintf("退款申请: %s (管理员ID: %d)", params.Reason, params.AdminID)
+	if err := s.repo.AppendNotes(ctx, params.OrderNo, notes); err != nil {
+		return nil, fmt.Errorf("append refund notes: %w", err)
+	}
+
+	return &RefundOrderResult{
+		OrderNo:      params.OrderNo,
+		Status:       order.Status,
+		RefundStatus: "pending",
+	}, nil
 }

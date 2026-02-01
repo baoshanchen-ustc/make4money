@@ -64,6 +64,9 @@ func RegisterAdminRoutes(
 
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
+
+		// 充值订单管理（退款）
+		registerRechargeAdminRoutes(admin, h)
 	}
 }
 
@@ -376,5 +379,17 @@ func registerUserAttributeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		attrs.PUT("/reorder", h.Admin.UserAttribute.ReorderDefinitions)
 		attrs.PUT("/:id", h.Admin.UserAttribute.UpdateDefinition)
 		attrs.DELETE("/:id", h.Admin.UserAttribute.DeleteDefinition)
+	}
+}
+
+func registerRechargeAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	recharge := admin.Group("/recharge")
+	{
+		// 订单列表
+		recharge.GET("/orders", h.Admin.Recharge.ListOrders)
+		// 订单详情
+		recharge.GET("/orders/:order_no", h.Admin.Recharge.GetOrder)
+		// 退款
+		recharge.POST("/orders/:order_no/refund", h.Admin.Recharge.RefundOrder)
 	}
 }

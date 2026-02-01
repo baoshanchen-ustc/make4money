@@ -3363,6 +3363,34 @@ export default {
       failedToSave: '保存设置失败',
       failedToTestSmtp: 'SMTP 连接测试失败',
       failedToSendTestEmail: '发送测试邮件失败'
+    },
+
+    // Recharge Orders Management
+    recharge: {
+      title: '充值订单管理',
+      description: '管理用户充值订单，处理退款申请',
+      noRecordsDesc: '暂无符合条件的充值订单',
+      filterUserId: '用户ID',
+      filterUserIdPlaceholder: '输入用户ID筛选',
+      orderNo: '订单号',
+      userId: '用户ID',
+      amount: '金额',
+      status: '状态',
+      createdAt: '创建时间',
+      paidAt: '支付时间',
+      actions: '操作',
+      orderDetail: '订单详情',
+      paymentMethod: '支付方式',
+      transactionId: '交易号',
+      notes: '备注',
+      refund: '退款',
+      refundConfirm: '确认退款',
+      refundConfirmMessage: '确定要为订单 {orderNo} 申请退款吗？金额：¥{amount}',
+      refundReason: '退款原因',
+      refundReasonPlaceholder: '请输入退款原因（2-500字）',
+      confirmRefund: '确认退款',
+      refundSuccess: '退款申请已提交',
+      refundFailed: '退款失败'
     }
   },
 
@@ -3473,6 +3501,8 @@ export default {
     statusFailed: '支付失败',
     statusExpired: '已过期',
     statusUnknown: '未知',
+    statusCancelled: '已取消',
+    statusRefunded: '已退款',
     waitingPayment: '等待支付中...',
     remainingTime: '剩余时间',
     countdown: '剩余 {time}',
@@ -3498,7 +3528,6 @@ export default {
     failedReasonCancelled: '订单已取消',
     failedReasonUnknown: '未知错误，请重试',
     retryRecharge: '重新充值',
-    statusCancelled: '已取消',
     // Manual sync
     paying: {
       syncStatus: '手动查询订单状态',
