@@ -54,6 +54,10 @@ const (
 	FieldRefundAdminID = "refund_admin_id"
 	// FieldWechatRefundID holds the string denoting the wechat_refund_id field in the database.
 	FieldWechatRefundID = "wechat_refund_id"
+	// FieldCreditedAmount holds the string denoting the credited_amount field in the database.
+	FieldCreditedAmount = "credited_amount"
+	// FieldExchangeRateUsed holds the string denoting the exchange_rate_used field in the database.
+	FieldExchangeRateUsed = "exchange_rate_used"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// Table holds the table name of the rechargeorder in the database.
@@ -90,6 +94,8 @@ var Columns = []string{
 	FieldRefundReason,
 	FieldRefundAdminID,
 	FieldWechatRefundID,
+	FieldCreditedAmount,
+	FieldExchangeRateUsed,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -245,6 +251,16 @@ func ByRefundAdminID(opts ...sql.OrderTermOption) OrderOption {
 // ByWechatRefundID orders the results by the wechat_refund_id field.
 func ByWechatRefundID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWechatRefundID, opts...).ToFunc()
+}
+
+// ByCreditedAmount orders the results by the credited_amount field.
+func ByCreditedAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCreditedAmount, opts...).ToFunc()
+}
+
+// ByExchangeRateUsed orders the results by the exchange_rate_used field.
+func ByExchangeRateUsed(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExchangeRateUsed, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

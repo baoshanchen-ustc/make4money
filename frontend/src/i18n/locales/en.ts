@@ -3029,13 +3029,17 @@ export default {
         addAmount: 'Add Amount',
         orderExpireMinutes: 'Order Expiry Time',
         minutes: 'minutes',
+        exchangeRate: 'CNY to Credit Exchange Rate',
+        exchangeRateUnit: '¥ = $1',
+        exchangeRateHint: 'e.g., 7.0 means ¥7 = $1 credit; set to 1 for 1:1 conversion',
         amountsHint: 'Quick amount options displayed on the recharge page. Amounts must be within the min/max range.',
         expireHint: 'Auto-expiry time for unpaid orders, range 1-1440 minutes (24 hours)',
         saveSuccess: 'Recharge settings saved',
         saveFailed: 'Failed to save recharge settings',
         errors: {
           minGreaterThanMax: 'Minimum amount cannot be greater than maximum amount',
-          amountOutOfRange: 'Amount options must be within the allowed range'
+          amountOutOfRange: 'Amount options must be within the allowed range',
+          invalidExchangeRate: 'Exchange rate must be greater than 0'
         }
       },
       defaults: {
@@ -3312,6 +3316,8 @@ export default {
     invalidAmount: 'Please enter a valid amount',
     amountTooSmall: 'Minimum amount is ¥{min}',
     amountTooLarge: 'Maximum amount is ¥{max}',
+    // Exchange rate
+    exchangeRateInfo: 'Pay ¥{payAmount} → Credit ${creditAmount} (Rate {rate}:1)',
     // Submit button
     submitButton: 'Recharge ¥{amount}',
     submitButtonDefault: 'Select Amount',

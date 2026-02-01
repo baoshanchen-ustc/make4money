@@ -25,7 +25,7 @@
         <!-- 余额标签 -->
         <span class="block text-sm opacity-80">{{ t('recharge.currentBalance') }}</span>
         <!-- 余额数值 -->
-        <span class="mt-2 block text-5xl font-bold">¥{{ formattedBalance }}</span>
+        <span class="mt-2 block text-5xl font-bold">${{ formattedBalance }}</span>
       </div>
 
       <!-- 充值表单区域 -->
@@ -44,6 +44,18 @@
           :min-amount="rechargeStore.minAmount"
           :max-amount="rechargeStore.maxAmount"
         />
+
+        <!-- 汇率提示（非 1:1 时显示） -->
+        <div
+          v-if="selectedAmount && rechargeStore.exchangeRate !== 1"
+          class="mt-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+        >
+          {{ t('recharge.exchangeRateInfo', {
+            payAmount: selectedAmount.toFixed(2),
+            creditAmount: creditedAmountPreview,
+            rate: rechargeStore.exchangeRate.toFixed(2)
+          }) }}
+        </div>
 
         <!-- 支付方式选择器 -->
         <div class="mt-6">
@@ -163,6 +175,14 @@ const balance = computed(() => authStore.user?.balance ?? 0)
 
 // 格式化余额显示（保留两位小数）
 const formattedBalance = computed(() => balance.value.toFixed(2))
+
+// 预览到账额度（汇率转换后）
+const creditedAmountPreview = computed(() => {
+  if (!selectedAmount.value || !rechargeStore.exchangeRate || rechargeStore.exchangeRate <= 0) {
+    return '0.00'
+  }
+  return (selectedAmount.value / rechargeStore.exchangeRate).toFixed(2)
+})
 
 // 金额有效性验证
 const isAmountValid = computed(() => {

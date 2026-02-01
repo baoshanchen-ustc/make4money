@@ -58,6 +58,10 @@ type RechargeOrder struct {
 	RefundAdminID *int64 `json:"refund_admin_id,omitempty"`
 	// 微信退款单号
 	WechatRefundID *string `json:"wechat_refund_id,omitempty"`
+	// 到账额度（汇率转换后）
+	CreditedAmount *float64 `json:"credited_amount,omitempty"`
+	// 使用的汇率
+	ExchangeRateUsed *float64 `json:"exchange_rate_used,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the RechargeOrderQuery when eager-loading is set.
 	Edges        RechargeOrderEdges `json:"edges"`
@@ -89,7 +93,7 @@ func (*RechargeOrder) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case rechargeorder.FieldAmount:
+		case rechargeorder.FieldAmount, rechargeorder.FieldCreditedAmount, rechargeorder.FieldExchangeRateUsed:
 			values[i] = new(sql.NullFloat64)
 		case rechargeorder.FieldID, rechargeorder.FieldUserID, rechargeorder.FieldRefundAdminID:
 			values[i] = new(sql.NullInt64)
@@ -248,6 +252,20 @@ func (_m *RechargeOrder) assignValues(columns []string, values []any) error {
 				_m.WechatRefundID = new(string)
 				*_m.WechatRefundID = value.String
 			}
+		case rechargeorder.FieldCreditedAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field credited_amount", values[i])
+			} else if value.Valid {
+				_m.CreditedAmount = new(float64)
+				*_m.CreditedAmount = value.Float64
+			}
+		case rechargeorder.FieldExchangeRateUsed:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field exchange_rate_used", values[i])
+			} else if value.Valid {
+				_m.ExchangeRateUsed = new(float64)
+				*_m.ExchangeRateUsed = value.Float64
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -367,6 +385,16 @@ func (_m *RechargeOrder) String() string {
 	if v := _m.WechatRefundID; v != nil {
 		builder.WriteString("wechat_refund_id=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CreditedAmount; v != nil {
+		builder.WriteString("credited_amount=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ExchangeRateUsed; v != nil {
+		builder.WriteString("exchange_rate_used=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteByte(')')
 	return builder.String()

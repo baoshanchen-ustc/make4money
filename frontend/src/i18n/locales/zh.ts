@@ -3181,13 +3181,17 @@ export default {
         addAmount: '添加金额',
         orderExpireMinutes: '订单过期时间',
         minutes: '分钟',
+        exchangeRate: '人民币兑额度汇率',
+        exchangeRateUnit: '¥ = $1',
+        exchangeRateHint: '例如：7.0 表示支付 ¥7 到账 $1，设为 1 表示 1:1 转换',
         amountsHint: '用户在充值页面看到的快捷金额选项，金额必须在最小和最大范围内',
         expireHint: '未支付订单的自动过期时间，范围 1-1440 分钟（24小时）',
         saveSuccess: '充值配置已保存',
         saveFailed: '保存充值配置失败',
         errors: {
           minGreaterThanMax: '最小金额不能大于最大金额',
-          amountOutOfRange: '金额选项必须在允许范围内'
+          amountOutOfRange: '金额选项必须在允许范围内',
+          invalidExchangeRate: '汇率必须大于 0'
         }
       },
       defaults: {
@@ -3461,6 +3465,8 @@ export default {
     invalidAmount: '请输入有效金额',
     amountTooSmall: '最小充值金额为 ¥{min}',
     amountTooLarge: '最大充值金额为 ¥{max}',
+    // Exchange rate
+    exchangeRateInfo: '支付 ¥{payAmount} → 到账 ${creditAmount}（汇率 {rate}:1）',
     // Submit button
     submitButton: '立即充值 ¥{amount}',
     submitButtonDefault: '请选择金额',

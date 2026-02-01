@@ -83,6 +83,9 @@ type RechargeOrder struct {
 	RefundReason   *string    `json:"refund_reason,omitempty"`
 	RefundAdminID  *int64     `json:"refund_admin_id,omitempty"`
 	WeChatRefundID *string    `json:"wechat_refund_id,omitempty"`
+	// 汇率相关字段
+	CreditedAmount   *float64 `json:"credited_amount,omitempty"`    // 到账额度（汇率转换后）
+	ExchangeRateUsed *float64 `json:"exchange_rate_used,omitempty"` // 使用的汇率
 }
 
 // CreateRechargeOrderRequest 创建充值订单请求
@@ -565,12 +568,13 @@ func (s *RechargeOrderService) RefundOrder(ctx context.Context, params RefundOrd
 	// 9. 如果退款成功，处理余额扣减和订单状态更新
 	if localRefundStatus == RefundStatusSuccess {
 		err = s.processRefundSuccess(ctx, ProcessRefundSuccessParams{
-			OrderNo:  params.OrderNo,
-			RefundNo: refundNo,
-			Amount:   order.Amount,
-			Reason:   params.Reason,
-			AdminID:  params.AdminID,
-			UserID:   order.UserID,
+			OrderNo:        params.OrderNo,
+			RefundNo:       refundNo,
+			Amount:         order.Amount,
+			CreditedAmount: order.CreditedAmount,
+			Reason:         params.Reason,
+			AdminID:        params.AdminID,
+			UserID:         order.UserID,
 		})
 		if err != nil {
 			log.Printf("[RechargeOrderService] RefundOrder: processRefundSuccess failed: order_no=%s, error=%v",
@@ -636,12 +640,13 @@ func (s *RechargeOrderService) HandleRefundCallback(ctx context.Context, notific
 			reason = *order.RefundReason
 		}
 		err = s.processRefundSuccess(ctx, ProcessRefundSuccessParams{
-			OrderNo:  order.OrderNo,
-			RefundNo: notification.OutRefundNo,
-			Amount:   order.Amount,
-			Reason:   reason,
-			AdminID:  adminID,
-			UserID:   order.UserID,
+			OrderNo:        order.OrderNo,
+			RefundNo:       notification.OutRefundNo,
+			Amount:         order.Amount,
+			CreditedAmount: order.CreditedAmount,
+			Reason:         reason,
+			AdminID:        adminID,
+			UserID:         order.UserID,
 		})
 		if err != nil {
 			log.Printf("[RechargeOrderService] HandleRefundCallback: processRefundSuccess failed: order_no=%s, error=%v",
@@ -661,16 +666,18 @@ const (
 
 // ProcessRefundSuccessParams 处理退款成功的参数
 type ProcessRefundSuccessParams struct {
-	OrderNo  string
-	RefundNo string
-	Amount   float64
-	Reason   string
-	AdminID  int64
-	UserID   int64
+	OrderNo        string
+	RefundNo       string
+	Amount         float64  // 原始支付金额（CNY）
+	CreditedAmount *float64 // 实际到账额度（汇率转换后），用于退款扣减
+	Reason         string
+	AdminID        int64
+	UserID         int64
 }
 
 // processRefundSuccess 处理退款成功
 // 在事务中：扣减用户余额 + 记录余额日志 + 更新订单状态
+// 注意：退款扣减的是到账额度（CreditedAmount），不是原始支付金额（Amount）
 func (s *RechargeOrderService) processRefundSuccess(ctx context.Context, params ProcessRefundSuccessParams) error {
 	orderNo := params.OrderNo
 
@@ -721,19 +728,25 @@ func (s *RechargeOrderService) processRefundSuccess(ctx context.Context, params 
 		return fmt.Errorf("query user failed: %w", err)
 	}
 
+	// 确定退款扣减金额：优先使用 CreditedAmount，若无则使用 Amount
+	refundAmount := params.Amount
+	if params.CreditedAmount != nil && *params.CreditedAmount > 0 {
+		refundAmount = *params.CreditedAmount
+	}
+
 	balanceBefore := user.Balance
-	balanceAfter := balanceBefore - params.Amount
+	balanceAfter := balanceBefore - refundAmount
 
 	// 4. 检查余额是否足够（允许余额为负）
 	if balanceAfter < 0 {
 		log.Printf("[RechargeOrderService] processRefundSuccess: user balance insufficient for refund, allowing negative balance: "+
 			"user_id=%d, balance_before=%.2f, refund_amount=%.2f, balance_after=%.2f, order_no=%s",
-			params.UserID, balanceBefore, params.Amount, balanceAfter, orderNo)
+			params.UserID, balanceBefore, refundAmount, balanceAfter, orderNo)
 		// 继续处理，允许余额为负（用户可能已消费部分）
 	}
 
 	// 5. 更新用户余额（扣减）
-	if err := s.userRepo.UpdateBalance(txCtx, params.UserID, -params.Amount); err != nil {
+	if err := s.userRepo.UpdateBalance(txCtx, params.UserID, -refundAmount); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("update user balance failed: %w", err)
 	}
@@ -743,7 +756,7 @@ func (s *RechargeOrderService) processRefundSuccess(ctx context.Context, params 
 	balanceLog := &BalanceLog{
 		UserID:         params.UserID,
 		ChangeType:     BalanceChangeTypeRefund,
-		Amount:         -params.Amount, // 负数表示扣减
+		Amount:         -refundAmount, // 负数表示扣减
 		BalanceBefore:  balanceBefore,
 		BalanceAfter:   balanceAfter,
 		RelatedOrderNo: &params.OrderNo,
@@ -757,7 +770,7 @@ func (s *RechargeOrderService) processRefundSuccess(ctx context.Context, params 
 	}
 
 	// 7. 更新订单状态为 refunded
-	notes := fmt.Sprintf("退款成功: %s (余额: %.2f -> %.2f)", params.RefundNo, balanceBefore, balanceAfter)
+	notes := fmt.Sprintf("退款成功: %s (余额: $%.2f -> $%.2f)", params.RefundNo, balanceBefore, balanceAfter)
 	if err := s.repo.MarkOrderRefunded(txCtx, params.OrderNo, notes); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("mark order refunded failed: %w", err)

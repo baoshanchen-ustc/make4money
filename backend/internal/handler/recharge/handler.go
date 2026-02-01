@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -17,6 +18,7 @@ type RechargeHandler struct {
 	rechargeOrderService     *service.RechargeOrderService
 	rechargeRateLimitService *service.RechargeRateLimitService
 	turnstileService         *service.TurnstileService
+	settingService           *service.SettingService
 }
 
 // NewRechargeHandler 创建充值处理器
@@ -25,12 +27,14 @@ func NewRechargeHandler(
 	rechargeOrderService *service.RechargeOrderService,
 	rechargeRateLimitService *service.RechargeRateLimitService,
 	turnstileService *service.TurnstileService,
+	settingService *service.SettingService,
 ) *RechargeHandler {
 	return &RechargeHandler{
 		wechatPayService:         wechatPayService,
 		rechargeOrderService:     rechargeOrderService,
 		rechargeRateLimitService: rechargeRateLimitService,
 		turnstileService:         turnstileService,
+		settingService:           settingService,
 	}
 }
 
@@ -40,6 +44,7 @@ type RechargeConfigResponse struct {
 	MinAmount      float64   `json:"min_amount"`
 	MaxAmount      float64   `json:"max_amount"`
 	DefaultAmounts []float64 `json:"default_amounts"`
+	ExchangeRate   float64   `json:"exchange_rate"` // 人民币兑额度汇率
 }
 
 // GetConfig 获取充值配置（无需认证）
@@ -55,17 +60,32 @@ func (h *RechargeHandler) GetConfig(c *gin.Context) {
 			MinAmount:      0,
 			MaxAmount:      0,
 			DefaultAmounts: []float64{},
+			ExchangeRate:   1.0,
 		})
 		return
 	}
 
-	// 从 service 获取充值配置
-	cfg := h.wechatPayService.GetRechargeConfig()
+	// 从 SettingService 获取充值配置（含 exchange_rate）
+	settings, err := h.settingService.GetRechargeSettings(c.Request.Context())
+	if err != nil {
+		log.Printf("[RechargeHandler] GetConfig: failed to get recharge settings: %v", err)
+		// 降级：使用默认值
+		response.Success(c, RechargeConfigResponse{
+			Enabled:        true,
+			MinAmount:      1.0,
+			MaxAmount:      1000.0,
+			DefaultAmounts: []float64{10, 50, 100, 200, 500},
+			ExchangeRate:   1.0,
+		})
+		return
+	}
+
 	response.Success(c, RechargeConfigResponse{
 		Enabled:        true,
-		MinAmount:      cfg.MinAmount,
-		MaxAmount:      cfg.MaxAmount,
-		DefaultAmounts: cfg.DefaultAmounts,
+		MinAmount:      settings.MinAmount,
+		MaxAmount:      settings.MaxAmount,
+		DefaultAmounts: settings.DefaultAmounts,
+		ExchangeRate:   settings.ExchangeRate,
 	})
 }
 
@@ -133,16 +153,17 @@ type CreateOrderResponse struct {
 // POST /api/v1/recharge/orders
 func (h *RechargeHandler) CreateOrder(c *gin.Context) {
 	// 从 context 获取用户 ID
-	userID, exists := c.Get("userID")
-	if !exists {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "未登录")
 		return
 	}
+	userID := subject.UserID
 
 	ctx := c.Request.Context()
 
 	// 检查组合限流（分钟级 + 日级）
-	limitResult, err := h.rechargeRateLimitService.CheckRechargeRateLimits(ctx, userID.(int64))
+	limitResult, err := h.rechargeRateLimitService.CheckRechargeRateLimits(ctx, userID)
 	if err != nil {
 		log.Printf("[RechargeHandler] check rate limit failed: %v", err)
 		// 限流服务异常时不阻止请求，但记录日志
@@ -227,7 +248,7 @@ func (h *RechargeHandler) CreateOrder(c *gin.Context) {
 	}
 
 	// 创建订单
-	order, err := h.rechargeOrderService.CreateOrder(c.Request.Context(), userID.(int64), &service.CreateRechargeOrderRequest{
+	order, err := h.rechargeOrderService.CreateOrder(c.Request.Context(), userID, &service.CreateRechargeOrderRequest{
 		Amount:         req.Amount,
 		PaymentMethod:  req.PaymentMethod,
 		PaymentChannel: req.PaymentChannel,
@@ -269,11 +290,12 @@ type OrderDetailResponse struct {
 // GET /api/v1/recharge/orders/:order_no
 func (h *RechargeHandler) GetOrder(c *gin.Context) {
 	// 从 context 获取用户 ID
-	userID, exists := c.Get("userID")
-	if !exists {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "未登录")
 		return
 	}
+	userID := subject.UserID
 
 	orderNo := c.Param("order_no")
 	if orderNo == "" {
@@ -282,7 +304,7 @@ func (h *RechargeHandler) GetOrder(c *gin.Context) {
 	}
 
 	// 获取订单详情（带权限校验）
-	order, err := h.rechargeOrderService.GetUserOrder(c.Request.Context(), userID.(int64), orderNo)
+	order, err := h.rechargeOrderService.GetUserOrder(c.Request.Context(), userID, orderNo)
 	if err != nil {
 		if !response.ErrorFrom(c, err) {
 			response.InternalError(c, "查询订单失败")
@@ -323,11 +345,12 @@ type InitiatePaymentResponse struct {
 // POST /api/v1/recharge/orders/:order_no/pay
 func (h *RechargeHandler) InitiatePayment(c *gin.Context) {
 	// 从 context 获取用户 ID
-	userID, exists := c.Get("userID")
-	if !exists {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "未登录")
 		return
 	}
+	userID := subject.UserID
 
 	orderNo := c.Param("order_no")
 	if orderNo == "" {
@@ -340,7 +363,7 @@ func (h *RechargeHandler) InitiatePayment(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	// 获取订单详情（带权限校验）
-	order, err := h.rechargeOrderService.GetUserOrder(c.Request.Context(), userID.(int64), orderNo)
+	order, err := h.rechargeOrderService.GetUserOrder(c.Request.Context(), userID, orderNo)
 	if err != nil {
 		if !response.ErrorFrom(c, err) {
 			response.InternalError(c, "查询订单失败")
@@ -479,11 +502,12 @@ type ListOrdersResponse struct {
 // GET /api/v1/recharge/orders
 func (h *RechargeHandler) ListOrders(c *gin.Context) {
 	// 从 context 获取用户 ID
-	userID, exists := c.Get("userID")
-	if !exists {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "未登录")
 		return
 	}
+	userID := subject.UserID
 
 	// 解析请求参数
 	var req ListOrdersRequest
@@ -558,7 +582,7 @@ func (h *RechargeHandler) ListOrders(c *gin.Context) {
 	listReq.PageSize = pageSize
 
 	// 查询订单列表
-	result, err := h.rechargeOrderService.ListUserOrders(c.Request.Context(), userID.(int64), listReq)
+	result, err := h.rechargeOrderService.ListUserOrders(c.Request.Context(), userID, listReq)
 	if err != nil {
 		response.InternalError(c, "查询订单失败")
 		return
@@ -595,11 +619,12 @@ type CancelOrderResponse struct {
 // POST /api/v1/recharge/orders/:order_no/cancel
 func (h *RechargeHandler) CancelOrder(c *gin.Context) {
 	// 从 context 获取用户 ID
-	userID, exists := c.Get("userID")
-	if !exists {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "未登录")
 		return
 	}
+	userID := subject.UserID
 
 	orderNo := c.Param("order_no")
 	if orderNo == "" {
@@ -608,7 +633,7 @@ func (h *RechargeHandler) CancelOrder(c *gin.Context) {
 	}
 
 	// 取消订单
-	if err := h.rechargeOrderService.CancelOrder(c.Request.Context(), userID.(int64), orderNo); err != nil {
+	if err := h.rechargeOrderService.CancelOrder(c.Request.Context(), userID, orderNo); err != nil {
 		if !response.ErrorFrom(c, err) {
 			response.InternalError(c, "取消订单失败")
 		}
@@ -647,11 +672,12 @@ type SyncOrderStatusResponse struct {
 // POST /api/v1/recharge/orders/:order_no/sync
 func (h *RechargeHandler) SyncOrderStatus(c *gin.Context) {
 	// 从 context 获取用户 ID
-	userID, exists := c.Get("userID")
-	if !exists {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "未登录")
 		return
 	}
+	userID := subject.UserID
 
 	orderNo := c.Param("order_no")
 	if orderNo == "" {
@@ -660,10 +686,10 @@ func (h *RechargeHandler) SyncOrderStatus(c *gin.Context) {
 	}
 
 	// 调用服务层同步订单状态
-	result, err := h.rechargeOrderService.SyncOrderStatus(c.Request.Context(), userID.(int64), orderNo)
+	result, err := h.rechargeOrderService.SyncOrderStatus(c.Request.Context(), userID, orderNo)
 	if err != nil {
 		log.Printf("[RechargeHandler] sync order status failed: order_no=%s, user_id=%d, error=%v",
-			orderNo, userID.(int64), err)
+			orderNo, userID, err)
 		if !response.ErrorFrom(c, err) {
 			response.InternalError(c, "同步订单状态失败")
 		}

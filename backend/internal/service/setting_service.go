@@ -124,6 +124,7 @@ func (s *SettingService) loadRechargeSettingsFromDB(ctx context.Context) (*Recha
 		SettingKeyRechargeMaxAmount,
 		SettingKeyRechargeDefaultAmounts,
 		SettingKeyRechargeOrderExpireMinutes,
+		SettingKeyRechargeExchangeRate,
 	}
 
 	dbSettings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -159,6 +160,13 @@ func (s *SettingService) loadRechargeSettingsFromDB(ctx context.Context) (*Recha
 		dbSettings[SettingKeyRechargeOrderExpireMinutes],
 		s.cfg.Recharge.OrderExpireMinutes,
 		DefaultRechargeOrderExpireMinutes,
+	)
+
+	// 5. 汇率：DB > config.yaml > 代码默认值
+	result.ExchangeRate = s.getFloatWithFallback(
+		dbSettings[SettingKeyRechargeExchangeRate],
+		s.cfg.Recharge.ExchangeRate,
+		DefaultRechargeExchangeRate,
 	)
 
 	return result, nil
@@ -227,6 +235,7 @@ func (s *SettingService) GetRechargeConfigSources(ctx context.Context) (map[stri
 		SettingKeyRechargeMaxAmount,
 		SettingKeyRechargeDefaultAmounts,
 		SettingKeyRechargeOrderExpireMinutes,
+		SettingKeyRechargeExchangeRate,
 	}
 
 	dbSettings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -267,6 +276,14 @@ func (s *SettingService) GetRechargeConfigSources(ctx context.Context) (map[stri
 		sources["order_expire_minutes"] = "config.yaml"
 	} else {
 		sources["order_expire_minutes"] = "default"
+	}
+
+	if dbSettings[SettingKeyRechargeExchangeRate] != "" {
+		sources["exchange_rate"] = "database"
+	} else if s.cfg.Recharge.ExchangeRate > 0 {
+		sources["exchange_rate"] = "config.yaml"
+	} else {
+		sources["exchange_rate"] = "default"
 	}
 
 	return sources, nil
@@ -1247,6 +1264,7 @@ type RechargeSettings struct {
 	MaxAmount          float64   `json:"max_amount"`           // 最大充值金额（元）
 	DefaultAmounts     []float64 `json:"default_amounts"`      // 默认金额选项
 	OrderExpireMinutes int       `json:"order_expire_minutes"` // 订单过期时间（分钟）
+	ExchangeRate       float64   `json:"exchange_rate"`        // 人民币兑额度汇率（例如 7.0 表示 ¥7 = $1）
 }
 
 // GetRechargeSettings 获取充值业务配置（优先从缓存读取）
@@ -1264,6 +1282,7 @@ func (s *SettingService) GetRechargeSettings(ctx context.Context) (*RechargeSett
 			MaxAmount:          cache.settings.MaxAmount,
 			DefaultAmounts:     append([]float64{}, cache.settings.DefaultAmounts...),
 			OrderExpireMinutes: cache.settings.OrderExpireMinutes,
+			ExchangeRate:       cache.settings.ExchangeRate,
 		}, nil
 	}
 
@@ -1287,6 +1306,7 @@ func (s *SettingService) GetRechargeSettings(ctx context.Context) (*RechargeSett
 		MaxAmount:          settings.MaxAmount,
 		DefaultAmounts:     append([]float64{}, settings.DefaultAmounts...),
 		OrderExpireMinutes: settings.OrderExpireMinutes,
+		ExchangeRate:       settings.ExchangeRate,
 	}, nil
 }
 
@@ -1304,6 +1324,9 @@ func (s *SettingService) UpdateRechargeSettings(ctx context.Context, settings *R
 	}
 	if settings.OrderExpireMinutes < 1 || settings.OrderExpireMinutes > 1440 {
 		return fmt.Errorf("order_expire_minutes must be between 1 and 1440")
+	}
+	if settings.ExchangeRate <= 0 {
+		return fmt.Errorf("exchange_rate must be greater than 0")
 	}
 
 	// 验证金额选项
@@ -1325,6 +1348,7 @@ func (s *SettingService) UpdateRechargeSettings(ctx context.Context, settings *R
 		SettingKeyRechargeMaxAmount:          strconv.FormatFloat(settings.MaxAmount, 'f', 2, 64),
 		SettingKeyRechargeDefaultAmounts:     string(amountsJSON),
 		SettingKeyRechargeOrderExpireMinutes: strconv.Itoa(settings.OrderExpireMinutes),
+		SettingKeyRechargeExchangeRate:       strconv.FormatFloat(settings.ExchangeRate, 'f', 4, 64),
 	}
 
 	// 保存到数据库
@@ -1340,6 +1364,7 @@ func (s *SettingService) UpdateRechargeSettings(ctx context.Context, settings *R
 			MaxAmount:          settings.MaxAmount,
 			DefaultAmounts:     append([]float64{}, settings.DefaultAmounts...),
 			OrderExpireMinutes: settings.OrderExpireMinutes,
+			ExchangeRate:       settings.ExchangeRate,
 		},
 		updatedAt: time.Now(),
 	}

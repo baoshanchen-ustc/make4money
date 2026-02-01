@@ -263,6 +263,34 @@ func (_c *RechargeOrderCreate) SetNillableWechatRefundID(v *string) *RechargeOrd
 	return _c
 }
 
+// SetCreditedAmount sets the "credited_amount" field.
+func (_c *RechargeOrderCreate) SetCreditedAmount(v float64) *RechargeOrderCreate {
+	_c.mutation.SetCreditedAmount(v)
+	return _c
+}
+
+// SetNillableCreditedAmount sets the "credited_amount" field if the given value is not nil.
+func (_c *RechargeOrderCreate) SetNillableCreditedAmount(v *float64) *RechargeOrderCreate {
+	if v != nil {
+		_c.SetCreditedAmount(*v)
+	}
+	return _c
+}
+
+// SetExchangeRateUsed sets the "exchange_rate_used" field.
+func (_c *RechargeOrderCreate) SetExchangeRateUsed(v float64) *RechargeOrderCreate {
+	_c.mutation.SetExchangeRateUsed(v)
+	return _c
+}
+
+// SetNillableExchangeRateUsed sets the "exchange_rate_used" field if the given value is not nil.
+func (_c *RechargeOrderCreate) SetNillableExchangeRateUsed(v *float64) *RechargeOrderCreate {
+	if v != nil {
+		_c.SetExchangeRateUsed(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *RechargeOrderCreate) SetUser(v *User) *RechargeOrderCreate {
 	return _c.SetUserID(v.ID)
@@ -517,6 +545,14 @@ func (_c *RechargeOrderCreate) createSpec() (*RechargeOrder, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.WechatRefundID(); ok {
 		_spec.SetField(rechargeorder.FieldWechatRefundID, field.TypeString, value)
 		_node.WechatRefundID = &value
+	}
+	if value, ok := _c.mutation.CreditedAmount(); ok {
+		_spec.SetField(rechargeorder.FieldCreditedAmount, field.TypeFloat64, value)
+		_node.CreditedAmount = &value
+	}
+	if value, ok := _c.mutation.ExchangeRateUsed(); ok {
+		_spec.SetField(rechargeorder.FieldExchangeRateUsed, field.TypeFloat64, value)
+		_node.ExchangeRateUsed = &value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -884,6 +920,54 @@ func (u *RechargeOrderUpsert) UpdateWechatRefundID() *RechargeOrderUpsert {
 // ClearWechatRefundID clears the value of the "wechat_refund_id" field.
 func (u *RechargeOrderUpsert) ClearWechatRefundID() *RechargeOrderUpsert {
 	u.SetNull(rechargeorder.FieldWechatRefundID)
+	return u
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (u *RechargeOrderUpsert) SetCreditedAmount(v float64) *RechargeOrderUpsert {
+	u.Set(rechargeorder.FieldCreditedAmount, v)
+	return u
+}
+
+// UpdateCreditedAmount sets the "credited_amount" field to the value that was provided on create.
+func (u *RechargeOrderUpsert) UpdateCreditedAmount() *RechargeOrderUpsert {
+	u.SetExcluded(rechargeorder.FieldCreditedAmount)
+	return u
+}
+
+// AddCreditedAmount adds v to the "credited_amount" field.
+func (u *RechargeOrderUpsert) AddCreditedAmount(v float64) *RechargeOrderUpsert {
+	u.Add(rechargeorder.FieldCreditedAmount, v)
+	return u
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (u *RechargeOrderUpsert) ClearCreditedAmount() *RechargeOrderUpsert {
+	u.SetNull(rechargeorder.FieldCreditedAmount)
+	return u
+}
+
+// SetExchangeRateUsed sets the "exchange_rate_used" field.
+func (u *RechargeOrderUpsert) SetExchangeRateUsed(v float64) *RechargeOrderUpsert {
+	u.Set(rechargeorder.FieldExchangeRateUsed, v)
+	return u
+}
+
+// UpdateExchangeRateUsed sets the "exchange_rate_used" field to the value that was provided on create.
+func (u *RechargeOrderUpsert) UpdateExchangeRateUsed() *RechargeOrderUpsert {
+	u.SetExcluded(rechargeorder.FieldExchangeRateUsed)
+	return u
+}
+
+// AddExchangeRateUsed adds v to the "exchange_rate_used" field.
+func (u *RechargeOrderUpsert) AddExchangeRateUsed(v float64) *RechargeOrderUpsert {
+	u.Add(rechargeorder.FieldExchangeRateUsed, v)
+	return u
+}
+
+// ClearExchangeRateUsed clears the value of the "exchange_rate_used" field.
+func (u *RechargeOrderUpsert) ClearExchangeRateUsed() *RechargeOrderUpsert {
+	u.SetNull(rechargeorder.FieldExchangeRateUsed)
 	return u
 }
 
@@ -1279,6 +1363,62 @@ func (u *RechargeOrderUpsertOne) UpdateWechatRefundID() *RechargeOrderUpsertOne 
 func (u *RechargeOrderUpsertOne) ClearWechatRefundID() *RechargeOrderUpsertOne {
 	return u.Update(func(s *RechargeOrderUpsert) {
 		s.ClearWechatRefundID()
+	})
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (u *RechargeOrderUpsertOne) SetCreditedAmount(v float64) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetCreditedAmount(v)
+	})
+}
+
+// AddCreditedAmount adds v to the "credited_amount" field.
+func (u *RechargeOrderUpsertOne) AddCreditedAmount(v float64) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.AddCreditedAmount(v)
+	})
+}
+
+// UpdateCreditedAmount sets the "credited_amount" field to the value that was provided on create.
+func (u *RechargeOrderUpsertOne) UpdateCreditedAmount() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateCreditedAmount()
+	})
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (u *RechargeOrderUpsertOne) ClearCreditedAmount() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearCreditedAmount()
+	})
+}
+
+// SetExchangeRateUsed sets the "exchange_rate_used" field.
+func (u *RechargeOrderUpsertOne) SetExchangeRateUsed(v float64) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetExchangeRateUsed(v)
+	})
+}
+
+// AddExchangeRateUsed adds v to the "exchange_rate_used" field.
+func (u *RechargeOrderUpsertOne) AddExchangeRateUsed(v float64) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.AddExchangeRateUsed(v)
+	})
+}
+
+// UpdateExchangeRateUsed sets the "exchange_rate_used" field to the value that was provided on create.
+func (u *RechargeOrderUpsertOne) UpdateExchangeRateUsed() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateExchangeRateUsed()
+	})
+}
+
+// ClearExchangeRateUsed clears the value of the "exchange_rate_used" field.
+func (u *RechargeOrderUpsertOne) ClearExchangeRateUsed() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearExchangeRateUsed()
 	})
 }
 
@@ -1840,6 +1980,62 @@ func (u *RechargeOrderUpsertBulk) UpdateWechatRefundID() *RechargeOrderUpsertBul
 func (u *RechargeOrderUpsertBulk) ClearWechatRefundID() *RechargeOrderUpsertBulk {
 	return u.Update(func(s *RechargeOrderUpsert) {
 		s.ClearWechatRefundID()
+	})
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (u *RechargeOrderUpsertBulk) SetCreditedAmount(v float64) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetCreditedAmount(v)
+	})
+}
+
+// AddCreditedAmount adds v to the "credited_amount" field.
+func (u *RechargeOrderUpsertBulk) AddCreditedAmount(v float64) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.AddCreditedAmount(v)
+	})
+}
+
+// UpdateCreditedAmount sets the "credited_amount" field to the value that was provided on create.
+func (u *RechargeOrderUpsertBulk) UpdateCreditedAmount() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateCreditedAmount()
+	})
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (u *RechargeOrderUpsertBulk) ClearCreditedAmount() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearCreditedAmount()
+	})
+}
+
+// SetExchangeRateUsed sets the "exchange_rate_used" field.
+func (u *RechargeOrderUpsertBulk) SetExchangeRateUsed(v float64) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetExchangeRateUsed(v)
+	})
+}
+
+// AddExchangeRateUsed adds v to the "exchange_rate_used" field.
+func (u *RechargeOrderUpsertBulk) AddExchangeRateUsed(v float64) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.AddExchangeRateUsed(v)
+	})
+}
+
+// UpdateExchangeRateUsed sets the "exchange_rate_used" field to the value that was provided on create.
+func (u *RechargeOrderUpsertBulk) UpdateExchangeRateUsed() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateExchangeRateUsed()
+	})
+}
+
+// ClearExchangeRateUsed clears the value of the "exchange_rate_used" field.
+func (u *RechargeOrderUpsertBulk) ClearExchangeRateUsed() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearExchangeRateUsed()
 	})
 }
 

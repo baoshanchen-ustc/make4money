@@ -17,16 +17,17 @@ import (
 // - 分布式锁防止重复处理
 // - 订单状态检查和更新
 // - 金额验证
-// - 用户余额增加
+// - 汇率转换和用户余额增加
 // - 余额变动日志记录
 // - 异步发送充值成功通知
 type PaymentCallbackService struct {
-	entClient       *dbent.Client
-	redisClient     *redis.Client
-	orderRepo       RechargeOrderRepository
-	userRepo        UserRepository
-	balanceLogRepo  BalanceLogRepository
-	emailService    *EmailService
+	entClient      *dbent.Client
+	redisClient    *redis.Client
+	orderRepo      RechargeOrderRepository
+	userRepo       UserRepository
+	balanceLogRepo BalanceLogRepository
+	emailService   *EmailService
+	settingService *SettingService
 }
 
 // NewPaymentCallbackService 创建支付回调业务处理服务
@@ -37,6 +38,7 @@ func NewPaymentCallbackService(
 	userRepo UserRepository,
 	balanceLogRepo BalanceLogRepository,
 	emailService *EmailService,
+	settingService *SettingService,
 ) *PaymentCallbackService {
 	return &PaymentCallbackService{
 		entClient:      entClient,
@@ -45,6 +47,7 @@ func NewPaymentCallbackService(
 		userRepo:       userRepo,
 		balanceLogRepo: balanceLogRepo,
 		emailService:   emailService,
+		settingService: settingService,
 	}
 }
 
@@ -73,13 +76,15 @@ type ProcessPaymentSuccessParams struct {
 
 // ProcessPaymentResult 处理支付结果
 type ProcessPaymentResult struct {
-	Success        bool   // 是否处理成功
-	AlreadyPaid    bool   // 订单是否已经支付过（幂等处理）
-	OrderNo        string // 订单号
-	TransactionID  string // 微信交易ID
-	Amount         float64 // 订单金额
-	UserID         int64  // 用户ID
-	ErrorMessage   string // 错误信息
+	Success        bool    // 是否处理成功
+	AlreadyPaid    bool    // 订单是否已经支付过（幂等处理）
+	OrderNo        string  // 订单号
+	TransactionID  string  // 微信交易ID
+	Amount         float64 // 订单金额（CNY）
+	CreditedAmount float64 // 实际到账额度（汇率转换后）
+	ExchangeRate   float64 // 使用的汇率
+	UserID         int64   // 用户ID
+	ErrorMessage   string  // 错误信息
 }
 
 // ProcessPaymentCallback 处理支付回调
@@ -87,7 +92,8 @@ type ProcessPaymentResult struct {
 // 1. 获取分布式锁（防止重复处理）
 // 2. 检查订单状态（幂等处理）
 // 3. 验证回调金额
-// 4. 在事务中更新订单状态和用户余额
+// 4. 获取汇率并计算到账额度
+// 5. 在事务中更新订单状态和用户余额
 func (s *PaymentCallbackService) ProcessPaymentCallback(
 	ctx context.Context,
 	transaction *payments.Transaction,
@@ -169,94 +175,34 @@ func (s *PaymentCallbackService) ProcessPaymentCallback(
 		return result
 	}
 
-	// 4. 在事务中更新订单状态和用户余额
-	err = s.processPaymentInTransaction(ctx, order, result.TransactionID)
+	// 4. 获取汇率配置并计算到账额度
+	exchangeRate, creditedAmount := s.getExchangeRateAndCalculateCredit(ctx, order.Amount)
+	result.CreditedAmount = creditedAmount
+	result.ExchangeRate = exchangeRate
+
+	// 5. 构建描述
+	description := s.buildDescriptionWithRate(order.Amount, creditedAmount, exchangeRate, PaymentSourceCallback)
+
+	// 6. 在事务中更新订单状态和用户余额
+	err = s.processPaymentInTransactionWithDesc(ctx, order, result.TransactionID, description, creditedAmount, exchangeRate)
 	if err != nil {
 		result.ErrorMessage = fmt.Sprintf("transaction failed: %v", err)
 		return result
 	}
 
 	result.Success = true
-	log.Printf("[PaymentCallback] Payment processed successfully: order_no=%s, user_id=%d, amount=%.2f",
-		orderNo, order.UserID, order.Amount)
+	log.Printf("[PaymentCallback] Payment processed successfully: order_no=%s, user_id=%d, amount=%.2f, credited=%.2f, rate=%.4f",
+		orderNo, order.UserID, order.Amount, creditedAmount, exchangeRate)
+
+	// 7. 异步发送充值成功通知
+	go s.sendRechargeSuccessNotification(result)
+
 	return result
-}
-
-// processPaymentInTransaction 在事务中处理支付
-func (s *PaymentCallbackService) processPaymentInTransaction(
-	ctx context.Context,
-	order *RechargeOrder,
-	transactionID string,
-) error {
-	tx, err := s.entClient.Tx(ctx)
-	if err != nil {
-		return fmt.Errorf("start transaction: %w", err)
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			_ = tx.Rollback()
-			panic(r)
-		}
-	}()
-
-	// 使用事务上下文
-	txCtx := dbent.NewTxContext(ctx, tx)
-
-	// 4.1 查询用户当前余额（用于日志记录）
-	user, err := s.userRepo.GetByID(txCtx, order.UserID)
-	if err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("get user: %w", err)
-	}
-	balanceBefore := user.Balance
-
-	// 4.2 更新订单状态
-	now := time.Now()
-	order.Status = OrderStatusPaid
-	order.WeChatTransactionID = &transactionID
-	order.PaidAt = &now
-
-	if err := s.orderRepo.Update(txCtx, order); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("update order: %w", err)
-	}
-
-	// 4.3 增加用户余额
-	if err := s.userRepo.UpdateBalance(txCtx, order.UserID, order.Amount); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("update user balance: %w", err)
-	}
-
-	// 4.4 插入余额变动日志
-	balanceAfter := balanceBefore + order.Amount
-	balanceLog := &BalanceLog{
-		UserID:         order.UserID,
-		ChangeType:     BalanceChangeTypeRecharge,
-		Amount:         order.Amount,
-		BalanceBefore:  balanceBefore,
-		BalanceAfter:   balanceAfter,
-		RelatedOrderNo: &order.OrderNo,
-		Description:    fmt.Sprintf("充值 %.2f 元", order.Amount),
-		OperatorID:     0,
-		OperatorType:   OperatorTypeSystem,
-	}
-	if err := s.balanceLogRepo.Create(txCtx, balanceLog); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("create balance log: %w", err)
-	}
-
-	// 提交事务
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-
-	return nil
 }
 
 // ProcessPaymentSuccess 处理支付成功的通用方法
 // 可被回调处理和补偿逻辑复用
-// 包含：分布式锁 → 订单查询 → 状态检查 → 金额验证（可选）→ 事务处理
+// 包含：分布式锁 → 订单查询 → 状态检查 → 金额验证（可选）→ 汇率转换 → 事务处理
 func (s *PaymentCallbackService) ProcessPaymentSuccess(
 	ctx context.Context,
 	params ProcessPaymentSuccessParams,
@@ -320,44 +266,77 @@ func (s *PaymentCallbackService) ProcessPaymentSuccess(
 		}
 	}
 
-	// 5. 在事务中更新订单状态和用户余额
-	description := s.buildDescription(order.Amount, params.Source)
-	err = s.processPaymentInTransactionWithDesc(ctx, order, params.TransactionID, description)
+	// 5. 获取汇率配置并计算到账额度
+	exchangeRate, creditedAmount := s.getExchangeRateAndCalculateCredit(ctx, order.Amount)
+	result.CreditedAmount = creditedAmount
+	result.ExchangeRate = exchangeRate
+
+	// 6. 构建描述（包含汇率信息）
+	description := s.buildDescriptionWithRate(order.Amount, creditedAmount, exchangeRate, params.Source)
+
+	// 7. 在事务中更新订单状态和用户余额
+	err = s.processPaymentInTransactionWithDesc(ctx, order, params.TransactionID, description, creditedAmount, exchangeRate)
 	if err != nil {
 		result.ErrorMessage = fmt.Sprintf("transaction failed: %v", err)
 		return result
 	}
 
 	result.Success = true
-	log.Printf("[PaymentCallback] Payment processed successfully: order_no=%s, user_id=%d, amount=%.2f, source=%s",
-		params.OrderNo, order.UserID, order.Amount, params.Source)
+	log.Printf("[PaymentCallback] Payment processed successfully: order_no=%s, user_id=%d, amount=%.2f, credited=%.2f, rate=%.4f, source=%s",
+		params.OrderNo, order.UserID, order.Amount, creditedAmount, exchangeRate, params.Source)
 
-	// 6. 异步发送充值成功通知
+	// 8. 异步发送充值成功通知
 	go s.sendRechargeSuccessNotification(result)
 
 	return result
 }
 
-// buildDescription 根据支付来源构建日志描述
-func (s *PaymentCallbackService) buildDescription(amount float64, source PaymentSource) string {
-	switch source {
-	case PaymentSourceCallback:
-		return fmt.Sprintf("充值 %.2f 元", amount)
-	case PaymentSourceCompensate:
-		return fmt.Sprintf("充值 %.2f 元（定时补偿）", amount)
-	case PaymentSourceManualSync:
-		return fmt.Sprintf("充值 %.2f 元（手动同步补偿）", amount)
-	default:
-		return fmt.Sprintf("充值 %.2f 元", amount)
+// getExchangeRateAndCalculateCredit 获取汇率并计算到账额度
+// 返回：汇率、到账额度
+func (s *PaymentCallbackService) getExchangeRateAndCalculateCredit(ctx context.Context, amount float64) (exchangeRate, creditedAmount float64) {
+	exchangeRate = DefaultRechargeExchangeRate
+	if s.settingService != nil {
+		settings, err := s.settingService.GetRechargeSettings(ctx)
+		if err != nil {
+			log.Printf("[PaymentCallback] Failed to get recharge settings, using default rate: %v", err)
+		} else if settings.ExchangeRate > 0 {
+			exchangeRate = settings.ExchangeRate
+		}
 	}
+	// 计算到账额度：支付金额 / 汇率，四舍五入保留两位小数
+	creditedAmount = math.Round(amount/exchangeRate*100) / 100
+	return
 }
 
-// processPaymentInTransactionWithDesc 在事务中处理支付（支持自定义描述）
+// buildDescriptionWithRate 根据支付来源和汇率构建日志描述
+func (s *PaymentCallbackService) buildDescriptionWithRate(payAmount, creditedAmount, exchangeRate float64, source PaymentSource) string {
+	var sourceDesc string
+	switch source {
+	case PaymentSourceCompensate:
+		sourceDesc = "（定时补偿）"
+	case PaymentSourceManualSync:
+		sourceDesc = "（手动同步补偿）"
+	default:
+		sourceDesc = ""
+	}
+
+	// 如果汇率为 1:1，使用简化描述
+	if exchangeRate == 1.0 {
+		return fmt.Sprintf("充值 $%.2f%s", creditedAmount, sourceDesc)
+	}
+
+	// 非 1:1 汇率，显示转换信息
+	return fmt.Sprintf("充值 ¥%.2f → $%.2f（汇率 %.4f:1）%s", payAmount, creditedAmount, exchangeRate, sourceDesc)
+}
+
+// processPaymentInTransactionWithDesc 在事务中处理支付（支持自定义描述和汇率转换）
 func (s *PaymentCallbackService) processPaymentInTransactionWithDesc(
 	ctx context.Context,
 	order *RechargeOrder,
 	transactionID string,
 	description string,
+	creditedAmount float64,
+	exchangeRate float64,
 ) error {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
@@ -382,29 +361,31 @@ func (s *PaymentCallbackService) processPaymentInTransactionWithDesc(
 	}
 	balanceBefore := user.Balance
 
-	// 更新订单状态
+	// 更新订单状态（包含汇率信息）
 	now := time.Now()
 	order.Status = OrderStatusPaid
 	order.WeChatTransactionID = &transactionID
 	order.PaidAt = &now
+	order.CreditedAmount = &creditedAmount
+	order.ExchangeRateUsed = &exchangeRate
 
 	if err := s.orderRepo.Update(txCtx, order); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("update order: %w", err)
 	}
 
-	// 增加用户余额
-	if err := s.userRepo.UpdateBalance(txCtx, order.UserID, order.Amount); err != nil {
+	// 增加用户余额（使用汇率转换后的额度）
+	if err := s.userRepo.UpdateBalance(txCtx, order.UserID, creditedAmount); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("update user balance: %w", err)
 	}
 
 	// 插入余额变动日志
-	balanceAfter := balanceBefore + order.Amount
+	balanceAfter := balanceBefore + creditedAmount
 	balanceLog := &BalanceLog{
 		UserID:         order.UserID,
 		ChangeType:     BalanceChangeTypeRecharge,
-		Amount:         order.Amount,
+		Amount:         creditedAmount,
 		BalanceBefore:  balanceBefore,
 		BalanceAfter:   balanceAfter,
 		RelatedOrderNo: &order.OrderNo,

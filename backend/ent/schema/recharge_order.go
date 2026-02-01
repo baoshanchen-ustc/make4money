@@ -141,6 +141,20 @@ func (RechargeOrder) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("微信退款单号"),
+
+		// 到账额度（汇率转换后的实际到账金额）
+		field.Float("credited_amount").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Optional().
+			Nillable().
+			Comment("到账额度（汇率转换后）"),
+
+		// 使用的汇率
+		field.Float("exchange_rate_used").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Optional().
+			Nillable().
+			Comment("使用的汇率"),
 	}
 }
 

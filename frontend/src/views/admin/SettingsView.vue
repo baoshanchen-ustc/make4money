@@ -982,6 +982,29 @@
                 </p>
               </div>
 
+              <!-- 汇率配置 -->
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.recharge.exchangeRate') }}
+                </label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model.number="rechargeForm.exchange_rate"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    class="input w-32"
+                    placeholder="1.00"
+                  />
+                  <span class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.recharge.exchangeRateUnit') }}
+                  </span>
+                </div>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.recharge.exchangeRateHint') }}
+                </p>
+              </div>
+
               <!-- 默认金额选项 -->
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1859,7 +1882,8 @@ const rechargeForm = reactive<RechargeSettings>({
   min_amount: 1,
   max_amount: 1000,
   default_amounts: [10, 50, 100, 200, 500],
-  order_expire_minutes: 120
+  order_expire_minutes: 120,
+  exchange_rate: 1
 })
 
 type SettingsForm = SystemSettings & {
@@ -2398,6 +2422,11 @@ async function saveRechargeSettings() {
     return
   }
 
+  if (rechargeForm.exchange_rate <= 0) {
+    appStore.showError(t('admin.settings.recharge.errors.invalidExchangeRate'))
+    return
+  }
+
   for (const amount of rechargeForm.default_amounts) {
     if (amount < rechargeForm.min_amount || amount > rechargeForm.max_amount) {
       appStore.showError(t('admin.settings.recharge.errors.amountOutOfRange'))
@@ -2411,7 +2440,8 @@ async function saveRechargeSettings() {
       min_amount: rechargeForm.min_amount,
       max_amount: rechargeForm.max_amount,
       default_amounts: rechargeForm.default_amounts,
-      order_expire_minutes: rechargeForm.order_expire_minutes
+      order_expire_minutes: rechargeForm.order_expire_minutes,
+      exchange_rate: rechargeForm.exchange_rate
     })
     Object.assign(rechargeForm, updated)
     appStore.showSuccess(t('admin.settings.recharge.saveSuccess'))

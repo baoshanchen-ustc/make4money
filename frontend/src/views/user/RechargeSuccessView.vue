@@ -49,7 +49,7 @@
         <div class="mb-8 rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 p-4 text-white">
           <div class="flex items-center justify-between">
             <span class="text-sm opacity-80">{{ t('recharge.currentBalance') }}</span>
-            <span class="text-2xl font-bold">¥{{ formattedBalance }}</span>
+            <span class="text-2xl font-bold">${{ formattedBalance }}</span>
           </div>
         </div>
 

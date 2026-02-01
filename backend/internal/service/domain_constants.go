@@ -202,6 +202,9 @@ const (
 
 	// SettingKeyRechargeOrderExpireMinutes is the order expiry time in minutes.
 	SettingKeyRechargeOrderExpireMinutes = "recharge.order_expire_minutes"
+
+	// SettingKeyRechargeExchangeRate is the CNY to credit exchange rate.
+	SettingKeyRechargeExchangeRate = "recharge.exchange_rate"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
@@ -216,9 +219,10 @@ const (
 
 // Recharge defaults
 const (
-	DefaultRechargeMinAmount          = 1.0   // 最小充值金额（元）
+	DefaultRechargeMinAmount          = 1.0    // 最小充值金额（元）
 	DefaultRechargeMaxAmount          = 1000.0 // 最大充值金额（元）
-	DefaultRechargeOrderExpireMinutes = 120   // 订单过期时间（分钟）
+	DefaultRechargeOrderExpireMinutes = 120    // 订单过期时间（分钟）
+	DefaultRechargeExchangeRate       = 1.0    // 默认汇率（1:1，人民币直接转换为额度）
 )
 
 // DefaultRechargeAmounts is the default quick amount options

@@ -11027,6 +11027,10 @@ type RechargeOrderMutation struct {
 	refund_admin_id       *int64
 	addrefund_admin_id    *int64
 	wechat_refund_id      *string
+	credited_amount       *float64
+	addcredited_amount    *float64
+	exchange_rate_used    *float64
+	addexchange_rate_used *float64
 	clearedFields         map[string]struct{}
 	user                  *int64
 	cleareduser           bool
@@ -12024,6 +12028,146 @@ func (m *RechargeOrderMutation) ResetWechatRefundID() {
 	delete(m.clearedFields, rechargeorder.FieldWechatRefundID)
 }
 
+// SetCreditedAmount sets the "credited_amount" field.
+func (m *RechargeOrderMutation) SetCreditedAmount(f float64) {
+	m.credited_amount = &f
+	m.addcredited_amount = nil
+}
+
+// CreditedAmount returns the value of the "credited_amount" field in the mutation.
+func (m *RechargeOrderMutation) CreditedAmount() (r float64, exists bool) {
+	v := m.credited_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreditedAmount returns the old "credited_amount" field's value of the RechargeOrder entity.
+// If the RechargeOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargeOrderMutation) OldCreditedAmount(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreditedAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreditedAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreditedAmount: %w", err)
+	}
+	return oldValue.CreditedAmount, nil
+}
+
+// AddCreditedAmount adds f to the "credited_amount" field.
+func (m *RechargeOrderMutation) AddCreditedAmount(f float64) {
+	if m.addcredited_amount != nil {
+		*m.addcredited_amount += f
+	} else {
+		m.addcredited_amount = &f
+	}
+}
+
+// AddedCreditedAmount returns the value that was added to the "credited_amount" field in this mutation.
+func (m *RechargeOrderMutation) AddedCreditedAmount() (r float64, exists bool) {
+	v := m.addcredited_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (m *RechargeOrderMutation) ClearCreditedAmount() {
+	m.credited_amount = nil
+	m.addcredited_amount = nil
+	m.clearedFields[rechargeorder.FieldCreditedAmount] = struct{}{}
+}
+
+// CreditedAmountCleared returns if the "credited_amount" field was cleared in this mutation.
+func (m *RechargeOrderMutation) CreditedAmountCleared() bool {
+	_, ok := m.clearedFields[rechargeorder.FieldCreditedAmount]
+	return ok
+}
+
+// ResetCreditedAmount resets all changes to the "credited_amount" field.
+func (m *RechargeOrderMutation) ResetCreditedAmount() {
+	m.credited_amount = nil
+	m.addcredited_amount = nil
+	delete(m.clearedFields, rechargeorder.FieldCreditedAmount)
+}
+
+// SetExchangeRateUsed sets the "exchange_rate_used" field.
+func (m *RechargeOrderMutation) SetExchangeRateUsed(f float64) {
+	m.exchange_rate_used = &f
+	m.addexchange_rate_used = nil
+}
+
+// ExchangeRateUsed returns the value of the "exchange_rate_used" field in the mutation.
+func (m *RechargeOrderMutation) ExchangeRateUsed() (r float64, exists bool) {
+	v := m.exchange_rate_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExchangeRateUsed returns the old "exchange_rate_used" field's value of the RechargeOrder entity.
+// If the RechargeOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargeOrderMutation) OldExchangeRateUsed(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExchangeRateUsed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExchangeRateUsed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExchangeRateUsed: %w", err)
+	}
+	return oldValue.ExchangeRateUsed, nil
+}
+
+// AddExchangeRateUsed adds f to the "exchange_rate_used" field.
+func (m *RechargeOrderMutation) AddExchangeRateUsed(f float64) {
+	if m.addexchange_rate_used != nil {
+		*m.addexchange_rate_used += f
+	} else {
+		m.addexchange_rate_used = &f
+	}
+}
+
+// AddedExchangeRateUsed returns the value that was added to the "exchange_rate_used" field in this mutation.
+func (m *RechargeOrderMutation) AddedExchangeRateUsed() (r float64, exists bool) {
+	v := m.addexchange_rate_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearExchangeRateUsed clears the value of the "exchange_rate_used" field.
+func (m *RechargeOrderMutation) ClearExchangeRateUsed() {
+	m.exchange_rate_used = nil
+	m.addexchange_rate_used = nil
+	m.clearedFields[rechargeorder.FieldExchangeRateUsed] = struct{}{}
+}
+
+// ExchangeRateUsedCleared returns if the "exchange_rate_used" field was cleared in this mutation.
+func (m *RechargeOrderMutation) ExchangeRateUsedCleared() bool {
+	_, ok := m.clearedFields[rechargeorder.FieldExchangeRateUsed]
+	return ok
+}
+
+// ResetExchangeRateUsed resets all changes to the "exchange_rate_used" field.
+func (m *RechargeOrderMutation) ResetExchangeRateUsed() {
+	m.exchange_rate_used = nil
+	m.addexchange_rate_used = nil
+	delete(m.clearedFields, rechargeorder.FieldExchangeRateUsed)
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *RechargeOrderMutation) ClearUser() {
 	m.cleareduser = true
@@ -12085,7 +12229,7 @@ func (m *RechargeOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RechargeOrderMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 22)
 	if m.created_at != nil {
 		fields = append(fields, rechargeorder.FieldCreatedAt)
 	}
@@ -12146,6 +12290,12 @@ func (m *RechargeOrderMutation) Fields() []string {
 	if m.wechat_refund_id != nil {
 		fields = append(fields, rechargeorder.FieldWechatRefundID)
 	}
+	if m.credited_amount != nil {
+		fields = append(fields, rechargeorder.FieldCreditedAmount)
+	}
+	if m.exchange_rate_used != nil {
+		fields = append(fields, rechargeorder.FieldExchangeRateUsed)
+	}
 	return fields
 }
 
@@ -12194,6 +12344,10 @@ func (m *RechargeOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.RefundAdminID()
 	case rechargeorder.FieldWechatRefundID:
 		return m.WechatRefundID()
+	case rechargeorder.FieldCreditedAmount:
+		return m.CreditedAmount()
+	case rechargeorder.FieldExchangeRateUsed:
+		return m.ExchangeRateUsed()
 	}
 	return nil, false
 }
@@ -12243,6 +12397,10 @@ func (m *RechargeOrderMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldRefundAdminID(ctx)
 	case rechargeorder.FieldWechatRefundID:
 		return m.OldWechatRefundID(ctx)
+	case rechargeorder.FieldCreditedAmount:
+		return m.OldCreditedAmount(ctx)
+	case rechargeorder.FieldExchangeRateUsed:
+		return m.OldExchangeRateUsed(ctx)
 	}
 	return nil, fmt.Errorf("unknown RechargeOrder field %s", name)
 }
@@ -12392,6 +12550,20 @@ func (m *RechargeOrderMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetWechatRefundID(v)
 		return nil
+	case rechargeorder.FieldCreditedAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreditedAmount(v)
+		return nil
+	case rechargeorder.FieldExchangeRateUsed:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExchangeRateUsed(v)
+		return nil
 	}
 	return fmt.Errorf("unknown RechargeOrder field %s", name)
 }
@@ -12406,6 +12578,12 @@ func (m *RechargeOrderMutation) AddedFields() []string {
 	if m.addrefund_admin_id != nil {
 		fields = append(fields, rechargeorder.FieldRefundAdminID)
 	}
+	if m.addcredited_amount != nil {
+		fields = append(fields, rechargeorder.FieldCreditedAmount)
+	}
+	if m.addexchange_rate_used != nil {
+		fields = append(fields, rechargeorder.FieldExchangeRateUsed)
+	}
 	return fields
 }
 
@@ -12418,6 +12596,10 @@ func (m *RechargeOrderMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedAmount()
 	case rechargeorder.FieldRefundAdminID:
 		return m.AddedRefundAdminID()
+	case rechargeorder.FieldCreditedAmount:
+		return m.AddedCreditedAmount()
+	case rechargeorder.FieldExchangeRateUsed:
+		return m.AddedExchangeRateUsed()
 	}
 	return nil, false
 }
@@ -12440,6 +12622,20 @@ func (m *RechargeOrderMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRefundAdminID(v)
+		return nil
+	case rechargeorder.FieldCreditedAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCreditedAmount(v)
+		return nil
+	case rechargeorder.FieldExchangeRateUsed:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddExchangeRateUsed(v)
 		return nil
 	}
 	return fmt.Errorf("unknown RechargeOrder numeric field %s", name)
@@ -12478,6 +12674,12 @@ func (m *RechargeOrderMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(rechargeorder.FieldWechatRefundID) {
 		fields = append(fields, rechargeorder.FieldWechatRefundID)
+	}
+	if m.FieldCleared(rechargeorder.FieldCreditedAmount) {
+		fields = append(fields, rechargeorder.FieldCreditedAmount)
+	}
+	if m.FieldCleared(rechargeorder.FieldExchangeRateUsed) {
+		fields = append(fields, rechargeorder.FieldExchangeRateUsed)
 	}
 	return fields
 }
@@ -12522,6 +12724,12 @@ func (m *RechargeOrderMutation) ClearField(name string) error {
 		return nil
 	case rechargeorder.FieldWechatRefundID:
 		m.ClearWechatRefundID()
+		return nil
+	case rechargeorder.FieldCreditedAmount:
+		m.ClearCreditedAmount()
+		return nil
+	case rechargeorder.FieldExchangeRateUsed:
+		m.ClearExchangeRateUsed()
 		return nil
 	}
 	return fmt.Errorf("unknown RechargeOrder nullable field %s", name)
@@ -12590,6 +12798,12 @@ func (m *RechargeOrderMutation) ResetField(name string) error {
 		return nil
 	case rechargeorder.FieldWechatRefundID:
 		m.ResetWechatRefundID()
+		return nil
+	case rechargeorder.FieldCreditedAmount:
+		m.ResetCreditedAmount()
+		return nil
+	case rechargeorder.FieldExchangeRateUsed:
+		m.ResetExchangeRateUsed()
 		return nil
 	}
 	return fmt.Errorf("unknown RechargeOrder field %s", name)

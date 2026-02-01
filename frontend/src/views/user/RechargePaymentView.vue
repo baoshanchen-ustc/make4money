@@ -242,6 +242,7 @@ const jsapiParams = ref<JSAPIPaymentParams | null>(null)
 // 轮询相关
 const POLL_INTERVAL = 3000 // 3秒
 const MAX_POLL_COUNT = 40 // 最多轮询40次（2分钟）
+const SYNC_EVERY_N_POLLS = 5 // 每5次轮询调用一次 syncOrderStatus（约15秒）
 let pollTimer: ReturnType<typeof setInterval> | null = null
 const pollCount = ref(0)
 const isPolling = ref(false)
@@ -384,8 +385,20 @@ const handleStatusChange = (status: string) => {
 const pollOrderStatus = async () => {
   try {
     pollCount.value++
-    console.log(`[RechargePayment] Polling order status (${pollCount.value}/${MAX_POLL_COUNT})`)
+    const shouldSync = pollCount.value % SYNC_EVERY_N_POLLS === 0
+    console.log(`[RechargePayment] Polling order status (${pollCount.value}/${MAX_POLL_COUNT})${shouldSync ? ' [with sync]' : ''}`)
 
+    if (shouldSync) {
+      // 每 SYNC_EVERY_N_POLLS 次调用 syncOrderStatus 查询微信支付状态
+      try {
+        await rechargeAPI.syncOrderStatus(orderNo.value)
+      } catch (syncError) {
+        // sync 失败时不中断轮询，继续使用 getOrder
+        console.warn('[RechargePayment] Sync failed, continuing with getOrder:', syncError)
+      }
+    }
+
+    // 获取订单最新状态
     const result = await rechargeAPI.getOrder(orderNo.value)
     order.value = result
 

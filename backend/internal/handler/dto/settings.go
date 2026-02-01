@@ -127,4 +127,5 @@ type RechargeSettings struct {
 	MaxAmount          float64   `json:"max_amount"`           // 最大充值金额（元）
 	DefaultAmounts     []float64 `json:"default_amounts"`      // 默认金额选项
 	OrderExpireMinutes int       `json:"order_expire_minutes"` // 订单过期时间（分钟）
+	ExchangeRate       float64   `json:"exchange_rate"`        // 人民币兑额度汇率（例如 7.0 表示 ¥7 = $1）
 }

@@ -53,6 +53,7 @@ export const useRechargeStore = defineStore('recharge', () => {
   const minAmount = computed(() => config.value?.min_amount ?? 1)
   const maxAmount = computed(() => config.value?.max_amount ?? 1000)
   const defaultAmounts = computed(() => config.value?.default_amounts ?? [10, 50, 100, 200, 500])
+  const exchangeRate = computed(() => config.value?.exchange_rate ?? 1)
 
   // ==================== Actions ====================
 
@@ -100,6 +101,7 @@ export const useRechargeStore = defineStore('recharge', () => {
     minAmount,
     maxAmount,
     defaultAmounts,
+    exchangeRate,
     fetchConfig,
     reset
   }

@@ -13,6 +13,7 @@ export interface RechargeConfig {
   min_amount: number
   max_amount: number
   default_amounts: number[]
+  exchange_rate: number // 人民币兑额度汇率（例如 7.0 表示 ¥7 = $1）
 }
 
 export interface CreateOrderRequest {

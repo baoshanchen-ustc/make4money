@@ -65,6 +65,7 @@ type RechargeConfig struct {
 	MaxAmount          float64   `mapstructure:"max_amount"`           // 最大充值金额（元）
 	DefaultAmounts     []float64 `mapstructure:"default_amounts"`      // 默认金额选项
 	OrderExpireMinutes int       `mapstructure:"order_expire_minutes"` // 订单过期时间（分钟）
+	ExchangeRate       float64   `mapstructure:"exchange_rate"`        // 人民币兑额度汇率（例如 7.0 表示 ¥7 = $1）
 }
 
 type Config struct {
@@ -969,6 +970,7 @@ func setDefaults() {
 	viper.SetDefault("recharge.max_amount", 1000.0)
 	viper.SetDefault("recharge.default_amounts", []float64{10, 50, 100, 200, 500})
 	viper.SetDefault("recharge.order_expire_minutes", 120)
+	viper.SetDefault("recharge.exchange_rate", 1.0) // 默认 1:1，人民币直接转换为额度
 }
 
 func (c *Config) Validate() error {

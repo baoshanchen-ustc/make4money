@@ -1068,6 +1068,7 @@ func (h *SettingHandler) GetRechargeSettings(c *gin.Context) {
 		MaxAmount:          settings.MaxAmount,
 		DefaultAmounts:     settings.DefaultAmounts,
 		OrderExpireMinutes: settings.OrderExpireMinutes,
+		ExchangeRate:       settings.ExchangeRate,
 	})
 }
 
@@ -1077,6 +1078,7 @@ type UpdateRechargeSettingsRequest struct {
 	MaxAmount          float64   `json:"max_amount" binding:"required,gt=0"`
 	DefaultAmounts     []float64 `json:"default_amounts" binding:"required,min=1"`
 	OrderExpireMinutes int       `json:"order_expire_minutes" binding:"required,min=1,max=1440"`
+	ExchangeRate       float64   `json:"exchange_rate" binding:"required,gt=0"`
 }
 
 // UpdateRechargeSettings 更新充值业务配置
@@ -1108,6 +1110,7 @@ func (h *SettingHandler) UpdateRechargeSettings(c *gin.Context) {
 		MaxAmount:          req.MaxAmount,
 		DefaultAmounts:     req.DefaultAmounts,
 		OrderExpireMinutes: req.OrderExpireMinutes,
+		ExchangeRate:       req.ExchangeRate,
 	}
 
 	if err := h.settingService.UpdateRechargeSettings(c.Request.Context(), settings); err != nil {
@@ -1127,5 +1130,6 @@ func (h *SettingHandler) UpdateRechargeSettings(c *gin.Context) {
 		MaxAmount:          updatedSettings.MaxAmount,
 		DefaultAmounts:     updatedSettings.DefaultAmounts,
 		OrderExpireMinutes: updatedSettings.OrderExpireMinutes,
+		ExchangeRate:       updatedSettings.ExchangeRate,
 	})
 }

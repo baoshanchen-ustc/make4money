@@ -83,6 +83,13 @@ func (r *rechargeOrderRepository) Update(ctx context.Context, order *service.Rec
 	if order.PaidAt != nil {
 		up.SetPaidAt(*order.PaidAt)
 	}
+	// 汇率相关字段
+	if order.CreditedAmount != nil {
+		up.SetCreditedAmount(*order.CreditedAmount)
+	}
+	if order.ExchangeRateUsed != nil {
+		up.SetExchangeRateUsed(*order.ExchangeRateUsed)
+	}
 
 	updated, err := up.Save(ctx)
 	if err != nil {
@@ -364,6 +371,9 @@ func rechargeOrderEntityToService(m *dbent.RechargeOrder) *service.RechargeOrder
 		RefundReason:   m.RefundReason,
 		RefundAdminID:  m.RefundAdminID,
 		WeChatRefundID: m.WechatRefundID,
+		// 汇率相关字段
+		CreditedAmount:   m.CreditedAmount,
+		ExchangeRateUsed: m.ExchangeRateUsed,
 	}
 }
 

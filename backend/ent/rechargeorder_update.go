@@ -361,6 +361,60 @@ func (_u *RechargeOrderUpdate) ClearWechatRefundID() *RechargeOrderUpdate {
 	return _u
 }
 
+// SetCreditedAmount sets the "credited_amount" field.
+func (_u *RechargeOrderUpdate) SetCreditedAmount(v float64) *RechargeOrderUpdate {
+	_u.mutation.ResetCreditedAmount()
+	_u.mutation.SetCreditedAmount(v)
+	return _u
+}
+
+// SetNillableCreditedAmount sets the "credited_amount" field if the given value is not nil.
+func (_u *RechargeOrderUpdate) SetNillableCreditedAmount(v *float64) *RechargeOrderUpdate {
+	if v != nil {
+		_u.SetCreditedAmount(*v)
+	}
+	return _u
+}
+
+// AddCreditedAmount adds value to the "credited_amount" field.
+func (_u *RechargeOrderUpdate) AddCreditedAmount(v float64) *RechargeOrderUpdate {
+	_u.mutation.AddCreditedAmount(v)
+	return _u
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (_u *RechargeOrderUpdate) ClearCreditedAmount() *RechargeOrderUpdate {
+	_u.mutation.ClearCreditedAmount()
+	return _u
+}
+
+// SetExchangeRateUsed sets the "exchange_rate_used" field.
+func (_u *RechargeOrderUpdate) SetExchangeRateUsed(v float64) *RechargeOrderUpdate {
+	_u.mutation.ResetExchangeRateUsed()
+	_u.mutation.SetExchangeRateUsed(v)
+	return _u
+}
+
+// SetNillableExchangeRateUsed sets the "exchange_rate_used" field if the given value is not nil.
+func (_u *RechargeOrderUpdate) SetNillableExchangeRateUsed(v *float64) *RechargeOrderUpdate {
+	if v != nil {
+		_u.SetExchangeRateUsed(*v)
+	}
+	return _u
+}
+
+// AddExchangeRateUsed adds value to the "exchange_rate_used" field.
+func (_u *RechargeOrderUpdate) AddExchangeRateUsed(v float64) *RechargeOrderUpdate {
+	_u.mutation.AddExchangeRateUsed(v)
+	return _u
+}
+
+// ClearExchangeRateUsed clears the value of the "exchange_rate_used" field.
+func (_u *RechargeOrderUpdate) ClearExchangeRateUsed() *RechargeOrderUpdate {
+	_u.mutation.ClearExchangeRateUsed()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *RechargeOrderUpdate) SetUser(v *User) *RechargeOrderUpdate {
 	return _u.SetUserID(v.ID)
@@ -577,6 +631,24 @@ func (_u *RechargeOrderUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.WechatRefundIDCleared() {
 		_spec.ClearField(rechargeorder.FieldWechatRefundID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CreditedAmount(); ok {
+		_spec.SetField(rechargeorder.FieldCreditedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCreditedAmount(); ok {
+		_spec.AddField(rechargeorder.FieldCreditedAmount, field.TypeFloat64, value)
+	}
+	if _u.mutation.CreditedAmountCleared() {
+		_spec.ClearField(rechargeorder.FieldCreditedAmount, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ExchangeRateUsed(); ok {
+		_spec.SetField(rechargeorder.FieldExchangeRateUsed, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedExchangeRateUsed(); ok {
+		_spec.AddField(rechargeorder.FieldExchangeRateUsed, field.TypeFloat64, value)
+	}
+	if _u.mutation.ExchangeRateUsedCleared() {
+		_spec.ClearField(rechargeorder.FieldExchangeRateUsed, field.TypeFloat64)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -959,6 +1031,60 @@ func (_u *RechargeOrderUpdateOne) ClearWechatRefundID() *RechargeOrderUpdateOne 
 	return _u
 }
 
+// SetCreditedAmount sets the "credited_amount" field.
+func (_u *RechargeOrderUpdateOne) SetCreditedAmount(v float64) *RechargeOrderUpdateOne {
+	_u.mutation.ResetCreditedAmount()
+	_u.mutation.SetCreditedAmount(v)
+	return _u
+}
+
+// SetNillableCreditedAmount sets the "credited_amount" field if the given value is not nil.
+func (_u *RechargeOrderUpdateOne) SetNillableCreditedAmount(v *float64) *RechargeOrderUpdateOne {
+	if v != nil {
+		_u.SetCreditedAmount(*v)
+	}
+	return _u
+}
+
+// AddCreditedAmount adds value to the "credited_amount" field.
+func (_u *RechargeOrderUpdateOne) AddCreditedAmount(v float64) *RechargeOrderUpdateOne {
+	_u.mutation.AddCreditedAmount(v)
+	return _u
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (_u *RechargeOrderUpdateOne) ClearCreditedAmount() *RechargeOrderUpdateOne {
+	_u.mutation.ClearCreditedAmount()
+	return _u
+}
+
+// SetExchangeRateUsed sets the "exchange_rate_used" field.
+func (_u *RechargeOrderUpdateOne) SetExchangeRateUsed(v float64) *RechargeOrderUpdateOne {
+	_u.mutation.ResetExchangeRateUsed()
+	_u.mutation.SetExchangeRateUsed(v)
+	return _u
+}
+
+// SetNillableExchangeRateUsed sets the "exchange_rate_used" field if the given value is not nil.
+func (_u *RechargeOrderUpdateOne) SetNillableExchangeRateUsed(v *float64) *RechargeOrderUpdateOne {
+	if v != nil {
+		_u.SetExchangeRateUsed(*v)
+	}
+	return _u
+}
+
+// AddExchangeRateUsed adds value to the "exchange_rate_used" field.
+func (_u *RechargeOrderUpdateOne) AddExchangeRateUsed(v float64) *RechargeOrderUpdateOne {
+	_u.mutation.AddExchangeRateUsed(v)
+	return _u
+}
+
+// ClearExchangeRateUsed clears the value of the "exchange_rate_used" field.
+func (_u *RechargeOrderUpdateOne) ClearExchangeRateUsed() *RechargeOrderUpdateOne {
+	_u.mutation.ClearExchangeRateUsed()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *RechargeOrderUpdateOne) SetUser(v *User) *RechargeOrderUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -1205,6 +1331,24 @@ func (_u *RechargeOrderUpdateOne) sqlSave(ctx context.Context) (_node *RechargeO
 	}
 	if _u.mutation.WechatRefundIDCleared() {
 		_spec.ClearField(rechargeorder.FieldWechatRefundID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CreditedAmount(); ok {
+		_spec.SetField(rechargeorder.FieldCreditedAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCreditedAmount(); ok {
+		_spec.AddField(rechargeorder.FieldCreditedAmount, field.TypeFloat64, value)
+	}
+	if _u.mutation.CreditedAmountCleared() {
+		_spec.ClearField(rechargeorder.FieldCreditedAmount, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ExchangeRateUsed(); ok {
+		_spec.SetField(rechargeorder.FieldExchangeRateUsed, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedExchangeRateUsed(); ok {
+		_spec.AddField(rechargeorder.FieldExchangeRateUsed, field.TypeFloat64, value)
+	}
+	if _u.mutation.ExchangeRateUsedCleared() {
+		_spec.ClearField(rechargeorder.FieldExchangeRateUsed, field.TypeFloat64)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

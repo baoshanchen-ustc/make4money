@@ -155,6 +155,16 @@ func WechatRefundID(v string) predicate.RechargeOrder {
 	return predicate.RechargeOrder(sql.FieldEQ(FieldWechatRefundID, v))
 }
 
+// CreditedAmount applies equality check predicate on the "credited_amount" field. It's identical to CreditedAmountEQ.
+func CreditedAmount(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldCreditedAmount, v))
+}
+
+// ExchangeRateUsed applies equality check predicate on the "exchange_rate_used" field. It's identical to ExchangeRateUsedEQ.
+func ExchangeRateUsed(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldExchangeRateUsed, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.RechargeOrder {
 	return predicate.RechargeOrder(sql.FieldEQ(FieldCreatedAt, v))
@@ -1333,6 +1343,106 @@ func WechatRefundIDEqualFold(v string) predicate.RechargeOrder {
 // WechatRefundIDContainsFold applies the ContainsFold predicate on the "wechat_refund_id" field.
 func WechatRefundIDContainsFold(v string) predicate.RechargeOrder {
 	return predicate.RechargeOrder(sql.FieldContainsFold(FieldWechatRefundID, v))
+}
+
+// CreditedAmountEQ applies the EQ predicate on the "credited_amount" field.
+func CreditedAmountEQ(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldCreditedAmount, v))
+}
+
+// CreditedAmountNEQ applies the NEQ predicate on the "credited_amount" field.
+func CreditedAmountNEQ(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNEQ(FieldCreditedAmount, v))
+}
+
+// CreditedAmountIn applies the In predicate on the "credited_amount" field.
+func CreditedAmountIn(vs ...float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIn(FieldCreditedAmount, vs...))
+}
+
+// CreditedAmountNotIn applies the NotIn predicate on the "credited_amount" field.
+func CreditedAmountNotIn(vs ...float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotIn(FieldCreditedAmount, vs...))
+}
+
+// CreditedAmountGT applies the GT predicate on the "credited_amount" field.
+func CreditedAmountGT(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGT(FieldCreditedAmount, v))
+}
+
+// CreditedAmountGTE applies the GTE predicate on the "credited_amount" field.
+func CreditedAmountGTE(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGTE(FieldCreditedAmount, v))
+}
+
+// CreditedAmountLT applies the LT predicate on the "credited_amount" field.
+func CreditedAmountLT(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLT(FieldCreditedAmount, v))
+}
+
+// CreditedAmountLTE applies the LTE predicate on the "credited_amount" field.
+func CreditedAmountLTE(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLTE(FieldCreditedAmount, v))
+}
+
+// CreditedAmountIsNil applies the IsNil predicate on the "credited_amount" field.
+func CreditedAmountIsNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIsNull(FieldCreditedAmount))
+}
+
+// CreditedAmountNotNil applies the NotNil predicate on the "credited_amount" field.
+func CreditedAmountNotNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotNull(FieldCreditedAmount))
+}
+
+// ExchangeRateUsedEQ applies the EQ predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedEQ(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldExchangeRateUsed, v))
+}
+
+// ExchangeRateUsedNEQ applies the NEQ predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedNEQ(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNEQ(FieldExchangeRateUsed, v))
+}
+
+// ExchangeRateUsedIn applies the In predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedIn(vs ...float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIn(FieldExchangeRateUsed, vs...))
+}
+
+// ExchangeRateUsedNotIn applies the NotIn predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedNotIn(vs ...float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotIn(FieldExchangeRateUsed, vs...))
+}
+
+// ExchangeRateUsedGT applies the GT predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedGT(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGT(FieldExchangeRateUsed, v))
+}
+
+// ExchangeRateUsedGTE applies the GTE predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedGTE(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGTE(FieldExchangeRateUsed, v))
+}
+
+// ExchangeRateUsedLT applies the LT predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedLT(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLT(FieldExchangeRateUsed, v))
+}
+
+// ExchangeRateUsedLTE applies the LTE predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedLTE(v float64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLTE(FieldExchangeRateUsed, v))
+}
+
+// ExchangeRateUsedIsNil applies the IsNil predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedIsNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIsNull(FieldExchangeRateUsed))
+}
+
+// ExchangeRateUsedNotNil applies the NotNil predicate on the "exchange_rate_used" field.
+func ExchangeRateUsedNotNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotNull(FieldExchangeRateUsed))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

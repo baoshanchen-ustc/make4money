@@ -340,6 +340,7 @@ export interface RechargeSettings {
   max_amount: number
   default_amounts: number[]
   order_expire_minutes: number
+  exchange_rate: number // 人民币兑额度汇率
 }
 
 /**
