@@ -389,6 +389,8 @@ func registerRechargeAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		recharge.GET("/orders", h.Admin.Recharge.ListOrders)
 		// 订单详情
 		recharge.GET("/orders/:order_no", h.Admin.Recharge.GetOrder)
+		// 订单余额日志
+		recharge.GET("/orders/:order_no/logs", h.Admin.Recharge.GetOrderLogs)
 		// 退款
 		recharge.POST("/orders/:order_no/refund", h.Admin.Recharge.RefundOrder)
 	}

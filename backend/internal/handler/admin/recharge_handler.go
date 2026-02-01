@@ -12,12 +12,17 @@ import (
 // RechargeHandler 管理端充值处理器
 type RechargeHandler struct {
 	rechargeOrderService *service.RechargeOrderService
+	balanceLogRepo       service.BalanceLogRepository
 }
 
 // NewRechargeHandler 创建管理端充值处理器
-func NewRechargeHandler(rechargeOrderService *service.RechargeOrderService) *RechargeHandler {
+func NewRechargeHandler(
+	rechargeOrderService *service.RechargeOrderService,
+	balanceLogRepo service.BalanceLogRepository,
+) *RechargeHandler {
 	return &RechargeHandler{
 		rechargeOrderService: rechargeOrderService,
+		balanceLogRepo:       balanceLogRepo,
 	}
 }
 
@@ -241,5 +246,63 @@ func (h *RechargeHandler) RefundOrder(c *gin.Context) {
 		WeChatStatus: result.WeChatStatus,
 		RefundedAt:   result.RefundedAt,
 		Message:      message,
+	})
+}
+
+// AdminBalanceLogItem 管理端余额日志项
+type AdminBalanceLogItem struct {
+	ID             int64     `json:"id"`
+	UserID         int64     `json:"user_id"`
+	ChangeType     string    `json:"change_type"`
+	Amount         float64   `json:"amount"`
+	BalanceBefore  float64   `json:"balance_before"`
+	BalanceAfter   float64   `json:"balance_after"`
+	RelatedOrderNo *string   `json:"related_order_no,omitempty"`
+	Description    string    `json:"description"`
+	OperatorID     int64     `json:"operator_id"`
+	OperatorType   string    `json:"operator_type"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// AdminOrderLogsResponse 管理端订单日志响应
+type AdminOrderLogsResponse struct {
+	Logs []AdminBalanceLogItem `json:"logs"`
+}
+
+// GetOrderLogs 获取订单相关的余额日志
+// GET /api/v1/admin/recharge/orders/:order_no/logs
+func (h *RechargeHandler) GetOrderLogs(c *gin.Context) {
+	orderNo := c.Param("order_no")
+	if orderNo == "" {
+		response.BadRequest(c, "订单号不能为空")
+		return
+	}
+
+	logs, err := h.balanceLogRepo.GetByOrderNo(c.Request.Context(), orderNo)
+	if err != nil {
+		response.InternalError(c, "查询日志失败")
+		return
+	}
+
+	// 转换响应
+	items := make([]AdminBalanceLogItem, len(logs))
+	for i, log := range logs {
+		items[i] = AdminBalanceLogItem{
+			ID:             log.ID,
+			UserID:         log.UserID,
+			ChangeType:     log.ChangeType,
+			Amount:         log.Amount,
+			BalanceBefore:  log.BalanceBefore,
+			BalanceAfter:   log.BalanceAfter,
+			RelatedOrderNo: log.RelatedOrderNo,
+			Description:    log.Description,
+			OperatorID:     log.OperatorID,
+			OperatorType:   log.OperatorType,
+			CreatedAt:      log.CreatedAt,
+		}
+	}
+
+	response.Success(c, AdminOrderLogsResponse{
+		Logs: items,
 	})
 }

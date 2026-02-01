@@ -1,6 +1,6 @@
 # Story 7.4: 退款状态更新与日志
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -10,38 +10,38 @@ Status: ready-for-dev
 
 ## Acceptance Criteria
 
-- [ ] AC1: 更新订单状态为 `refunded`
-- [ ] AC2: 记录退款时间、退款金额、退款原因
-- [ ] AC3: 记录操作人（admin_id）
-- [ ] AC4: 插入退款日志到 `balance_logs` 表
-- [ ] AC5: 日志包含退款前后余额
+- [x] AC1: 更新订单状态为 `refunded`
+- [x] AC2: 记录退款时间、退款金额、退款原因
+- [x] AC3: 记录操作人（admin_id）
+- [x] AC4: 插入退款日志到 `balance_logs` 表
+- [x] AC5: 日志包含退款前后余额
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: 后端 - 订单表字段扩展 (AC: 1, 2, 3)
-  - [ ] 1.1 添加 refund_no 字段（退款单号）
-  - [ ] 1.2 添加 refund_status 字段（退款状态）
-  - [ ] 1.3 添加 refunded_at 字段（退款时间）
-  - [ ] 1.4 添加 refund_reason 字段（退款原因）
-  - [ ] 1.5 添加 refund_admin_id 字段（操作人ID）
-  - [ ] 1.6 运行数据库迁移
+- [x] Task 1: 后端 - 订单表字段扩展 (AC: 1, 2, 3)
+  - [x] 1.1 添加 refund_no 字段（退款单号）- Story 7-2 已完成
+  - [x] 1.2 添加 refund_status 字段（退款状态）- Story 7-2 已完成
+  - [x] 1.3 添加 refunded_at 字段（退款时间）- Story 7-2 已完成
+  - [x] 1.4 添加 refund_reason 字段（退款原因）- Story 7-2 已完成
+  - [x] 1.5 添加 refund_admin_id 字段（操作人ID）- Story 7-2 已完成
+  - [x] 1.6 运行数据库迁移 - Story 7-2 已完成
 
-- [ ] Task 2: 后端 - 订单状态更新 (AC: 1, 2, 3)
-  - [ ] 2.1 在退款成功处理中更新订单状态
-  - [ ] 2.2 记录所有退款相关字段
+- [x] Task 2: 后端 - 订单状态更新 (AC: 1, 2, 3)
+  - [x] 2.1 在退款成功处理中更新订单状态 - Story 7-3 已完成
+  - [x] 2.2 记录所有退款相关字段 - Story 7-3 已完成
 
-- [ ] Task 3: 后端 - 余额日志记录 (AC: 4, 5)
-  - [ ] 3.1 确保 balance_logs 记录完整的退款信息
-  - [ ] 3.2 记录 change_type = refund
-  - [ ] 3.3 记录操作人信息
+- [x] Task 3: 后端 - 余额日志记录 (AC: 4, 5)
+  - [x] 3.1 确保 balance_logs 记录完整的退款信息 - Story 7-3 已完成
+  - [x] 3.2 记录 change_type = refund - Story 7-3 已完成
+  - [x] 3.3 记录操作人信息 - Story 7-3 已完成
 
-- [ ] Task 4: 后端 - 退款历史查询 (AC: 1-5)
-  - [ ] 4.1 管理端可查询退款订单列表
-  - [ ] 4.2 管理端可查询退款日志
+- [x] Task 4: 后端 - 退款历史查询 (AC: 1-5)
+  - [x] 4.1 管理端可查询退款订单列表（通过 status=refunded 筛选）
+  - [x] 4.2 管理端可查询订单余额日志（新增 GetOrderLogs API）
 
-- [ ] Task 5: 数据库迁移 (AC: 1)
-  - [ ] 5.1 生成 Ent 迁移文件
-  - [ ] 5.2 执行迁移
+- [x] Task 5: 数据库迁移 (AC: 1)
+  - [x] 5.1 生成 Ent 迁移文件 - Story 7-2 已完成
+  - [x] 5.2 执行迁移 - Story 7-2 已完成
 
 ## Dev Notes
 

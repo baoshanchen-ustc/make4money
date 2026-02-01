@@ -4,6 +4,7 @@ import (
 	"context"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/balancelog"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -39,4 +40,37 @@ func (r *balanceLogRepository) Create(ctx context.Context, log *service.BalanceL
 	log.ID = created.ID
 	log.CreatedAt = created.CreatedAt
 	return nil
+}
+
+// GetByOrderNo 根据订单号查询余额日志
+func (r *balanceLogRepository) GetByOrderNo(ctx context.Context, orderNo string) ([]*service.BalanceLog, error) {
+	logs, err := r.client.BalanceLog.Query().
+		Where(balancelog.RelatedOrderNoEQ(orderNo)).
+		Order(dbent.Desc(balancelog.FieldCreatedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*service.BalanceLog, len(logs))
+	for i, log := range logs {
+		var relatedOrderNo *string
+		if log.RelatedOrderNo != nil {
+			relatedOrderNo = log.RelatedOrderNo
+		}
+		result[i] = &service.BalanceLog{
+			ID:             log.ID,
+			UserID:         log.UserID,
+			ChangeType:     log.ChangeType,
+			Amount:         log.Amount,
+			BalanceBefore:  log.BalanceBefore,
+			BalanceAfter:   log.BalanceAfter,
+			RelatedOrderNo: relatedOrderNo,
+			Description:    log.Description,
+			OperatorID:     log.OperatorID,
+			OperatorType:   log.OperatorType,
+			CreatedAt:      log.CreatedAt,
+		}
+	}
+	return result, nil
 }

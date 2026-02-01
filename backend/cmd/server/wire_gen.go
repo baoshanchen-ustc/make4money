@@ -176,7 +176,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	balanceLogRepository := repository.NewBalanceLogRepository(client)
 	paymentCallbackService := service.NewPaymentCallbackService(client, redisClient, rechargeOrderRepository, userRepository, balanceLogRepository, emailService)
 	rechargeOrderService := service.NewRechargeOrderService(configConfig, rechargeOrderRepository, weChatPayService, paymentCallbackService, client, userRepository, balanceLogRepository, redisClient)
-	rechargeHandler := admin.NewRechargeHandler(rechargeOrderService)
+	rechargeHandler := admin.NewRechargeHandler(rechargeOrderService, balanceLogRepository)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, rechargeHandler)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, configConfig)
 	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, configConfig)

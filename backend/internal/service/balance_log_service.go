@@ -40,4 +40,6 @@ type BalanceLog struct {
 type BalanceLogRepository interface {
 	// Create 创建余额变动日志
 	Create(ctx context.Context, log *BalanceLog) error
+	// GetByOrderNo 根据订单号查询余额日志
+	GetByOrderNo(ctx context.Context, orderNo string) ([]*BalanceLog, error)
 }
