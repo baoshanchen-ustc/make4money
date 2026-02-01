@@ -137,22 +137,36 @@ func (h *RechargeHandler) CreateOrder(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// 检查分钟级限流
-	limitResult, err := h.rechargeRateLimitService.CheckRechargeMinuteLimit(ctx, userID.(int64))
+	// 检查组合限流（分钟级 + 日级）
+	limitResult, err := h.rechargeRateLimitService.CheckRechargeRateLimits(ctx, userID.(int64))
 	if err != nil {
 		log.Printf("[RechargeHandler] check rate limit failed: %v", err)
 		// 限流服务异常时不阻止请求，但记录日志
 	} else if !limitResult.Allowed {
-		c.Header("Retry-After", strconv.Itoa(limitResult.RetryAfter))
+		respData := gin.H{
+			"error":      "rate_limit_exceeded",
+			"limit_type": limitResult.LimitType,
+			"message":    limitResult.Message,
+		}
+
+		if limitResult.LimitType == "minute" {
+			c.Header("Retry-After", strconv.Itoa(limitResult.RetryAfter))
+			respData["retry_after"] = limitResult.RetryAfter
+		} else {
+			c.Header("X-RateLimit-Reset", limitResult.ResetTime.Format(time.RFC3339))
+			respData["reset_time"] = limitResult.ResetTime.Format(time.RFC3339)
+		}
+
 		c.Header("X-RateLimit-Remaining", "0")
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":       "rate_limit_exceeded",
-			"message":     limitResult.Message,
-			"retry_after": limitResult.RetryAfter,
-		})
+		c.JSON(http.StatusTooManyRequests, respData)
 		return
-	} else if limitResult.Remaining >= 0 {
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(limitResult.Remaining))
+	} else {
+		if limitResult.MinuteRemaining >= 0 {
+			c.Header("X-RateLimit-Minute-Remaining", strconv.Itoa(limitResult.MinuteRemaining))
+		}
+		if limitResult.DailyRemaining >= 0 {
+			c.Header("X-RateLimit-Daily-Remaining", strconv.Itoa(limitResult.DailyRemaining))
+		}
 	}
 
 	var req CreateOrderRequest

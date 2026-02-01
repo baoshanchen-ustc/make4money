@@ -88,7 +88,7 @@ development_status:
   5-2-query-wechat-order-status: done            # Epic 5
   5-3-compensation-balance-logic: done              # Epic 5
   5-4-scheduled-order-compensation: done          # Epic 5
-  6-2-user-daily-rate-limit: ready-for-dev       # Epic 6
+  6-2-user-daily-rate-limit: done       # Epic 6
   6-3-ip-rate-limit-captcha: ready-for-dev       # Epic 6
   sprint-4-retrospective: optional
 

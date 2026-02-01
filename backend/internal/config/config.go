@@ -521,6 +521,7 @@ type RechargeRateLimitConfig struct {
 	Enabled         bool `mapstructure:"enabled"`           // 是否启用充值限流
 	MinuteLimit     int  `mapstructure:"minute_limit"`      // 每分钟最大订单数
 	MinuteWindowSec int  `mapstructure:"minute_window_sec"` // 窗口大小（秒）
+	DailyLimit      int  `mapstructure:"daily_limit"`       // 每天最大订单数
 }
 
 // APIKeyAuthCacheConfig API Key 认证缓存配置
@@ -828,6 +829,7 @@ func setDefaults() {
 	viper.SetDefault("rate_limit.recharge.enabled", true)
 	viper.SetDefault("rate_limit.recharge.minute_limit", 3)
 	viper.SetDefault("rate_limit.recharge.minute_window_sec", 60)
+	viper.SetDefault("rate_limit.recharge.daily_limit", 20)
 
 	// Pricing - 从 price-mirror 分支同步，该分支维护了 sha256 哈希文件用于增量更新检查
 	viper.SetDefault("pricing.remote_url", "https://raw.githubusercontent.com/Wei-Shaw/claude-relay-service/price-mirror/model_prices_and_context_window.json")

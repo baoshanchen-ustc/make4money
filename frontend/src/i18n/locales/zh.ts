@@ -3421,6 +3421,7 @@ export default {
     selectPaymentMethodFirst: '请选择支付方式',
     // Rate limiting
     rateLimitCountdown: '{seconds} 秒后可再次提交',
+    dailyLimitReached: '今日充值次数已达上限',
     // Payment page
     paymentTitle: '支付',
     paymentDescription: '完成订单支付',

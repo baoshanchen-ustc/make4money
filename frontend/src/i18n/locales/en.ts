@@ -3272,6 +3272,7 @@ export default {
     selectPaymentMethodFirst: 'Please select a payment method',
     // Rate limiting
     rateLimitCountdown: 'Retry in {seconds} seconds',
+    dailyLimitReached: 'Daily recharge limit reached',
     // Payment page
     paymentTitle: 'Payment',
     paymentDescription: 'Complete your payment',

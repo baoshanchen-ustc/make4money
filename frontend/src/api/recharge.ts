@@ -96,8 +96,10 @@ export interface SyncOrderStatusResponse {
 // 限流错误响应类型
 export interface RateLimitErrorResponse {
   error: string
+  limit_type?: 'minute' | 'daily'  // 限流类型
   message: string
-  retry_after: number
+  retry_after?: number   // 分钟级限流
+  reset_time?: string    // 日级限流重置时间（ISO 8601）
 }
 
 // ==================== Errors ====================
@@ -106,12 +108,26 @@ export interface RateLimitErrorResponse {
  * 限流错误类
  */
 export class RateLimitExceededError extends Error {
-  retryAfter: number
+  limitType: 'minute' | 'daily'
+  retryAfter?: number  // 秒数（分钟级限流）
+  resetTime?: Date     // 重置时间（日级限流）
 
-  constructor(message: string, retryAfter: number) {
+  constructor(message: string, limitType: 'minute' | 'daily', retryAfter?: number, resetTime?: string) {
     super(message)
     this.name = 'RateLimitExceededError'
+    this.limitType = limitType
     this.retryAfter = retryAfter
+    if (resetTime) {
+      this.resetTime = new Date(resetTime)
+    }
+  }
+
+  get isDaily(): boolean {
+    return this.limitType === 'daily'
+  }
+
+  get isMinute(): boolean {
+    return this.limitType === 'minute'
   }
 }
 
@@ -144,9 +160,12 @@ export const rechargeAPI = {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 429) {
         const rateLimitData = error.response.data as RateLimitErrorResponse
+        const limitType = rateLimitData.limit_type || 'minute'
         throw new RateLimitExceededError(
           rateLimitData.message || '操作过于频繁，请稍后重试',
-          rateLimitData.retry_after || 60
+          limitType,
+          rateLimitData.retry_after,
+          rateLimitData.reset_time
         )
       }
       throw error

@@ -136,6 +136,9 @@ const errorMessage = ref('')
 const rateLimitCountdown = ref(0)
 let rateLimitTimer: ReturnType<typeof setInterval> | null = null
 
+// 日级限流标记
+const isDailyLimited = ref(false)
+
 // 用户余额
 const balance = computed(() => authStore.user?.balance ?? 0)
 
@@ -158,11 +161,14 @@ const isPaymentMethodValid = computed(() => {
 
 // 是否可以提交
 const canSubmit = computed(() => {
-  return isAmountValid.value && isPaymentMethodValid.value
+  return isAmountValid.value && isPaymentMethodValid.value && !isDailyLimited.value
 })
 
 // 提交按钮文案
 const submitButtonText = computed(() => {
+  if (isDailyLimited.value) {
+    return t('recharge.dailyLimitReached')
+  }
   if (!isPaymentMethodValid.value) {
     return t('recharge.selectPaymentMethodFirst')
   }
@@ -219,7 +225,13 @@ const handleSubmit = async () => {
     console.error('Failed to create order:', error)
     if (isRateLimitError(error)) {
       errorMessage.value = error.message
-      startRateLimitCountdown(error.retryAfter)
+      if (error.isDaily) {
+        // 日级限流：禁用按钮直到页面刷新
+        isDailyLimited.value = true
+      } else if (error.retryAfter) {
+        // 分钟级限流：启动倒计时
+        startRateLimitCountdown(error.retryAfter)
+      }
     } else {
       errorMessage.value = t('recharge.orderCreateFailed')
     }

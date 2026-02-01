@@ -1,6 +1,6 @@
 # Story 6.2: 用户日级限流
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -10,30 +10,31 @@ Status: ready-for-dev
 
 ## Acceptance Criteria
 
-- [ ] AC1: 创建订单接口检查用户当日订单数
-- [ ] AC2: 超过限制返回 429 状态码和提示信息
-- [ ] AC3: 日级计数器每日零点重置
-- [ ] AC4: 限流配置可调整
+- [x] AC1: 创建订单接口检查用户当日订单数
+- [x] AC2: 超过限制返回 429 状态码和提示信息
+- [x] AC3: 日级计数器每日零点重置
+- [x] AC4: 限流配置可调整
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: 后端 - 扩展限流配置 (AC: 4)
-  - [ ] 1.1 在配置中添加日级限流参数
-  - [ ] 1.2 设置合理的默认值（20个/天）
+- [x] Task 1: 后端 - 扩展限流配置 (AC: 4)
+  - [x] 1.1 在配置中添加日级限流参数
+  - [x] 1.2 设置合理的默认值（20个/天）
 
-- [ ] Task 2: 后端 - 日级限流实现 (AC: 1, 3)
-  - [ ] 2.1 在 RateLimitService 添加日级限流方法
-  - [ ] 2.2 使用 Redis INCR + EXPIREAT 实现
-  - [ ] 2.3 设置过期时间为次日凌晨
+- [x] Task 2: 后端 - 日级限流实现 (AC: 1, 3)
+  - [x] 2.1 在 RechargeRateLimitService 添加日级限流方法
+  - [x] 2.2 使用 Redis Lua 脚本 INCR + EXPIREAT 实现
+  - [x] 2.3 设置过期时间为次日凌晨
 
-- [ ] Task 3: 后端 - 应用日级限流 (AC: 1, 2)
-  - [ ] 3.1 在创建订单 Handler 中调用日级限流检查
-  - [ ] 3.2 与分钟级限流配合使用（两个都通过才允许）
-  - [ ] 3.3 返回明确的限流提示
+- [x] Task 3: 后端 - 应用日级限流 (AC: 1, 2)
+  - [x] 3.1 在创建订单 Handler 中使用 CheckRechargeRateLimits 组合限流检查
+  - [x] 3.2 与分钟级限流配合使用（两个都通过才允许）
+  - [x] 3.3 返回明确的限流提示和 limit_type
 
-- [ ] Task 4: 前端 - 日级限流错误处理 (AC: 2)
-  - [ ] 4.1 识别日级限流错误
-  - [ ] 4.2 显示友好的提示（明天再试）
+- [x] Task 4: 前端 - 日级限流错误处理 (AC: 2)
+  - [x] 4.1 扩展 RateLimitExceededError 支持日级限流
+  - [x] 4.2 显示友好的提示（今日充值次数已达上限）
+  - [x] 4.3 日级限流时禁用提交按钮
 
 - [ ] Task 5: 单元测试 (AC: 1-4)
   - [ ] 5.1 测试正常日级限流
@@ -529,16 +530,31 @@ func TestCombinedRateLimits(t *testing.T) {
 
 ### Agent Model Used
 
-(待开发时填写)
+Claude Opus 4.5
 
 ### Debug Log References
 
-(待开发时填写)
+无
 
 ### Completion Notes List
 
-(待开发时填写)
+- 在 `RechargeRateLimitConfig` 中添加 `DailyLimit` 字段，默认值 20
+- 添加 `DailyRateLimitResult` 和 `CombinedRateLimitResult` 结构体
+- 添加 `dailyLimitScript` Lua 脚本实现日级限流（INCR + EXPIREAT 到次日凌晨）
+- 添加 `CheckRechargeDailyLimit` 方法检查日级限流
+- 添加 `CheckRechargeRateLimits` 方法组合检查分钟级和日级限流
+- 更新 Handler `CreateOrder` 使用组合限流检查，返回 limit_type 区分限流类型
+- 响应头包含 X-RateLimit-Minute-Remaining 和 X-RateLimit-Daily-Remaining
+- 前端扩展 `RateLimitExceededError` 支持 limitType 和 resetTime
+- 前端添加 `isDailyLimited` 状态，日级限流时禁用按钮
+- 添加 i18n 翻译 `dailyLimitReached`
 
 ### File List
 
-(待开发时填写)
+- `backend/internal/config/config.go` - 添加 DailyLimit 字段和默认值
+- `backend/internal/service/recharge_rate_limit_service.go` - 添加日级限流方法
+- `backend/internal/handler/recharge/handler.go` - 更新使用组合限流检查
+- `frontend/src/api/recharge.ts` - 扩展 RateLimitExceededError
+- `frontend/src/views/user/RechargeView.vue` - 处理日级限流错误
+- `frontend/src/i18n/locales/zh.ts` - 添加 dailyLimitReached
+- `frontend/src/i18n/locales/en.ts` - 添加 dailyLimitReached
