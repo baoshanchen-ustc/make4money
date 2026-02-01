@@ -82,7 +82,7 @@ func (s *WeChatPayService) initClient() error {
 	certDownloader, err := downloader.NewCertificateDownloaderWithClient(
 		ctx,
 		client,
-		s.cfg.WeChatPay.MchID,
+		s.cfg.WeChatPay.APIv3Key,
 	)
 	if err != nil {
 		return fmt.Errorf("create certificate downloader failed: %w", err)
