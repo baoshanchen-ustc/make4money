@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionorder"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -343,6 +344,14 @@ func init() {
 	groupDescModelRoutingEnabled := groupFields[17].Descriptor()
 	// group.DefaultModelRoutingEnabled holds the default value on creation for the model_routing_enabled field.
 	group.DefaultModelRoutingEnabled = groupDescModelRoutingEnabled.Default.(bool)
+	// groupDescIsPurchasable is the schema descriptor for is_purchasable field.
+	groupDescIsPurchasable := groupFields[18].Descriptor()
+	// group.DefaultIsPurchasable holds the default value on creation for the is_purchasable field.
+	group.DefaultIsPurchasable = groupDescIsPurchasable.Default.(bool)
+	// groupDescDisplayOrder is the schema descriptor for display_order field.
+	groupDescDisplayOrder := groupFields[20].Descriptor()
+	// group.DefaultDisplayOrder holds the default value on creation for the display_order field.
+	group.DefaultDisplayOrder = groupDescDisplayOrder.Default.(int)
 	paymentcallbackMixin := schema.PaymentCallback{}.Mixin()
 	paymentcallbackMixinFields0 := paymentcallbackMixin[0].Fields()
 	_ = paymentcallbackMixinFields0
@@ -726,6 +735,95 @@ func init() {
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	subscriptionorderMixin := schema.SubscriptionOrder{}.Mixin()
+	subscriptionorderMixinFields0 := subscriptionorderMixin[0].Fields()
+	_ = subscriptionorderMixinFields0
+	subscriptionorderFields := schema.SubscriptionOrder{}.Fields()
+	_ = subscriptionorderFields
+	// subscriptionorderDescCreatedAt is the schema descriptor for created_at field.
+	subscriptionorderDescCreatedAt := subscriptionorderMixinFields0[0].Descriptor()
+	// subscriptionorder.DefaultCreatedAt holds the default value on creation for the created_at field.
+	subscriptionorder.DefaultCreatedAt = subscriptionorderDescCreatedAt.Default.(func() time.Time)
+	// subscriptionorderDescUpdatedAt is the schema descriptor for updated_at field.
+	subscriptionorderDescUpdatedAt := subscriptionorderMixinFields0[1].Descriptor()
+	// subscriptionorder.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	subscriptionorder.DefaultUpdatedAt = subscriptionorderDescUpdatedAt.Default.(func() time.Time)
+	// subscriptionorder.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	subscriptionorder.UpdateDefaultUpdatedAt = subscriptionorderDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// subscriptionorderDescOrderNo is the schema descriptor for order_no field.
+	subscriptionorderDescOrderNo := subscriptionorderFields[0].Descriptor()
+	// subscriptionorder.OrderNoValidator is a validator for the "order_no" field. It is called by the builders before save.
+	subscriptionorder.OrderNoValidator = func() func(string) error {
+		validators := subscriptionorderDescOrderNo.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(order_no string) error {
+			for _, fn := range fns {
+				if err := fn(order_no); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// subscriptionorderDescUserID is the schema descriptor for user_id field.
+	subscriptionorderDescUserID := subscriptionorderFields[1].Descriptor()
+	// subscriptionorder.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	subscriptionorder.UserIDValidator = subscriptionorderDescUserID.Validators[0].(func(int64) error)
+	// subscriptionorderDescGroupID is the schema descriptor for group_id field.
+	subscriptionorderDescGroupID := subscriptionorderFields[2].Descriptor()
+	// subscriptionorder.GroupIDValidator is a validator for the "group_id" field. It is called by the builders before save.
+	subscriptionorder.GroupIDValidator = subscriptionorderDescGroupID.Validators[0].(func(int64) error)
+	// subscriptionorderDescAmount is the schema descriptor for amount field.
+	subscriptionorderDescAmount := subscriptionorderFields[3].Descriptor()
+	// subscriptionorder.AmountValidator is a validator for the "amount" field. It is called by the builders before save.
+	subscriptionorder.AmountValidator = subscriptionorderDescAmount.Validators[0].(func(float64) error)
+	// subscriptionorderDescValidityDays is the schema descriptor for validity_days field.
+	subscriptionorderDescValidityDays := subscriptionorderFields[4].Descriptor()
+	// subscriptionorder.DefaultValidityDays holds the default value on creation for the validity_days field.
+	subscriptionorder.DefaultValidityDays = subscriptionorderDescValidityDays.Default.(int)
+	// subscriptionorder.ValidityDaysValidator is a validator for the "validity_days" field. It is called by the builders before save.
+	subscriptionorder.ValidityDaysValidator = subscriptionorderDescValidityDays.Validators[0].(func(int) error)
+	// subscriptionorderDescPaymentMethod is the schema descriptor for payment_method field.
+	subscriptionorderDescPaymentMethod := subscriptionorderFields[5].Descriptor()
+	// subscriptionorder.PaymentMethodValidator is a validator for the "payment_method" field. It is called by the builders before save.
+	subscriptionorder.PaymentMethodValidator = func() func(string) error {
+		validators := subscriptionorderDescPaymentMethod.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(payment_method string) error {
+			for _, fn := range fns {
+				if err := fn(payment_method); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// subscriptionorderDescPaymentChannel is the schema descriptor for payment_channel field.
+	subscriptionorderDescPaymentChannel := subscriptionorderFields[6].Descriptor()
+	// subscriptionorder.DefaultPaymentChannel holds the default value on creation for the payment_channel field.
+	subscriptionorder.DefaultPaymentChannel = subscriptionorderDescPaymentChannel.Default.(string)
+	// subscriptionorder.PaymentChannelValidator is a validator for the "payment_channel" field. It is called by the builders before save.
+	subscriptionorder.PaymentChannelValidator = subscriptionorderDescPaymentChannel.Validators[0].(func(string) error)
+	// subscriptionorderDescStatus is the schema descriptor for status field.
+	subscriptionorderDescStatus := subscriptionorderFields[7].Descriptor()
+	// subscriptionorder.DefaultStatus holds the default value on creation for the status field.
+	subscriptionorder.DefaultStatus = subscriptionorderDescStatus.Default.(string)
+	// subscriptionorder.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	subscriptionorder.StatusValidator = subscriptionorderDescStatus.Validators[0].(func(string) error)
+	// subscriptionorderDescWechatTransactionID is the schema descriptor for wechat_transaction_id field.
+	subscriptionorderDescWechatTransactionID := subscriptionorderFields[8].Descriptor()
+	// subscriptionorder.WechatTransactionIDValidator is a validator for the "wechat_transaction_id" field. It is called by the builders before save.
+	subscriptionorder.WechatTransactionIDValidator = subscriptionorderDescWechatTransactionID.Validators[0].(func(string) error)
+	// subscriptionorderDescPrepayID is the schema descriptor for prepay_id field.
+	subscriptionorderDescPrepayID := subscriptionorderFields[10].Descriptor()
+	// subscriptionorder.PrepayIDValidator is a validator for the "prepay_id" field. It is called by the builders before save.
+	subscriptionorder.PrepayIDValidator = subscriptionorderDescPrepayID.Validators[0].(func(string) error)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

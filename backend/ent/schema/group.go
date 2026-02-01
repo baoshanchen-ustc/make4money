@@ -106,6 +106,24 @@ func (Group) Fields() []ent.Field {
 		field.Bool("model_routing_enabled").
 			Default(false).
 			Comment("是否启用模型路由配置"),
+
+		// 可购买配置字段 (added by migration 050)
+		field.Bool("is_purchasable").
+			Default(false).
+			Comment("是否可在线购买"),
+		field.Float("price_cny").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			Comment("套餐价格（人民币）"),
+		field.Int("display_order").
+			Default(0).
+			Comment("显示排序（小的在前）"),
+		field.String("purchasable_description").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Comment("套餐描述（展示给用户）"),
 	}
 }
 
@@ -115,6 +133,7 @@ func (Group) Edges() []ent.Edge {
 		edge.To("redeem_codes", RedeemCode.Type),
 		edge.To("subscriptions", UserSubscription.Type),
 		edge.To("usage_logs", UsageLog.Type),
+		edge.To("subscription_orders", SubscriptionOrder.Type),
 		edge.From("accounts", Account.Type).
 			Ref("groups").
 			Through("account_groups", AccountGroup.Type),
@@ -134,5 +153,6 @@ func (Group) Indexes() []ent.Index {
 		index.Fields("subscription_type"),
 		index.Fields("is_exclusive"),
 		index.Fields("deleted_at"),
+		index.Fields("is_purchasable"),
 	}
 }

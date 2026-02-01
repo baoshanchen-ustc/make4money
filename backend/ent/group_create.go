@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionorder"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
@@ -306,6 +307,62 @@ func (_c *GroupCreate) SetNillableModelRoutingEnabled(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetIsPurchasable sets the "is_purchasable" field.
+func (_c *GroupCreate) SetIsPurchasable(v bool) *GroupCreate {
+	_c.mutation.SetIsPurchasable(v)
+	return _c
+}
+
+// SetNillableIsPurchasable sets the "is_purchasable" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableIsPurchasable(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetIsPurchasable(*v)
+	}
+	return _c
+}
+
+// SetPriceCny sets the "price_cny" field.
+func (_c *GroupCreate) SetPriceCny(v float64) *GroupCreate {
+	_c.mutation.SetPriceCny(v)
+	return _c
+}
+
+// SetNillablePriceCny sets the "price_cny" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePriceCny(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetPriceCny(*v)
+	}
+	return _c
+}
+
+// SetDisplayOrder sets the "display_order" field.
+func (_c *GroupCreate) SetDisplayOrder(v int) *GroupCreate {
+	_c.mutation.SetDisplayOrder(v)
+	return _c
+}
+
+// SetNillableDisplayOrder sets the "display_order" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDisplayOrder(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetDisplayOrder(*v)
+	}
+	return _c
+}
+
+// SetPurchasableDescription sets the "purchasable_description" field.
+func (_c *GroupCreate) SetPurchasableDescription(v string) *GroupCreate {
+	_c.mutation.SetPurchasableDescription(v)
+	return _c
+}
+
+// SetNillablePurchasableDescription sets the "purchasable_description" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePurchasableDescription(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetPurchasableDescription(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -364,6 +421,21 @@ func (_c *GroupCreate) AddUsageLogs(v ...*UsageLog) *GroupCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddUsageLogIDs(ids...)
+}
+
+// AddSubscriptionOrderIDs adds the "subscription_orders" edge to the SubscriptionOrder entity by IDs.
+func (_c *GroupCreate) AddSubscriptionOrderIDs(ids ...int64) *GroupCreate {
+	_c.mutation.AddSubscriptionOrderIDs(ids...)
+	return _c
+}
+
+// AddSubscriptionOrders adds the "subscription_orders" edges to the SubscriptionOrder entity.
+func (_c *GroupCreate) AddSubscriptionOrders(v ...*SubscriptionOrder) *GroupCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddSubscriptionOrderIDs(ids...)
 }
 
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
@@ -479,6 +551,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultModelRoutingEnabled
 		_c.mutation.SetModelRoutingEnabled(v)
 	}
+	if _, ok := _c.mutation.IsPurchasable(); !ok {
+		v := group.DefaultIsPurchasable
+		_c.mutation.SetIsPurchasable(v)
+	}
+	if _, ok := _c.mutation.DisplayOrder(); !ok {
+		v := group.DefaultDisplayOrder
+		_c.mutation.SetDisplayOrder(v)
+	}
 	return nil
 }
 
@@ -536,6 +616,12 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		return &ValidationError{Name: "model_routing_enabled", err: errors.New(`ent: missing required field "Group.model_routing_enabled"`)}
+	}
+	if _, ok := _c.mutation.IsPurchasable(); !ok {
+		return &ValidationError{Name: "is_purchasable", err: errors.New(`ent: missing required field "Group.is_purchasable"`)}
+	}
+	if _, ok := _c.mutation.DisplayOrder(); !ok {
+		return &ValidationError{Name: "display_order", err: errors.New(`ent: missing required field "Group.display_order"`)}
 	}
 	return nil
 }
@@ -648,6 +734,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
 		_node.ModelRoutingEnabled = value
 	}
+	if value, ok := _c.mutation.IsPurchasable(); ok {
+		_spec.SetField(group.FieldIsPurchasable, field.TypeBool, value)
+		_node.IsPurchasable = value
+	}
+	if value, ok := _c.mutation.PriceCny(); ok {
+		_spec.SetField(group.FieldPriceCny, field.TypeFloat64, value)
+		_node.PriceCny = &value
+	}
+	if value, ok := _c.mutation.DisplayOrder(); ok {
+		_spec.SetField(group.FieldDisplayOrder, field.TypeInt, value)
+		_node.DisplayOrder = value
+	}
+	if value, ok := _c.mutation.PurchasableDescription(); ok {
+		_spec.SetField(group.FieldPurchasableDescription, field.TypeString, value)
+		_node.PurchasableDescription = &value
+	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -705,6 +807,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.SubscriptionOrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.SubscriptionOrdersTable,
+			Columns: []string{group.SubscriptionOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subscriptionorder.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1155,6 +1273,78 @@ func (u *GroupUpsert) SetModelRoutingEnabled(v bool) *GroupUpsert {
 // UpdateModelRoutingEnabled sets the "model_routing_enabled" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateModelRoutingEnabled() *GroupUpsert {
 	u.SetExcluded(group.FieldModelRoutingEnabled)
+	return u
+}
+
+// SetIsPurchasable sets the "is_purchasable" field.
+func (u *GroupUpsert) SetIsPurchasable(v bool) *GroupUpsert {
+	u.Set(group.FieldIsPurchasable, v)
+	return u
+}
+
+// UpdateIsPurchasable sets the "is_purchasable" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateIsPurchasable() *GroupUpsert {
+	u.SetExcluded(group.FieldIsPurchasable)
+	return u
+}
+
+// SetPriceCny sets the "price_cny" field.
+func (u *GroupUpsert) SetPriceCny(v float64) *GroupUpsert {
+	u.Set(group.FieldPriceCny, v)
+	return u
+}
+
+// UpdatePriceCny sets the "price_cny" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePriceCny() *GroupUpsert {
+	u.SetExcluded(group.FieldPriceCny)
+	return u
+}
+
+// AddPriceCny adds v to the "price_cny" field.
+func (u *GroupUpsert) AddPriceCny(v float64) *GroupUpsert {
+	u.Add(group.FieldPriceCny, v)
+	return u
+}
+
+// ClearPriceCny clears the value of the "price_cny" field.
+func (u *GroupUpsert) ClearPriceCny() *GroupUpsert {
+	u.SetNull(group.FieldPriceCny)
+	return u
+}
+
+// SetDisplayOrder sets the "display_order" field.
+func (u *GroupUpsert) SetDisplayOrder(v int) *GroupUpsert {
+	u.Set(group.FieldDisplayOrder, v)
+	return u
+}
+
+// UpdateDisplayOrder sets the "display_order" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDisplayOrder() *GroupUpsert {
+	u.SetExcluded(group.FieldDisplayOrder)
+	return u
+}
+
+// AddDisplayOrder adds v to the "display_order" field.
+func (u *GroupUpsert) AddDisplayOrder(v int) *GroupUpsert {
+	u.Add(group.FieldDisplayOrder, v)
+	return u
+}
+
+// SetPurchasableDescription sets the "purchasable_description" field.
+func (u *GroupUpsert) SetPurchasableDescription(v string) *GroupUpsert {
+	u.Set(group.FieldPurchasableDescription, v)
+	return u
+}
+
+// UpdatePurchasableDescription sets the "purchasable_description" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePurchasableDescription() *GroupUpsert {
+	u.SetExcluded(group.FieldPurchasableDescription)
+	return u
+}
+
+// ClearPurchasableDescription clears the value of the "purchasable_description" field.
+func (u *GroupUpsert) ClearPurchasableDescription() *GroupUpsert {
+	u.SetNull(group.FieldPurchasableDescription)
 	return u
 }
 
@@ -1613,6 +1803,90 @@ func (u *GroupUpsertOne) SetModelRoutingEnabled(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateModelRoutingEnabled() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelRoutingEnabled()
+	})
+}
+
+// SetIsPurchasable sets the "is_purchasable" field.
+func (u *GroupUpsertOne) SetIsPurchasable(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetIsPurchasable(v)
+	})
+}
+
+// UpdateIsPurchasable sets the "is_purchasable" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateIsPurchasable() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateIsPurchasable()
+	})
+}
+
+// SetPriceCny sets the "price_cny" field.
+func (u *GroupUpsertOne) SetPriceCny(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPriceCny(v)
+	})
+}
+
+// AddPriceCny adds v to the "price_cny" field.
+func (u *GroupUpsertOne) AddPriceCny(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPriceCny(v)
+	})
+}
+
+// UpdatePriceCny sets the "price_cny" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePriceCny() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePriceCny()
+	})
+}
+
+// ClearPriceCny clears the value of the "price_cny" field.
+func (u *GroupUpsertOne) ClearPriceCny() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPriceCny()
+	})
+}
+
+// SetDisplayOrder sets the "display_order" field.
+func (u *GroupUpsertOne) SetDisplayOrder(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayOrder(v)
+	})
+}
+
+// AddDisplayOrder adds v to the "display_order" field.
+func (u *GroupUpsertOne) AddDisplayOrder(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDisplayOrder(v)
+	})
+}
+
+// UpdateDisplayOrder sets the "display_order" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDisplayOrder() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayOrder()
+	})
+}
+
+// SetPurchasableDescription sets the "purchasable_description" field.
+func (u *GroupUpsertOne) SetPurchasableDescription(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPurchasableDescription(v)
+	})
+}
+
+// UpdatePurchasableDescription sets the "purchasable_description" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePurchasableDescription() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePurchasableDescription()
+	})
+}
+
+// ClearPurchasableDescription clears the value of the "purchasable_description" field.
+func (u *GroupUpsertOne) ClearPurchasableDescription() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPurchasableDescription()
 	})
 }
 
@@ -2237,6 +2511,90 @@ func (u *GroupUpsertBulk) SetModelRoutingEnabled(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateModelRoutingEnabled() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelRoutingEnabled()
+	})
+}
+
+// SetIsPurchasable sets the "is_purchasable" field.
+func (u *GroupUpsertBulk) SetIsPurchasable(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetIsPurchasable(v)
+	})
+}
+
+// UpdateIsPurchasable sets the "is_purchasable" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateIsPurchasable() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateIsPurchasable()
+	})
+}
+
+// SetPriceCny sets the "price_cny" field.
+func (u *GroupUpsertBulk) SetPriceCny(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPriceCny(v)
+	})
+}
+
+// AddPriceCny adds v to the "price_cny" field.
+func (u *GroupUpsertBulk) AddPriceCny(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPriceCny(v)
+	})
+}
+
+// UpdatePriceCny sets the "price_cny" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePriceCny() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePriceCny()
+	})
+}
+
+// ClearPriceCny clears the value of the "price_cny" field.
+func (u *GroupUpsertBulk) ClearPriceCny() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPriceCny()
+	})
+}
+
+// SetDisplayOrder sets the "display_order" field.
+func (u *GroupUpsertBulk) SetDisplayOrder(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayOrder(v)
+	})
+}
+
+// AddDisplayOrder adds v to the "display_order" field.
+func (u *GroupUpsertBulk) AddDisplayOrder(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDisplayOrder(v)
+	})
+}
+
+// UpdateDisplayOrder sets the "display_order" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDisplayOrder() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayOrder()
+	})
+}
+
+// SetPurchasableDescription sets the "purchasable_description" field.
+func (u *GroupUpsertBulk) SetPurchasableDescription(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPurchasableDescription(v)
+	})
+}
+
+// UpdatePurchasableDescription sets the "purchasable_description" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePurchasableDescription() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePurchasableDescription()
+	})
+}
+
+// ClearPurchasableDescription clears the value of the "purchasable_description" field.
+func (u *GroupUpsertBulk) ClearPurchasableDescription() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPurchasableDescription()
 	})
 }
 

@@ -57,6 +57,14 @@ const (
 	FieldModelRouting = "model_routing"
 	// FieldModelRoutingEnabled holds the string denoting the model_routing_enabled field in the database.
 	FieldModelRoutingEnabled = "model_routing_enabled"
+	// FieldIsPurchasable holds the string denoting the is_purchasable field in the database.
+	FieldIsPurchasable = "is_purchasable"
+	// FieldPriceCny holds the string denoting the price_cny field in the database.
+	FieldPriceCny = "price_cny"
+	// FieldDisplayOrder holds the string denoting the display_order field in the database.
+	FieldDisplayOrder = "display_order"
+	// FieldPurchasableDescription holds the string denoting the purchasable_description field in the database.
+	FieldPurchasableDescription = "purchasable_description"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -65,6 +73,8 @@ const (
 	EdgeSubscriptions = "subscriptions"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
+	// EdgeSubscriptionOrders holds the string denoting the subscription_orders edge name in mutations.
+	EdgeSubscriptionOrders = "subscription_orders"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
 	EdgeAccounts = "accounts"
 	// EdgeAllowedUsers holds the string denoting the allowed_users edge name in mutations.
@@ -103,6 +113,13 @@ const (
 	UsageLogsInverseTable = "usage_logs"
 	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
 	UsageLogsColumn = "group_id"
+	// SubscriptionOrdersTable is the table that holds the subscription_orders relation/edge.
+	SubscriptionOrdersTable = "subscription_orders"
+	// SubscriptionOrdersInverseTable is the table name for the SubscriptionOrder entity.
+	// It exists in this package in order to avoid circular dependency with the "subscriptionorder" package.
+	SubscriptionOrdersInverseTable = "subscription_orders"
+	// SubscriptionOrdersColumn is the table column denoting the subscription_orders relation/edge.
+	SubscriptionOrdersColumn = "group_id"
 	// AccountsTable is the table that holds the accounts relation/edge. The primary key declared below.
 	AccountsTable = "account_groups"
 	// AccountsInverseTable is the table name for the Account entity.
@@ -153,6 +170,10 @@ var Columns = []string{
 	FieldFallbackGroupID,
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
+	FieldIsPurchasable,
+	FieldPriceCny,
+	FieldDisplayOrder,
+	FieldPurchasableDescription,
 }
 
 var (
@@ -212,6 +233,10 @@ var (
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
 	DefaultModelRoutingEnabled bool
+	// DefaultIsPurchasable holds the default value on creation for the "is_purchasable" field.
+	DefaultIsPurchasable bool
+	// DefaultDisplayOrder holds the default value on creation for the "display_order" field.
+	DefaultDisplayOrder int
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -322,6 +347,26 @@ func ByModelRoutingEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelRoutingEnabled, opts...).ToFunc()
 }
 
+// ByIsPurchasable orders the results by the is_purchasable field.
+func ByIsPurchasable(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsPurchasable, opts...).ToFunc()
+}
+
+// ByPriceCny orders the results by the price_cny field.
+func ByPriceCny(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPriceCny, opts...).ToFunc()
+}
+
+// ByDisplayOrder orders the results by the display_order field.
+func ByDisplayOrder(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisplayOrder, opts...).ToFunc()
+}
+
+// ByPurchasableDescription orders the results by the purchasable_description field.
+func ByPurchasableDescription(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPurchasableDescription, opts...).ToFunc()
+}
+
 // ByAPIKeysCount orders the results by api_keys count.
 func ByAPIKeysCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -375,6 +420,20 @@ func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
 func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newUsageLogsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// BySubscriptionOrdersCount orders the results by subscription_orders count.
+func BySubscriptionOrdersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSubscriptionOrdersStep(), opts...)
+	}
+}
+
+// BySubscriptionOrders orders the results by subscription_orders terms.
+func BySubscriptionOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSubscriptionOrdersStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -459,6 +518,13 @@ func newUsageLogsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UsageLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
+	)
+}
+func newSubscriptionOrdersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SubscriptionOrdersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SubscriptionOrdersTable, SubscriptionOrdersColumn),
 	)
 }
 func newAccountsStep() *sqlgraph.Step {

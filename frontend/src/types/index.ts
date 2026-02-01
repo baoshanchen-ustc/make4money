@@ -285,6 +285,11 @@ export interface Group {
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
+  // 可购买配置
+  is_purchasable: boolean
+  price_cny: number | null
+  display_order: number
+  purchasable_description: string | null
   created_at: string
   updated_at: string
 }

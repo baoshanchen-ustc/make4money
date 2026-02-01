@@ -18,6 +18,7 @@ export { userGroupsAPI } from './groups'
 export { totpAPI } from './totp'
 export { usageReportAPI } from './usageReport'
 export { rechargeAPI, isRateLimitError, isCaptchaRequiredError, RateLimitExceededError, CaptchaRequiredError, type RechargeConfig, type OrderListItem } from './recharge'
+export { subscriptionPlanAPI, type SubscriptionPlan, type SubscriptionOrder } from './subscriptionPlan'
 
 // Admin APIs
 export { adminAPI } from './admin'

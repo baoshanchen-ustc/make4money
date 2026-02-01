@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/handler/recharge"
+	"github.com/Wei-Shaw/sub2api/internal/handler/subscription"
 	"github.com/Wei-Shaw/sub2api/internal/handler/webhook"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
@@ -188,8 +189,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	rechargeRateLimitService := service.NewRechargeRateLimitService(configConfig, redisClient)
 	rechargeRechargeHandler := recharge.NewRechargeHandler(weChatPayService, rechargeOrderService, rechargeRateLimitService, turnstileService, settingService)
 	paymentCallbackRepository := repository.NewPaymentCallbackRepository(client)
-	weChatPayWebhookHandler := webhook.NewWeChatPayWebhookHandler(paymentCallbackRepository, weChatPayService, paymentCallbackService, rechargeOrderService)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, userUsageReportHandler, rechargeRechargeHandler, weChatPayWebhookHandler)
+	subscriptionOrderRepository := repository.NewSubscriptionOrderRepository(client)
+	subscriptionOrderService := service.NewSubscriptionOrderService(configConfig, subscriptionOrderRepository, groupRepository, weChatPayService, subscriptionService, client, redisClient, emailService, settingService, userRepository)
+	weChatPayWebhookHandler := webhook.NewWeChatPayWebhookHandler(paymentCallbackRepository, weChatPayService, paymentCallbackService, rechargeOrderService, subscriptionOrderService)
+	subscriptionPlanHandler := subscription.NewSubscriptionPlanHandler(groupRepository, weChatPayService, subscriptionOrderService, rechargeRateLimitService, turnstileService, settingService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, userUsageReportHandler, rechargeRechargeHandler, weChatPayWebhookHandler, subscriptionPlanHandler)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)

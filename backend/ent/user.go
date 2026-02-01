@@ -81,11 +81,13 @@ type UserEdges struct {
 	RechargeOrders []*RechargeOrder `json:"recharge_orders,omitempty"`
 	// BalanceLogs holds the value of the balance_logs edge.
 	BalanceLogs []*BalanceLog `json:"balance_logs,omitempty"`
+	// SubscriptionOrders holds the value of the subscription_orders edge.
+	SubscriptionOrders []*SubscriptionOrder `json:"subscription_orders,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [11]bool
+	loadedTypes [12]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -178,10 +180,19 @@ func (e UserEdges) BalanceLogsOrErr() ([]*BalanceLog, error) {
 	return nil, &NotLoadedError{edge: "balance_logs"}
 }
 
+// SubscriptionOrdersOrErr returns the SubscriptionOrders value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) SubscriptionOrdersOrErr() ([]*SubscriptionOrder, error) {
+	if e.loadedTypes[10] {
+		return e.SubscriptionOrders, nil
+	}
+	return nil, &NotLoadedError{edge: "subscription_orders"}
+}
+
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[10] {
+	if e.loadedTypes[11] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
@@ -395,6 +406,11 @@ func (_m *User) QueryRechargeOrders() *RechargeOrderQuery {
 // QueryBalanceLogs queries the "balance_logs" edge of the User entity.
 func (_m *User) QueryBalanceLogs() *BalanceLogQuery {
 	return NewUserClient(_m.config).QueryBalanceLogs(_m)
+}
+
+// QuerySubscriptionOrders queries the "subscription_orders" edge of the User entity.
+func (_m *User) QuerySubscriptionOrders() *SubscriptionOrderQuery {
+	return NewUserClient(_m.config).QuerySubscriptionOrders(_m)
 }
 
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the User entity.

@@ -102,6 +102,7 @@ func (User) Edges() []ent.Edge {
 		edge.To("promo_code_usages", PromoCodeUsage.Type),
 		edge.To("recharge_orders", RechargeOrder.Type),
 		edge.To("balance_logs", BalanceLog.Type),
+		edge.To("subscription_orders", SubscriptionOrder.Type),
 	}
 }
 

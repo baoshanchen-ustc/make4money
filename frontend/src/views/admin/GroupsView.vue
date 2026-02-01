@@ -356,6 +356,60 @@
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
             </div>
+
+            <!-- 可购买配置 -->
+            <div class="mt-4 border-t border-primary-100 pt-4 dark:border-primary-900">
+              <div class="mb-3 flex items-center gap-2">
+                <input
+                  id="create-is-purchasable"
+                  v-model="createForm.is_purchasable"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <label for="create-is-purchasable" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.groups.purchasable.enable') }}
+                </label>
+              </div>
+              <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.groups.purchasable.enableHint') }}
+              </p>
+
+              <div v-if="createForm.is_purchasable" class="space-y-3">
+                <div>
+                  <label class="input-label">{{ t('admin.groups.purchasable.price') }}</label>
+                  <input
+                    v-model.number="createForm.price_cny"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    :placeholder="t('admin.groups.purchasable.pricePlaceholder')"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.groups.purchasable.displayOrder') }}</label>
+                  <input
+                    v-model.number="createForm.display_order"
+                    type="number"
+                    min="0"
+                    class="input"
+                    placeholder="0"
+                  />
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ t('admin.groups.purchasable.displayOrderHint') }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.groups.purchasable.description') }}</label>
+                  <textarea
+                    v-model="createForm.purchasable_description"
+                    class="input"
+                    rows="2"
+                    :placeholder="t('admin.groups.purchasable.descriptionPlaceholder')"
+                  ></textarea>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -799,6 +853,60 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+            </div>
+
+            <!-- 可购买配置 -->
+            <div class="mt-4 border-t border-primary-100 pt-4 dark:border-primary-900">
+              <div class="mb-3 flex items-center gap-2">
+                <input
+                  id="edit-is-purchasable"
+                  v-model="editForm.is_purchasable"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <label for="edit-is-purchasable" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.groups.purchasable.enable') }}
+                </label>
+              </div>
+              <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.groups.purchasable.enableHint') }}
+              </p>
+
+              <div v-if="editForm.is_purchasable" class="space-y-3">
+                <div>
+                  <label class="input-label">{{ t('admin.groups.purchasable.price') }}</label>
+                  <input
+                    v-model.number="editForm.price_cny"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    :placeholder="t('admin.groups.purchasable.pricePlaceholder')"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.groups.purchasable.displayOrder') }}</label>
+                  <input
+                    v-model.number="editForm.display_order"
+                    type="number"
+                    min="0"
+                    class="input"
+                    placeholder="0"
+                  />
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ t('admin.groups.purchasable.displayOrderHint') }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.groups.purchasable.description') }}</label>
+                  <textarea
+                    v-model="editForm.purchasable_description"
+                    class="input"
+                    rows="2"
+                    :placeholder="t('admin.groups.purchasable.descriptionPlaceholder')"
+                  ></textarea>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1244,7 +1352,12 @@ const createForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   // 模型路由开关
-  model_routing_enabled: false
+  model_routing_enabled: false,
+  // 可购买配置（仅订阅类型分组可用）
+  is_purchasable: false,
+  price_cny: null as number | null,
+  display_order: 0,
+  purchasable_description: ''
 })
 
 // 简单账号类型（用于模型路由选择）
@@ -1415,7 +1528,12 @@ const editForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   // 模型路由开关
-  model_routing_enabled: false
+  model_routing_enabled: false,
+  // 可购买配置（仅订阅类型分组可用）
+  is_purchasable: false,
+  price_cny: null as number | null,
+  display_order: 0,
+  purchasable_description: ''
 })
 
 // 根据分组类型返回不同的删除确认消息
@@ -1497,6 +1615,10 @@ const closeCreateModal = () => {
   createForm.image_price_4k = null
   createForm.claude_code_only = false
   createForm.fallback_group_id = null
+  createForm.is_purchasable = false
+  createForm.price_cny = null
+  createForm.display_order = 0
+  createForm.purchasable_description = ''
   createModelRoutingRules.value = []
 }
 
@@ -1547,6 +1669,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.claude_code_only = group.claude_code_only || false
   editForm.fallback_group_id = group.fallback_group_id
   editForm.model_routing_enabled = group.model_routing_enabled || false
+  editForm.is_purchasable = group.is_purchasable || false
+  editForm.price_cny = group.price_cny
+  editForm.display_order = group.display_order || 0
+  editForm.purchasable_description = group.purchasable_description || ''
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(group.model_routing)
   showEditModal.value = true

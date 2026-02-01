@@ -27,6 +27,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/rechargeorder"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionorder"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -67,6 +68,8 @@ type Client struct {
 	RedeemCode *RedeemCodeClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// SubscriptionOrder is the client for interacting with the SubscriptionOrder builders.
+	SubscriptionOrder *SubscriptionOrderClient
 	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
 	UsageCleanupTask *UsageCleanupTaskClient
 	// UsageLog is the client for interacting with the UsageLog builders.
@@ -104,6 +107,7 @@ func (c *Client) init() {
 	c.RechargeOrder = NewRechargeOrderClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.Setting = NewSettingClient(c.config)
+	c.SubscriptionOrder = NewSubscriptionOrderClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -215,6 +219,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RechargeOrder:           NewRechargeOrderClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		SubscriptionOrder:       NewSubscriptionOrderClient(cfg),
 		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
@@ -253,6 +258,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RechargeOrder:           NewRechargeOrderClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		SubscriptionOrder:       NewSubscriptionOrderClient(cfg),
 		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
@@ -291,8 +297,9 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.BalanceLog, c.Group, c.PaymentCallback,
 		c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RechargeOrder, c.RedeemCode,
-		c.Setting, c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.Setting, c.SubscriptionOrder, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -304,8 +311,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.BalanceLog, c.Group, c.PaymentCallback,
 		c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RechargeOrder, c.RedeemCode,
-		c.Setting, c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.Setting, c.SubscriptionOrder, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -338,6 +346,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RedeemCode.mutate(ctx, m)
 	case *SettingMutation:
 		return c.Setting.mutate(ctx, m)
+	case *SubscriptionOrderMutation:
+		return c.SubscriptionOrder.mutate(ctx, m)
 	case *UsageCleanupTaskMutation:
 		return c.UsageCleanupTask.mutate(ctx, m)
 	case *UsageLogMutation:
@@ -1169,6 +1179,22 @@ func (c *GroupClient) QueryUsageLogs(_m *Group) *UsageLogQuery {
 			sqlgraph.From(group.Table, group.FieldID, id),
 			sqlgraph.To(usagelog.Table, usagelog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, group.UsageLogsTable, group.UsageLogsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySubscriptionOrders queries the subscription_orders edge of a Group.
+func (c *GroupClient) QuerySubscriptionOrders(_m *Group) *SubscriptionOrderQuery {
+	query := (&SubscriptionOrderClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(subscriptionorder.Table, subscriptionorder.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, group.SubscriptionOrdersTable, group.SubscriptionOrdersColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -2312,6 +2338,171 @@ func (c *SettingClient) mutate(ctx context.Context, m *SettingMutation) (Value, 
 	}
 }
 
+// SubscriptionOrderClient is a client for the SubscriptionOrder schema.
+type SubscriptionOrderClient struct {
+	config
+}
+
+// NewSubscriptionOrderClient returns a client for the SubscriptionOrder from the given config.
+func NewSubscriptionOrderClient(c config) *SubscriptionOrderClient {
+	return &SubscriptionOrderClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `subscriptionorder.Hooks(f(g(h())))`.
+func (c *SubscriptionOrderClient) Use(hooks ...Hook) {
+	c.hooks.SubscriptionOrder = append(c.hooks.SubscriptionOrder, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `subscriptionorder.Intercept(f(g(h())))`.
+func (c *SubscriptionOrderClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SubscriptionOrder = append(c.inters.SubscriptionOrder, interceptors...)
+}
+
+// Create returns a builder for creating a SubscriptionOrder entity.
+func (c *SubscriptionOrderClient) Create() *SubscriptionOrderCreate {
+	mutation := newSubscriptionOrderMutation(c.config, OpCreate)
+	return &SubscriptionOrderCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SubscriptionOrder entities.
+func (c *SubscriptionOrderClient) CreateBulk(builders ...*SubscriptionOrderCreate) *SubscriptionOrderCreateBulk {
+	return &SubscriptionOrderCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SubscriptionOrderClient) MapCreateBulk(slice any, setFunc func(*SubscriptionOrderCreate, int)) *SubscriptionOrderCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SubscriptionOrderCreateBulk{err: fmt.Errorf("calling to SubscriptionOrderClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SubscriptionOrderCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SubscriptionOrderCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SubscriptionOrder.
+func (c *SubscriptionOrderClient) Update() *SubscriptionOrderUpdate {
+	mutation := newSubscriptionOrderMutation(c.config, OpUpdate)
+	return &SubscriptionOrderUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SubscriptionOrderClient) UpdateOne(_m *SubscriptionOrder) *SubscriptionOrderUpdateOne {
+	mutation := newSubscriptionOrderMutation(c.config, OpUpdateOne, withSubscriptionOrder(_m))
+	return &SubscriptionOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SubscriptionOrderClient) UpdateOneID(id int64) *SubscriptionOrderUpdateOne {
+	mutation := newSubscriptionOrderMutation(c.config, OpUpdateOne, withSubscriptionOrderID(id))
+	return &SubscriptionOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SubscriptionOrder.
+func (c *SubscriptionOrderClient) Delete() *SubscriptionOrderDelete {
+	mutation := newSubscriptionOrderMutation(c.config, OpDelete)
+	return &SubscriptionOrderDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SubscriptionOrderClient) DeleteOne(_m *SubscriptionOrder) *SubscriptionOrderDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SubscriptionOrderClient) DeleteOneID(id int64) *SubscriptionOrderDeleteOne {
+	builder := c.Delete().Where(subscriptionorder.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SubscriptionOrderDeleteOne{builder}
+}
+
+// Query returns a query builder for SubscriptionOrder.
+func (c *SubscriptionOrderClient) Query() *SubscriptionOrderQuery {
+	return &SubscriptionOrderQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSubscriptionOrder},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SubscriptionOrder entity by its id.
+func (c *SubscriptionOrderClient) Get(ctx context.Context, id int64) (*SubscriptionOrder, error) {
+	return c.Query().Where(subscriptionorder.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SubscriptionOrderClient) GetX(ctx context.Context, id int64) *SubscriptionOrder {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a SubscriptionOrder.
+func (c *SubscriptionOrderClient) QueryUser(_m *SubscriptionOrder) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(subscriptionorder.Table, subscriptionorder.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, subscriptionorder.UserTable, subscriptionorder.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroup queries the group edge of a SubscriptionOrder.
+func (c *SubscriptionOrderClient) QueryGroup(_m *SubscriptionOrder) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(subscriptionorder.Table, subscriptionorder.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, subscriptionorder.GroupTable, subscriptionorder.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SubscriptionOrderClient) Hooks() []Hook {
+	return c.hooks.SubscriptionOrder
+}
+
+// Interceptors returns the client interceptors.
+func (c *SubscriptionOrderClient) Interceptors() []Interceptor {
+	return c.inters.SubscriptionOrder
+}
+
+func (c *SubscriptionOrderClient) mutate(ctx context.Context, m *SubscriptionOrderMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SubscriptionOrderCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SubscriptionOrderUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SubscriptionOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SubscriptionOrderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SubscriptionOrder mutation op: %q", m.Op())
+	}
+}
+
 // UsageCleanupTaskClient is a client for the UsageCleanupTask schema.
 type UsageCleanupTaskClient struct {
 	config
@@ -2919,6 +3110,22 @@ func (c *UserClient) QueryBalanceLogs(_m *User) *BalanceLogQuery {
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(balancelog.Table, balancelog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.BalanceLogsTable, user.BalanceLogsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySubscriptionOrders queries the subscription_orders edge of a User.
+func (c *UserClient) QuerySubscriptionOrders(_m *User) *SubscriptionOrderQuery {
+	query := (&SubscriptionOrderClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(subscriptionorder.Table, subscriptionorder.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.SubscriptionOrdersTable, user.SubscriptionOrdersColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -3604,15 +3811,15 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, BalanceLog, Group, PaymentCallback, PromoCode,
-		PromoCodeUsage, Proxy, RechargeOrder, RedeemCode, Setting, UsageCleanupTask,
-		UsageLog, User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Hook
+		PromoCodeUsage, Proxy, RechargeOrder, RedeemCode, Setting, SubscriptionOrder,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, BalanceLog, Group, PaymentCallback, PromoCode,
-		PromoCodeUsage, Proxy, RechargeOrder, RedeemCode, Setting, UsageCleanupTask,
-		UsageLog, User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Interceptor
+		PromoCodeUsage, Proxy, RechargeOrder, RedeemCode, Setting, SubscriptionOrder,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

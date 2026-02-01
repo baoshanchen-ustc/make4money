@@ -1169,6 +1169,16 @@ export default {
         validityHint: '分配给用户时订阅的有效天数',
         noLimit: '无限制'
       },
+      purchasable: {
+        enable: '允许用户自助购买',
+        enableHint: '启用后，用户可在"我的订阅"页面直接购买此套餐',
+        price: '价格（人民币）',
+        pricePlaceholder: '请输入价格，如 399',
+        displayOrder: '显示顺序',
+        displayOrderHint: '数值越小越靠前显示',
+        description: '购买页描述',
+        descriptionPlaceholder: '展示给用户的套餐说明（可选）'
+      },
       imagePricing: {
         title: '图片生成计费',
         description: '配置 gemini-3-pro-image 模型的图片生成价格，留空则使用默认价格'
@@ -3616,6 +3626,24 @@ export default {
     resetIn: '{time} 后重置',
     windowNotActive: '等待首次使用',
     usageOf: '已用 {used} / {limit}'
+  },
+
+  // Subscription Plan Purchase
+  subscriptionPlan: {
+    title: '开通套餐',
+    popular: '推荐',
+    purchase: '立即开通',
+    subscription: '订阅套餐',
+    orderInfo: '订单信息',
+    paymentSuccess: '支付成功，订阅已生效',
+    createOrderFailed: '创建订单失败',
+    dailyQuota: '每日 ${amount} 额度',
+    weeklyQuota: '每周 ${amount} 额度',
+    monthlyQuota: '每月 ${amount} 额度',
+    unlimitedQuota: '无限额度',
+    noPlans: '暂无开放购买的套餐',
+    noPlansDesc: '如需开通包月套餐或定制更大额度的订阅方案，请联系客服',
+    contactUs: '联系方式'
   },
 
   // Onboarding Tour

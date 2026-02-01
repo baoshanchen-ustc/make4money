@@ -19,10 +19,11 @@ const maxRequestBodySize = 1 << 20
 
 // WeChatPayWebhookHandler 微信支付回调处理器
 type WeChatPayWebhookHandler struct {
-	callbackRepo           *repository.PaymentCallbackRepository
-	wechatPayService       *service.WeChatPayService
-	paymentCallbackService *service.PaymentCallbackService
-	rechargeOrderService   *service.RechargeOrderService
+	callbackRepo             *repository.PaymentCallbackRepository
+	wechatPayService         *service.WeChatPayService
+	paymentCallbackService   *service.PaymentCallbackService
+	rechargeOrderService     *service.RechargeOrderService
+	subscriptionOrderService *service.SubscriptionOrderService
 }
 
 // NewWeChatPayWebhookHandler 创建微信支付回调处理器
@@ -31,12 +32,14 @@ func NewWeChatPayWebhookHandler(
 	wechatPayService *service.WeChatPayService,
 	paymentCallbackService *service.PaymentCallbackService,
 	rechargeOrderService *service.RechargeOrderService,
+	subscriptionOrderService *service.SubscriptionOrderService,
 ) *WeChatPayWebhookHandler {
 	return &WeChatPayWebhookHandler{
-		callbackRepo:           callbackRepo,
-		wechatPayService:       wechatPayService,
-		paymentCallbackService: paymentCallbackService,
-		rechargeOrderService:   rechargeOrderService,
+		callbackRepo:             callbackRepo,
+		wechatPayService:         wechatPayService,
+		paymentCallbackService:   paymentCallbackService,
+		rechargeOrderService:     rechargeOrderService,
+		subscriptionOrderService: subscriptionOrderService,
 	}
 }
 
@@ -125,28 +128,61 @@ func (h *WeChatPayWebhookHandler) HandlePaymentNotify(c *gin.Context) {
 		log.Printf("[WeChatPayWebhook] Signature verified: callback_id=%d, order_no=%s, transaction_id=%s",
 			getCallbackID(callback), safeStringPtr(record.OrderNo), safeStringPtr(record.TransactionID))
 
-		// 处理支付业务逻辑（订单状态更新、余额到账）
-		paymentResult := h.paymentCallbackService.ProcessPaymentCallback(ctx, notifyResult.Transaction)
+		// 根据订单号前缀分发到不同的处理服务
+		orderNo := safeStringPtr(record.OrderNo)
+		var processSuccess bool
+		var processAlreadyPaid bool
+		var processErrorMessage string
 
-		if paymentResult.Success {
-			if paymentResult.AlreadyPaid {
+		if service.IsSubscriptionOrder(orderNo) {
+			// 订阅订单：调用 SubscriptionOrderService 处理
+			if h.subscriptionOrderService != nil {
+				transactionID := ""
+				if notifyResult.Transaction.TransactionId != nil {
+					transactionID = *notifyResult.Transaction.TransactionId
+				}
+				amountInFen := int64(0)
+				if notifyResult.Transaction.Amount != nil && notifyResult.Transaction.Amount.Total != nil {
+					amountInFen = *notifyResult.Transaction.Amount.Total
+				}
+				subResult := h.subscriptionOrderService.ProcessPaymentSuccess(ctx, orderNo, transactionID, amountInFen)
+				processSuccess = subResult.Success
+				processAlreadyPaid = subResult.AlreadyPaid
+				processErrorMessage = subResult.ErrorMessage
+				log.Printf("[WeChatPayWebhook] Subscription order processed: order_no=%s, success=%v, already_paid=%v",
+					orderNo, processSuccess, processAlreadyPaid)
+			} else {
+				processSuccess = false
+				processErrorMessage = "订阅订单服务未配置"
+				log.Printf("[WeChatPayWebhook] Subscription order service not configured")
+			}
+		} else {
+			// 充值订单：调用 PaymentCallbackService 处理
+			paymentResult := h.paymentCallbackService.ProcessPaymentCallback(ctx, notifyResult.Transaction)
+			processSuccess = paymentResult.Success
+			processAlreadyPaid = paymentResult.AlreadyPaid
+			processErrorMessage = paymentResult.ErrorMessage
+		}
+
+		if processSuccess {
+			if processAlreadyPaid {
 				record.ProcessStatus = "already_paid"
 				record.ProcessMessage = "订单已处理（幂等）"
 			} else {
 				record.ProcessStatus = "completed"
-				record.ProcessMessage = "支付处理完成，余额已到账"
+				record.ProcessMessage = "支付处理完成"
 			}
 			record.ResponseCode = "SUCCESS"
 			record.ResponseMessage = ""
 			log.Printf("[WeChatPayWebhook] Payment processed: callback_id=%d, order_no=%s, already_paid=%v",
-				getCallbackID(callback), safeStringPtr(record.OrderNo), paymentResult.AlreadyPaid)
+				getCallbackID(callback), safeStringPtr(record.OrderNo), processAlreadyPaid)
 		} else {
 			record.ProcessStatus = "business_error"
-			record.ProcessMessage = "业务处理失败: " + paymentResult.ErrorMessage
+			record.ProcessMessage = "业务处理失败: " + processErrorMessage
 			record.ResponseCode = "FAIL"
 			record.ResponseMessage = "业务处理失败"
 			log.Printf("[WeChatPayWebhook] Payment processing failed: callback_id=%d, order_no=%s, error=%s",
-				getCallbackID(callback), safeStringPtr(record.OrderNo), paymentResult.ErrorMessage)
+				getCallbackID(callback), safeStringPtr(record.OrderNo), processErrorMessage)
 		}
 	} else {
 		// 验签失败或解密失败

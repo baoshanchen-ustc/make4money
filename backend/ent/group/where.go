@@ -155,6 +155,26 @@ func ModelRoutingEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldModelRoutingEnabled, v))
 }
 
+// IsPurchasable applies equality check predicate on the "is_purchasable" field. It's identical to IsPurchasableEQ.
+func IsPurchasable(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldIsPurchasable, v))
+}
+
+// PriceCny applies equality check predicate on the "price_cny" field. It's identical to PriceCnyEQ.
+func PriceCny(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPriceCny, v))
+}
+
+// DisplayOrder applies equality check predicate on the "display_order" field. It's identical to DisplayOrderEQ.
+func DisplayOrder(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayOrder, v))
+}
+
+// PurchasableDescription applies equality check predicate on the "purchasable_description" field. It's identical to PurchasableDescriptionEQ.
+func PurchasableDescription(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPurchasableDescription, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1090,6 +1110,181 @@ func ModelRoutingEnabledNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldModelRoutingEnabled, v))
 }
 
+// IsPurchasableEQ applies the EQ predicate on the "is_purchasable" field.
+func IsPurchasableEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldIsPurchasable, v))
+}
+
+// IsPurchasableNEQ applies the NEQ predicate on the "is_purchasable" field.
+func IsPurchasableNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldIsPurchasable, v))
+}
+
+// PriceCnyEQ applies the EQ predicate on the "price_cny" field.
+func PriceCnyEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPriceCny, v))
+}
+
+// PriceCnyNEQ applies the NEQ predicate on the "price_cny" field.
+func PriceCnyNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPriceCny, v))
+}
+
+// PriceCnyIn applies the In predicate on the "price_cny" field.
+func PriceCnyIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldPriceCny, vs...))
+}
+
+// PriceCnyNotIn applies the NotIn predicate on the "price_cny" field.
+func PriceCnyNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldPriceCny, vs...))
+}
+
+// PriceCnyGT applies the GT predicate on the "price_cny" field.
+func PriceCnyGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldPriceCny, v))
+}
+
+// PriceCnyGTE applies the GTE predicate on the "price_cny" field.
+func PriceCnyGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldPriceCny, v))
+}
+
+// PriceCnyLT applies the LT predicate on the "price_cny" field.
+func PriceCnyLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldPriceCny, v))
+}
+
+// PriceCnyLTE applies the LTE predicate on the "price_cny" field.
+func PriceCnyLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldPriceCny, v))
+}
+
+// PriceCnyIsNil applies the IsNil predicate on the "price_cny" field.
+func PriceCnyIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldPriceCny))
+}
+
+// PriceCnyNotNil applies the NotNil predicate on the "price_cny" field.
+func PriceCnyNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldPriceCny))
+}
+
+// DisplayOrderEQ applies the EQ predicate on the "display_order" field.
+func DisplayOrderEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayOrder, v))
+}
+
+// DisplayOrderNEQ applies the NEQ predicate on the "display_order" field.
+func DisplayOrderNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDisplayOrder, v))
+}
+
+// DisplayOrderIn applies the In predicate on the "display_order" field.
+func DisplayOrderIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDisplayOrder, vs...))
+}
+
+// DisplayOrderNotIn applies the NotIn predicate on the "display_order" field.
+func DisplayOrderNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDisplayOrder, vs...))
+}
+
+// DisplayOrderGT applies the GT predicate on the "display_order" field.
+func DisplayOrderGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDisplayOrder, v))
+}
+
+// DisplayOrderGTE applies the GTE predicate on the "display_order" field.
+func DisplayOrderGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDisplayOrder, v))
+}
+
+// DisplayOrderLT applies the LT predicate on the "display_order" field.
+func DisplayOrderLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDisplayOrder, v))
+}
+
+// DisplayOrderLTE applies the LTE predicate on the "display_order" field.
+func DisplayOrderLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDisplayOrder, v))
+}
+
+// PurchasableDescriptionEQ applies the EQ predicate on the "purchasable_description" field.
+func PurchasableDescriptionEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionNEQ applies the NEQ predicate on the "purchasable_description" field.
+func PurchasableDescriptionNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionIn applies the In predicate on the "purchasable_description" field.
+func PurchasableDescriptionIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldPurchasableDescription, vs...))
+}
+
+// PurchasableDescriptionNotIn applies the NotIn predicate on the "purchasable_description" field.
+func PurchasableDescriptionNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldPurchasableDescription, vs...))
+}
+
+// PurchasableDescriptionGT applies the GT predicate on the "purchasable_description" field.
+func PurchasableDescriptionGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionGTE applies the GTE predicate on the "purchasable_description" field.
+func PurchasableDescriptionGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionLT applies the LT predicate on the "purchasable_description" field.
+func PurchasableDescriptionLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionLTE applies the LTE predicate on the "purchasable_description" field.
+func PurchasableDescriptionLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionContains applies the Contains predicate on the "purchasable_description" field.
+func PurchasableDescriptionContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionHasPrefix applies the HasPrefix predicate on the "purchasable_description" field.
+func PurchasableDescriptionHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionHasSuffix applies the HasSuffix predicate on the "purchasable_description" field.
+func PurchasableDescriptionHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionIsNil applies the IsNil predicate on the "purchasable_description" field.
+func PurchasableDescriptionIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldPurchasableDescription))
+}
+
+// PurchasableDescriptionNotNil applies the NotNil predicate on the "purchasable_description" field.
+func PurchasableDescriptionNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldPurchasableDescription))
+}
+
+// PurchasableDescriptionEqualFold applies the EqualFold predicate on the "purchasable_description" field.
+func PurchasableDescriptionEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldPurchasableDescription, v))
+}
+
+// PurchasableDescriptionContainsFold applies the ContainsFold predicate on the "purchasable_description" field.
+func PurchasableDescriptionContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldPurchasableDescription, v))
+}
+
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
 func HasAPIKeys() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
@@ -1174,6 +1369,29 @@ func HasUsageLogs() predicate.Group {
 func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
 		step := newUsageLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasSubscriptionOrders applies the HasEdge predicate on the "subscription_orders" edge.
+func HasSubscriptionOrders() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SubscriptionOrdersTable, SubscriptionOrdersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSubscriptionOrdersWith applies the HasEdge predicate on the "subscription_orders" edge with a given conditions (other predicates).
+func HasSubscriptionOrdersWith(preds ...predicate.SubscriptionOrder) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newSubscriptionOrdersStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

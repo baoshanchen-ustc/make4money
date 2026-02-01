@@ -284,6 +284,10 @@ var (
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "model_routing", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "model_routing_enabled", Type: field.TypeBool, Default: false},
+		{Name: "is_purchasable", Type: field.TypeBool, Default: false},
+		{Name: "price_cny", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "display_order", Type: field.TypeInt, Default: 0},
+		{Name: "purchasable_description", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
@@ -315,6 +319,11 @@ var (
 				Name:    "group_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{GroupsColumns[3]},
+			},
+			{
+				Name:    "group_is_purchasable",
+				Unique:  false,
+				Columns: []*schema.Column{GroupsColumns[22]},
 			},
 		},
 	}
@@ -601,6 +610,72 @@ var (
 		Name:       "settings",
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]},
+	}
+	// SubscriptionOrdersColumns holds the columns for the "subscription_orders" table.
+	SubscriptionOrdersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "order_no", Type: field.TypeString, Unique: true, Size: 50},
+		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
+		{Name: "validity_days", Type: field.TypeInt, Default: 30},
+		{Name: "payment_method", Type: field.TypeString, Size: 20},
+		{Name: "payment_channel", Type: field.TypeString, Size: 20, Default: "native"},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "pending"},
+		{Name: "wechat_transaction_id", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "qrcode_url", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "prepay_id", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "expire_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "paid_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// SubscriptionOrdersTable holds the schema information for the "subscription_orders" table.
+	SubscriptionOrdersTable = &schema.Table{
+		Name:       "subscription_orders",
+		Columns:    SubscriptionOrdersColumns,
+		PrimaryKey: []*schema.Column{SubscriptionOrdersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "subscription_orders_groups_subscription_orders",
+				Columns:    []*schema.Column{SubscriptionOrdersColumns[14]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "subscription_orders_users_subscription_orders",
+				Columns:    []*schema.Column{SubscriptionOrdersColumns[15]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "subscriptionorder_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionOrdersColumns[15]},
+			},
+			{
+				Name:    "subscriptionorder_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionOrdersColumns[14]},
+			},
+			{
+				Name:    "subscriptionorder_status",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionOrdersColumns[8]},
+			},
+			{
+				Name:    "subscriptionorder_expire_at",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionOrdersColumns[12]},
+			},
+			{
+				Name:    "subscriptionorder_user_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionOrdersColumns[15], SubscriptionOrdersColumns[8]},
+			},
+		},
 	}
 	// UsageCleanupTasksColumns holds the columns for the "usage_cleanup_tasks" table.
 	UsageCleanupTasksColumns = []*schema.Column{
@@ -1021,6 +1096,7 @@ var (
 		RechargeOrdersTable,
 		RedeemCodesTable,
 		SettingsTable,
+		SubscriptionOrdersTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
 		UsersTable,
@@ -1078,6 +1154,11 @@ func init() {
 	}
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+	}
+	SubscriptionOrdersTable.ForeignKeys[0].RefTable = GroupsTable
+	SubscriptionOrdersTable.ForeignKeys[1].RefTable = UsersTable
+	SubscriptionOrdersTable.Annotation = &entsql.Annotation{
+		Table: "subscription_orders",
 	}
 	UsageCleanupTasksTable.Annotation = &entsql.Annotation{
 		Table: "usage_cleanup_tasks",

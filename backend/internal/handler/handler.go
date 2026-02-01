@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/handler/recharge"
+	"github.com/Wei-Shaw/sub2api/internal/handler/subscription"
 	"github.com/Wei-Shaw/sub2api/internal/handler/webhook"
 )
 
@@ -30,20 +31,21 @@ type AdminHandlers struct {
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	Auth          *AuthHandler
-	User          *UserHandler
-	APIKey        *APIKeyHandler
-	Usage         *UsageHandler
-	Redeem        *RedeemHandler
-	Subscription  *SubscriptionHandler
-	Admin         *AdminHandlers
-	Gateway       *GatewayHandler
-	OpenAIGateway *OpenAIGatewayHandler
-	Setting       *SettingHandler
-	Totp          *TotpHandler
+	Auth              *AuthHandler
+	User              *UserHandler
+	APIKey            *APIKeyHandler
+	Usage             *UsageHandler
+	Redeem            *RedeemHandler
+	Subscription      *SubscriptionHandler
+	Admin             *AdminHandlers
+	Gateway           *GatewayHandler
+	OpenAIGateway     *OpenAIGatewayHandler
+	Setting           *SettingHandler
+	Totp              *TotpHandler
 	UsageReport       *UserUsageReportHandler
 	Recharge          *recharge.RechargeHandler
 	WeChatPayWebhook  *webhook.WeChatPayWebhookHandler
+	SubscriptionPlan  *subscription.SubscriptionPlanHandler
 }
 
 // BuildInfo contains build-time information

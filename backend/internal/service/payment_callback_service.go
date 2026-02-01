@@ -621,7 +621,7 @@ func (s *PaymentCallbackService) buildRechargeSuccessEmailBody(result *ProcessPa
             </div>
         </div>
         <div class="footer">
-            <p>感谢您的支持！如有问题，请联系客服。</p>
+            <p>感谢您的支持！如有问题，请联系客服:20133213。</p>
             <p style="margin-top: 8px;"><span class="site-name">%s</span></p>
         </div>
     </div>

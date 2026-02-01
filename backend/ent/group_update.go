@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionorder"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
@@ -421,6 +422,88 @@ func (_u *GroupUpdate) SetNillableModelRoutingEnabled(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetIsPurchasable sets the "is_purchasable" field.
+func (_u *GroupUpdate) SetIsPurchasable(v bool) *GroupUpdate {
+	_u.mutation.SetIsPurchasable(v)
+	return _u
+}
+
+// SetNillableIsPurchasable sets the "is_purchasable" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableIsPurchasable(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetIsPurchasable(*v)
+	}
+	return _u
+}
+
+// SetPriceCny sets the "price_cny" field.
+func (_u *GroupUpdate) SetPriceCny(v float64) *GroupUpdate {
+	_u.mutation.ResetPriceCny()
+	_u.mutation.SetPriceCny(v)
+	return _u
+}
+
+// SetNillablePriceCny sets the "price_cny" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePriceCny(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetPriceCny(*v)
+	}
+	return _u
+}
+
+// AddPriceCny adds value to the "price_cny" field.
+func (_u *GroupUpdate) AddPriceCny(v float64) *GroupUpdate {
+	_u.mutation.AddPriceCny(v)
+	return _u
+}
+
+// ClearPriceCny clears the value of the "price_cny" field.
+func (_u *GroupUpdate) ClearPriceCny() *GroupUpdate {
+	_u.mutation.ClearPriceCny()
+	return _u
+}
+
+// SetDisplayOrder sets the "display_order" field.
+func (_u *GroupUpdate) SetDisplayOrder(v int) *GroupUpdate {
+	_u.mutation.ResetDisplayOrder()
+	_u.mutation.SetDisplayOrder(v)
+	return _u
+}
+
+// SetNillableDisplayOrder sets the "display_order" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDisplayOrder(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetDisplayOrder(*v)
+	}
+	return _u
+}
+
+// AddDisplayOrder adds value to the "display_order" field.
+func (_u *GroupUpdate) AddDisplayOrder(v int) *GroupUpdate {
+	_u.mutation.AddDisplayOrder(v)
+	return _u
+}
+
+// SetPurchasableDescription sets the "purchasable_description" field.
+func (_u *GroupUpdate) SetPurchasableDescription(v string) *GroupUpdate {
+	_u.mutation.SetPurchasableDescription(v)
+	return _u
+}
+
+// SetNillablePurchasableDescription sets the "purchasable_description" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePurchasableDescription(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetPurchasableDescription(*v)
+	}
+	return _u
+}
+
+// ClearPurchasableDescription clears the value of the "purchasable_description" field.
+func (_u *GroupUpdate) ClearPurchasableDescription() *GroupUpdate {
+	_u.mutation.ClearPurchasableDescription()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -479,6 +562,21 @@ func (_u *GroupUpdate) AddUsageLogs(v ...*UsageLog) *GroupUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddUsageLogIDs(ids...)
+}
+
+// AddSubscriptionOrderIDs adds the "subscription_orders" edge to the SubscriptionOrder entity by IDs.
+func (_u *GroupUpdate) AddSubscriptionOrderIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.AddSubscriptionOrderIDs(ids...)
+	return _u
+}
+
+// AddSubscriptionOrders adds the "subscription_orders" edges to the SubscriptionOrder entity.
+func (_u *GroupUpdate) AddSubscriptionOrders(v ...*SubscriptionOrder) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSubscriptionOrderIDs(ids...)
 }
 
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
@@ -598,6 +696,27 @@ func (_u *GroupUpdate) RemoveUsageLogs(v ...*UsageLog) *GroupUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearSubscriptionOrders clears all "subscription_orders" edges to the SubscriptionOrder entity.
+func (_u *GroupUpdate) ClearSubscriptionOrders() *GroupUpdate {
+	_u.mutation.ClearSubscriptionOrders()
+	return _u
+}
+
+// RemoveSubscriptionOrderIDs removes the "subscription_orders" edge to SubscriptionOrder entities by IDs.
+func (_u *GroupUpdate) RemoveSubscriptionOrderIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.RemoveSubscriptionOrderIDs(ids...)
+	return _u
+}
+
+// RemoveSubscriptionOrders removes "subscription_orders" edges to SubscriptionOrder entities.
+func (_u *GroupUpdate) RemoveSubscriptionOrders(v ...*SubscriptionOrder) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSubscriptionOrderIDs(ids...)
 }
 
 // ClearAccounts clears all "accounts" edges to the Account entity.
@@ -838,6 +957,30 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.IsPurchasable(); ok {
+		_spec.SetField(group.FieldIsPurchasable, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PriceCny(); ok {
+		_spec.SetField(group.FieldPriceCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPriceCny(); ok {
+		_spec.AddField(group.FieldPriceCny, field.TypeFloat64, value)
+	}
+	if _u.mutation.PriceCnyCleared() {
+		_spec.ClearField(group.FieldPriceCny, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.DisplayOrder(); ok {
+		_spec.SetField(group.FieldDisplayOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDisplayOrder(); ok {
+		_spec.AddField(group.FieldDisplayOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.PurchasableDescription(); ok {
+		_spec.SetField(group.FieldPurchasableDescription, field.TypeString, value)
+	}
+	if _u.mutation.PurchasableDescriptionCleared() {
+		_spec.ClearField(group.FieldPurchasableDescription, field.TypeString)
+	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1011,6 +1154,51 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.SubscriptionOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.SubscriptionOrdersTable,
+			Columns: []string{group.SubscriptionOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subscriptionorder.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSubscriptionOrdersIDs(); len(nodes) > 0 && !_u.mutation.SubscriptionOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.SubscriptionOrdersTable,
+			Columns: []string{group.SubscriptionOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subscriptionorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SubscriptionOrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.SubscriptionOrdersTable,
+			Columns: []string{group.SubscriptionOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subscriptionorder.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1539,6 +1727,88 @@ func (_u *GroupUpdateOne) SetNillableModelRoutingEnabled(v *bool) *GroupUpdateOn
 	return _u
 }
 
+// SetIsPurchasable sets the "is_purchasable" field.
+func (_u *GroupUpdateOne) SetIsPurchasable(v bool) *GroupUpdateOne {
+	_u.mutation.SetIsPurchasable(v)
+	return _u
+}
+
+// SetNillableIsPurchasable sets the "is_purchasable" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableIsPurchasable(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetIsPurchasable(*v)
+	}
+	return _u
+}
+
+// SetPriceCny sets the "price_cny" field.
+func (_u *GroupUpdateOne) SetPriceCny(v float64) *GroupUpdateOne {
+	_u.mutation.ResetPriceCny()
+	_u.mutation.SetPriceCny(v)
+	return _u
+}
+
+// SetNillablePriceCny sets the "price_cny" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePriceCny(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPriceCny(*v)
+	}
+	return _u
+}
+
+// AddPriceCny adds value to the "price_cny" field.
+func (_u *GroupUpdateOne) AddPriceCny(v float64) *GroupUpdateOne {
+	_u.mutation.AddPriceCny(v)
+	return _u
+}
+
+// ClearPriceCny clears the value of the "price_cny" field.
+func (_u *GroupUpdateOne) ClearPriceCny() *GroupUpdateOne {
+	_u.mutation.ClearPriceCny()
+	return _u
+}
+
+// SetDisplayOrder sets the "display_order" field.
+func (_u *GroupUpdateOne) SetDisplayOrder(v int) *GroupUpdateOne {
+	_u.mutation.ResetDisplayOrder()
+	_u.mutation.SetDisplayOrder(v)
+	return _u
+}
+
+// SetNillableDisplayOrder sets the "display_order" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDisplayOrder(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDisplayOrder(*v)
+	}
+	return _u
+}
+
+// AddDisplayOrder adds value to the "display_order" field.
+func (_u *GroupUpdateOne) AddDisplayOrder(v int) *GroupUpdateOne {
+	_u.mutation.AddDisplayOrder(v)
+	return _u
+}
+
+// SetPurchasableDescription sets the "purchasable_description" field.
+func (_u *GroupUpdateOne) SetPurchasableDescription(v string) *GroupUpdateOne {
+	_u.mutation.SetPurchasableDescription(v)
+	return _u
+}
+
+// SetNillablePurchasableDescription sets the "purchasable_description" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePurchasableDescription(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPurchasableDescription(*v)
+	}
+	return _u
+}
+
+// ClearPurchasableDescription clears the value of the "purchasable_description" field.
+func (_u *GroupUpdateOne) ClearPurchasableDescription() *GroupUpdateOne {
+	_u.mutation.ClearPurchasableDescription()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1597,6 +1867,21 @@ func (_u *GroupUpdateOne) AddUsageLogs(v ...*UsageLog) *GroupUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddUsageLogIDs(ids...)
+}
+
+// AddSubscriptionOrderIDs adds the "subscription_orders" edge to the SubscriptionOrder entity by IDs.
+func (_u *GroupUpdateOne) AddSubscriptionOrderIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.AddSubscriptionOrderIDs(ids...)
+	return _u
+}
+
+// AddSubscriptionOrders adds the "subscription_orders" edges to the SubscriptionOrder entity.
+func (_u *GroupUpdateOne) AddSubscriptionOrders(v ...*SubscriptionOrder) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSubscriptionOrderIDs(ids...)
 }
 
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
@@ -1716,6 +2001,27 @@ func (_u *GroupUpdateOne) RemoveUsageLogs(v ...*UsageLog) *GroupUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearSubscriptionOrders clears all "subscription_orders" edges to the SubscriptionOrder entity.
+func (_u *GroupUpdateOne) ClearSubscriptionOrders() *GroupUpdateOne {
+	_u.mutation.ClearSubscriptionOrders()
+	return _u
+}
+
+// RemoveSubscriptionOrderIDs removes the "subscription_orders" edge to SubscriptionOrder entities by IDs.
+func (_u *GroupUpdateOne) RemoveSubscriptionOrderIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.RemoveSubscriptionOrderIDs(ids...)
+	return _u
+}
+
+// RemoveSubscriptionOrders removes "subscription_orders" edges to SubscriptionOrder entities.
+func (_u *GroupUpdateOne) RemoveSubscriptionOrders(v ...*SubscriptionOrder) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSubscriptionOrderIDs(ids...)
 }
 
 // ClearAccounts clears all "accounts" edges to the Account entity.
@@ -1986,6 +2292,30 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.IsPurchasable(); ok {
+		_spec.SetField(group.FieldIsPurchasable, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PriceCny(); ok {
+		_spec.SetField(group.FieldPriceCny, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPriceCny(); ok {
+		_spec.AddField(group.FieldPriceCny, field.TypeFloat64, value)
+	}
+	if _u.mutation.PriceCnyCleared() {
+		_spec.ClearField(group.FieldPriceCny, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.DisplayOrder(); ok {
+		_spec.SetField(group.FieldDisplayOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDisplayOrder(); ok {
+		_spec.AddField(group.FieldDisplayOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.PurchasableDescription(); ok {
+		_spec.SetField(group.FieldPurchasableDescription, field.TypeString, value)
+	}
+	if _u.mutation.PurchasableDescriptionCleared() {
+		_spec.ClearField(group.FieldPurchasableDescription, field.TypeString)
+	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -2159,6 +2489,51 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.SubscriptionOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.SubscriptionOrdersTable,
+			Columns: []string{group.SubscriptionOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subscriptionorder.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSubscriptionOrdersIDs(); len(nodes) > 0 && !_u.mutation.SubscriptionOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.SubscriptionOrdersTable,
+			Columns: []string{group.SubscriptionOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subscriptionorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SubscriptionOrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.SubscriptionOrdersTable,
+			Columns: []string{group.SubscriptionOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(subscriptionorder.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

@@ -99,5 +99,16 @@ func RegisterUserRoutes(
 			recharge.POST("/orders/:order_no/cancel", h.Recharge.CancelOrder)
 			recharge.POST("/orders/:order_no/sync", h.Recharge.SyncOrderStatus)
 		}
+
+		// 订阅套餐订单（需认证的接口）
+		subscriptionOrders := authenticated.Group("/subscription-orders")
+		{
+			subscriptionOrders.POST("", h.SubscriptionPlan.CreateOrder)
+			subscriptionOrders.GET("", h.SubscriptionPlan.ListOrders)
+			subscriptionOrders.GET("/:order_no", h.SubscriptionPlan.GetOrder)
+			subscriptionOrders.POST("/:order_no/pay", h.SubscriptionPlan.InitiatePayment)
+			subscriptionOrders.POST("/:order_no/cancel", h.SubscriptionPlan.CancelOrder)
+			subscriptionOrders.POST("/:order_no/sync", h.SubscriptionPlan.SyncOrderStatus)
+		}
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/rechargeorder"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionorder"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -103,6 +104,7 @@ func checkColumn(t, c string) error {
 			rechargeorder.Table:           rechargeorder.ValidColumn,
 			redeemcode.Table:              redeemcode.ValidColumn,
 			setting.Table:                 setting.ValidColumn,
+			subscriptionorder.Table:       subscriptionorder.ValidColumn,
 			usagecleanuptask.Table:        usagecleanuptask.ValidColumn,
 			usagelog.Table:                usagelog.ValidColumn,
 			user.Table:                    user.ValidColumn,

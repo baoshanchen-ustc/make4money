@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/handler/recharge"
+	"github.com/Wei-Shaw/sub2api/internal/handler/subscription"
 	"github.com/Wei-Shaw/sub2api/internal/handler/webhook"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -78,6 +79,7 @@ func ProvideHandlers(
 	usageReportHandler *UserUsageReportHandler,
 	rechargeHandler *recharge.RechargeHandler,
 	wechatPayWebhookHandler *webhook.WeChatPayWebhookHandler,
+	subscriptionPlanHandler *subscription.SubscriptionPlanHandler,
 ) *Handlers {
 	return &Handlers{
 		Auth:             authHandler,
@@ -94,6 +96,7 @@ func ProvideHandlers(
 		UsageReport:      usageReportHandler,
 		Recharge:         rechargeHandler,
 		WeChatPayWebhook: wechatPayWebhookHandler,
+		SubscriptionPlan: subscriptionPlanHandler,
 	}
 }
 
@@ -113,6 +116,7 @@ var ProviderSet = wire.NewSet(
 	ProvideSettingHandler,
 	recharge.NewRechargeHandler,
 	webhook.NewWeChatPayWebhookHandler,
+	subscription.NewSubscriptionPlanHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

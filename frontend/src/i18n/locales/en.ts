@@ -1094,6 +1094,16 @@ export default {
         validityHint: 'Number of days the subscription is valid when assigned to a user',
         noLimit: 'No limit'
       },
+      purchasable: {
+        enable: 'Allow users to purchase',
+        enableHint: 'When enabled, users can buy this plan from the Subscriptions page',
+        price: 'Price (CNY)',
+        pricePlaceholder: 'Enter price, e.g. 399',
+        displayOrder: 'Display Order',
+        displayOrderHint: 'Lower number shows first',
+        description: 'Purchase Page Description',
+        descriptionPlaceholder: 'Description shown to users (optional)'
+      },
       imagePricing: {
         title: 'Image Generation Pricing',
         description: 'Configure pricing for gemini-3-pro-image model. Leave empty to use default prices.'
@@ -3468,6 +3478,24 @@ export default {
     resetIn: 'Resets in {time}',
     windowNotActive: 'Awaiting first use',
     usageOf: '{used} of {limit}'
+  },
+
+  // Subscription Plan Purchase
+  subscriptionPlan: {
+    title: 'Available Plans',
+    popular: 'Popular',
+    purchase: 'Subscribe Now',
+    subscription: 'Subscription Plan',
+    orderInfo: 'Order Information',
+    paymentSuccess: 'Payment successful, subscription activated',
+    createOrderFailed: 'Failed to create order',
+    dailyQuota: '${amount}/day quota',
+    weeklyQuota: '${amount}/week quota',
+    monthlyQuota: '${amount}/month quota',
+    unlimitedQuota: 'Unlimited quota',
+    noPlans: 'No plans available for purchase',
+    noPlansDesc: 'Contact us for monthly plans or custom quota subscriptions',
+    contactUs: 'Contact'
   },
 
   // Onboarding Tour

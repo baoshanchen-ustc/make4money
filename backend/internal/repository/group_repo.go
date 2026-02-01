@@ -50,7 +50,11 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
-		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled)
+		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
+		SetIsPurchasable(groupIn.IsPurchasable).
+		SetNillablePriceCny(groupIn.PriceCNY).
+		SetDisplayOrder(groupIn.DisplayOrder).
+		SetNillablePurchasableDescription(groupIn.PurchasableDescription)
 
 	// 设置模型路由配置
 	if groupIn.ModelRouting != nil {
@@ -108,7 +112,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
-		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled)
+		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
+		SetIsPurchasable(groupIn.IsPurchasable).
+		SetDisplayOrder(groupIn.DisplayOrder)
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置
 	if groupIn.FallbackGroupID != nil {
@@ -122,6 +128,20 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetModelRouting(groupIn.ModelRouting)
 	} else {
 		builder = builder.ClearModelRouting()
+	}
+
+	// 处理 PriceCNY：nil 时清除，否则设置
+	if groupIn.PriceCNY != nil {
+		builder = builder.SetPriceCny(*groupIn.PriceCNY)
+	} else {
+		builder = builder.ClearPriceCny()
+	}
+
+	// 处理 PurchasableDescription：nil 时清除，否则设置
+	if groupIn.PurchasableDescription != nil {
+		builder = builder.SetPurchasableDescription(*groupIn.PurchasableDescription)
+	} else {
+		builder = builder.ClearPurchasableDescription()
 	}
 
 	updated, err := builder.Save(ctx)
@@ -257,6 +277,27 @@ func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform str
 
 func (r *groupRepository) ExistsByName(ctx context.Context, name string) (bool, error) {
 	return r.client.Group.Query().Where(group.NameEQ(name)).Exist(ctx)
+}
+
+func (r *groupRepository) ListPurchasable(ctx context.Context) ([]service.Group, error) {
+	groups, err := r.client.Group.Query().
+		Where(
+			group.IsPurchasableEQ(true),
+			group.StatusEQ(service.StatusActive),
+		).
+		Order(dbent.Asc(group.FieldDisplayOrder), dbent.Asc(group.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	outGroups := make([]service.Group, 0, len(groups))
+	for i := range groups {
+		g := groupEntityToService(groups[i])
+		outGroups = append(outGroups, *g)
+	}
+
+	return outGroups, nil
 }
 
 func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (int64, error) {

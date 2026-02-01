@@ -36,6 +36,12 @@ type Group struct {
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool
 
+	// 可购买配置字段
+	IsPurchasable          bool     // 是否可在线购买
+	PriceCNY               *float64 // 套餐价格（人民币）
+	DisplayOrder           int      // 显示排序（小的在前）
+	PurchasableDescription *string  // 套餐描述（展示给用户）
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
