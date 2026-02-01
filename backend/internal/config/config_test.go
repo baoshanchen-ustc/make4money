@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -837,6 +839,106 @@ func TestValidateConfigErrors(t *testing.T) {
 			mutate:  func(c *Config) { c.Ops.Cleanup.MinuteMetricsRetentionDays = -1 },
 			wantErr: "ops.cleanup.minute_metrics_retention_days",
 		},
+		{
+			name: "wechat_pay app_id required",
+			mutate: func(c *Config) {
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = ""
+			},
+			wantErr: "wechat_pay.app_id is required",
+		},
+		{
+			name: "wechat_pay mch_id required",
+			mutate: func(c *Config) {
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = "wx1234567890"
+				c.WeChatPay.MchID = ""
+			},
+			wantErr: "wechat_pay.mch_id is required",
+		},
+		{
+			name: "wechat_pay api_v3_key required",
+			mutate: func(c *Config) {
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = "wx1234567890"
+				c.WeChatPay.MchID = "1234567890"
+				c.WeChatPay.APIv3Key = ""
+			},
+			wantErr: "wechat_pay.api_v3_key is required",
+		},
+		{
+			name: "wechat_pay api_v3_key length",
+			mutate: func(c *Config) {
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = "wx1234567890"
+				c.WeChatPay.MchID = "1234567890"
+				c.WeChatPay.APIv3Key = "short"
+			},
+			wantErr: "wechat_pay.api_v3_key must be exactly 32 characters",
+		},
+		{
+			name: "wechat_pay cert_serial_no required",
+			mutate: func(c *Config) {
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = "wx1234567890"
+				c.WeChatPay.MchID = "1234567890"
+				c.WeChatPay.APIv3Key = "12345678901234567890123456789012"
+				c.WeChatPay.CertSerialNo = ""
+			},
+			wantErr: "wechat_pay.cert_serial_no is required",
+		},
+		{
+			name: "wechat_pay private_key_path required",
+			mutate: func(c *Config) {
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = "wx1234567890"
+				c.WeChatPay.MchID = "1234567890"
+				c.WeChatPay.APIv3Key = "12345678901234567890123456789012"
+				c.WeChatPay.CertSerialNo = "ABCDEF1234567890"
+				c.WeChatPay.PrivateKeyPath = ""
+			},
+			wantErr: "wechat_pay.private_key_path is required",
+		},
+		{
+			name: "wechat_pay private_key_path not exist",
+			mutate: func(c *Config) {
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = "wx1234567890"
+				c.WeChatPay.MchID = "1234567890"
+				c.WeChatPay.APIv3Key = "12345678901234567890123456789012"
+				c.WeChatPay.CertSerialNo = "ABCDEF1234567890"
+				c.WeChatPay.PrivateKeyPath = "/nonexistent/path/key.pem"
+			},
+			wantErr: "wechat_pay.private_key_path file does not exist",
+		},
+		{
+			name: "wechat_pay notify_url required",
+			mutate: func(c *Config) {
+				tmpFile := createTempFile(t)
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = "wx1234567890"
+				c.WeChatPay.MchID = "1234567890"
+				c.WeChatPay.APIv3Key = "12345678901234567890123456789012"
+				c.WeChatPay.CertSerialNo = "ABCDEF1234567890"
+				c.WeChatPay.PrivateKeyPath = tmpFile
+				c.WeChatPay.NotifyURL = ""
+			},
+			wantErr: "wechat_pay.notify_url is required",
+		},
+		{
+			name: "wechat_pay notify_url invalid",
+			mutate: func(c *Config) {
+				tmpFile := createTempFile(t)
+				c.WeChatPay.Enabled = true
+				c.WeChatPay.AppID = "wx1234567890"
+				c.WeChatPay.MchID = "1234567890"
+				c.WeChatPay.APIv3Key = "12345678901234567890123456789012"
+				c.WeChatPay.CertSerialNo = "ABCDEF1234567890"
+				c.WeChatPay.PrivateKeyPath = tmpFile
+				c.WeChatPay.NotifyURL = "/relative/path"
+			},
+			wantErr: "wechat_pay.notify_url invalid",
+		},
 	}
 
 	for _, tt := range cases {
@@ -848,5 +950,114 @@ func TestValidateConfigErrors(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// createTempFile creates a temporary file for testing and returns its path.
+// The file is automatically cleaned up when the test finishes.
+func createTempFile(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test_key.pem")
+	if err := os.WriteFile(tmpFile, []byte("test"), 0600); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	return tmpFile
+}
+
+func TestLoadDefaultWeChatPayConfig(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.WeChatPay.Enabled {
+		t.Fatalf("WeChatPay.Enabled = true, want false")
+	}
+	if cfg.WeChatPay.AppID != "" {
+		t.Fatalf("WeChatPay.AppID = %q, want empty", cfg.WeChatPay.AppID)
+	}
+	if cfg.WeChatPay.MchID != "" {
+		t.Fatalf("WeChatPay.MchID = %q, want empty", cfg.WeChatPay.MchID)
+	}
+	if cfg.WeChatPay.APIv3Key != "" {
+		t.Fatalf("WeChatPay.APIv3Key = %q, want empty", cfg.WeChatPay.APIv3Key)
+	}
+	if cfg.WeChatPay.CertSerialNo != "" {
+		t.Fatalf("WeChatPay.CertSerialNo = %q, want empty", cfg.WeChatPay.CertSerialNo)
+	}
+	if cfg.WeChatPay.PrivateKeyPath != "" {
+		t.Fatalf("WeChatPay.PrivateKeyPath = %q, want empty", cfg.WeChatPay.PrivateKeyPath)
+	}
+	if cfg.WeChatPay.NotifyURL != "" {
+		t.Fatalf("WeChatPay.NotifyURL = %q, want empty", cfg.WeChatPay.NotifyURL)
+	}
+}
+
+func TestValidateWeChatPayDisabledSkipsValidation(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	cfg.WeChatPay.Enabled = false
+	cfg.WeChatPay.AppID = ""
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() should pass when WeChatPay is disabled, got: %v", err)
+	}
+}
+
+func TestValidateWeChatPayFullValid(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	tmpFile := createTempFile(t)
+	cfg.WeChatPay.Enabled = true
+	cfg.WeChatPay.AppID = "wx1234567890"
+	cfg.WeChatPay.MchID = "1234567890"
+	cfg.WeChatPay.APIv3Key = "12345678901234567890123456789012"
+	cfg.WeChatPay.CertSerialNo = "ABCDEF1234567890"
+	cfg.WeChatPay.PrivateKeyPath = tmpFile
+	cfg.WeChatPay.NotifyURL = "https://example.com/api/v1/webhook/wechat/payment"
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() unexpected error with valid WeChatPay config: %v", err)
+	}
+}
+
+func TestValidateWeChatPayPermissiveKeyPermission(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	// Create temp file with permissive permissions (0644)
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test_key.pem")
+	if err := os.WriteFile(tmpFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	cfg.WeChatPay.Enabled = true
+	cfg.WeChatPay.AppID = "wx1234567890"
+	cfg.WeChatPay.MchID = "1234567890"
+	cfg.WeChatPay.APIv3Key = "12345678901234567890123456789012"
+	cfg.WeChatPay.CertSerialNo = "ABCDEF1234567890"
+	cfg.WeChatPay.PrivateKeyPath = tmpFile
+	cfg.WeChatPay.NotifyURL = "https://example.com/api/v1/webhook/wechat/payment"
+
+	// Should still validate (warning only, not error)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() should pass with permissive permissions (warning only), got: %v", err)
 	}
 }
