@@ -221,6 +221,18 @@ func ProvideOrderExpireScheduler(repo RechargeOrderRepository, wechatPayService 
 	return svc
 }
 
+// ProvideOrderCompensationScheduler creates and starts OrderCompensationScheduler.
+func ProvideOrderCompensationScheduler(
+	cfg *config.Config,
+	orderRepo RechargeOrderRepository,
+	wechatPayService *WeChatPayService,
+	paymentCallbackService *PaymentCallbackService,
+) *OrderCompensationScheduler {
+	svc := NewOrderCompensationScheduler(cfg, orderRepo, wechatPayService, paymentCallbackService)
+	svc.Start()
+	return svc
+}
+
 // ProvideAPIKeyAuthCacheInvalidator 提供 API Key 认证缓存失效能力
 func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthCacheInvalidator {
 	// Start Pub/Sub subscriber for L1 cache invalidation across instances
@@ -298,5 +310,6 @@ var ProviderSet = wire.NewSet(
 	NewRechargeOrderService,
 	NewPaymentCallbackService,
 	ProvideOrderExpireScheduler,
+	ProvideOrderCompensationScheduler,
 	NewRechargeRateLimitService,
 )

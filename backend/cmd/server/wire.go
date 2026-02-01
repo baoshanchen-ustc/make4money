@@ -81,6 +81,7 @@ func provideCleanup(
 	antigravityOAuth *service.AntigravityOAuthService,
 	usageReportScheduler *service.UserUsageReportScheduler,
 	orderExpireScheduler *service.OrderExpireScheduler,
+	orderCompensationScheduler *service.OrderCompensationScheduler,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -91,6 +92,12 @@ func provideCleanup(
 			name string
 			fn   func() error
 		}{
+			{"OrderCompensationScheduler", func() error {
+				if orderCompensationScheduler != nil {
+					orderCompensationScheduler.Stop()
+				}
+				return nil
+			}},
 			{"OrderExpireScheduler", func() error {
 				if orderExpireScheduler != nil {
 					orderExpireScheduler.Stop()

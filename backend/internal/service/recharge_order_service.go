@@ -101,6 +101,13 @@ type RechargeOrderRepository interface {
 	MarkExpiredOrders(ctx context.Context, limit int) ([]string, error)
 	// AppendNotes 追加订单备注
 	AppendNotes(ctx context.Context, orderNo, notes string) error
+	// GetPendingOrdersForCompensation 获取待补偿的订单（用于定时任务）
+	// 返回 status='pending' 且 created_at < thresholdTime 的订单，按创建时间升序
+	GetPendingOrdersForCompensation(ctx context.Context, thresholdTime time.Time, limit int) ([]*RechargeOrder, error)
+	// MarkOrderExpired 将指定订单标记为过期（用于同步到微信 CLOSED 状态）
+	MarkOrderExpired(ctx context.Context, orderNo string) error
+	// MarkOrderFailed 将指定订单标记为失败（用于同步到微信 PAYERROR 状态）
+	MarkOrderFailed(ctx context.Context, orderNo string) error
 }
 
 // RechargeOrderService 充值订单服务

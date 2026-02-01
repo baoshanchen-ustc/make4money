@@ -612,3 +612,49 @@ update:
   # Leave empty for direct connection (recommended for overseas servers)
   # 留空表示直连（适用于海外服务器）
   proxy_url: ""
+
+# =============================================================================
+# WeChat Pay Configuration (Sensitive - config file only)
+# 微信支付配置（敏感信息，仅配置文件存储）
+# =============================================================================
+wechat_pay:
+  # Enable WeChat Pay
+  # 是否启用微信支付
+  enabled: false
+  # WeChat App ID (Official Account / Mini Program)
+  # 微信应用ID（公众号/小程序）
+  app_id: ""
+  # Merchant ID
+  # 商户号
+  mch_id: ""
+  # APIv3 Key (32 characters, set in merchant platform)
+  # APIv3密钥（32字符，在商户平台设置）
+  api_v3_key: ""
+  # Merchant certificate serial number
+  # 商户证书序列号
+  cert_serial_no: ""
+  # Merchant private key file path, e.g.: /path/to/apiclient_key.pem
+  # 商户私钥文件路径，如：/path/to/apiclient_key.pem
+  private_key_path: ""
+  # Payment callback URL, e.g.: https://yourdomain.com/api/v1/webhook/wechat/payment
+  # 支付回调地址，如：https://yourdomain.com/api/v1/webhook/wechat/payment
+  notify_url: ""
+  # Order expire time (minutes)
+  # 订单过期时间（分钟），默认30分钟
+  order_expire_minutes: 30
+  # --- 订单补偿任务配置 ---
+  # 启用订单补偿任务（定时扫描未到账订单）
+  # Enable order compensation job (periodically scan pending orders)
+  compensation_enabled: true
+  # 补偿任务执行间隔（分钟）
+  # Compensation job interval (minutes)
+  compensation_interval_mins: 5
+  # 订单超时阈值（分钟），只处理创建时间超过此值的订单
+  # Order threshold (minutes), only process orders created before this time
+  compensation_threshold_mins: 5
+  # 每批最多处理订单数
+  # Max orders per batch
+  compensation_batch_size: 50
+  # 并发查询数（控制微信API调用并发）
+  # Concurrent query count (control WeChat API call concurrency)
+  compensation_concurrency: 5

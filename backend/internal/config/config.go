@@ -48,6 +48,13 @@ type WeChatPayConfig struct {
 	PrivateKeyPath    string `mapstructure:"private_key_path"`    // 商户私钥文件路径
 	NotifyURL         string `mapstructure:"notify_url"`          // 支付回调地址
 	OrderExpireMinutes int   `mapstructure:"order_expire_minutes"` // 订单过期时间（分钟），默认30分钟
+
+	// 订单补偿任务配置
+	CompensationEnabled       bool `mapstructure:"compensation_enabled"`        // 是否启用补偿任务
+	CompensationIntervalMins  int  `mapstructure:"compensation_interval_mins"`  // 补偿任务执行间隔（分钟），默认5
+	CompensationThresholdMins int  `mapstructure:"compensation_threshold_mins"` // 订单超时阈值（分钟），只处理创建时间超过此值的订单，默认5
+	CompensationBatchSize     int  `mapstructure:"compensation_batch_size"`     // 每批处理数量，默认50
+	CompensationConcurrency   int  `mapstructure:"compensation_concurrency"`    // 并发查询数，默认5
 }
 
 type Config struct {
@@ -932,6 +939,12 @@ func setDefaults() {
 	viper.SetDefault("wechat_pay.private_key_path", "")
 	viper.SetDefault("wechat_pay.notify_url", "")
 	viper.SetDefault("wechat_pay.order_expire_minutes", 30)
+	// 订单补偿任务配置
+	viper.SetDefault("wechat_pay.compensation_enabled", true)
+	viper.SetDefault("wechat_pay.compensation_interval_mins", 5)
+	viper.SetDefault("wechat_pay.compensation_threshold_mins", 5)
+	viper.SetDefault("wechat_pay.compensation_batch_size", 50)
+	viper.SetDefault("wechat_pay.compensation_concurrency", 5)
 }
 
 func (c *Config) Validate() error {

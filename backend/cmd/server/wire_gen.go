@@ -204,7 +204,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository)
 	userUsageReportScheduler := service.ProvideUserUsageReportScheduler(userUsageReportService, settingService, userUsageReportRepository, redisClient)
 	orderExpireScheduler := service.ProvideOrderExpireScheduler(rechargeOrderRepository, weChatPayService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, pricingService, emailQueueService, billingCacheService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, userUsageReportScheduler, orderExpireScheduler)
+	orderCompensationScheduler := service.ProvideOrderCompensationScheduler(configConfig, rechargeOrderRepository, weChatPayService, paymentCallbackService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, pricingService, emailQueueService, billingCacheService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, userUsageReportScheduler, orderExpireScheduler, orderCompensationScheduler)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -248,6 +249,7 @@ func provideCleanup(
 	antigravityOAuth *service.AntigravityOAuthService,
 	usageReportScheduler *service.UserUsageReportScheduler,
 	orderExpireScheduler *service.OrderExpireScheduler,
+	orderCompensationScheduler *service.OrderCompensationScheduler,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -257,6 +259,12 @@ func provideCleanup(
 			name string
 			fn   func() error
 		}{
+			{"OrderCompensationScheduler", func() error {
+				if orderCompensationScheduler != nil {
+					orderCompensationScheduler.Stop()
+				}
+				return nil
+			}},
 			{"OrderExpireScheduler", func() error {
 				if orderExpireScheduler != nil {
 					orderExpireScheduler.Stop()

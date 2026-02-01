@@ -242,6 +242,56 @@ func (r *rechargeOrderRepository) AppendNotes(ctx context.Context, orderNo, note
 	return err
 }
 
+// GetPendingOrdersForCompensation 获取待补偿的订单
+// 返回 status='pending' 且 created_at < thresholdTime 的订单，按创建时间升序
+func (r *rechargeOrderRepository) GetPendingOrdersForCompensation(ctx context.Context, thresholdTime time.Time, limit int) ([]*service.RechargeOrder, error) {
+	orders, err := r.client.RechargeOrder.Query().
+		Where(
+			rechargeorder.StatusEQ(service.OrderStatusPending),
+			rechargeorder.CreatedAtLT(thresholdTime),
+		).
+		Order(dbent.Asc(rechargeorder.FieldCreatedAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*service.RechargeOrder, len(orders))
+	for i, order := range orders {
+		result[i] = rechargeOrderEntityToService(order)
+	}
+	return result, nil
+}
+
+// MarkOrderExpired 将指定订单标记为过期
+func (r *rechargeOrderRepository) MarkOrderExpired(ctx context.Context, orderNo string) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.RechargeOrder.Update().
+		Where(
+			rechargeorder.OrderNoEQ(orderNo),
+			rechargeorder.StatusEQ(service.OrderStatusPending),
+		).
+		SetStatus(service.OrderStatusExpired).
+		SetNotes("微信订单已关闭，同步更新").
+		Save(ctx)
+	return err
+}
+
+// MarkOrderFailed 将指定订单标记为失败
+func (r *rechargeOrderRepository) MarkOrderFailed(ctx context.Context, orderNo string) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.RechargeOrder.Update().
+		Where(
+			rechargeorder.OrderNoEQ(orderNo),
+			rechargeorder.StatusEQ(service.OrderStatusPending),
+		).
+		SetStatus(service.OrderStatusFailed).
+		SetNotes("微信支付失败，同步更新").
+		Save(ctx)
+	return err
+}
+
 func rechargeOrderEntityToService(m *dbent.RechargeOrder) *service.RechargeOrder {
 	if m == nil {
 		return nil

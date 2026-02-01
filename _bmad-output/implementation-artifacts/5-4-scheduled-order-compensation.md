@@ -1,6 +1,6 @@
 # Story 5.4: 定时订单状态补偿任务
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -10,42 +10,43 @@ Status: ready-for-dev
 
 ## Acceptance Criteria
 
-- [ ] AC1: 定时任务每5分钟执行一次
-- [ ] AC2: 扫描 `status = pending` 且 `created_at < now() - 5分钟` 的订单
-- [ ] AC3: 对每个订单调用微信查询接口
-- [ ] AC4: 如果微信返回已支付则触发补偿到账
-- [ ] AC5: 每次最多处理50条
-- [ ] AC6: 记录补偿任务执行日志
+- [x] AC1: 定时任务每5分钟执行一次
+- [x] AC2: 扫描 `status = pending` 且 `created_at < now() - 5分钟` 的订单
+- [x] AC3: 对每个订单调用微信查询接口
+- [x] AC4: 如果微信返回已支付则触发补偿到账
+- [x] AC5: 每次最多处理50条
+- [x] AC6: 记录补偿任务执行日志
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: 后端 - 创建定时任务结构 (AC: 1)
-  - [ ] 1.1 创建 `backend/internal/cron/order_compensation_job.go`
-  - [ ] 1.2 使用 cron 或 ticker 实现5分钟定时执行
-  - [ ] 1.3 注册到应用启动流程
+- [x] Task 1: 后端 - 创建定时任务结构 (AC: 1)
+  - [x] 1.1 创建 `backend/internal/service/order_compensation_scheduler.go`
+  - [x] 1.2 使用 ticker 实现定时执行（间隔可配置，默认5分钟）
+  - [x] 1.3 通过 Wire 自动启动
 
-- [ ] Task 2: 后端 - 订单扫描逻辑 (AC: 2, 5)
-  - [ ] 2.1 实现查询待补偿订单方法
-  - [ ] 2.2 添加创建时间过滤条件（>5分钟）
-  - [ ] 2.3 添加数量限制（50条）
-  - [ ] 2.4 按创建时间升序处理（先处理老订单）
+- [x] Task 2: 后端 - 订单扫描逻辑 (AC: 2, 5)
+  - [x] 2.1 实现 GetPendingOrdersForCompensation 方法
+  - [x] 2.2 添加创建时间过滤条件（>阈值分钟）
+  - [x] 2.3 添加数量限制（批次大小可配置，默认50条）
+  - [x] 2.4 按创建时间升序处理（先处理老订单）
 
-- [ ] Task 3: 后端 - 补偿处理逻辑 (AC: 3, 4)
-  - [ ] 3.1 遍历订单调用微信查询接口
-  - [ ] 3.2 微信返回 SUCCESS 时触发补偿到账
-  - [ ] 3.3 控制并发数避免请求过多
-  - [ ] 3.4 处理单个订单失败不影响其他订单
+- [x] Task 3: 后端 - 补偿处理逻辑 (AC: 3, 4)
+  - [x] 3.1 遍历订单调用微信查询接口
+  - [x] 3.2 微信返回 SUCCESS 时触发补偿到账
+  - [x] 3.3 使用信号量控制并发数（可配置，默认5）
+  - [x] 3.4 处理单个订单失败不影响其他订单
 
-- [ ] Task 4: 后端 - 日志记录 (AC: 6)
-  - [ ] 4.1 记录任务开始/结束日志
-  - [ ] 4.2 记录扫描到的订单数量
-  - [ ] 4.3 记录补偿成功/失败数量
-  - [ ] 4.4 记录单个订单处理结果
+- [x] Task 4: 后端 - 日志记录 (AC: 6)
+  - [x] 4.1 记录任务开始/结束日志
+  - [x] 4.2 记录扫描到的订单数量
+  - [x] 4.3 记录补偿成功/失败/跳过数量
+  - [x] 4.4 记录单个订单处理结果
 
-- [ ] Task 5: 配置化 (AC: 1, 2, 5)
-  - [ ] 5.1 补偿间隔时间可配置
-  - [ ] 5.2 订单超时阈值可配置
-  - [ ] 5.3 批次大小可配置
+- [x] Task 5: 配置化 (AC: 1, 2, 5)
+  - [x] 5.1 补偿间隔时间可配置 (compensation_interval_mins)
+  - [x] 5.2 订单超时阈值可配置 (compensation_threshold_mins)
+  - [x] 5.3 批次大小可配置 (compensation_batch_size)
+  - [x] 5.4 并发数可配置 (compensation_concurrency)
 
 ## Dev Notes
 
@@ -439,16 +440,32 @@ func TestGetPendingOrdersForCompensation(t *testing.T) {
 
 ### Agent Model Used
 
-(待开发时填写)
+Claude Opus 4.5
 
 ### Debug Log References
 
-(待开发时填写)
+无
 
 ### Completion Notes List
 
-(待开发时填写)
+- 在 `WeChatPayConfig` 中添加补偿任务配置字段：CompensationEnabled、CompensationIntervalMins、CompensationThresholdMins、CompensationBatchSize、CompensationConcurrency
+- 添加配置默认值：compensation_enabled=true、interval=5分钟、threshold=5分钟、batch=50、concurrency=5
+- 创建 `OrderCompensationScheduler` 定时任务，使用 ticker 实现定时执行
+- 支持启动时立即执行一次，然后按间隔周期执行
+- 使用信号量控制并发查询微信API，避免请求过多
+- 实现订单处理逻辑：SUCCESS→补偿到账、CLOSED→标记过期、PAYERROR→标记失败
+- 在 `RechargeOrderRepository` 接口添加三个方法：GetPendingOrdersForCompensation、MarkOrderExpired、MarkOrderFailed
+- 在 repository 实现层添加对应的数据库操作方法
+- 通过 Wire 自动启动和清理，注册到 provideCleanup
+- 更新 deploy/config.example.yaml 添加补偿配置示例
 
 ### File List
 
-(待开发时填写)
+- `backend/internal/config/config.go` - 添加补偿任务配置字段和默认值
+- `backend/internal/service/order_compensation_scheduler.go` - 新增定时补偿任务
+- `backend/internal/service/recharge_order_service.go` - 更新 RechargeOrderRepository 接口
+- `backend/internal/repository/recharge_order_repo.go` - 实现新增的仓储方法
+- `backend/internal/service/wire.go` - 添加 ProvideOrderCompensationScheduler
+- `backend/cmd/server/wire.go` - 添加 orderCompensationScheduler 到 cleanup
+- `backend/cmd/server/wire_gen.go` - Wire 自动生成
+- `deploy/config.example.yaml` - 添加补偿配置示例
