@@ -1,6 +1,6 @@
 # Story 1.4: 配置实时生效机制
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -10,40 +10,40 @@ Status: ready-for-dev
 
 ## Acceptance Criteria
 
-- [ ] AC1: 配置保存到数据库 `settings` 表
-- [ ] AC2: 配置变更后无需重启服务即可生效
-- [ ] AC3: 使用内存缓存 + 定期刷新机制（1分钟）
-- [ ] AC4: 配置更新后主动刷新缓存（实时生效）
+- [x] AC1: 配置保存到数据库 `settings` 表
+- [x] AC2: 配置变更后无需重启服务即可生效
+- [x] AC3: 使用内存缓存 + 定期刷新机制（1分钟）
+- [x] AC4: 配置更新后主动刷新缓存（实时生效）
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: 后端 - 设计缓存结构 (AC: 1-3)
-  - [ ] 1.1 在 `backend/internal/service/setting_service.go` 添加内存缓存字段
-  - [ ] 1.2 添加 sync.RWMutex 保护缓存读写
-  - [ ] 1.3 定义缓存过期时间常量（60秒）
+- [x] Task 1: 后端 - 设计缓存结构 (AC: 1-3)
+  - [x] 1.1 在 `backend/internal/service/setting_service.go` 添加内存缓存字段
+  - [x] 1.2 添加 sync.RWMutex 保护缓存读写
+  - [x] 1.3 定义缓存过期时间常量（60秒）
 
-- [ ] Task 2: 后端 - 实现缓存刷新机制 (AC: 2, 3)
-  - [ ] 2.1 实现 `refreshRechargeSettingsCache()` 方法
-  - [ ] 2.2 实现定时刷新 goroutine（使用 time.Ticker）
-  - [ ] 2.3 在 `NewSettingService()` 中启动后台刷新任务
+- [x] Task 2: 后端 - 实现缓存刷新机制 (AC: 2, 3)
+  - [x] 2.1 实现 `refreshRechargeSettingsCache()` 方法
+  - [x] 2.2 实现定时刷新 goroutine（使用 time.Ticker）
+  - [x] 2.3 在 `NewSettingService()` 中启动后台刷新任务
 
-- [ ] Task 3: 后端 - 实现缓存读取逻辑 (AC: 2, 3)
-  - [ ] 3.1 修改 `GetRechargeSettings()` 优先从缓存读取
-  - [ ] 3.2 缓存未命中时从数据库加载并更新缓存
-  - [ ] 3.3 实现缓存过期判断逻辑
+- [x] Task 3: 后端 - 实现缓存读取逻辑 (AC: 2, 3)
+  - [x] 3.1 修改 `GetRechargeSettings()` 优先从缓存读取
+  - [x] 3.2 缓存未命中时从数据库加载并更新缓存
+  - [x] 3.3 实现缓存过期判断逻辑
 
-- [ ] Task 4: 后端 - 实现主动失效机制 (AC: 4)
-  - [ ] 4.1 在 `UpdateRechargeSettings()` 中更新后主动刷新缓存
-  - [ ] 4.2 确保写入数据库成功后再更新缓存
+- [x] Task 4: 后端 - 实现主动失效机制 (AC: 4)
+  - [x] 4.1 在 `UpdateRechargeSettings()` 中更新后主动刷新缓存
+  - [x] 4.2 确保写入数据库成功后再更新缓存
 
-- [ ] Task 5: 后端 - 优雅关闭 (AC: 2)
-  - [ ] 5.1 实现 `Stop()` 方法停止后台刷新任务
-  - [ ] 5.2 在应用退出时调用清理方法
+- [x] Task 5: 后端 - 优雅关闭 (AC: 2)
+  - [x] 5.1 实现 `Stop()` 方法停止后台刷新任务
+  - [x] 5.2 在应用退出时调用清理方法
 
-- [ ] Task 6: 单元测试 (AC: 1-4)
-  - [ ] 6.1 测试缓存命中场景
-  - [ ] 6.2 测试缓存过期后自动刷新
-  - [ ] 6.3 测试配置更新后缓存失效
+- [x] Task 6: 单元测试 (AC: 1-4)
+  - [x] 6.1 测试缓存命中场景
+  - [x] 6.2 测试缓存过期后自动刷新
+  - [x] 6.3 测试配置更新后缓存失效
 
 ## Dev Notes
 
@@ -402,16 +402,26 @@ func TestRechargeSettingsCache(t *testing.T) {
 
 ### Agent Model Used
 
-(待开发时填写)
+Claude Opus 4.5 (claude-opus-4-5-20251101)
 
 ### Debug Log References
 
-(待开发时填写)
+N/A - 功能已在 Story 1-3 中实现，本 Story 主要补充了单元测试。
 
 ### Completion Notes List
 
-(待开发时填写)
+1. **功能已实现**：Story 1-4 的所有功能（缓存结构、刷新机制、读取逻辑、主动失效、优雅关闭）已在 Story 1-3 中实现并合并到 setting_service.go
+2. **单元测试**：新增 setting_service_test.go，包含 9 个测试用例：
+   - TestRechargeSettingsCache_CacheHit: 验证缓存命中
+   - TestRechargeSettingsCache_CacheExpired: 验证缓存过期后自动刷新
+   - TestRechargeSettingsCache_InvalidateOnUpdate: 验证配置更新后缓存立即失效
+   - TestRechargeSettingsCache_DefaultValues: 验证默认值
+   - TestRechargeSettingsCache_ReturnsCopy: 验证返回副本（防止外部修改缓存）
+   - TestRechargeSettingsCache_ConcurrentAccess: 验证并发安全
+   - TestUpdateRechargeSettings_Validation: 验证更新时的参数校验
+   - TestSettingService_Stop: 验证优雅关闭
+3. **Wire 集成**：SettingService.Stop() 已在 wire.go 的 provideCleanup 中调用
 
 ### File List
 
-(待开发时填写)
+- backend/internal/service/setting_service_test.go (新增)
