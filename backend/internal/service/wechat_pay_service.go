@@ -20,6 +20,7 @@ import (
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/jsapi"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/native"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/refunddomestic"
 	"github.com/wechatpay-apiv3/wechatpay-go/utils"
 )
 
@@ -530,6 +531,22 @@ func safeString(s *string) string {
 	return *s
 }
 
+// safeTimeString 安全获取时间指针的字符串值
+func safeTimeString(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
+
+// safeFundsAccountString 安全获取资金账户类型的字符串值
+func safeFundsAccountString(f *refunddomestic.FundsAccount) string {
+	if f == nil {
+		return ""
+	}
+	return string(*f)
+}
+
 // WeChatQueryOrderResult 微信订单查询结果
 type WeChatQueryOrderResult struct {
 	TradeState     string // SUCCESS, REFUND, NOTPAY, CLOSED, PAYERROR, USERPAYING
@@ -627,4 +644,201 @@ func (s *WeChatPayService) CloseOrder(ctx context.Context, orderNo string) error
 
 	log.Printf("[WeChatPay] Order closed successfully: order_no=%s", orderNo)
 	return nil
+}
+
+// RefundParams 退款请求参数
+type RefundParams struct {
+	OrderNo       string  // 原订单号
+	RefundNo      string  // 退款单号
+	Amount        float64 // 退款金额（元）
+	TotalAmount   float64 // 原订单金额（元）
+	Reason        string  // 退款原因
+	TransactionID string  // 微信支付订单号（可选，优先使用）
+}
+
+// RefundResult 退款结果
+type RefundResult struct {
+	RefundID            string // 微信退款单号
+	RefundNo            string // 商户退款单号
+	Status              string // 退款状态: SUCCESS, CLOSED, PROCESSING, ABNORMAL
+	Amount              int64  // 退款金额（分）
+	SuccessTime         string // 退款成功时间
+	FundsAccount        string // 资金账户
+	UserReceivedAccount string // 用户收款账户
+}
+
+// Refund 申请退款
+// 调用微信支付退款 API
+func (s *WeChatPayService) Refund(ctx context.Context, params RefundParams) (*RefundResult, error) {
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("wechat pay is not enabled")
+	}
+
+	client, err := s.GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("get wechat pay client failed: %w", err)
+	}
+
+	// 创建退款服务
+	svc := refunddomestic.RefundsApiService{Client: client}
+
+	// 金额转换为分
+	refundAmountFen := AmountToFen(params.Amount)
+	totalAmountFen := AmountToFen(params.TotalAmount)
+
+	// 构建退款请求
+	req := refunddomestic.CreateRequest{
+		OutTradeNo:  core.String(params.OrderNo),
+		OutRefundNo: core.String(params.RefundNo),
+		Reason:      core.String(params.Reason),
+		Amount: &refunddomestic.AmountReq{
+			Refund:   core.Int64(refundAmountFen),
+			Total:    core.Int64(totalAmountFen),
+			Currency: core.String("CNY"),
+		},
+	}
+
+	// 如果配置了退款回调地址，设置 NotifyUrl
+	if s.cfg.WeChatPay.RefundNotifyURL != "" {
+		req.NotifyUrl = core.String(s.cfg.WeChatPay.RefundNotifyURL)
+	} else if s.cfg.WeChatPay.NotifyURL != "" {
+		// 复用支付回调地址
+		req.NotifyUrl = core.String(s.cfg.WeChatPay.NotifyURL)
+	}
+
+	// 如果有微信订单号，优先使用（更精确）
+	if params.TransactionID != "" {
+		req.TransactionId = core.String(params.TransactionID)
+		req.OutTradeNo = nil
+	}
+
+	log.Printf("[WeChatPay] Refund request: order_no=%s, refund_no=%s, amount=%d fen, reason=%s",
+		params.OrderNo, params.RefundNo, refundAmountFen, params.Reason)
+
+	// 调用退款接口
+	resp, result, err := svc.Create(ctx, req)
+	if err != nil {
+		statusCode := 0
+		if result != nil && result.Response != nil {
+			statusCode = result.Response.StatusCode
+		}
+		log.Printf("[WeChatPay] Refund API failed: order_no=%s, refund_no=%s, error=%v, http_status=%d",
+			params.OrderNo, params.RefundNo, err, statusCode)
+		return nil, fmt.Errorf("wechat refund api failed: %w", err)
+	}
+
+	log.Printf("[WeChatPay] Refund response: refund_id=%s, status=%s, success_time=%s",
+		safeString(resp.RefundId), string(*resp.Status), safeTimeString(resp.SuccessTime))
+
+	return &RefundResult{
+		RefundID:            safeString(resp.RefundId),
+		RefundNo:            safeString(resp.OutRefundNo),
+		Status:              string(*resp.Status),
+		Amount:              *resp.Amount.Refund,
+		SuccessTime:         safeTimeString(resp.SuccessTime),
+		FundsAccount:        safeFundsAccountString(resp.FundsAccount),
+		UserReceivedAccount: safeString(resp.UserReceivedAccount),
+	}, nil
+}
+
+// QueryRefund 查询退款状态
+func (s *WeChatPayService) QueryRefund(ctx context.Context, refundNo string) (*RefundResult, error) {
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("wechat pay is not enabled")
+	}
+
+	client, err := s.GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("get wechat pay client failed: %w", err)
+	}
+
+	svc := refunddomestic.RefundsApiService{Client: client}
+
+	log.Printf("[WeChatPay] Query refund: refund_no=%s", refundNo)
+
+	resp, result, err := svc.QueryByOutRefundNo(ctx, refunddomestic.QueryByOutRefundNoRequest{
+		OutRefundNo: core.String(refundNo),
+	})
+
+	if err != nil {
+		statusCode := 0
+		if result != nil && result.Response != nil {
+			statusCode = result.Response.StatusCode
+		}
+		log.Printf("[WeChatPay] Query refund API failed: refund_no=%s, error=%v, http_status=%d",
+			refundNo, err, statusCode)
+		return nil, fmt.Errorf("wechat query refund failed: %w", err)
+	}
+
+	log.Printf("[WeChatPay] Query refund response: refund_id=%s, status=%s",
+		safeString(resp.RefundId), string(*resp.Status))
+
+	return &RefundResult{
+		RefundID:            safeString(resp.RefundId),
+		RefundNo:            safeString(resp.OutRefundNo),
+		Status:              string(*resp.Status),
+		Amount:              *resp.Amount.Refund,
+		SuccessTime:         safeTimeString(resp.SuccessTime),
+		FundsAccount:        safeFundsAccountString(resp.FundsAccount),
+		UserReceivedAccount: safeString(resp.UserReceivedAccount),
+	}, nil
+}
+
+// RefundNotification 退款回调通知数据
+type RefundNotification struct {
+	OutTradeNo          string // 商户订单号
+	OutRefundNo         string // 商户退款单号
+	TransactionID       string // 微信支付订单号
+	RefundID            string // 微信退款单号
+	RefundStatus        string // 退款状态: SUCCESS, CLOSED, ABNORMAL
+	SuccessTime         string // 退款成功时间
+	Amount              int64  // 退款金额（分）
+	UserReceivedAccount string // 用户收款账户
+}
+
+// ParseRefundNotification 解析退款回调通知
+// 验证签名并解密回调数据
+func (s *WeChatPayService) ParseRefundNotification(ctx context.Context, request *http.Request) (*RefundNotification, error) {
+	// 检查服务是否已初始化
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("wechat pay service not initialized")
+	}
+
+	// 验证时间戳（防重放攻击）
+	timestamp := request.Header.Get("Wechatpay-Timestamp")
+	if err := ValidateTimestamp(timestamp); err != nil {
+		log.Printf("[WeChatPay] Refund notify timestamp validation failed: %v", err)
+		return nil, fmt.Errorf("timestamp validation failed: %w", err)
+	}
+
+	// 使用 SDK 验签并解密
+	s.mu.RLock()
+	handler := s.notifyHandler
+	s.mu.RUnlock()
+
+	if handler == nil {
+		return nil, fmt.Errorf("notify handler not initialized")
+	}
+
+	// 微信退款回调的数据结构
+	refundData := &refunddomestic.Refund{}
+	_, err := handler.ParseNotifyRequest(ctx, request, refundData)
+	if err != nil {
+		log.Printf("[WeChatPay] Refund notify parse failed: %v", err)
+		return nil, fmt.Errorf("parse refund notification failed: %w", err)
+	}
+
+	log.Printf("[WeChatPay] Refund notify parsed: out_trade_no=%s, out_refund_no=%s, status=%s",
+		safeString(refundData.OutTradeNo), safeString(refundData.OutRefundNo), string(*refundData.Status))
+
+	return &RefundNotification{
+		OutTradeNo:          safeString(refundData.OutTradeNo),
+		OutRefundNo:         safeString(refundData.OutRefundNo),
+		TransactionID:       safeString(refundData.TransactionId),
+		RefundID:            safeString(refundData.RefundId),
+		RefundStatus:        string(*refundData.Status),
+		SuccessTime:         safeTimeString(refundData.SuccessTime),
+		Amount:              *refundData.Amount.Refund,
+		UserReceivedAccount: safeString(refundData.UserReceivedAccount),
+	}, nil
 }

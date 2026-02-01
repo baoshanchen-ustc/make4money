@@ -22,6 +22,7 @@ type WeChatPayWebhookHandler struct {
 	callbackRepo           *repository.PaymentCallbackRepository
 	wechatPayService       *service.WeChatPayService
 	paymentCallbackService *service.PaymentCallbackService
+	rechargeOrderService   *service.RechargeOrderService
 }
 
 // NewWeChatPayWebhookHandler 创建微信支付回调处理器
@@ -29,11 +30,13 @@ func NewWeChatPayWebhookHandler(
 	callbackRepo *repository.PaymentCallbackRepository,
 	wechatPayService *service.WeChatPayService,
 	paymentCallbackService *service.PaymentCallbackService,
+	rechargeOrderService *service.RechargeOrderService,
 ) *WeChatPayWebhookHandler {
 	return &WeChatPayWebhookHandler{
 		callbackRepo:           callbackRepo,
 		wechatPayService:       wechatPayService,
 		paymentCallbackService: paymentCallbackService,
+		rechargeOrderService:   rechargeOrderService,
 	}
 }
 
@@ -240,4 +243,122 @@ func safeStringPtr(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// HandleRefundNotify 处理微信退款回调通知
+// POST /api/v1/webhook/wechat/refund
+// 功能：
+// 1. 接收微信退款回调
+// 2. 验证签名
+// 3. 解密回调数据
+// 4. 更新订单退款状态
+func (h *WeChatPayWebhookHandler) HandleRefundNotify(c *gin.Context) {
+	startTime := time.Now()
+	ctx := c.Request.Context()
+
+	// 读取请求体
+	bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, maxRequestBodySize))
+	if err != nil {
+		log.Printf("[WeChatPayWebhook] Refund: Failed to read request body: %v", err)
+		h.respondFail(c, "读取请求体失败")
+		return
+	}
+	bodyStr := string(bodyBytes)
+
+	// 重置请求体
+	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// 提取请求头
+	headers := extractWeChatPayHeaders(c.Request.Header)
+	headersJSON, _ := json.Marshal(headers)
+
+	log.Printf("[WeChatPayWebhook] Refund: Received callback: body_length=%d, timestamp=%s",
+		len(bodyStr), headers["Wechatpay-Timestamp"])
+
+	// 创建回调记录
+	record := &repository.PaymentCallbackRecord{
+		PaymentMethod:   "wechat_pay_refund",
+		RequestHeaders:  string(headersJSON),
+		RequestBody:     bodyStr,
+		SignatureValid:  false,
+		ProcessStatus:   "received",
+		ProcessMessage:  "退款回调已接收，验签中",
+		ResponseCode:    "",
+		ResponseMessage: "",
+		ProcessTimeMs:   0,
+	}
+
+	callback, err := h.callbackRepo.Create(ctx, record)
+	if err != nil {
+		log.Printf("[WeChatPayWebhook] Refund: Failed to save callback record: %v", err)
+	}
+
+	// 解析退款回调
+	notification, err := h.wechatPayService.ParseRefundNotification(ctx, c.Request)
+	if err != nil {
+		record.ProcessStatus = "signature_invalid"
+		record.ProcessMessage = "退款回调验证失败: " + err.Error()
+		record.ResponseCode = "FAIL"
+		record.ResponseMessage = "签名验证失败"
+		log.Printf("[WeChatPayWebhook] Refund: Verification failed: %v", err)
+
+		// 更新记录
+		record.ProcessTimeMs = time.Since(startTime).Milliseconds()
+		if callback != nil {
+			_, _ = h.callbackRepo.Update(ctx, callback.ID, record)
+		}
+		h.respondFail(c, "签名验证失败")
+		return
+	}
+
+	// 验签成功
+	record.SignatureValid = true
+	record.ProcessStatus = "verified"
+	orderNo := notification.OutTradeNo
+	refundNo := notification.OutRefundNo
+	record.OrderNo = &orderNo
+	transactionID := notification.TransactionID
+	record.TransactionID = &transactionID
+
+	log.Printf("[WeChatPayWebhook] Refund: Verified: order_no=%s, refund_no=%s, status=%s",
+		orderNo, refundNo, notification.RefundStatus)
+
+	// 处理退款结果
+	if h.rechargeOrderService != nil {
+		err = h.rechargeOrderService.HandleRefundCallback(ctx, notification)
+		if err != nil {
+			record.ProcessStatus = "business_error"
+			record.ProcessMessage = "退款业务处理失败: " + err.Error()
+			record.ResponseCode = "FAIL"
+			record.ResponseMessage = "业务处理失败"
+			log.Printf("[WeChatPayWebhook] Refund: Business processing failed: %v", err)
+		} else {
+			record.ProcessStatus = "completed"
+			record.ProcessMessage = "退款处理完成"
+			record.ResponseCode = "SUCCESS"
+			record.ResponseMessage = ""
+			log.Printf("[WeChatPayWebhook] Refund: Completed: order_no=%s, refund_no=%s", orderNo, refundNo)
+		}
+	} else {
+		record.ProcessStatus = "completed"
+		record.ProcessMessage = "退款回调接收成功（无业务服务）"
+		record.ResponseCode = "SUCCESS"
+		log.Printf("[WeChatPayWebhook] Refund: No recharge service configured")
+	}
+
+	// 更新记录
+	record.ProcessTimeMs = time.Since(startTime).Milliseconds()
+	if callback != nil {
+		_, _ = h.callbackRepo.Update(ctx, callback.ID, record)
+	}
+
+	log.Printf("[WeChatPayWebhook] Refund: Callback processed: id=%d, status=%s, process_time=%dms",
+		getCallbackID(callback), record.ProcessStatus, record.ProcessTimeMs)
+
+	// 返回响应
+	if record.ResponseCode == "SUCCESS" {
+		h.respondSuccess(c)
+	} else {
+		h.respondFail(c, record.ResponseMessage)
+	}
 }

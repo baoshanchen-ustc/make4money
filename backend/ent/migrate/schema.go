@@ -492,6 +492,12 @@ var (
 		{Name: "expire_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "paid_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "notes", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "refund_no", Type: field.TypeString, Nullable: true, Size: 50},
+		{Name: "refund_status", Type: field.TypeString, Nullable: true, Size: 20},
+		{Name: "refunded_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "refund_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "refund_admin_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "wechat_refund_id", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "user_id", Type: field.TypeInt64},
 	}
 	// RechargeOrdersTable holds the schema information for the "recharge_orders" table.
@@ -502,7 +508,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "recharge_orders_users_recharge_orders",
-				Columns:    []*schema.Column{RechargeOrdersColumns[14]},
+				Columns:    []*schema.Column{RechargeOrdersColumns[20]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -511,7 +517,7 @@ var (
 			{
 				Name:    "rechargeorder_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{RechargeOrdersColumns[14]},
+				Columns: []*schema.Column{RechargeOrdersColumns[20]},
 			},
 			{
 				Name:    "rechargeorder_status",
@@ -526,7 +532,7 @@ var (
 			{
 				Name:    "rechargeorder_user_id_status",
 				Unique:  false,
-				Columns: []*schema.Column{RechargeOrdersColumns[14], RechargeOrdersColumns[7]},
+				Columns: []*schema.Column{RechargeOrdersColumns[20], RechargeOrdersColumns[7]},
 			},
 		},
 	}

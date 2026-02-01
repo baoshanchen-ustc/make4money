@@ -125,6 +125,36 @@ func Notes(v string) predicate.RechargeOrder {
 	return predicate.RechargeOrder(sql.FieldEQ(FieldNotes, v))
 }
 
+// RefundNo applies equality check predicate on the "refund_no" field. It's identical to RefundNoEQ.
+func RefundNo(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundNo, v))
+}
+
+// RefundStatus applies equality check predicate on the "refund_status" field. It's identical to RefundStatusEQ.
+func RefundStatus(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundStatus, v))
+}
+
+// RefundedAt applies equality check predicate on the "refunded_at" field. It's identical to RefundedAtEQ.
+func RefundedAt(v time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundedAt, v))
+}
+
+// RefundReason applies equality check predicate on the "refund_reason" field. It's identical to RefundReasonEQ.
+func RefundReason(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundReason, v))
+}
+
+// RefundAdminID applies equality check predicate on the "refund_admin_id" field. It's identical to RefundAdminIDEQ.
+func RefundAdminID(v int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundAdminID, v))
+}
+
+// WechatRefundID applies equality check predicate on the "wechat_refund_id" field. It's identical to WechatRefundIDEQ.
+func WechatRefundID(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldWechatRefundID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.RechargeOrder {
 	return predicate.RechargeOrder(sql.FieldEQ(FieldCreatedAt, v))
@@ -903,6 +933,406 @@ func NotesEqualFold(v string) predicate.RechargeOrder {
 // NotesContainsFold applies the ContainsFold predicate on the "notes" field.
 func NotesContainsFold(v string) predicate.RechargeOrder {
 	return predicate.RechargeOrder(sql.FieldContainsFold(FieldNotes, v))
+}
+
+// RefundNoEQ applies the EQ predicate on the "refund_no" field.
+func RefundNoEQ(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundNo, v))
+}
+
+// RefundNoNEQ applies the NEQ predicate on the "refund_no" field.
+func RefundNoNEQ(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNEQ(FieldRefundNo, v))
+}
+
+// RefundNoIn applies the In predicate on the "refund_no" field.
+func RefundNoIn(vs ...string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIn(FieldRefundNo, vs...))
+}
+
+// RefundNoNotIn applies the NotIn predicate on the "refund_no" field.
+func RefundNoNotIn(vs ...string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotIn(FieldRefundNo, vs...))
+}
+
+// RefundNoGT applies the GT predicate on the "refund_no" field.
+func RefundNoGT(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGT(FieldRefundNo, v))
+}
+
+// RefundNoGTE applies the GTE predicate on the "refund_no" field.
+func RefundNoGTE(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGTE(FieldRefundNo, v))
+}
+
+// RefundNoLT applies the LT predicate on the "refund_no" field.
+func RefundNoLT(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLT(FieldRefundNo, v))
+}
+
+// RefundNoLTE applies the LTE predicate on the "refund_no" field.
+func RefundNoLTE(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLTE(FieldRefundNo, v))
+}
+
+// RefundNoContains applies the Contains predicate on the "refund_no" field.
+func RefundNoContains(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldContains(FieldRefundNo, v))
+}
+
+// RefundNoHasPrefix applies the HasPrefix predicate on the "refund_no" field.
+func RefundNoHasPrefix(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldHasPrefix(FieldRefundNo, v))
+}
+
+// RefundNoHasSuffix applies the HasSuffix predicate on the "refund_no" field.
+func RefundNoHasSuffix(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldHasSuffix(FieldRefundNo, v))
+}
+
+// RefundNoIsNil applies the IsNil predicate on the "refund_no" field.
+func RefundNoIsNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIsNull(FieldRefundNo))
+}
+
+// RefundNoNotNil applies the NotNil predicate on the "refund_no" field.
+func RefundNoNotNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotNull(FieldRefundNo))
+}
+
+// RefundNoEqualFold applies the EqualFold predicate on the "refund_no" field.
+func RefundNoEqualFold(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEqualFold(FieldRefundNo, v))
+}
+
+// RefundNoContainsFold applies the ContainsFold predicate on the "refund_no" field.
+func RefundNoContainsFold(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldContainsFold(FieldRefundNo, v))
+}
+
+// RefundStatusEQ applies the EQ predicate on the "refund_status" field.
+func RefundStatusEQ(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundStatus, v))
+}
+
+// RefundStatusNEQ applies the NEQ predicate on the "refund_status" field.
+func RefundStatusNEQ(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNEQ(FieldRefundStatus, v))
+}
+
+// RefundStatusIn applies the In predicate on the "refund_status" field.
+func RefundStatusIn(vs ...string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIn(FieldRefundStatus, vs...))
+}
+
+// RefundStatusNotIn applies the NotIn predicate on the "refund_status" field.
+func RefundStatusNotIn(vs ...string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotIn(FieldRefundStatus, vs...))
+}
+
+// RefundStatusGT applies the GT predicate on the "refund_status" field.
+func RefundStatusGT(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGT(FieldRefundStatus, v))
+}
+
+// RefundStatusGTE applies the GTE predicate on the "refund_status" field.
+func RefundStatusGTE(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGTE(FieldRefundStatus, v))
+}
+
+// RefundStatusLT applies the LT predicate on the "refund_status" field.
+func RefundStatusLT(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLT(FieldRefundStatus, v))
+}
+
+// RefundStatusLTE applies the LTE predicate on the "refund_status" field.
+func RefundStatusLTE(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLTE(FieldRefundStatus, v))
+}
+
+// RefundStatusContains applies the Contains predicate on the "refund_status" field.
+func RefundStatusContains(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldContains(FieldRefundStatus, v))
+}
+
+// RefundStatusHasPrefix applies the HasPrefix predicate on the "refund_status" field.
+func RefundStatusHasPrefix(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldHasPrefix(FieldRefundStatus, v))
+}
+
+// RefundStatusHasSuffix applies the HasSuffix predicate on the "refund_status" field.
+func RefundStatusHasSuffix(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldHasSuffix(FieldRefundStatus, v))
+}
+
+// RefundStatusIsNil applies the IsNil predicate on the "refund_status" field.
+func RefundStatusIsNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIsNull(FieldRefundStatus))
+}
+
+// RefundStatusNotNil applies the NotNil predicate on the "refund_status" field.
+func RefundStatusNotNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotNull(FieldRefundStatus))
+}
+
+// RefundStatusEqualFold applies the EqualFold predicate on the "refund_status" field.
+func RefundStatusEqualFold(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEqualFold(FieldRefundStatus, v))
+}
+
+// RefundStatusContainsFold applies the ContainsFold predicate on the "refund_status" field.
+func RefundStatusContainsFold(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldContainsFold(FieldRefundStatus, v))
+}
+
+// RefundedAtEQ applies the EQ predicate on the "refunded_at" field.
+func RefundedAtEQ(v time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundedAt, v))
+}
+
+// RefundedAtNEQ applies the NEQ predicate on the "refunded_at" field.
+func RefundedAtNEQ(v time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNEQ(FieldRefundedAt, v))
+}
+
+// RefundedAtIn applies the In predicate on the "refunded_at" field.
+func RefundedAtIn(vs ...time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIn(FieldRefundedAt, vs...))
+}
+
+// RefundedAtNotIn applies the NotIn predicate on the "refunded_at" field.
+func RefundedAtNotIn(vs ...time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotIn(FieldRefundedAt, vs...))
+}
+
+// RefundedAtGT applies the GT predicate on the "refunded_at" field.
+func RefundedAtGT(v time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGT(FieldRefundedAt, v))
+}
+
+// RefundedAtGTE applies the GTE predicate on the "refunded_at" field.
+func RefundedAtGTE(v time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGTE(FieldRefundedAt, v))
+}
+
+// RefundedAtLT applies the LT predicate on the "refunded_at" field.
+func RefundedAtLT(v time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLT(FieldRefundedAt, v))
+}
+
+// RefundedAtLTE applies the LTE predicate on the "refunded_at" field.
+func RefundedAtLTE(v time.Time) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLTE(FieldRefundedAt, v))
+}
+
+// RefundedAtIsNil applies the IsNil predicate on the "refunded_at" field.
+func RefundedAtIsNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIsNull(FieldRefundedAt))
+}
+
+// RefundedAtNotNil applies the NotNil predicate on the "refunded_at" field.
+func RefundedAtNotNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotNull(FieldRefundedAt))
+}
+
+// RefundReasonEQ applies the EQ predicate on the "refund_reason" field.
+func RefundReasonEQ(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundReason, v))
+}
+
+// RefundReasonNEQ applies the NEQ predicate on the "refund_reason" field.
+func RefundReasonNEQ(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNEQ(FieldRefundReason, v))
+}
+
+// RefundReasonIn applies the In predicate on the "refund_reason" field.
+func RefundReasonIn(vs ...string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIn(FieldRefundReason, vs...))
+}
+
+// RefundReasonNotIn applies the NotIn predicate on the "refund_reason" field.
+func RefundReasonNotIn(vs ...string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotIn(FieldRefundReason, vs...))
+}
+
+// RefundReasonGT applies the GT predicate on the "refund_reason" field.
+func RefundReasonGT(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGT(FieldRefundReason, v))
+}
+
+// RefundReasonGTE applies the GTE predicate on the "refund_reason" field.
+func RefundReasonGTE(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGTE(FieldRefundReason, v))
+}
+
+// RefundReasonLT applies the LT predicate on the "refund_reason" field.
+func RefundReasonLT(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLT(FieldRefundReason, v))
+}
+
+// RefundReasonLTE applies the LTE predicate on the "refund_reason" field.
+func RefundReasonLTE(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLTE(FieldRefundReason, v))
+}
+
+// RefundReasonContains applies the Contains predicate on the "refund_reason" field.
+func RefundReasonContains(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldContains(FieldRefundReason, v))
+}
+
+// RefundReasonHasPrefix applies the HasPrefix predicate on the "refund_reason" field.
+func RefundReasonHasPrefix(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldHasPrefix(FieldRefundReason, v))
+}
+
+// RefundReasonHasSuffix applies the HasSuffix predicate on the "refund_reason" field.
+func RefundReasonHasSuffix(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldHasSuffix(FieldRefundReason, v))
+}
+
+// RefundReasonIsNil applies the IsNil predicate on the "refund_reason" field.
+func RefundReasonIsNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIsNull(FieldRefundReason))
+}
+
+// RefundReasonNotNil applies the NotNil predicate on the "refund_reason" field.
+func RefundReasonNotNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotNull(FieldRefundReason))
+}
+
+// RefundReasonEqualFold applies the EqualFold predicate on the "refund_reason" field.
+func RefundReasonEqualFold(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEqualFold(FieldRefundReason, v))
+}
+
+// RefundReasonContainsFold applies the ContainsFold predicate on the "refund_reason" field.
+func RefundReasonContainsFold(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldContainsFold(FieldRefundReason, v))
+}
+
+// RefundAdminIDEQ applies the EQ predicate on the "refund_admin_id" field.
+func RefundAdminIDEQ(v int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldRefundAdminID, v))
+}
+
+// RefundAdminIDNEQ applies the NEQ predicate on the "refund_admin_id" field.
+func RefundAdminIDNEQ(v int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNEQ(FieldRefundAdminID, v))
+}
+
+// RefundAdminIDIn applies the In predicate on the "refund_admin_id" field.
+func RefundAdminIDIn(vs ...int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIn(FieldRefundAdminID, vs...))
+}
+
+// RefundAdminIDNotIn applies the NotIn predicate on the "refund_admin_id" field.
+func RefundAdminIDNotIn(vs ...int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotIn(FieldRefundAdminID, vs...))
+}
+
+// RefundAdminIDGT applies the GT predicate on the "refund_admin_id" field.
+func RefundAdminIDGT(v int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGT(FieldRefundAdminID, v))
+}
+
+// RefundAdminIDGTE applies the GTE predicate on the "refund_admin_id" field.
+func RefundAdminIDGTE(v int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGTE(FieldRefundAdminID, v))
+}
+
+// RefundAdminIDLT applies the LT predicate on the "refund_admin_id" field.
+func RefundAdminIDLT(v int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLT(FieldRefundAdminID, v))
+}
+
+// RefundAdminIDLTE applies the LTE predicate on the "refund_admin_id" field.
+func RefundAdminIDLTE(v int64) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLTE(FieldRefundAdminID, v))
+}
+
+// RefundAdminIDIsNil applies the IsNil predicate on the "refund_admin_id" field.
+func RefundAdminIDIsNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIsNull(FieldRefundAdminID))
+}
+
+// RefundAdminIDNotNil applies the NotNil predicate on the "refund_admin_id" field.
+func RefundAdminIDNotNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotNull(FieldRefundAdminID))
+}
+
+// WechatRefundIDEQ applies the EQ predicate on the "wechat_refund_id" field.
+func WechatRefundIDEQ(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEQ(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDNEQ applies the NEQ predicate on the "wechat_refund_id" field.
+func WechatRefundIDNEQ(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNEQ(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDIn applies the In predicate on the "wechat_refund_id" field.
+func WechatRefundIDIn(vs ...string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIn(FieldWechatRefundID, vs...))
+}
+
+// WechatRefundIDNotIn applies the NotIn predicate on the "wechat_refund_id" field.
+func WechatRefundIDNotIn(vs ...string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotIn(FieldWechatRefundID, vs...))
+}
+
+// WechatRefundIDGT applies the GT predicate on the "wechat_refund_id" field.
+func WechatRefundIDGT(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGT(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDGTE applies the GTE predicate on the "wechat_refund_id" field.
+func WechatRefundIDGTE(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldGTE(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDLT applies the LT predicate on the "wechat_refund_id" field.
+func WechatRefundIDLT(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLT(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDLTE applies the LTE predicate on the "wechat_refund_id" field.
+func WechatRefundIDLTE(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldLTE(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDContains applies the Contains predicate on the "wechat_refund_id" field.
+func WechatRefundIDContains(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldContains(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDHasPrefix applies the HasPrefix predicate on the "wechat_refund_id" field.
+func WechatRefundIDHasPrefix(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldHasPrefix(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDHasSuffix applies the HasSuffix predicate on the "wechat_refund_id" field.
+func WechatRefundIDHasSuffix(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldHasSuffix(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDIsNil applies the IsNil predicate on the "wechat_refund_id" field.
+func WechatRefundIDIsNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldIsNull(FieldWechatRefundID))
+}
+
+// WechatRefundIDNotNil applies the NotNil predicate on the "wechat_refund_id" field.
+func WechatRefundIDNotNil() predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldNotNull(FieldWechatRefundID))
+}
+
+// WechatRefundIDEqualFold applies the EqualFold predicate on the "wechat_refund_id" field.
+func WechatRefundIDEqualFold(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldEqualFold(FieldWechatRefundID, v))
+}
+
+// WechatRefundIDContainsFold applies the ContainsFold predicate on the "wechat_refund_id" field.
+func WechatRefundIDContainsFold(v string) predicate.RechargeOrder {
+	return predicate.RechargeOrder(sql.FieldContainsFold(FieldWechatRefundID, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

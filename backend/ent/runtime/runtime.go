@@ -644,6 +644,18 @@ func init() {
 	rechargeorderDescNotes := rechargeorderFields[11].Descriptor()
 	// rechargeorder.DefaultNotes holds the default value on creation for the notes field.
 	rechargeorder.DefaultNotes = rechargeorderDescNotes.Default.(string)
+	// rechargeorderDescRefundNo is the schema descriptor for refund_no field.
+	rechargeorderDescRefundNo := rechargeorderFields[12].Descriptor()
+	// rechargeorder.RefundNoValidator is a validator for the "refund_no" field. It is called by the builders before save.
+	rechargeorder.RefundNoValidator = rechargeorderDescRefundNo.Validators[0].(func(string) error)
+	// rechargeorderDescRefundStatus is the schema descriptor for refund_status field.
+	rechargeorderDescRefundStatus := rechargeorderFields[13].Descriptor()
+	// rechargeorder.RefundStatusValidator is a validator for the "refund_status" field. It is called by the builders before save.
+	rechargeorder.RefundStatusValidator = rechargeorderDescRefundStatus.Validators[0].(func(string) error)
+	// rechargeorderDescWechatRefundID is the schema descriptor for wechat_refund_id field.
+	rechargeorderDescWechatRefundID := rechargeorderFields[17].Descriptor()
+	// rechargeorder.WechatRefundIDValidator is a validator for the "wechat_refund_id" field. It is called by the builders before save.
+	rechargeorder.WechatRefundIDValidator = rechargeorderDescWechatRefundID.Validators[0].(func(string) error)
 	redeemcodeFields := schema.RedeemCode{}.Fields()
 	_ = redeemcodeFields
 	// redeemcodeDescCode is the schema descriptor for code field.

@@ -33,8 +33,11 @@ type AdminOrderDetailResponse struct {
 	TransactionID  *string    `json:"transaction_id,omitempty"`
 	ExpireAt       time.Time  `json:"expire_at"`
 	PaidAt         *time.Time `json:"paid_at,omitempty"`
+	RefundNo       *string    `json:"refund_no,omitempty"`
+	RefundStatus   *string    `json:"refund_status,omitempty"`
 	RefundedAt     *time.Time `json:"refunded_at,omitempty"`
-	RefundReason   string     `json:"refund_reason,omitempty"`
+	RefundReason   *string    `json:"refund_reason,omitempty"`
+	RefundAdminID  *int64     `json:"refund_admin_id,omitempty"`
 	Notes          string     `json:"notes,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
@@ -68,6 +71,11 @@ func (h *RechargeHandler) GetOrder(c *gin.Context) {
 		TransactionID:  order.WeChatTransactionID,
 		ExpireAt:       order.ExpireAt,
 		PaidAt:         order.PaidAt,
+		RefundNo:       order.RefundNo,
+		RefundStatus:   order.RefundStatus,
+		RefundedAt:     order.RefundedAt,
+		RefundReason:   order.RefundReason,
+		RefundAdminID:  order.RefundAdminID,
 		Notes:          order.Notes,
 		CreatedAt:      order.CreatedAt,
 		UpdatedAt:      order.UpdatedAt,
@@ -171,10 +179,13 @@ type AdminRefundOrderRequest struct {
 
 // AdminRefundOrderResponse 管理员退款响应
 type AdminRefundOrderResponse struct {
-	OrderNo      string `json:"order_no"`
-	Status       string `json:"status"`
-	RefundStatus string `json:"refund_status"`
-	Message      string `json:"message"`
+	OrderNo      string     `json:"order_no"`
+	RefundNo     string     `json:"refund_no"`
+	Status       string     `json:"status"`
+	RefundStatus string     `json:"refund_status"`
+	WeChatStatus string     `json:"wechat_status,omitempty"`
+	RefundedAt   *time.Time `json:"refunded_at,omitempty"`
+	Message      string     `json:"message"`
 }
 
 // RefundOrder 退款订单
@@ -209,10 +220,26 @@ func (h *RechargeHandler) RefundOrder(c *gin.Context) {
 		return
 	}
 
+	// 根据退款状态生成消息
+	var message string
+	switch result.RefundStatus {
+	case "success":
+		message = "退款成功"
+	case "processing":
+		message = "退款处理中，请等待微信回调"
+	case "failed":
+		message = "退款失败"
+	default:
+		message = "退款处理中"
+	}
+
 	response.Success(c, AdminRefundOrderResponse{
 		OrderNo:      result.OrderNo,
+		RefundNo:     result.RefundNo,
 		Status:       result.Status,
 		RefundStatus: result.RefundStatus,
-		Message:      "退款处理中",
+		WeChatStatus: result.WeChatStatus,
+		RefundedAt:   result.RefundedAt,
+		Message:      message,
 	})
 }

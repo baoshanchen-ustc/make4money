@@ -179,6 +179,90 @@ func (_c *RechargeOrderCreate) SetNillableNotes(v *string) *RechargeOrderCreate 
 	return _c
 }
 
+// SetRefundNo sets the "refund_no" field.
+func (_c *RechargeOrderCreate) SetRefundNo(v string) *RechargeOrderCreate {
+	_c.mutation.SetRefundNo(v)
+	return _c
+}
+
+// SetNillableRefundNo sets the "refund_no" field if the given value is not nil.
+func (_c *RechargeOrderCreate) SetNillableRefundNo(v *string) *RechargeOrderCreate {
+	if v != nil {
+		_c.SetRefundNo(*v)
+	}
+	return _c
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (_c *RechargeOrderCreate) SetRefundStatus(v string) *RechargeOrderCreate {
+	_c.mutation.SetRefundStatus(v)
+	return _c
+}
+
+// SetNillableRefundStatus sets the "refund_status" field if the given value is not nil.
+func (_c *RechargeOrderCreate) SetNillableRefundStatus(v *string) *RechargeOrderCreate {
+	if v != nil {
+		_c.SetRefundStatus(*v)
+	}
+	return _c
+}
+
+// SetRefundedAt sets the "refunded_at" field.
+func (_c *RechargeOrderCreate) SetRefundedAt(v time.Time) *RechargeOrderCreate {
+	_c.mutation.SetRefundedAt(v)
+	return _c
+}
+
+// SetNillableRefundedAt sets the "refunded_at" field if the given value is not nil.
+func (_c *RechargeOrderCreate) SetNillableRefundedAt(v *time.Time) *RechargeOrderCreate {
+	if v != nil {
+		_c.SetRefundedAt(*v)
+	}
+	return _c
+}
+
+// SetRefundReason sets the "refund_reason" field.
+func (_c *RechargeOrderCreate) SetRefundReason(v string) *RechargeOrderCreate {
+	_c.mutation.SetRefundReason(v)
+	return _c
+}
+
+// SetNillableRefundReason sets the "refund_reason" field if the given value is not nil.
+func (_c *RechargeOrderCreate) SetNillableRefundReason(v *string) *RechargeOrderCreate {
+	if v != nil {
+		_c.SetRefundReason(*v)
+	}
+	return _c
+}
+
+// SetRefundAdminID sets the "refund_admin_id" field.
+func (_c *RechargeOrderCreate) SetRefundAdminID(v int64) *RechargeOrderCreate {
+	_c.mutation.SetRefundAdminID(v)
+	return _c
+}
+
+// SetNillableRefundAdminID sets the "refund_admin_id" field if the given value is not nil.
+func (_c *RechargeOrderCreate) SetNillableRefundAdminID(v *int64) *RechargeOrderCreate {
+	if v != nil {
+		_c.SetRefundAdminID(*v)
+	}
+	return _c
+}
+
+// SetWechatRefundID sets the "wechat_refund_id" field.
+func (_c *RechargeOrderCreate) SetWechatRefundID(v string) *RechargeOrderCreate {
+	_c.mutation.SetWechatRefundID(v)
+	return _c
+}
+
+// SetNillableWechatRefundID sets the "wechat_refund_id" field if the given value is not nil.
+func (_c *RechargeOrderCreate) SetNillableWechatRefundID(v *string) *RechargeOrderCreate {
+	if v != nil {
+		_c.SetWechatRefundID(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *RechargeOrderCreate) SetUser(v *User) *RechargeOrderCreate {
 	return _c.SetUserID(v.ID)
@@ -313,6 +397,21 @@ func (_c *RechargeOrderCreate) check() error {
 	if _, ok := _c.mutation.Notes(); !ok {
 		return &ValidationError{Name: "notes", err: errors.New(`ent: missing required field "RechargeOrder.notes"`)}
 	}
+	if v, ok := _c.mutation.RefundNo(); ok {
+		if err := rechargeorder.RefundNoValidator(v); err != nil {
+			return &ValidationError{Name: "refund_no", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.refund_no": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.RefundStatus(); ok {
+		if err := rechargeorder.RefundStatusValidator(v); err != nil {
+			return &ValidationError{Name: "refund_status", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.refund_status": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.WechatRefundID(); ok {
+		if err := rechargeorder.WechatRefundIDValidator(v); err != nil {
+			return &ValidationError{Name: "wechat_refund_id", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.wechat_refund_id": %w`, err)}
+		}
+	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "RechargeOrder.user"`)}
 	}
@@ -394,6 +493,30 @@ func (_c *RechargeOrderCreate) createSpec() (*RechargeOrder, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.Notes(); ok {
 		_spec.SetField(rechargeorder.FieldNotes, field.TypeString, value)
 		_node.Notes = value
+	}
+	if value, ok := _c.mutation.RefundNo(); ok {
+		_spec.SetField(rechargeorder.FieldRefundNo, field.TypeString, value)
+		_node.RefundNo = &value
+	}
+	if value, ok := _c.mutation.RefundStatus(); ok {
+		_spec.SetField(rechargeorder.FieldRefundStatus, field.TypeString, value)
+		_node.RefundStatus = &value
+	}
+	if value, ok := _c.mutation.RefundedAt(); ok {
+		_spec.SetField(rechargeorder.FieldRefundedAt, field.TypeTime, value)
+		_node.RefundedAt = &value
+	}
+	if value, ok := _c.mutation.RefundReason(); ok {
+		_spec.SetField(rechargeorder.FieldRefundReason, field.TypeString, value)
+		_node.RefundReason = &value
+	}
+	if value, ok := _c.mutation.RefundAdminID(); ok {
+		_spec.SetField(rechargeorder.FieldRefundAdminID, field.TypeInt64, value)
+		_node.RefundAdminID = &value
+	}
+	if value, ok := _c.mutation.WechatRefundID(); ok {
+		_spec.SetField(rechargeorder.FieldWechatRefundID, field.TypeString, value)
+		_node.WechatRefundID = &value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -647,6 +770,120 @@ func (u *RechargeOrderUpsert) SetNotes(v string) *RechargeOrderUpsert {
 // UpdateNotes sets the "notes" field to the value that was provided on create.
 func (u *RechargeOrderUpsert) UpdateNotes() *RechargeOrderUpsert {
 	u.SetExcluded(rechargeorder.FieldNotes)
+	return u
+}
+
+// SetRefundNo sets the "refund_no" field.
+func (u *RechargeOrderUpsert) SetRefundNo(v string) *RechargeOrderUpsert {
+	u.Set(rechargeorder.FieldRefundNo, v)
+	return u
+}
+
+// UpdateRefundNo sets the "refund_no" field to the value that was provided on create.
+func (u *RechargeOrderUpsert) UpdateRefundNo() *RechargeOrderUpsert {
+	u.SetExcluded(rechargeorder.FieldRefundNo)
+	return u
+}
+
+// ClearRefundNo clears the value of the "refund_no" field.
+func (u *RechargeOrderUpsert) ClearRefundNo() *RechargeOrderUpsert {
+	u.SetNull(rechargeorder.FieldRefundNo)
+	return u
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (u *RechargeOrderUpsert) SetRefundStatus(v string) *RechargeOrderUpsert {
+	u.Set(rechargeorder.FieldRefundStatus, v)
+	return u
+}
+
+// UpdateRefundStatus sets the "refund_status" field to the value that was provided on create.
+func (u *RechargeOrderUpsert) UpdateRefundStatus() *RechargeOrderUpsert {
+	u.SetExcluded(rechargeorder.FieldRefundStatus)
+	return u
+}
+
+// ClearRefundStatus clears the value of the "refund_status" field.
+func (u *RechargeOrderUpsert) ClearRefundStatus() *RechargeOrderUpsert {
+	u.SetNull(rechargeorder.FieldRefundStatus)
+	return u
+}
+
+// SetRefundedAt sets the "refunded_at" field.
+func (u *RechargeOrderUpsert) SetRefundedAt(v time.Time) *RechargeOrderUpsert {
+	u.Set(rechargeorder.FieldRefundedAt, v)
+	return u
+}
+
+// UpdateRefundedAt sets the "refunded_at" field to the value that was provided on create.
+func (u *RechargeOrderUpsert) UpdateRefundedAt() *RechargeOrderUpsert {
+	u.SetExcluded(rechargeorder.FieldRefundedAt)
+	return u
+}
+
+// ClearRefundedAt clears the value of the "refunded_at" field.
+func (u *RechargeOrderUpsert) ClearRefundedAt() *RechargeOrderUpsert {
+	u.SetNull(rechargeorder.FieldRefundedAt)
+	return u
+}
+
+// SetRefundReason sets the "refund_reason" field.
+func (u *RechargeOrderUpsert) SetRefundReason(v string) *RechargeOrderUpsert {
+	u.Set(rechargeorder.FieldRefundReason, v)
+	return u
+}
+
+// UpdateRefundReason sets the "refund_reason" field to the value that was provided on create.
+func (u *RechargeOrderUpsert) UpdateRefundReason() *RechargeOrderUpsert {
+	u.SetExcluded(rechargeorder.FieldRefundReason)
+	return u
+}
+
+// ClearRefundReason clears the value of the "refund_reason" field.
+func (u *RechargeOrderUpsert) ClearRefundReason() *RechargeOrderUpsert {
+	u.SetNull(rechargeorder.FieldRefundReason)
+	return u
+}
+
+// SetRefundAdminID sets the "refund_admin_id" field.
+func (u *RechargeOrderUpsert) SetRefundAdminID(v int64) *RechargeOrderUpsert {
+	u.Set(rechargeorder.FieldRefundAdminID, v)
+	return u
+}
+
+// UpdateRefundAdminID sets the "refund_admin_id" field to the value that was provided on create.
+func (u *RechargeOrderUpsert) UpdateRefundAdminID() *RechargeOrderUpsert {
+	u.SetExcluded(rechargeorder.FieldRefundAdminID)
+	return u
+}
+
+// AddRefundAdminID adds v to the "refund_admin_id" field.
+func (u *RechargeOrderUpsert) AddRefundAdminID(v int64) *RechargeOrderUpsert {
+	u.Add(rechargeorder.FieldRefundAdminID, v)
+	return u
+}
+
+// ClearRefundAdminID clears the value of the "refund_admin_id" field.
+func (u *RechargeOrderUpsert) ClearRefundAdminID() *RechargeOrderUpsert {
+	u.SetNull(rechargeorder.FieldRefundAdminID)
+	return u
+}
+
+// SetWechatRefundID sets the "wechat_refund_id" field.
+func (u *RechargeOrderUpsert) SetWechatRefundID(v string) *RechargeOrderUpsert {
+	u.Set(rechargeorder.FieldWechatRefundID, v)
+	return u
+}
+
+// UpdateWechatRefundID sets the "wechat_refund_id" field to the value that was provided on create.
+func (u *RechargeOrderUpsert) UpdateWechatRefundID() *RechargeOrderUpsert {
+	u.SetExcluded(rechargeorder.FieldWechatRefundID)
+	return u
+}
+
+// ClearWechatRefundID clears the value of the "wechat_refund_id" field.
+func (u *RechargeOrderUpsert) ClearWechatRefundID() *RechargeOrderUpsert {
+	u.SetNull(rechargeorder.FieldWechatRefundID)
 	return u
 }
 
@@ -909,6 +1146,139 @@ func (u *RechargeOrderUpsertOne) SetNotes(v string) *RechargeOrderUpsertOne {
 func (u *RechargeOrderUpsertOne) UpdateNotes() *RechargeOrderUpsertOne {
 	return u.Update(func(s *RechargeOrderUpsert) {
 		s.UpdateNotes()
+	})
+}
+
+// SetRefundNo sets the "refund_no" field.
+func (u *RechargeOrderUpsertOne) SetRefundNo(v string) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundNo(v)
+	})
+}
+
+// UpdateRefundNo sets the "refund_no" field to the value that was provided on create.
+func (u *RechargeOrderUpsertOne) UpdateRefundNo() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundNo()
+	})
+}
+
+// ClearRefundNo clears the value of the "refund_no" field.
+func (u *RechargeOrderUpsertOne) ClearRefundNo() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundNo()
+	})
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (u *RechargeOrderUpsertOne) SetRefundStatus(v string) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundStatus(v)
+	})
+}
+
+// UpdateRefundStatus sets the "refund_status" field to the value that was provided on create.
+func (u *RechargeOrderUpsertOne) UpdateRefundStatus() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundStatus()
+	})
+}
+
+// ClearRefundStatus clears the value of the "refund_status" field.
+func (u *RechargeOrderUpsertOne) ClearRefundStatus() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundStatus()
+	})
+}
+
+// SetRefundedAt sets the "refunded_at" field.
+func (u *RechargeOrderUpsertOne) SetRefundedAt(v time.Time) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundedAt(v)
+	})
+}
+
+// UpdateRefundedAt sets the "refunded_at" field to the value that was provided on create.
+func (u *RechargeOrderUpsertOne) UpdateRefundedAt() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundedAt()
+	})
+}
+
+// ClearRefundedAt clears the value of the "refunded_at" field.
+func (u *RechargeOrderUpsertOne) ClearRefundedAt() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundedAt()
+	})
+}
+
+// SetRefundReason sets the "refund_reason" field.
+func (u *RechargeOrderUpsertOne) SetRefundReason(v string) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundReason(v)
+	})
+}
+
+// UpdateRefundReason sets the "refund_reason" field to the value that was provided on create.
+func (u *RechargeOrderUpsertOne) UpdateRefundReason() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundReason()
+	})
+}
+
+// ClearRefundReason clears the value of the "refund_reason" field.
+func (u *RechargeOrderUpsertOne) ClearRefundReason() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundReason()
+	})
+}
+
+// SetRefundAdminID sets the "refund_admin_id" field.
+func (u *RechargeOrderUpsertOne) SetRefundAdminID(v int64) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundAdminID(v)
+	})
+}
+
+// AddRefundAdminID adds v to the "refund_admin_id" field.
+func (u *RechargeOrderUpsertOne) AddRefundAdminID(v int64) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.AddRefundAdminID(v)
+	})
+}
+
+// UpdateRefundAdminID sets the "refund_admin_id" field to the value that was provided on create.
+func (u *RechargeOrderUpsertOne) UpdateRefundAdminID() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundAdminID()
+	})
+}
+
+// ClearRefundAdminID clears the value of the "refund_admin_id" field.
+func (u *RechargeOrderUpsertOne) ClearRefundAdminID() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundAdminID()
+	})
+}
+
+// SetWechatRefundID sets the "wechat_refund_id" field.
+func (u *RechargeOrderUpsertOne) SetWechatRefundID(v string) *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetWechatRefundID(v)
+	})
+}
+
+// UpdateWechatRefundID sets the "wechat_refund_id" field to the value that was provided on create.
+func (u *RechargeOrderUpsertOne) UpdateWechatRefundID() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateWechatRefundID()
+	})
+}
+
+// ClearWechatRefundID clears the value of the "wechat_refund_id" field.
+func (u *RechargeOrderUpsertOne) ClearWechatRefundID() *RechargeOrderUpsertOne {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearWechatRefundID()
 	})
 }
 
@@ -1337,6 +1707,139 @@ func (u *RechargeOrderUpsertBulk) SetNotes(v string) *RechargeOrderUpsertBulk {
 func (u *RechargeOrderUpsertBulk) UpdateNotes() *RechargeOrderUpsertBulk {
 	return u.Update(func(s *RechargeOrderUpsert) {
 		s.UpdateNotes()
+	})
+}
+
+// SetRefundNo sets the "refund_no" field.
+func (u *RechargeOrderUpsertBulk) SetRefundNo(v string) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundNo(v)
+	})
+}
+
+// UpdateRefundNo sets the "refund_no" field to the value that was provided on create.
+func (u *RechargeOrderUpsertBulk) UpdateRefundNo() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundNo()
+	})
+}
+
+// ClearRefundNo clears the value of the "refund_no" field.
+func (u *RechargeOrderUpsertBulk) ClearRefundNo() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundNo()
+	})
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (u *RechargeOrderUpsertBulk) SetRefundStatus(v string) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundStatus(v)
+	})
+}
+
+// UpdateRefundStatus sets the "refund_status" field to the value that was provided on create.
+func (u *RechargeOrderUpsertBulk) UpdateRefundStatus() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundStatus()
+	})
+}
+
+// ClearRefundStatus clears the value of the "refund_status" field.
+func (u *RechargeOrderUpsertBulk) ClearRefundStatus() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundStatus()
+	})
+}
+
+// SetRefundedAt sets the "refunded_at" field.
+func (u *RechargeOrderUpsertBulk) SetRefundedAt(v time.Time) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundedAt(v)
+	})
+}
+
+// UpdateRefundedAt sets the "refunded_at" field to the value that was provided on create.
+func (u *RechargeOrderUpsertBulk) UpdateRefundedAt() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundedAt()
+	})
+}
+
+// ClearRefundedAt clears the value of the "refunded_at" field.
+func (u *RechargeOrderUpsertBulk) ClearRefundedAt() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundedAt()
+	})
+}
+
+// SetRefundReason sets the "refund_reason" field.
+func (u *RechargeOrderUpsertBulk) SetRefundReason(v string) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundReason(v)
+	})
+}
+
+// UpdateRefundReason sets the "refund_reason" field to the value that was provided on create.
+func (u *RechargeOrderUpsertBulk) UpdateRefundReason() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundReason()
+	})
+}
+
+// ClearRefundReason clears the value of the "refund_reason" field.
+func (u *RechargeOrderUpsertBulk) ClearRefundReason() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundReason()
+	})
+}
+
+// SetRefundAdminID sets the "refund_admin_id" field.
+func (u *RechargeOrderUpsertBulk) SetRefundAdminID(v int64) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetRefundAdminID(v)
+	})
+}
+
+// AddRefundAdminID adds v to the "refund_admin_id" field.
+func (u *RechargeOrderUpsertBulk) AddRefundAdminID(v int64) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.AddRefundAdminID(v)
+	})
+}
+
+// UpdateRefundAdminID sets the "refund_admin_id" field to the value that was provided on create.
+func (u *RechargeOrderUpsertBulk) UpdateRefundAdminID() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateRefundAdminID()
+	})
+}
+
+// ClearRefundAdminID clears the value of the "refund_admin_id" field.
+func (u *RechargeOrderUpsertBulk) ClearRefundAdminID() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearRefundAdminID()
+	})
+}
+
+// SetWechatRefundID sets the "wechat_refund_id" field.
+func (u *RechargeOrderUpsertBulk) SetWechatRefundID(v string) *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.SetWechatRefundID(v)
+	})
+}
+
+// UpdateWechatRefundID sets the "wechat_refund_id" field to the value that was provided on create.
+func (u *RechargeOrderUpsertBulk) UpdateWechatRefundID() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.UpdateWechatRefundID()
+	})
+}
+
+// ClearWechatRefundID clears the value of the "wechat_refund_id" field.
+func (u *RechargeOrderUpsertBulk) ClearWechatRefundID() *RechargeOrderUpsertBulk {
+	return u.Update(func(s *RechargeOrderUpsert) {
+		s.ClearWechatRefundID()
 	})
 }
 

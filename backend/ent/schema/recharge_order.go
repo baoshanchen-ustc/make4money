@@ -97,6 +97,50 @@ func (RechargeOrder) Fields() []ent.Field {
 		field.String("notes").
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
+
+		// 退款相关字段
+		// 退款单号
+		field.String("refund_no").
+			MaxLen(50).
+			Optional().
+			Nillable().
+			Comment("退款单号"),
+
+		// 退款状态: pending/processing/success/failed
+		field.String("refund_status").
+			MaxLen(20).
+			Optional().
+			Nillable().
+			Comment("退款状态"),
+
+		// 退款时间
+		field.Time("refunded_at").
+			SchemaType(map[string]string{
+				dialect.Postgres: "timestamptz",
+			}).
+			Optional().
+			Nillable().
+			Comment("退款时间"),
+
+		// 退款原因
+		field.String("refund_reason").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Optional().
+			Nillable().
+			Comment("退款原因"),
+
+		// 退款操作人ID
+		field.Int64("refund_admin_id").
+			Optional().
+			Nillable().
+			Comment("退款操作人ID"),
+
+		// 微信退款单号
+		field.String("wechat_refund_id").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Comment("微信退款单号"),
 	}
 }
 

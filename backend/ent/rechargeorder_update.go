@@ -234,6 +234,133 @@ func (_u *RechargeOrderUpdate) SetNillableNotes(v *string) *RechargeOrderUpdate 
 	return _u
 }
 
+// SetRefundNo sets the "refund_no" field.
+func (_u *RechargeOrderUpdate) SetRefundNo(v string) *RechargeOrderUpdate {
+	_u.mutation.SetRefundNo(v)
+	return _u
+}
+
+// SetNillableRefundNo sets the "refund_no" field if the given value is not nil.
+func (_u *RechargeOrderUpdate) SetNillableRefundNo(v *string) *RechargeOrderUpdate {
+	if v != nil {
+		_u.SetRefundNo(*v)
+	}
+	return _u
+}
+
+// ClearRefundNo clears the value of the "refund_no" field.
+func (_u *RechargeOrderUpdate) ClearRefundNo() *RechargeOrderUpdate {
+	_u.mutation.ClearRefundNo()
+	return _u
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (_u *RechargeOrderUpdate) SetRefundStatus(v string) *RechargeOrderUpdate {
+	_u.mutation.SetRefundStatus(v)
+	return _u
+}
+
+// SetNillableRefundStatus sets the "refund_status" field if the given value is not nil.
+func (_u *RechargeOrderUpdate) SetNillableRefundStatus(v *string) *RechargeOrderUpdate {
+	if v != nil {
+		_u.SetRefundStatus(*v)
+	}
+	return _u
+}
+
+// ClearRefundStatus clears the value of the "refund_status" field.
+func (_u *RechargeOrderUpdate) ClearRefundStatus() *RechargeOrderUpdate {
+	_u.mutation.ClearRefundStatus()
+	return _u
+}
+
+// SetRefundedAt sets the "refunded_at" field.
+func (_u *RechargeOrderUpdate) SetRefundedAt(v time.Time) *RechargeOrderUpdate {
+	_u.mutation.SetRefundedAt(v)
+	return _u
+}
+
+// SetNillableRefundedAt sets the "refunded_at" field if the given value is not nil.
+func (_u *RechargeOrderUpdate) SetNillableRefundedAt(v *time.Time) *RechargeOrderUpdate {
+	if v != nil {
+		_u.SetRefundedAt(*v)
+	}
+	return _u
+}
+
+// ClearRefundedAt clears the value of the "refunded_at" field.
+func (_u *RechargeOrderUpdate) ClearRefundedAt() *RechargeOrderUpdate {
+	_u.mutation.ClearRefundedAt()
+	return _u
+}
+
+// SetRefundReason sets the "refund_reason" field.
+func (_u *RechargeOrderUpdate) SetRefundReason(v string) *RechargeOrderUpdate {
+	_u.mutation.SetRefundReason(v)
+	return _u
+}
+
+// SetNillableRefundReason sets the "refund_reason" field if the given value is not nil.
+func (_u *RechargeOrderUpdate) SetNillableRefundReason(v *string) *RechargeOrderUpdate {
+	if v != nil {
+		_u.SetRefundReason(*v)
+	}
+	return _u
+}
+
+// ClearRefundReason clears the value of the "refund_reason" field.
+func (_u *RechargeOrderUpdate) ClearRefundReason() *RechargeOrderUpdate {
+	_u.mutation.ClearRefundReason()
+	return _u
+}
+
+// SetRefundAdminID sets the "refund_admin_id" field.
+func (_u *RechargeOrderUpdate) SetRefundAdminID(v int64) *RechargeOrderUpdate {
+	_u.mutation.ResetRefundAdminID()
+	_u.mutation.SetRefundAdminID(v)
+	return _u
+}
+
+// SetNillableRefundAdminID sets the "refund_admin_id" field if the given value is not nil.
+func (_u *RechargeOrderUpdate) SetNillableRefundAdminID(v *int64) *RechargeOrderUpdate {
+	if v != nil {
+		_u.SetRefundAdminID(*v)
+	}
+	return _u
+}
+
+// AddRefundAdminID adds value to the "refund_admin_id" field.
+func (_u *RechargeOrderUpdate) AddRefundAdminID(v int64) *RechargeOrderUpdate {
+	_u.mutation.AddRefundAdminID(v)
+	return _u
+}
+
+// ClearRefundAdminID clears the value of the "refund_admin_id" field.
+func (_u *RechargeOrderUpdate) ClearRefundAdminID() *RechargeOrderUpdate {
+	_u.mutation.ClearRefundAdminID()
+	return _u
+}
+
+// SetWechatRefundID sets the "wechat_refund_id" field.
+func (_u *RechargeOrderUpdate) SetWechatRefundID(v string) *RechargeOrderUpdate {
+	_u.mutation.SetWechatRefundID(v)
+	return _u
+}
+
+// SetNillableWechatRefundID sets the "wechat_refund_id" field if the given value is not nil.
+func (_u *RechargeOrderUpdate) SetNillableWechatRefundID(v *string) *RechargeOrderUpdate {
+	if v != nil {
+		_u.SetWechatRefundID(*v)
+	}
+	return _u
+}
+
+// ClearWechatRefundID clears the value of the "wechat_refund_id" field.
+func (_u *RechargeOrderUpdate) ClearWechatRefundID() *RechargeOrderUpdate {
+	_u.mutation.ClearWechatRefundID()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *RechargeOrderUpdate) SetUser(v *User) *RechargeOrderUpdate {
 	return _u.SetUserID(v.ID)
@@ -328,6 +455,21 @@ func (_u *RechargeOrderUpdate) check() error {
 			return &ValidationError{Name: "prepay_id", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.prepay_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RefundNo(); ok {
+		if err := rechargeorder.RefundNoValidator(v); err != nil {
+			return &ValidationError{Name: "refund_no", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.refund_no": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RefundStatus(); ok {
+		if err := rechargeorder.RefundStatusValidator(v); err != nil {
+			return &ValidationError{Name: "refund_status", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.refund_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.WechatRefundID(); ok {
+		if err := rechargeorder.WechatRefundIDValidator(v); err != nil {
+			return &ValidationError{Name: "wechat_refund_id", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.wechat_refund_id": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "RechargeOrder.user"`)
 	}
@@ -396,6 +538,45 @@ func (_u *RechargeOrderUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(rechargeorder.FieldNotes, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RefundNo(); ok {
+		_spec.SetField(rechargeorder.FieldRefundNo, field.TypeString, value)
+	}
+	if _u.mutation.RefundNoCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundNo, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundStatus(); ok {
+		_spec.SetField(rechargeorder.FieldRefundStatus, field.TypeString, value)
+	}
+	if _u.mutation.RefundStatusCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundedAt(); ok {
+		_spec.SetField(rechargeorder.FieldRefundedAt, field.TypeTime, value)
+	}
+	if _u.mutation.RefundedAtCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RefundReason(); ok {
+		_spec.SetField(rechargeorder.FieldRefundReason, field.TypeString, value)
+	}
+	if _u.mutation.RefundReasonCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundAdminID(); ok {
+		_spec.SetField(rechargeorder.FieldRefundAdminID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedRefundAdminID(); ok {
+		_spec.AddField(rechargeorder.FieldRefundAdminID, field.TypeInt64, value)
+	}
+	if _u.mutation.RefundAdminIDCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundAdminID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.WechatRefundID(); ok {
+		_spec.SetField(rechargeorder.FieldWechatRefundID, field.TypeString, value)
+	}
+	if _u.mutation.WechatRefundIDCleared() {
+		_spec.ClearField(rechargeorder.FieldWechatRefundID, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -651,6 +832,133 @@ func (_u *RechargeOrderUpdateOne) SetNillableNotes(v *string) *RechargeOrderUpda
 	return _u
 }
 
+// SetRefundNo sets the "refund_no" field.
+func (_u *RechargeOrderUpdateOne) SetRefundNo(v string) *RechargeOrderUpdateOne {
+	_u.mutation.SetRefundNo(v)
+	return _u
+}
+
+// SetNillableRefundNo sets the "refund_no" field if the given value is not nil.
+func (_u *RechargeOrderUpdateOne) SetNillableRefundNo(v *string) *RechargeOrderUpdateOne {
+	if v != nil {
+		_u.SetRefundNo(*v)
+	}
+	return _u
+}
+
+// ClearRefundNo clears the value of the "refund_no" field.
+func (_u *RechargeOrderUpdateOne) ClearRefundNo() *RechargeOrderUpdateOne {
+	_u.mutation.ClearRefundNo()
+	return _u
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (_u *RechargeOrderUpdateOne) SetRefundStatus(v string) *RechargeOrderUpdateOne {
+	_u.mutation.SetRefundStatus(v)
+	return _u
+}
+
+// SetNillableRefundStatus sets the "refund_status" field if the given value is not nil.
+func (_u *RechargeOrderUpdateOne) SetNillableRefundStatus(v *string) *RechargeOrderUpdateOne {
+	if v != nil {
+		_u.SetRefundStatus(*v)
+	}
+	return _u
+}
+
+// ClearRefundStatus clears the value of the "refund_status" field.
+func (_u *RechargeOrderUpdateOne) ClearRefundStatus() *RechargeOrderUpdateOne {
+	_u.mutation.ClearRefundStatus()
+	return _u
+}
+
+// SetRefundedAt sets the "refunded_at" field.
+func (_u *RechargeOrderUpdateOne) SetRefundedAt(v time.Time) *RechargeOrderUpdateOne {
+	_u.mutation.SetRefundedAt(v)
+	return _u
+}
+
+// SetNillableRefundedAt sets the "refunded_at" field if the given value is not nil.
+func (_u *RechargeOrderUpdateOne) SetNillableRefundedAt(v *time.Time) *RechargeOrderUpdateOne {
+	if v != nil {
+		_u.SetRefundedAt(*v)
+	}
+	return _u
+}
+
+// ClearRefundedAt clears the value of the "refunded_at" field.
+func (_u *RechargeOrderUpdateOne) ClearRefundedAt() *RechargeOrderUpdateOne {
+	_u.mutation.ClearRefundedAt()
+	return _u
+}
+
+// SetRefundReason sets the "refund_reason" field.
+func (_u *RechargeOrderUpdateOne) SetRefundReason(v string) *RechargeOrderUpdateOne {
+	_u.mutation.SetRefundReason(v)
+	return _u
+}
+
+// SetNillableRefundReason sets the "refund_reason" field if the given value is not nil.
+func (_u *RechargeOrderUpdateOne) SetNillableRefundReason(v *string) *RechargeOrderUpdateOne {
+	if v != nil {
+		_u.SetRefundReason(*v)
+	}
+	return _u
+}
+
+// ClearRefundReason clears the value of the "refund_reason" field.
+func (_u *RechargeOrderUpdateOne) ClearRefundReason() *RechargeOrderUpdateOne {
+	_u.mutation.ClearRefundReason()
+	return _u
+}
+
+// SetRefundAdminID sets the "refund_admin_id" field.
+func (_u *RechargeOrderUpdateOne) SetRefundAdminID(v int64) *RechargeOrderUpdateOne {
+	_u.mutation.ResetRefundAdminID()
+	_u.mutation.SetRefundAdminID(v)
+	return _u
+}
+
+// SetNillableRefundAdminID sets the "refund_admin_id" field if the given value is not nil.
+func (_u *RechargeOrderUpdateOne) SetNillableRefundAdminID(v *int64) *RechargeOrderUpdateOne {
+	if v != nil {
+		_u.SetRefundAdminID(*v)
+	}
+	return _u
+}
+
+// AddRefundAdminID adds value to the "refund_admin_id" field.
+func (_u *RechargeOrderUpdateOne) AddRefundAdminID(v int64) *RechargeOrderUpdateOne {
+	_u.mutation.AddRefundAdminID(v)
+	return _u
+}
+
+// ClearRefundAdminID clears the value of the "refund_admin_id" field.
+func (_u *RechargeOrderUpdateOne) ClearRefundAdminID() *RechargeOrderUpdateOne {
+	_u.mutation.ClearRefundAdminID()
+	return _u
+}
+
+// SetWechatRefundID sets the "wechat_refund_id" field.
+func (_u *RechargeOrderUpdateOne) SetWechatRefundID(v string) *RechargeOrderUpdateOne {
+	_u.mutation.SetWechatRefundID(v)
+	return _u
+}
+
+// SetNillableWechatRefundID sets the "wechat_refund_id" field if the given value is not nil.
+func (_u *RechargeOrderUpdateOne) SetNillableWechatRefundID(v *string) *RechargeOrderUpdateOne {
+	if v != nil {
+		_u.SetWechatRefundID(*v)
+	}
+	return _u
+}
+
+// ClearWechatRefundID clears the value of the "wechat_refund_id" field.
+func (_u *RechargeOrderUpdateOne) ClearWechatRefundID() *RechargeOrderUpdateOne {
+	_u.mutation.ClearWechatRefundID()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *RechargeOrderUpdateOne) SetUser(v *User) *RechargeOrderUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -758,6 +1066,21 @@ func (_u *RechargeOrderUpdateOne) check() error {
 			return &ValidationError{Name: "prepay_id", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.prepay_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RefundNo(); ok {
+		if err := rechargeorder.RefundNoValidator(v); err != nil {
+			return &ValidationError{Name: "refund_no", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.refund_no": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RefundStatus(); ok {
+		if err := rechargeorder.RefundStatusValidator(v); err != nil {
+			return &ValidationError{Name: "refund_status", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.refund_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.WechatRefundID(); ok {
+		if err := rechargeorder.WechatRefundIDValidator(v); err != nil {
+			return &ValidationError{Name: "wechat_refund_id", err: fmt.Errorf(`ent: validator failed for field "RechargeOrder.wechat_refund_id": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "RechargeOrder.user"`)
 	}
@@ -843,6 +1166,45 @@ func (_u *RechargeOrderUpdateOne) sqlSave(ctx context.Context) (_node *RechargeO
 	}
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(rechargeorder.FieldNotes, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RefundNo(); ok {
+		_spec.SetField(rechargeorder.FieldRefundNo, field.TypeString, value)
+	}
+	if _u.mutation.RefundNoCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundNo, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundStatus(); ok {
+		_spec.SetField(rechargeorder.FieldRefundStatus, field.TypeString, value)
+	}
+	if _u.mutation.RefundStatusCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundedAt(); ok {
+		_spec.SetField(rechargeorder.FieldRefundedAt, field.TypeTime, value)
+	}
+	if _u.mutation.RefundedAtCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RefundReason(); ok {
+		_spec.SetField(rechargeorder.FieldRefundReason, field.TypeString, value)
+	}
+	if _u.mutation.RefundReasonCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefundAdminID(); ok {
+		_spec.SetField(rechargeorder.FieldRefundAdminID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedRefundAdminID(); ok {
+		_spec.AddField(rechargeorder.FieldRefundAdminID, field.TypeInt64, value)
+	}
+	if _u.mutation.RefundAdminIDCleared() {
+		_spec.ClearField(rechargeorder.FieldRefundAdminID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.WechatRefundID(); ok {
+		_spec.SetField(rechargeorder.FieldWechatRefundID, field.TypeString, value)
+	}
+	if _u.mutation.WechatRefundIDCleared() {
+		_spec.ClearField(rechargeorder.FieldWechatRefundID, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

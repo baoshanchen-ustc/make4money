@@ -11020,6 +11020,13 @@ type RechargeOrderMutation struct {
 	expire_at             *time.Time
 	paid_at               *time.Time
 	notes                 *string
+	refund_no             *string
+	refund_status         *string
+	refunded_at           *time.Time
+	refund_reason         *string
+	refund_admin_id       *int64
+	addrefund_admin_id    *int64
+	wechat_refund_id      *string
 	clearedFields         map[string]struct{}
 	user                  *int64
 	cleareduser           bool
@@ -11702,6 +11709,321 @@ func (m *RechargeOrderMutation) ResetNotes() {
 	m.notes = nil
 }
 
+// SetRefundNo sets the "refund_no" field.
+func (m *RechargeOrderMutation) SetRefundNo(s string) {
+	m.refund_no = &s
+}
+
+// RefundNo returns the value of the "refund_no" field in the mutation.
+func (m *RechargeOrderMutation) RefundNo() (r string, exists bool) {
+	v := m.refund_no
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundNo returns the old "refund_no" field's value of the RechargeOrder entity.
+// If the RechargeOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargeOrderMutation) OldRefundNo(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundNo is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundNo requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundNo: %w", err)
+	}
+	return oldValue.RefundNo, nil
+}
+
+// ClearRefundNo clears the value of the "refund_no" field.
+func (m *RechargeOrderMutation) ClearRefundNo() {
+	m.refund_no = nil
+	m.clearedFields[rechargeorder.FieldRefundNo] = struct{}{}
+}
+
+// RefundNoCleared returns if the "refund_no" field was cleared in this mutation.
+func (m *RechargeOrderMutation) RefundNoCleared() bool {
+	_, ok := m.clearedFields[rechargeorder.FieldRefundNo]
+	return ok
+}
+
+// ResetRefundNo resets all changes to the "refund_no" field.
+func (m *RechargeOrderMutation) ResetRefundNo() {
+	m.refund_no = nil
+	delete(m.clearedFields, rechargeorder.FieldRefundNo)
+}
+
+// SetRefundStatus sets the "refund_status" field.
+func (m *RechargeOrderMutation) SetRefundStatus(s string) {
+	m.refund_status = &s
+}
+
+// RefundStatus returns the value of the "refund_status" field in the mutation.
+func (m *RechargeOrderMutation) RefundStatus() (r string, exists bool) {
+	v := m.refund_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundStatus returns the old "refund_status" field's value of the RechargeOrder entity.
+// If the RechargeOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargeOrderMutation) OldRefundStatus(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundStatus: %w", err)
+	}
+	return oldValue.RefundStatus, nil
+}
+
+// ClearRefundStatus clears the value of the "refund_status" field.
+func (m *RechargeOrderMutation) ClearRefundStatus() {
+	m.refund_status = nil
+	m.clearedFields[rechargeorder.FieldRefundStatus] = struct{}{}
+}
+
+// RefundStatusCleared returns if the "refund_status" field was cleared in this mutation.
+func (m *RechargeOrderMutation) RefundStatusCleared() bool {
+	_, ok := m.clearedFields[rechargeorder.FieldRefundStatus]
+	return ok
+}
+
+// ResetRefundStatus resets all changes to the "refund_status" field.
+func (m *RechargeOrderMutation) ResetRefundStatus() {
+	m.refund_status = nil
+	delete(m.clearedFields, rechargeorder.FieldRefundStatus)
+}
+
+// SetRefundedAt sets the "refunded_at" field.
+func (m *RechargeOrderMutation) SetRefundedAt(t time.Time) {
+	m.refunded_at = &t
+}
+
+// RefundedAt returns the value of the "refunded_at" field in the mutation.
+func (m *RechargeOrderMutation) RefundedAt() (r time.Time, exists bool) {
+	v := m.refunded_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundedAt returns the old "refunded_at" field's value of the RechargeOrder entity.
+// If the RechargeOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargeOrderMutation) OldRefundedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundedAt: %w", err)
+	}
+	return oldValue.RefundedAt, nil
+}
+
+// ClearRefundedAt clears the value of the "refunded_at" field.
+func (m *RechargeOrderMutation) ClearRefundedAt() {
+	m.refunded_at = nil
+	m.clearedFields[rechargeorder.FieldRefundedAt] = struct{}{}
+}
+
+// RefundedAtCleared returns if the "refunded_at" field was cleared in this mutation.
+func (m *RechargeOrderMutation) RefundedAtCleared() bool {
+	_, ok := m.clearedFields[rechargeorder.FieldRefundedAt]
+	return ok
+}
+
+// ResetRefundedAt resets all changes to the "refunded_at" field.
+func (m *RechargeOrderMutation) ResetRefundedAt() {
+	m.refunded_at = nil
+	delete(m.clearedFields, rechargeorder.FieldRefundedAt)
+}
+
+// SetRefundReason sets the "refund_reason" field.
+func (m *RechargeOrderMutation) SetRefundReason(s string) {
+	m.refund_reason = &s
+}
+
+// RefundReason returns the value of the "refund_reason" field in the mutation.
+func (m *RechargeOrderMutation) RefundReason() (r string, exists bool) {
+	v := m.refund_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundReason returns the old "refund_reason" field's value of the RechargeOrder entity.
+// If the RechargeOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargeOrderMutation) OldRefundReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundReason: %w", err)
+	}
+	return oldValue.RefundReason, nil
+}
+
+// ClearRefundReason clears the value of the "refund_reason" field.
+func (m *RechargeOrderMutation) ClearRefundReason() {
+	m.refund_reason = nil
+	m.clearedFields[rechargeorder.FieldRefundReason] = struct{}{}
+}
+
+// RefundReasonCleared returns if the "refund_reason" field was cleared in this mutation.
+func (m *RechargeOrderMutation) RefundReasonCleared() bool {
+	_, ok := m.clearedFields[rechargeorder.FieldRefundReason]
+	return ok
+}
+
+// ResetRefundReason resets all changes to the "refund_reason" field.
+func (m *RechargeOrderMutation) ResetRefundReason() {
+	m.refund_reason = nil
+	delete(m.clearedFields, rechargeorder.FieldRefundReason)
+}
+
+// SetRefundAdminID sets the "refund_admin_id" field.
+func (m *RechargeOrderMutation) SetRefundAdminID(i int64) {
+	m.refund_admin_id = &i
+	m.addrefund_admin_id = nil
+}
+
+// RefundAdminID returns the value of the "refund_admin_id" field in the mutation.
+func (m *RechargeOrderMutation) RefundAdminID() (r int64, exists bool) {
+	v := m.refund_admin_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRefundAdminID returns the old "refund_admin_id" field's value of the RechargeOrder entity.
+// If the RechargeOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargeOrderMutation) OldRefundAdminID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefundAdminID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefundAdminID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefundAdminID: %w", err)
+	}
+	return oldValue.RefundAdminID, nil
+}
+
+// AddRefundAdminID adds i to the "refund_admin_id" field.
+func (m *RechargeOrderMutation) AddRefundAdminID(i int64) {
+	if m.addrefund_admin_id != nil {
+		*m.addrefund_admin_id += i
+	} else {
+		m.addrefund_admin_id = &i
+	}
+}
+
+// AddedRefundAdminID returns the value that was added to the "refund_admin_id" field in this mutation.
+func (m *RechargeOrderMutation) AddedRefundAdminID() (r int64, exists bool) {
+	v := m.addrefund_admin_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRefundAdminID clears the value of the "refund_admin_id" field.
+func (m *RechargeOrderMutation) ClearRefundAdminID() {
+	m.refund_admin_id = nil
+	m.addrefund_admin_id = nil
+	m.clearedFields[rechargeorder.FieldRefundAdminID] = struct{}{}
+}
+
+// RefundAdminIDCleared returns if the "refund_admin_id" field was cleared in this mutation.
+func (m *RechargeOrderMutation) RefundAdminIDCleared() bool {
+	_, ok := m.clearedFields[rechargeorder.FieldRefundAdminID]
+	return ok
+}
+
+// ResetRefundAdminID resets all changes to the "refund_admin_id" field.
+func (m *RechargeOrderMutation) ResetRefundAdminID() {
+	m.refund_admin_id = nil
+	m.addrefund_admin_id = nil
+	delete(m.clearedFields, rechargeorder.FieldRefundAdminID)
+}
+
+// SetWechatRefundID sets the "wechat_refund_id" field.
+func (m *RechargeOrderMutation) SetWechatRefundID(s string) {
+	m.wechat_refund_id = &s
+}
+
+// WechatRefundID returns the value of the "wechat_refund_id" field in the mutation.
+func (m *RechargeOrderMutation) WechatRefundID() (r string, exists bool) {
+	v := m.wechat_refund_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWechatRefundID returns the old "wechat_refund_id" field's value of the RechargeOrder entity.
+// If the RechargeOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RechargeOrderMutation) OldWechatRefundID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWechatRefundID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWechatRefundID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWechatRefundID: %w", err)
+	}
+	return oldValue.WechatRefundID, nil
+}
+
+// ClearWechatRefundID clears the value of the "wechat_refund_id" field.
+func (m *RechargeOrderMutation) ClearWechatRefundID() {
+	m.wechat_refund_id = nil
+	m.clearedFields[rechargeorder.FieldWechatRefundID] = struct{}{}
+}
+
+// WechatRefundIDCleared returns if the "wechat_refund_id" field was cleared in this mutation.
+func (m *RechargeOrderMutation) WechatRefundIDCleared() bool {
+	_, ok := m.clearedFields[rechargeorder.FieldWechatRefundID]
+	return ok
+}
+
+// ResetWechatRefundID resets all changes to the "wechat_refund_id" field.
+func (m *RechargeOrderMutation) ResetWechatRefundID() {
+	m.wechat_refund_id = nil
+	delete(m.clearedFields, rechargeorder.FieldWechatRefundID)
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *RechargeOrderMutation) ClearUser() {
 	m.cleareduser = true
@@ -11763,7 +12085,7 @@ func (m *RechargeOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RechargeOrderMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 20)
 	if m.created_at != nil {
 		fields = append(fields, rechargeorder.FieldCreatedAt)
 	}
@@ -11806,6 +12128,24 @@ func (m *RechargeOrderMutation) Fields() []string {
 	if m.notes != nil {
 		fields = append(fields, rechargeorder.FieldNotes)
 	}
+	if m.refund_no != nil {
+		fields = append(fields, rechargeorder.FieldRefundNo)
+	}
+	if m.refund_status != nil {
+		fields = append(fields, rechargeorder.FieldRefundStatus)
+	}
+	if m.refunded_at != nil {
+		fields = append(fields, rechargeorder.FieldRefundedAt)
+	}
+	if m.refund_reason != nil {
+		fields = append(fields, rechargeorder.FieldRefundReason)
+	}
+	if m.refund_admin_id != nil {
+		fields = append(fields, rechargeorder.FieldRefundAdminID)
+	}
+	if m.wechat_refund_id != nil {
+		fields = append(fields, rechargeorder.FieldWechatRefundID)
+	}
 	return fields
 }
 
@@ -11842,6 +12182,18 @@ func (m *RechargeOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.PaidAt()
 	case rechargeorder.FieldNotes:
 		return m.Notes()
+	case rechargeorder.FieldRefundNo:
+		return m.RefundNo()
+	case rechargeorder.FieldRefundStatus:
+		return m.RefundStatus()
+	case rechargeorder.FieldRefundedAt:
+		return m.RefundedAt()
+	case rechargeorder.FieldRefundReason:
+		return m.RefundReason()
+	case rechargeorder.FieldRefundAdminID:
+		return m.RefundAdminID()
+	case rechargeorder.FieldWechatRefundID:
+		return m.WechatRefundID()
 	}
 	return nil, false
 }
@@ -11879,6 +12231,18 @@ func (m *RechargeOrderMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldPaidAt(ctx)
 	case rechargeorder.FieldNotes:
 		return m.OldNotes(ctx)
+	case rechargeorder.FieldRefundNo:
+		return m.OldRefundNo(ctx)
+	case rechargeorder.FieldRefundStatus:
+		return m.OldRefundStatus(ctx)
+	case rechargeorder.FieldRefundedAt:
+		return m.OldRefundedAt(ctx)
+	case rechargeorder.FieldRefundReason:
+		return m.OldRefundReason(ctx)
+	case rechargeorder.FieldRefundAdminID:
+		return m.OldRefundAdminID(ctx)
+	case rechargeorder.FieldWechatRefundID:
+		return m.OldWechatRefundID(ctx)
 	}
 	return nil, fmt.Errorf("unknown RechargeOrder field %s", name)
 }
@@ -11986,6 +12350,48 @@ func (m *RechargeOrderMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetNotes(v)
 		return nil
+	case rechargeorder.FieldRefundNo:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundNo(v)
+		return nil
+	case rechargeorder.FieldRefundStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundStatus(v)
+		return nil
+	case rechargeorder.FieldRefundedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundedAt(v)
+		return nil
+	case rechargeorder.FieldRefundReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundReason(v)
+		return nil
+	case rechargeorder.FieldRefundAdminID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRefundAdminID(v)
+		return nil
+	case rechargeorder.FieldWechatRefundID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWechatRefundID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown RechargeOrder field %s", name)
 }
@@ -11997,6 +12403,9 @@ func (m *RechargeOrderMutation) AddedFields() []string {
 	if m.addamount != nil {
 		fields = append(fields, rechargeorder.FieldAmount)
 	}
+	if m.addrefund_admin_id != nil {
+		fields = append(fields, rechargeorder.FieldRefundAdminID)
+	}
 	return fields
 }
 
@@ -12007,6 +12416,8 @@ func (m *RechargeOrderMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case rechargeorder.FieldAmount:
 		return m.AddedAmount()
+	case rechargeorder.FieldRefundAdminID:
+		return m.AddedRefundAdminID()
 	}
 	return nil, false
 }
@@ -12022,6 +12433,13 @@ func (m *RechargeOrderMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddAmount(v)
+		return nil
+	case rechargeorder.FieldRefundAdminID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRefundAdminID(v)
 		return nil
 	}
 	return fmt.Errorf("unknown RechargeOrder numeric field %s", name)
@@ -12042,6 +12460,24 @@ func (m *RechargeOrderMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(rechargeorder.FieldPaidAt) {
 		fields = append(fields, rechargeorder.FieldPaidAt)
+	}
+	if m.FieldCleared(rechargeorder.FieldRefundNo) {
+		fields = append(fields, rechargeorder.FieldRefundNo)
+	}
+	if m.FieldCleared(rechargeorder.FieldRefundStatus) {
+		fields = append(fields, rechargeorder.FieldRefundStatus)
+	}
+	if m.FieldCleared(rechargeorder.FieldRefundedAt) {
+		fields = append(fields, rechargeorder.FieldRefundedAt)
+	}
+	if m.FieldCleared(rechargeorder.FieldRefundReason) {
+		fields = append(fields, rechargeorder.FieldRefundReason)
+	}
+	if m.FieldCleared(rechargeorder.FieldRefundAdminID) {
+		fields = append(fields, rechargeorder.FieldRefundAdminID)
+	}
+	if m.FieldCleared(rechargeorder.FieldWechatRefundID) {
+		fields = append(fields, rechargeorder.FieldWechatRefundID)
 	}
 	return fields
 }
@@ -12068,6 +12504,24 @@ func (m *RechargeOrderMutation) ClearField(name string) error {
 		return nil
 	case rechargeorder.FieldPaidAt:
 		m.ClearPaidAt()
+		return nil
+	case rechargeorder.FieldRefundNo:
+		m.ClearRefundNo()
+		return nil
+	case rechargeorder.FieldRefundStatus:
+		m.ClearRefundStatus()
+		return nil
+	case rechargeorder.FieldRefundedAt:
+		m.ClearRefundedAt()
+		return nil
+	case rechargeorder.FieldRefundReason:
+		m.ClearRefundReason()
+		return nil
+	case rechargeorder.FieldRefundAdminID:
+		m.ClearRefundAdminID()
+		return nil
+	case rechargeorder.FieldWechatRefundID:
+		m.ClearWechatRefundID()
 		return nil
 	}
 	return fmt.Errorf("unknown RechargeOrder nullable field %s", name)
@@ -12118,6 +12572,24 @@ func (m *RechargeOrderMutation) ResetField(name string) error {
 		return nil
 	case rechargeorder.FieldNotes:
 		m.ResetNotes()
+		return nil
+	case rechargeorder.FieldRefundNo:
+		m.ResetRefundNo()
+		return nil
+	case rechargeorder.FieldRefundStatus:
+		m.ResetRefundStatus()
+		return nil
+	case rechargeorder.FieldRefundedAt:
+		m.ResetRefundedAt()
+		return nil
+	case rechargeorder.FieldRefundReason:
+		m.ResetRefundReason()
+		return nil
+	case rechargeorder.FieldRefundAdminID:
+		m.ResetRefundAdminID()
+		return nil
+	case rechargeorder.FieldWechatRefundID:
+		m.ResetWechatRefundID()
 		return nil
 	}
 	return fmt.Errorf("unknown RechargeOrder field %s", name)

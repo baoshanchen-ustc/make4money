@@ -34,6 +34,15 @@ const (
 	PaymentChannelH5     = "h5"     // H5 支付
 )
 
+// 退款状态常量
+const (
+	RefundStatusPending    = "pending"    // 退款待处理
+	RefundStatusProcessing = "processing" // 退款处理中
+	RefundStatusSuccess    = "success"    // 退款成功
+	RefundStatusFailed     = "failed"     // 退款失败
+	RefundStatusAbnormal   = "abnormal"   // 退款异常
+)
+
 var (
 	ErrRechargeOrderNotFound    = infraerrors.NotFound("RECHARGE_ORDER_NOT_FOUND", "recharge order not found")
 	ErrRechargeOrderExpired     = infraerrors.BadRequest("RECHARGE_ORDER_EXPIRED", "recharge order has expired")
@@ -43,6 +52,8 @@ var (
 	ErrOrderCancelConflict      = infraerrors.Conflict("ORDER_CANCEL_CONFLICT", "order status has changed")
 	ErrOrderNotBelongToUser     = infraerrors.Forbidden("ORDER_NOT_BELONG_TO_USER", "order does not belong to you")
 	ErrOrderNotRefundable       = infraerrors.BadRequest("ORDER_NOT_REFUNDABLE", "only paid orders can be refunded")
+	ErrRefundFailed             = infraerrors.InternalServer("REFUND_FAILED", "refund request failed")
+	ErrRefundAlreadyInProgress  = infraerrors.Conflict("REFUND_ALREADY_IN_PROGRESS", "refund is already in progress")
 )
 
 // RechargeOrder 充值订单模型
@@ -62,6 +73,13 @@ type RechargeOrder struct {
 	Notes                string     `json:"notes,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
+	// 退款相关字段
+	RefundNo       *string    `json:"refund_no,omitempty"`
+	RefundStatus   *string    `json:"refund_status,omitempty"`
+	RefundedAt     *time.Time `json:"refunded_at,omitempty"`
+	RefundReason   *string    `json:"refund_reason,omitempty"`
+	RefundAdminID  *int64     `json:"refund_admin_id,omitempty"`
+	WeChatRefundID *string    `json:"wechat_refund_id,omitempty"`
 }
 
 // CreateRechargeOrderRequest 创建充值订单请求
@@ -111,6 +129,13 @@ type RechargeOrderRepository interface {
 	MarkOrderExpired(ctx context.Context, orderNo string) error
 	// MarkOrderFailed 将指定订单标记为失败（用于同步到微信 PAYERROR 状态）
 	MarkOrderFailed(ctx context.Context, orderNo string) error
+	// UpdateRefundStatus 更新订单退款状态
+	// params: orderNo, refundNo, refundStatus, refundReason, refundAdminID, wechatRefundID, refundedAt
+	UpdateRefundStatus(ctx context.Context, orderNo string, refundNo, refundStatus, refundReason string, refundAdminID int64, wechatRefundID string, refundedAt *time.Time) error
+	// UpdateRefundResult 更新退款结果（用于回调处理）
+	UpdateRefundResult(ctx context.Context, refundNo string, refundStatus string, refundedAt *time.Time) error
+	// GetByRefundNo 根据退款单号获取订单
+	GetByRefundNo(ctx context.Context, refundNo string) (*RechargeOrder, error)
 }
 
 // RechargeOrderService 充值订单服务
@@ -143,6 +168,15 @@ func GenerateOrderNo() string {
 	timestamp := time.Now().Format("20060102150405")
 	randomStr := generateRandomString(10)
 	return fmt.Sprintf("RECH%s%s", timestamp, randomStr)
+}
+
+// GenerateRefundNo 生成退款单号
+// 格式：REFD + 年月日时分秒（14位）+ 6位随机字符串
+// 示例：REFD20260124150000AbCd12
+func GenerateRefundNo() string {
+	timestamp := time.Now().Format("20060102150405")
+	randomStr := generateRandomString(6)
+	return fmt.Sprintf("REFD%s%s", timestamp, randomStr)
 }
 
 // generateRandomString 生成指定长度的随机字符串
@@ -430,12 +464,18 @@ type RefundOrderParams struct {
 type RefundOrderResult struct {
 	OrderNo      string
 	Status       string
+	RefundNo     string
 	RefundStatus string
+	WeChatStatus string // 微信原始返回状态
+	RefundedAt   *time.Time
 }
 
-// RefundOrder 退款订单（骨架，实际退款逻辑在 Story 7.2-7.4 实现）
-// 当前实现：仅验证订单状态是否为 paid，返回 pending 状态
-// 后续 Story 将实现：调用微信退款 API、扣减用户余额、更新订单状态和日志
+// RefundOrder 退款订单
+// 1. 验证订单状态（只有 paid 状态可退款）
+// 2. 检查是否已有退款在处理中
+// 3. 生成退款单号
+// 4. 调用微信退款 API
+// 5. 根据退款结果更新订单状态
 func (s *RechargeOrderService) RefundOrder(ctx context.Context, params RefundOrderParams) (*RefundOrderResult, error) {
 	// 1. 查询订单
 	order, err := s.repo.GetByOrderNo(ctx, params.OrderNo)
@@ -448,19 +488,118 @@ func (s *RechargeOrderService) RefundOrder(ctx context.Context, params RefundOrd
 		return nil, ErrOrderNotRefundable
 	}
 
-	// 3. TODO: 调用微信退款 API（Story 7.2 实现）
-	// 4. TODO: 扣减用户余额（Story 7.3 实现）
-	// 5. TODO: 更新订单状态和日志（Story 7.4 实现）
+	// 3. 检查是否已有退款在处理中
+	if order.RefundStatus != nil && (*order.RefundStatus == RefundStatusProcessing || *order.RefundStatus == RefundStatusSuccess) {
+		return nil, ErrRefundAlreadyInProgress
+	}
 
-	// 暂时返回待处理状态，记录退款原因
-	notes := fmt.Sprintf("退款申请: %s (管理员ID: %d)", params.Reason, params.AdminID)
-	if err := s.repo.AppendNotes(ctx, params.OrderNo, notes); err != nil {
-		return nil, fmt.Errorf("append refund notes: %w", err)
+	// 4. 生成退款单号
+	refundNo := GenerateRefundNo()
+
+	// 5. 获取微信支付订单号
+	transactionID := ""
+	if order.WeChatTransactionID != nil {
+		transactionID = *order.WeChatTransactionID
+	}
+
+	// 6. 调用微信退款 API
+	refundResult, err := s.wechatPayService.Refund(ctx, RefundParams{
+		OrderNo:       params.OrderNo,
+		RefundNo:      refundNo,
+		Amount:        order.Amount,
+		TotalAmount:   order.Amount, // 全额退款
+		Reason:        params.Reason,
+		TransactionID: transactionID,
+	})
+
+	if err != nil {
+		// 记录退款请求失败
+		notes := fmt.Sprintf("退款申请失败: %s (管理员ID: %d, 退款单号: %s)", err.Error(), params.AdminID, refundNo)
+		_ = s.repo.AppendNotes(ctx, params.OrderNo, notes)
+		return nil, fmt.Errorf("%w: %v", ErrRefundFailed, err)
+	}
+
+	// 7. 根据微信返回的退款状态更新订单
+	var localRefundStatus string
+	var refundedAt *time.Time
+
+	switch refundResult.Status {
+	case "SUCCESS":
+		localRefundStatus = RefundStatusSuccess
+		now := time.Now()
+		refundedAt = &now
+	case "PROCESSING":
+		localRefundStatus = RefundStatusProcessing
+	case "CLOSED", "ABNORMAL":
+		localRefundStatus = RefundStatusFailed
+	default:
+		localRefundStatus = RefundStatusProcessing
+	}
+
+	// 8. 更新订单退款状态
+	err = s.repo.UpdateRefundStatus(ctx, params.OrderNo, refundNo, localRefundStatus, params.Reason, params.AdminID, refundResult.RefundID, refundedAt)
+	if err != nil {
+		// 退款已成功但本地更新失败，需要告警
+		notes := fmt.Sprintf("退款成功但本地更新失败: %s (微信状态: %s, 退款单号: %s)", err.Error(), refundResult.Status, refundNo)
+		_ = s.repo.AppendNotes(ctx, params.OrderNo, notes)
+		// 仍然返回成功，因为微信侧已退款
+	}
+
+	// 9. 如果退款成功，更新订单状态为 refunded
+	if localRefundStatus == RefundStatusSuccess {
+		_, _ = s.repo.UpdateStatusWithCondition(ctx, order.ID, OrderStatusPaid, "refunded", fmt.Sprintf("退款成功: %s", refundNo))
 	}
 
 	return &RefundOrderResult{
 		OrderNo:      params.OrderNo,
 		Status:       order.Status,
-		RefundStatus: "pending",
+		RefundNo:     refundNo,
+		RefundStatus: localRefundStatus,
+		WeChatStatus: refundResult.Status,
+		RefundedAt:   refundedAt,
 	}, nil
+}
+
+// HandleRefundCallback 处理退款回调
+// 当微信退款结果异步回调时调用
+func (s *RechargeOrderService) HandleRefundCallback(ctx context.Context, notification *RefundNotification) error {
+	// 1. 根据退款单号查找订单
+	order, err := s.repo.GetByRefundNo(ctx, notification.OutRefundNo)
+	if err != nil {
+		return fmt.Errorf("find order by refund_no failed: %w", err)
+	}
+
+	// 2. 检查退款状态是否需要更新
+	if order.RefundStatus != nil && *order.RefundStatus == RefundStatusSuccess {
+		// 已经是成功状态，无需重复处理
+		return nil
+	}
+
+	// 3. 根据回调状态更新
+	var localRefundStatus string
+	var refundedAt *time.Time
+
+	switch notification.RefundStatus {
+	case "SUCCESS":
+		localRefundStatus = RefundStatusSuccess
+		now := time.Now()
+		refundedAt = &now
+	case "CLOSED", "ABNORMAL":
+		localRefundStatus = RefundStatusFailed
+	default:
+		localRefundStatus = RefundStatusProcessing
+	}
+
+	// 4. 更新退款结果
+	err = s.repo.UpdateRefundResult(ctx, notification.OutRefundNo, localRefundStatus, refundedAt)
+	if err != nil {
+		return fmt.Errorf("update refund result failed: %w", err)
+	}
+
+	// 5. 如果退款成功，更新订单状态
+	if localRefundStatus == RefundStatusSuccess {
+		_, _ = s.repo.UpdateStatusWithCondition(ctx, order.ID, OrderStatusPaid, "refunded", fmt.Sprintf("退款回调成功: %s", notification.OutRefundNo))
+	}
+
+	return nil
 }

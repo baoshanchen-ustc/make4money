@@ -42,6 +42,18 @@ const (
 	FieldPaidAt = "paid_at"
 	// FieldNotes holds the string denoting the notes field in the database.
 	FieldNotes = "notes"
+	// FieldRefundNo holds the string denoting the refund_no field in the database.
+	FieldRefundNo = "refund_no"
+	// FieldRefundStatus holds the string denoting the refund_status field in the database.
+	FieldRefundStatus = "refund_status"
+	// FieldRefundedAt holds the string denoting the refunded_at field in the database.
+	FieldRefundedAt = "refunded_at"
+	// FieldRefundReason holds the string denoting the refund_reason field in the database.
+	FieldRefundReason = "refund_reason"
+	// FieldRefundAdminID holds the string denoting the refund_admin_id field in the database.
+	FieldRefundAdminID = "refund_admin_id"
+	// FieldWechatRefundID holds the string denoting the wechat_refund_id field in the database.
+	FieldWechatRefundID = "wechat_refund_id"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// Table holds the table name of the rechargeorder in the database.
@@ -72,6 +84,12 @@ var Columns = []string{
 	FieldExpireAt,
 	FieldPaidAt,
 	FieldNotes,
+	FieldRefundNo,
+	FieldRefundStatus,
+	FieldRefundedAt,
+	FieldRefundReason,
+	FieldRefundAdminID,
+	FieldWechatRefundID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -113,6 +131,12 @@ var (
 	PrepayIDValidator func(string) error
 	// DefaultNotes holds the default value on creation for the "notes" field.
 	DefaultNotes string
+	// RefundNoValidator is a validator for the "refund_no" field. It is called by the builders before save.
+	RefundNoValidator func(string) error
+	// RefundStatusValidator is a validator for the "refund_status" field. It is called by the builders before save.
+	RefundStatusValidator func(string) error
+	// WechatRefundIDValidator is a validator for the "wechat_refund_id" field. It is called by the builders before save.
+	WechatRefundIDValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the RechargeOrder queries.
@@ -191,6 +215,36 @@ func ByPaidAt(opts ...sql.OrderTermOption) OrderOption {
 // ByNotes orders the results by the notes field.
 func ByNotes(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNotes, opts...).ToFunc()
+}
+
+// ByRefundNo orders the results by the refund_no field.
+func ByRefundNo(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundNo, opts...).ToFunc()
+}
+
+// ByRefundStatus orders the results by the refund_status field.
+func ByRefundStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundStatus, opts...).ToFunc()
+}
+
+// ByRefundedAt orders the results by the refunded_at field.
+func ByRefundedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundedAt, opts...).ToFunc()
+}
+
+// ByRefundReason orders the results by the refund_reason field.
+func ByRefundReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundReason, opts...).ToFunc()
+}
+
+// ByRefundAdminID orders the results by the refund_admin_id field.
+func ByRefundAdminID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRefundAdminID, opts...).ToFunc()
+}
+
+// ByWechatRefundID orders the results by the wechat_refund_id field.
+func ByWechatRefundID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWechatRefundID, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

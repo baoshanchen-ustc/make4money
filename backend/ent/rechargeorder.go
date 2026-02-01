@@ -46,6 +46,18 @@ type RechargeOrder struct {
 	PaidAt *time.Time `json:"paid_at,omitempty"`
 	// Notes holds the value of the "notes" field.
 	Notes string `json:"notes,omitempty"`
+	// 退款单号
+	RefundNo *string `json:"refund_no,omitempty"`
+	// 退款状态
+	RefundStatus *string `json:"refund_status,omitempty"`
+	// 退款时间
+	RefundedAt *time.Time `json:"refunded_at,omitempty"`
+	// 退款原因
+	RefundReason *string `json:"refund_reason,omitempty"`
+	// 退款操作人ID
+	RefundAdminID *int64 `json:"refund_admin_id,omitempty"`
+	// 微信退款单号
+	WechatRefundID *string `json:"wechat_refund_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the RechargeOrderQuery when eager-loading is set.
 	Edges        RechargeOrderEdges `json:"edges"`
@@ -79,11 +91,11 @@ func (*RechargeOrder) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case rechargeorder.FieldAmount:
 			values[i] = new(sql.NullFloat64)
-		case rechargeorder.FieldID, rechargeorder.FieldUserID:
+		case rechargeorder.FieldID, rechargeorder.FieldUserID, rechargeorder.FieldRefundAdminID:
 			values[i] = new(sql.NullInt64)
-		case rechargeorder.FieldOrderNo, rechargeorder.FieldPaymentMethod, rechargeorder.FieldPaymentChannel, rechargeorder.FieldStatus, rechargeorder.FieldWechatTransactionID, rechargeorder.FieldQrcodeURL, rechargeorder.FieldPrepayID, rechargeorder.FieldNotes:
+		case rechargeorder.FieldOrderNo, rechargeorder.FieldPaymentMethod, rechargeorder.FieldPaymentChannel, rechargeorder.FieldStatus, rechargeorder.FieldWechatTransactionID, rechargeorder.FieldQrcodeURL, rechargeorder.FieldPrepayID, rechargeorder.FieldNotes, rechargeorder.FieldRefundNo, rechargeorder.FieldRefundStatus, rechargeorder.FieldRefundReason, rechargeorder.FieldWechatRefundID:
 			values[i] = new(sql.NullString)
-		case rechargeorder.FieldCreatedAt, rechargeorder.FieldUpdatedAt, rechargeorder.FieldExpireAt, rechargeorder.FieldPaidAt:
+		case rechargeorder.FieldCreatedAt, rechargeorder.FieldUpdatedAt, rechargeorder.FieldExpireAt, rechargeorder.FieldPaidAt, rechargeorder.FieldRefundedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -194,6 +206,48 @@ func (_m *RechargeOrder) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Notes = value.String
 			}
+		case rechargeorder.FieldRefundNo:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_no", values[i])
+			} else if value.Valid {
+				_m.RefundNo = new(string)
+				*_m.RefundNo = value.String
+			}
+		case rechargeorder.FieldRefundStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_status", values[i])
+			} else if value.Valid {
+				_m.RefundStatus = new(string)
+				*_m.RefundStatus = value.String
+			}
+		case rechargeorder.FieldRefundedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field refunded_at", values[i])
+			} else if value.Valid {
+				_m.RefundedAt = new(time.Time)
+				*_m.RefundedAt = value.Time
+			}
+		case rechargeorder.FieldRefundReason:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_reason", values[i])
+			} else if value.Valid {
+				_m.RefundReason = new(string)
+				*_m.RefundReason = value.String
+			}
+		case rechargeorder.FieldRefundAdminID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field refund_admin_id", values[i])
+			} else if value.Valid {
+				_m.RefundAdminID = new(int64)
+				*_m.RefundAdminID = value.Int64
+			}
+		case rechargeorder.FieldWechatRefundID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field wechat_refund_id", values[i])
+			} else if value.Valid {
+				_m.WechatRefundID = new(string)
+				*_m.WechatRefundID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -284,6 +338,36 @@ func (_m *RechargeOrder) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("notes=")
 	builder.WriteString(_m.Notes)
+	builder.WriteString(", ")
+	if v := _m.RefundNo; v != nil {
+		builder.WriteString("refund_no=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RefundStatus; v != nil {
+		builder.WriteString("refund_status=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RefundedAt; v != nil {
+		builder.WriteString("refunded_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.RefundReason; v != nil {
+		builder.WriteString("refund_reason=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RefundAdminID; v != nil {
+		builder.WriteString("refund_admin_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.WechatRefundID; v != nil {
+		builder.WriteString("wechat_refund_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -106,7 +106,7 @@ development_status:
   # 目标: 支持退款场景
   sprint-6: in-progress
   7-1-admin-refund-entry: done                   # Epic 7
-  7-2-wechat-refund-api: ready-for-dev           # Epic 7
+  7-2-wechat-refund-api: done                    # Epic 7
   7-3-deduct-user-balance: ready-for-dev         # Epic 7
   7-4-refund-status-log: ready-for-dev           # Epic 7
   sprint-6-retrospective: optional

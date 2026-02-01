@@ -357,5 +357,76 @@ func rechargeOrderEntityToService(m *dbent.RechargeOrder) *service.RechargeOrder
 		Notes:               m.Notes,
 		CreatedAt:           m.CreatedAt,
 		UpdatedAt:           m.UpdatedAt,
+		// 退款相关字段
+		RefundNo:       m.RefundNo,
+		RefundStatus:   m.RefundStatus,
+		RefundedAt:     m.RefundedAt,
+		RefundReason:   m.RefundReason,
+		RefundAdminID:  m.RefundAdminID,
+		WeChatRefundID: m.WechatRefundID,
 	}
+}
+
+// UpdateRefundStatus 更新订单退款状态
+func (r *rechargeOrderRepository) UpdateRefundStatus(ctx context.Context, orderNo string, refundNo, refundStatus, refundReason string, refundAdminID int64, wechatRefundID string, refundedAt *time.Time) error {
+	client := clientFromContext(ctx, r.client)
+
+	up := client.RechargeOrder.Update().
+		Where(rechargeorder.OrderNoEQ(orderNo)).
+		SetRefundNo(refundNo).
+		SetRefundStatus(refundStatus).
+		SetRefundReason(refundReason).
+		SetRefundAdminID(refundAdminID)
+
+	if wechatRefundID != "" {
+		up.SetWechatRefundID(wechatRefundID)
+	}
+	if refundedAt != nil {
+		up.SetRefundedAt(*refundedAt)
+	}
+
+	rowsAffected, err := up.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return service.ErrRechargeOrderNotFound
+	}
+	return nil
+}
+
+// UpdateRefundResult 更新退款结果（用于回调处理）
+func (r *rechargeOrderRepository) UpdateRefundResult(ctx context.Context, refundNo string, refundStatus string, refundedAt *time.Time) error {
+	client := clientFromContext(ctx, r.client)
+
+	up := client.RechargeOrder.Update().
+		Where(rechargeorder.RefundNoEQ(refundNo)).
+		SetRefundStatus(refundStatus)
+
+	if refundedAt != nil {
+		up.SetRefundedAt(*refundedAt)
+	}
+
+	rowsAffected, err := up.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return service.ErrRechargeOrderNotFound
+	}
+	return nil
+}
+
+// GetByRefundNo 根据退款单号获取订单
+func (r *rechargeOrderRepository) GetByRefundNo(ctx context.Context, refundNo string) (*service.RechargeOrder, error) {
+	m, err := r.client.RechargeOrder.Query().
+		Where(rechargeorder.RefundNoEQ(refundNo)).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrRechargeOrderNotFound
+		}
+		return nil, err
+	}
+	return rechargeOrderEntityToService(m), nil
 }

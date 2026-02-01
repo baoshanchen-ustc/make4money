@@ -40,14 +40,15 @@ const (
 // WeChatPayConfig 微信支付敏感配置
 // 安全要求：所有敏感字段仅从config.yaml加载，不暴露到API
 type WeChatPayConfig struct {
-	Enabled           bool   `mapstructure:"enabled"`             // 是否启用微信支付
-	AppID             string `mapstructure:"app_id"`              // 微信应用ID（公众号/小程序）
-	MchID             string `mapstructure:"mch_id"`              // 商户号
-	APIv3Key          string `mapstructure:"api_v3_key"`          // APIv3密钥（32字符）
-	CertSerialNo      string `mapstructure:"cert_serial_no"`      // 商户证书序列号
-	PrivateKeyPath    string `mapstructure:"private_key_path"`    // 商户私钥文件路径
-	NotifyURL         string `mapstructure:"notify_url"`          // 支付回调地址
-	OrderExpireMinutes int   `mapstructure:"order_expire_minutes"` // 订单过期时间（分钟），默认30分钟
+	Enabled            bool   `mapstructure:"enabled"`              // 是否启用微信支付
+	AppID              string `mapstructure:"app_id"`               // 微信应用ID（公众号/小程序）
+	MchID              string `mapstructure:"mch_id"`               // 商户号
+	APIv3Key           string `mapstructure:"api_v3_key"`           // APIv3密钥（32字符）
+	CertSerialNo       string `mapstructure:"cert_serial_no"`       // 商户证书序列号
+	PrivateKeyPath     string `mapstructure:"private_key_path"`     // 商户私钥文件路径
+	NotifyURL          string `mapstructure:"notify_url"`           // 支付回调地址
+	RefundNotifyURL    string `mapstructure:"refund_notify_url"`    // 退款回调地址（可选，为空则复用支付回调地址）
+	OrderExpireMinutes int    `mapstructure:"order_expire_minutes"` // 订单过期时间（分钟），默认30分钟
 
 	// 订单补偿任务配置
 	CompensationEnabled       bool `mapstructure:"compensation_enabled"`        // 是否启用补偿任务
@@ -954,6 +955,7 @@ func setDefaults() {
 	viper.SetDefault("wechat_pay.cert_serial_no", "")
 	viper.SetDefault("wechat_pay.private_key_path", "")
 	viper.SetDefault("wechat_pay.notify_url", "")
+	viper.SetDefault("wechat_pay.refund_notify_url", "")
 	viper.SetDefault("wechat_pay.order_expire_minutes", 30)
 	// 订单补偿任务配置
 	viper.SetDefault("wechat_pay.compensation_enabled", true)
