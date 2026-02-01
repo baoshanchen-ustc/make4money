@@ -7,12 +7,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+const (
+	// DefaultRechargeCacheTTL 充值配置缓存有效期
+	DefaultRechargeCacheTTL = 60 * time.Second
+)
+
+// rechargeSettingsCache 充值配置缓存
+type rechargeSettingsCache struct {
+	settings  *RechargeSettings
+	updatedAt time.Time
+}
 
 var (
 	ErrRegistrationDisabled = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
@@ -35,14 +49,233 @@ type SettingService struct {
 	cfg         *config.Config
 	onUpdate    func() // Callback when settings are updated (for cache invalidation)
 	version     string // Application version
+
+	// 充值配置缓存
+	rechargeCache    *rechargeSettingsCache
+	rechargeCacheMu  sync.RWMutex
+	rechargeCacheTTL time.Duration
+
+	// 后台任务控制
+	stopCh chan struct{}
+	wg     sync.WaitGroup
 }
 
 // NewSettingService 创建系统设置服务实例
 func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
-	return &SettingService{
-		settingRepo: settingRepo,
-		cfg:         cfg,
+	s := &SettingService{
+		settingRepo:      settingRepo,
+		cfg:              cfg,
+		rechargeCacheTTL: DefaultRechargeCacheTTL,
+		stopCh:           make(chan struct{}),
 	}
+
+	// 启动后台缓存刷新任务
+	s.startCacheRefreshLoop()
+
+	return s
+}
+
+// startCacheRefreshLoop 启动后台缓存刷新循环
+func (s *SettingService) startCacheRefreshLoop() {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ticker := time.NewTicker(s.rechargeCacheTTL)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				// 定期刷新缓存
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if err := s.refreshRechargeSettingsCache(ctx); err != nil {
+					log.Printf("[SettingService] Failed to refresh recharge settings cache: %v", err)
+				}
+				cancel()
+			case <-s.stopCh:
+				return
+			}
+		}
+	}()
+}
+
+// refreshRechargeSettingsCache 刷新充值配置缓存
+func (s *SettingService) refreshRechargeSettingsCache(ctx context.Context) error {
+	settings, err := s.loadRechargeSettingsFromDB(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.rechargeCacheMu.Lock()
+	s.rechargeCache = &rechargeSettingsCache{
+		settings:  settings,
+		updatedAt: time.Now(),
+	}
+	s.rechargeCacheMu.Unlock()
+
+	return nil
+}
+
+// loadRechargeSettingsFromDB 从数据库加载充值配置（内部方法）
+// 配置优先级：数据库 > config.yaml > 代码默认值
+func (s *SettingService) loadRechargeSettingsFromDB(ctx context.Context) (*RechargeSettings, error) {
+	keys := []string{
+		SettingKeyRechargeMinAmount,
+		SettingKeyRechargeMaxAmount,
+		SettingKeyRechargeDefaultAmounts,
+		SettingKeyRechargeOrderExpireMinutes,
+	}
+
+	dbSettings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("get recharge settings from db: %w", err)
+	}
+
+	result := &RechargeSettings{}
+
+	// 1. 最小充值金额：DB > config.yaml > 代码默认值
+	result.MinAmount = s.getFloatWithFallback(
+		dbSettings[SettingKeyRechargeMinAmount],
+		s.cfg.Recharge.MinAmount,
+		DefaultRechargeMinAmount,
+	)
+
+	// 2. 最大充值金额：DB > config.yaml > 代码默认值
+	result.MaxAmount = s.getFloatWithFallback(
+		dbSettings[SettingKeyRechargeMaxAmount],
+		s.cfg.Recharge.MaxAmount,
+		DefaultRechargeMaxAmount,
+	)
+
+	// 3. 默认金额选项：DB > config.yaml > 代码默认值
+	result.DefaultAmounts = s.getAmountsWithFallback(
+		dbSettings[SettingKeyRechargeDefaultAmounts],
+		s.cfg.Recharge.DefaultAmounts,
+		DefaultRechargeAmounts,
+	)
+
+	// 4. 订单过期时间：DB > config.yaml > 代码默认值
+	result.OrderExpireMinutes = s.getIntWithFallback(
+		dbSettings[SettingKeyRechargeOrderExpireMinutes],
+		s.cfg.Recharge.OrderExpireMinutes,
+		DefaultRechargeOrderExpireMinutes,
+	)
+
+	return result, nil
+}
+
+// getFloatWithFallback 获取浮点数配置，支持三层回退
+func (s *SettingService) getFloatWithFallback(dbValue string, configValue float64, defaultValue float64) float64 {
+	// 尝试从数据库读取
+	if dbValue != "" {
+		if v, err := strconv.ParseFloat(dbValue, 64); err == nil && v > 0 {
+			return v
+		}
+	}
+
+	// 尝试从 config.yaml 读取
+	if configValue > 0 {
+		return configValue
+	}
+
+	// 使用代码默认值
+	return defaultValue
+}
+
+// getIntWithFallback 获取整数配置，支持三层回退
+func (s *SettingService) getIntWithFallback(dbValue string, configValue int, defaultValue int) int {
+	// 尝试从数据库读取
+	if dbValue != "" {
+		if v, err := strconv.Atoi(dbValue); err == nil && v > 0 {
+			return v
+		}
+	}
+
+	// 尝试从 config.yaml 读取
+	if configValue > 0 {
+		return configValue
+	}
+
+	// 使用代码默认值
+	return defaultValue
+}
+
+// getAmountsWithFallback 获取金额数组配置，支持三层回退
+func (s *SettingService) getAmountsWithFallback(dbValue string, configValue []float64, defaultValue []float64) []float64 {
+	// 尝试从数据库读取
+	if dbValue != "" {
+		var amounts []float64
+		if err := json.Unmarshal([]byte(dbValue), &amounts); err == nil && len(amounts) > 0 {
+			return amounts
+		}
+	}
+
+	// 尝试从 config.yaml 读取
+	if len(configValue) > 0 {
+		return append([]float64{}, configValue...)
+	}
+
+	// 使用代码默认值
+	return append([]float64{}, defaultValue...)
+}
+
+// GetRechargeConfigSources 获取各配置项的实际来源（用于调试）
+// 返回 map[字段名]来源，来源可能是 "database", "config.yaml", "default"
+func (s *SettingService) GetRechargeConfigSources(ctx context.Context) (map[string]string, error) {
+	keys := []string{
+		SettingKeyRechargeMinAmount,
+		SettingKeyRechargeMaxAmount,
+		SettingKeyRechargeDefaultAmounts,
+		SettingKeyRechargeOrderExpireMinutes,
+	}
+
+	dbSettings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+
+	sources := make(map[string]string)
+
+	// 判断各配置项的来源
+	if dbSettings[SettingKeyRechargeMinAmount] != "" {
+		sources["min_amount"] = "database"
+	} else if s.cfg.Recharge.MinAmount > 0 {
+		sources["min_amount"] = "config.yaml"
+	} else {
+		sources["min_amount"] = "default"
+	}
+
+	if dbSettings[SettingKeyRechargeMaxAmount] != "" {
+		sources["max_amount"] = "database"
+	} else if s.cfg.Recharge.MaxAmount > 0 {
+		sources["max_amount"] = "config.yaml"
+	} else {
+		sources["max_amount"] = "default"
+	}
+
+	if dbSettings[SettingKeyRechargeDefaultAmounts] != "" {
+		sources["default_amounts"] = "database"
+	} else if len(s.cfg.Recharge.DefaultAmounts) > 0 {
+		sources["default_amounts"] = "config.yaml"
+	} else {
+		sources["default_amounts"] = "default"
+	}
+
+	if dbSettings[SettingKeyRechargeOrderExpireMinutes] != "" {
+		sources["order_expire_minutes"] = "database"
+	} else if s.cfg.Recharge.OrderExpireMinutes > 0 {
+		sources["order_expire_minutes"] = "config.yaml"
+	} else {
+		sources["order_expire_minutes"] = "default"
+	}
+
+	return sources, nil
+}
+
+// Stop 停止后台任务
+func (s *SettingService) Stop() {
+	close(s.stopCh)
+	s.wg.Wait()
 }
 
 // GetAllSettings 获取所有系统设置
@@ -1016,57 +1249,45 @@ type RechargeSettings struct {
 	OrderExpireMinutes int       `json:"order_expire_minutes"` // 订单过期时间（分钟）
 }
 
-// GetRechargeSettings 获取充值业务配置
+// GetRechargeSettings 获取充值业务配置（优先从缓存读取）
 func (s *SettingService) GetRechargeSettings(ctx context.Context) (*RechargeSettings, error) {
-	keys := []string{
-		SettingKeyRechargeMinAmount,
-		SettingKeyRechargeMaxAmount,
-		SettingKeyRechargeDefaultAmounts,
-		SettingKeyRechargeOrderExpireMinutes,
+	// 尝试从缓存读取
+	s.rechargeCacheMu.RLock()
+	cache := s.rechargeCache
+	s.rechargeCacheMu.RUnlock()
+
+	// 缓存有效
+	if cache != nil && time.Since(cache.updatedAt) < s.rechargeCacheTTL {
+		// 返回副本，避免外部修改
+		return &RechargeSettings{
+			MinAmount:          cache.settings.MinAmount,
+			MaxAmount:          cache.settings.MaxAmount,
+			DefaultAmounts:     append([]float64{}, cache.settings.DefaultAmounts...),
+			OrderExpireMinutes: cache.settings.OrderExpireMinutes,
+		}, nil
 	}
 
-	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	// 缓存未命中或已过期，从数据库加载
+	settings, err := s.loadRechargeSettingsFromDB(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("get recharge settings: %w", err)
+		return nil, err
 	}
 
-	result := &RechargeSettings{
-		MinAmount:          DefaultRechargeMinAmount,
-		MaxAmount:          DefaultRechargeMaxAmount,
-		DefaultAmounts:     DefaultRechargeAmounts,
-		OrderExpireMinutes: DefaultRechargeOrderExpireMinutes,
+	// 更新缓存
+	s.rechargeCacheMu.Lock()
+	s.rechargeCache = &rechargeSettingsCache{
+		settings:  settings,
+		updatedAt: time.Now(),
 	}
+	s.rechargeCacheMu.Unlock()
 
-	// 解析最小金额
-	if raw, ok := settings[SettingKeyRechargeMinAmount]; ok && raw != "" {
-		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
-			result.MinAmount = v
-		}
-	}
-
-	// 解析最大金额
-	if raw, ok := settings[SettingKeyRechargeMaxAmount]; ok && raw != "" {
-		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
-			result.MaxAmount = v
-		}
-	}
-
-	// 解析金额选项（JSON 数组）
-	if raw, ok := settings[SettingKeyRechargeDefaultAmounts]; ok && raw != "" {
-		var amounts []float64
-		if err := json.Unmarshal([]byte(raw), &amounts); err == nil && len(amounts) > 0 {
-			result.DefaultAmounts = amounts
-		}
-	}
-
-	// 解析过期时间
-	if raw, ok := settings[SettingKeyRechargeOrderExpireMinutes]; ok && raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
-			result.OrderExpireMinutes = v
-		}
-	}
-
-	return result, nil
+	// 返回副本
+	return &RechargeSettings{
+		MinAmount:          settings.MinAmount,
+		MaxAmount:          settings.MaxAmount,
+		DefaultAmounts:     append([]float64{}, settings.DefaultAmounts...),
+		OrderExpireMinutes: settings.OrderExpireMinutes,
+	}, nil
 }
 
 // UpdateRechargeSettings 更新充值业务配置
@@ -1106,5 +1327,23 @@ func (s *SettingService) UpdateRechargeSettings(ctx context.Context, settings *R
 		SettingKeyRechargeOrderExpireMinutes: strconv.Itoa(settings.OrderExpireMinutes),
 	}
 
-	return s.settingRepo.SetMultiple(ctx, updates)
+	// 保存到数据库
+	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+		return err
+	}
+
+	// 主动刷新缓存（确保实时生效）
+	s.rechargeCacheMu.Lock()
+	s.rechargeCache = &rechargeSettingsCache{
+		settings: &RechargeSettings{
+			MinAmount:          settings.MinAmount,
+			MaxAmount:          settings.MaxAmount,
+			DefaultAmounts:     append([]float64{}, settings.DefaultAmounts...),
+			OrderExpireMinutes: settings.OrderExpireMinutes,
+		},
+		updatedAt: time.Now(),
+	}
+	s.rechargeCacheMu.Unlock()
+
+	return nil
 }

@@ -572,3 +572,230 @@ func TestSettingService_Stop(t *testing.T) {
 
 // Ensure fmt is used (for potential error formatting)
 var _ = fmt.Sprintf
+
+// TestRechargeConfigPriority_DatabaseFirst 测试数据库配置优先
+func TestRechargeConfigPriority_DatabaseFirst(t *testing.T) {
+	repo := newMockSettingRepository()
+	// 数据库设置 min_amount = 5.0
+	repo.setValues(map[string]string{
+		SettingKeyRechargeMinAmount:          "5.00",
+		SettingKeyRechargeMaxAmount:          "500.00",
+		SettingKeyRechargeDefaultAmounts:     "[25,50,100]",
+		SettingKeyRechargeOrderExpireMinutes: "45",
+	})
+
+	// config.yaml 设置不同的值
+	cfg := &config.Config{
+		Default: config.DefaultConfig{
+			UserConcurrency: 3,
+			UserBalance:     10.0,
+		},
+		Recharge: config.RechargeConfig{
+			MinAmount:          2.0,
+			MaxAmount:          200.0,
+			DefaultAmounts:     []float64{10, 20},
+			OrderExpireMinutes: 30,
+		},
+	}
+
+	svc := NewSettingService(repo, cfg)
+	defer svc.Stop()
+
+	ctx := context.Background()
+
+	settings, err := svc.GetRechargeSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetRechargeSettings() error: %v", err)
+	}
+
+	// 应该使用数据库的值
+	if settings.MinAmount != 5.0 {
+		t.Errorf("MinAmount = %v, want 5.0 (from database)", settings.MinAmount)
+	}
+	if settings.MaxAmount != 500.0 {
+		t.Errorf("MaxAmount = %v, want 500.0 (from database)", settings.MaxAmount)
+	}
+	if settings.OrderExpireMinutes != 45 {
+		t.Errorf("OrderExpireMinutes = %v, want 45 (from database)", settings.OrderExpireMinutes)
+	}
+	if len(settings.DefaultAmounts) != 3 || settings.DefaultAmounts[0] != 25 {
+		t.Errorf("DefaultAmounts = %v, want [25,50,100] (from database)", settings.DefaultAmounts)
+	}
+}
+
+// TestRechargeConfigPriority_FallbackToConfig 测试回退到 config.yaml
+func TestRechargeConfigPriority_FallbackToConfig(t *testing.T) {
+	repo := newMockSettingRepository()
+	// 数据库为空
+
+	// config.yaml 设置值
+	cfg := &config.Config{
+		Default: config.DefaultConfig{
+			UserConcurrency: 3,
+			UserBalance:     10.0,
+		},
+		Recharge: config.RechargeConfig{
+			MinAmount:          2.0,
+			MaxAmount:          200.0,
+			DefaultAmounts:     []float64{10, 20, 50},
+			OrderExpireMinutes: 60,
+		},
+	}
+
+	svc := NewSettingService(repo, cfg)
+	defer svc.Stop()
+
+	ctx := context.Background()
+
+	settings, err := svc.GetRechargeSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetRechargeSettings() error: %v", err)
+	}
+
+	// 应该使用 config.yaml 的值
+	if settings.MinAmount != 2.0 {
+		t.Errorf("MinAmount = %v, want 2.0 (from config.yaml)", settings.MinAmount)
+	}
+	if settings.MaxAmount != 200.0 {
+		t.Errorf("MaxAmount = %v, want 200.0 (from config.yaml)", settings.MaxAmount)
+	}
+	if settings.OrderExpireMinutes != 60 {
+		t.Errorf("OrderExpireMinutes = %v, want 60 (from config.yaml)", settings.OrderExpireMinutes)
+	}
+	if len(settings.DefaultAmounts) != 3 || settings.DefaultAmounts[0] != 10 {
+		t.Errorf("DefaultAmounts = %v, want [10,20,50] (from config.yaml)", settings.DefaultAmounts)
+	}
+}
+
+// TestRechargeConfigPriority_FallbackToDefault 测试回退到代码默认值
+func TestRechargeConfigPriority_FallbackToDefault(t *testing.T) {
+	repo := newMockSettingRepository()
+	// 数据库为空
+
+	// config.yaml 也为空（零值）
+	cfg := &config.Config{
+		Default: config.DefaultConfig{
+			UserConcurrency: 3,
+			UserBalance:     10.0,
+		},
+		Recharge: config.RechargeConfig{
+			// 全部为零值
+		},
+	}
+
+	svc := NewSettingService(repo, cfg)
+	defer svc.Stop()
+
+	ctx := context.Background()
+
+	settings, err := svc.GetRechargeSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetRechargeSettings() error: %v", err)
+	}
+
+	// 应该使用代码默认值
+	if settings.MinAmount != DefaultRechargeMinAmount {
+		t.Errorf("MinAmount = %v, want %v (default)", settings.MinAmount, DefaultRechargeMinAmount)
+	}
+	if settings.MaxAmount != DefaultRechargeMaxAmount {
+		t.Errorf("MaxAmount = %v, want %v (default)", settings.MaxAmount, DefaultRechargeMaxAmount)
+	}
+	if settings.OrderExpireMinutes != DefaultRechargeOrderExpireMinutes {
+		t.Errorf("OrderExpireMinutes = %v, want %v (default)", settings.OrderExpireMinutes, DefaultRechargeOrderExpireMinutes)
+	}
+}
+
+// TestRechargeConfigPriority_MixedSources 测试混合来源（各字段来自不同层级）
+func TestRechargeConfigPriority_MixedSources(t *testing.T) {
+	repo := newMockSettingRepository()
+	// 只设置 min_amount 在数据库
+	repo.setValues(map[string]string{
+		SettingKeyRechargeMinAmount: "15.00",
+	})
+
+	// config.yaml 设置 max_amount 和 default_amounts
+	cfg := &config.Config{
+		Default: config.DefaultConfig{
+			UserConcurrency: 3,
+			UserBalance:     10.0,
+		},
+		Recharge: config.RechargeConfig{
+			MinAmount:          5.0,   // 会被数据库覆盖
+			MaxAmount:          800.0, // 会使用这个
+			DefaultAmounts:     []float64{50, 100, 200},
+			OrderExpireMinutes: 0, // 零值，会用代码默认值
+		},
+	}
+
+	svc := NewSettingService(repo, cfg)
+	defer svc.Stop()
+
+	ctx := context.Background()
+
+	settings, err := svc.GetRechargeSettings(ctx)
+	if err != nil {
+		t.Fatalf("GetRechargeSettings() error: %v", err)
+	}
+
+	// min_amount 来自数据库
+	if settings.MinAmount != 15.0 {
+		t.Errorf("MinAmount = %v, want 15.0 (from database)", settings.MinAmount)
+	}
+	// max_amount 来自 config.yaml
+	if settings.MaxAmount != 800.0 {
+		t.Errorf("MaxAmount = %v, want 800.0 (from config.yaml)", settings.MaxAmount)
+	}
+	// default_amounts 来自 config.yaml
+	if len(settings.DefaultAmounts) != 3 || settings.DefaultAmounts[0] != 50 {
+		t.Errorf("DefaultAmounts = %v, want [50,100,200] (from config.yaml)", settings.DefaultAmounts)
+	}
+	// order_expire_minutes 来自代码默认值（config.yaml 是 0）
+	if settings.OrderExpireMinutes != DefaultRechargeOrderExpireMinutes {
+		t.Errorf("OrderExpireMinutes = %v, want %v (default)", settings.OrderExpireMinutes, DefaultRechargeOrderExpireMinutes)
+	}
+}
+
+// TestRechargeConfigSources 测试配置来源追溯功能
+func TestRechargeConfigSources(t *testing.T) {
+	repo := newMockSettingRepository()
+	// 只设置 min_amount 在数据库
+	repo.setValues(map[string]string{
+		SettingKeyRechargeMinAmount: "15.00",
+	})
+
+	cfg := &config.Config{
+		Default: config.DefaultConfig{
+			UserConcurrency: 3,
+			UserBalance:     10.0,
+		},
+		Recharge: config.RechargeConfig{
+			MinAmount:          5.0, // 会被数据库覆盖
+			MaxAmount:          800.0,
+			DefaultAmounts:     []float64{50, 100},
+			OrderExpireMinutes: 0, // 零值
+		},
+	}
+
+	svc := NewSettingService(repo, cfg)
+	defer svc.Stop()
+
+	ctx := context.Background()
+
+	sources, err := svc.GetRechargeConfigSources(ctx)
+	if err != nil {
+		t.Fatalf("GetRechargeConfigSources() error: %v", err)
+	}
+
+	if sources["min_amount"] != "database" {
+		t.Errorf("min_amount source = %v, want 'database'", sources["min_amount"])
+	}
+	if sources["max_amount"] != "config.yaml" {
+		t.Errorf("max_amount source = %v, want 'config.yaml'", sources["max_amount"])
+	}
+	if sources["default_amounts"] != "config.yaml" {
+		t.Errorf("default_amounts source = %v, want 'config.yaml'", sources["default_amounts"])
+	}
+	if sources["order_expire_minutes"] != "default" {
+		t.Errorf("order_expire_minutes source = %v, want 'default'", sources["order_expire_minutes"])
+	}
+}

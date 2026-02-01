@@ -57,6 +57,15 @@ type WeChatPayConfig struct {
 	CompensationConcurrency   int  `mapstructure:"compensation_concurrency"`    // 并发查询数，默认5
 }
 
+// RechargeConfig 充值业务配置（config.yaml 中的默认值）
+// 配置优先级：数据库 > config.yaml > 代码默认值
+type RechargeConfig struct {
+	MinAmount          float64   `mapstructure:"min_amount"`           // 最小充值金额（元）
+	MaxAmount          float64   `mapstructure:"max_amount"`           // 最大充值金额（元）
+	DefaultAmounts     []float64 `mapstructure:"default_amounts"`      // 默认金额选项
+	OrderExpireMinutes int       `mapstructure:"order_expire_minutes"` // 订单过期时间（分钟）
+}
+
 type Config struct {
 	Server       ServerConfig               `mapstructure:"server"`
 	CORS         CORSConfig                 `mapstructure:"cors"`
@@ -84,6 +93,7 @@ type Config struct {
 	Gemini       GeminiConfig               `mapstructure:"gemini"`
 	Update       UpdateConfig               `mapstructure:"update"`
 	WeChatPay    WeChatPayConfig            `mapstructure:"wechat_pay"`
+	Recharge     RechargeConfig             `mapstructure:"recharge"`
 }
 
 type GeminiConfig struct {
@@ -951,6 +961,12 @@ func setDefaults() {
 	viper.SetDefault("wechat_pay.compensation_threshold_mins", 5)
 	viper.SetDefault("wechat_pay.compensation_batch_size", 50)
 	viper.SetDefault("wechat_pay.compensation_concurrency", 5)
+
+	// Recharge business defaults (can be overridden by database settings)
+	viper.SetDefault("recharge.min_amount", 1.0)
+	viper.SetDefault("recharge.max_amount", 1000.0)
+	viper.SetDefault("recharge.default_amounts", []float64{10, 50, 100, 200, 500})
+	viper.SetDefault("recharge.order_expire_minutes", 120)
 }
 
 func (c *Config) Validate() error {
