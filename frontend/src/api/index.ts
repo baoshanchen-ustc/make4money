@@ -17,7 +17,7 @@ export { redeemAPI, type RedeemHistoryItem } from './redeem'
 export { userGroupsAPI } from './groups'
 export { totpAPI } from './totp'
 export { usageReportAPI } from './usageReport'
-export { rechargeAPI, isRateLimitError, isCaptchaRequiredError, RateLimitExceededError, CaptchaRequiredError, type RechargeConfig } from './recharge'
+export { rechargeAPI, isRateLimitError, isCaptchaRequiredError, RateLimitExceededError, CaptchaRequiredError, type RechargeConfig, type OrderListItem } from './recharge'
 
 // Admin APIs
 export { adminAPI } from './admin'

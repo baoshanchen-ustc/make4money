@@ -121,23 +121,185 @@
             <span v-else>{{ submitButtonText }}</span>
           </button>
         </div>
+
+        <!-- 待支付订单提示 -->
+        <div
+          v-if="pendingOrder"
+          class="mt-4 rounded-lg bg-green-50 p-4 dark:bg-green-900/20"
+        >
+          <div class="flex items-start justify-between">
+            <div>
+              <h4 class="font-medium text-green-800 dark:text-green-300">
+                {{ t('recharge.pendingOrderCreated') }}
+              </h4>
+              <p class="mt-1 text-sm text-green-700 dark:text-green-400">
+                {{ t('recharge.pendingOrderHint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="btn btn-outline border-green-600 text-green-700 hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-900/30"
+              @click="openPaymentModal(pendingOrder.order_no)"
+            >
+              {{ t('recharge.viewQrcode') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 充值记录区域 -->
+      <div class="rounded-2xl bg-white p-6 shadow-card dark:bg-dark-800">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ t('recharge.records.title') }}
+          </h2>
+          <button
+            type="button"
+            class="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            :disabled="ordersLoading"
+            @click="loadOrders"
+          >
+            <svg
+              class="h-4 w-4"
+              :class="{ 'animate-spin': ordersLoading }"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {{ t('recharge.records.refresh') }}
+          </button>
+        </div>
+
+        <!-- 订单列表 -->
+        <div v-if="ordersLoading && orders.length === 0" class="flex justify-center py-8">
+          <div class="h-6 w-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
+        </div>
+
+        <div v-else-if="orders.length === 0" class="py-8 text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('rechargeRecords.noRecords') }}</p>
+        </div>
+
+        <div v-else class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-gray-100 dark:border-dark-600">
+                <th class="pb-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('recharge.orderNo') }}
+                </th>
+                <th class="pb-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('recharge.orderAmount') }}
+                </th>
+                <th class="pb-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('recharge.orderStatus') }}
+                </th>
+                <th class="pb-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('recharge.modal.createdAt') }}
+                </th>
+                <th class="pb-3 text-right text-sm font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('recharge.records.actions') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-600">
+              <tr v-for="item in orders" :key="item.order_no" class="hover:bg-gray-50 dark:hover:bg-dark-700">
+                <td class="py-4">
+                  <button
+                    type="button"
+                    class="font-mono text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                    @click="openDetailModal(item.order_no)"
+                  >
+                    {{ truncateOrderNo(item.order_no) }}
+                  </button>
+                </td>
+                <td class="py-4 font-medium text-gray-900 dark:text-white">
+                  ¥{{ item.amount.toFixed(2) }}
+                </td>
+                <td class="py-4">
+                  <span
+                    class="rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="getStatusClass(item.status)"
+                  >
+                    {{ getStatusText(item.status) }}
+                  </span>
+                </td>
+                <td class="py-4 text-sm text-gray-500 dark:text-gray-400">
+                  {{ formatDate(item.created_at) }}
+                </td>
+                <td class="py-4 text-right">
+                  <div class="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm"
+                      @click="openDetailModal(item.order_no)"
+                    >
+                      {{ t('recharge.records.viewDetail') }}
+                    </button>
+                    <button
+                      v-if="canRepay(item)"
+                      type="button"
+                      class="btn btn-primary btn-sm"
+                      @click="openPaymentModal(item.order_no)"
+                    >
+                      {{ t('recharge.modal.repay') }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 加载更多 -->
+        <div v-if="hasMoreOrders" class="mt-4 text-center">
+          <button
+            type="button"
+            class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400"
+            :disabled="ordersLoading"
+            @click="loadMoreOrders"
+          >
+            {{ ordersLoading ? t('common.loading') : t('recharge.records.loadMore') }}
+          </button>
+        </div>
       </div>
     </div>
+
+    <!-- 支付弹框 -->
+    <PaymentModal
+      v-model:visible="paymentModalVisible"
+      :order-no="currentPaymentOrderNo"
+      @paid="onPaymentSuccess"
+      @expired="onPaymentExpired"
+      @close="onPaymentModalClose"
+    />
+
+    <!-- 订单详情弹框 -->
+    <OrderDetailModal
+      v-model:visible="detailModalVisible"
+      :order-no="currentDetailOrderNo"
+      @repay="openPaymentModal"
+      @status-changed="loadOrders"
+    />
   </main>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useAuthStore, useRechargeStore, useAppStore } from '@/stores'
-import { rechargeAPI, isRateLimitError, isCaptchaRequiredError } from '@/api'
+import { rechargeAPI, isRateLimitError, isCaptchaRequiredError, type OrderListItem } from '@/api'
 import AmountSelector from '@/components/user/recharge/AmountSelector.vue'
 import PaymentMethodSelector from '@/components/user/recharge/PaymentMethodSelector.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import PaymentModal from '@/components/user/recharge/PaymentModal.vue'
+import OrderDetailModal from '@/components/user/recharge/OrderDetailModal.vue'
 
 const { t } = useI18n()
-const router = useRouter()
 const authStore = useAuthStore()
 const rechargeStore = useRechargeStore()
 const appStore = useAppStore()
@@ -169,6 +331,22 @@ const showCaptcha = ref(false)
 const captchaToken = ref('')
 const turnstileSiteKey = ref('')
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+
+// 待支付订单（刚创建的）
+const pendingOrder = ref<{ order_no: string; amount: number } | null>(null)
+
+// 订单列表相关
+const orders = ref<OrderListItem[]>([])
+const ordersLoading = ref(false)
+const ordersPage = ref(1)
+const ordersTotal = ref(0)
+const hasMoreOrders = computed(() => orders.value.length < ordersTotal.value)
+
+// 弹框相关
+const paymentModalVisible = ref(false)
+const currentPaymentOrderNo = ref('')
+const detailModalVisible = ref(false)
+const currentDetailOrderNo = ref('')
 
 // 用户余额
 const balance = computed(() => authStore.user?.balance ?? 0)
@@ -219,7 +397,6 @@ const submitButtonText = computed(() => {
 
 // 启动限流倒计时
 const startRateLimitCountdown = (seconds: number) => {
-  // 清除之前的计时器
   if (rateLimitTimer) {
     clearInterval(rateLimitTimer)
   }
@@ -232,7 +409,6 @@ const startRateLimitCountdown = (seconds: number) => {
         clearInterval(rateLimitTimer)
         rateLimitTimer = null
       }
-      // 倒计时结束时清除错误信息
       errorMessage.value = ''
     }
   }, 1000)
@@ -266,36 +442,34 @@ const handleSubmit = async () => {
     return
   }
 
-  // 如果显示验证码但未完成验证，提示用户
   if (showCaptcha.value && !captchaToken.value) {
     errorMessage.value = t('recharge.captchaRequired')
     return
   }
 
-  // 清除之前的错误
   errorMessage.value = ''
   submitting.value = true
 
   try {
-    // 调用 API 创建订单
     const order = await rechargeAPI.createOrder({
       amount: selectedAmount.value!,
       payment_method: selectedPaymentMethod.value!,
       captcha_token: captchaToken.value || undefined
     })
 
-    // 订单创建成功，跳转到支付页面
-    router.push({
-      name: 'RechargePayment',
-      params: { orderNo: order.order_no }
-    })
+    // 订单创建成功，显示提示并打开支付弹框
+    appStore.showSuccess(t('recharge.orderCreateSuccess'))
+    pendingOrder.value = { order_no: order.order_no, amount: order.amount }
+    currentPaymentOrderNo.value = order.order_no
+    paymentModalVisible.value = true
+
+    // 刷新订单列表
+    loadOrders()
   } catch (error) {
     console.error('Failed to create order:', error)
     if (isCaptchaRequiredError(error)) {
-      // 需要验证码：显示验证码组件
       showCaptcha.value = true
       errorMessage.value = error.message
-      // 加载 Turnstile siteKey（如果尚未加载）
       if (!turnstileSiteKey.value) {
         const settings = await appStore.fetchPublicSettings()
         if (settings?.turnstile_site_key) {
@@ -305,17 +479,13 @@ const handleSubmit = async () => {
     } else if (isRateLimitError(error)) {
       errorMessage.value = error.message
       if (error.isDaily) {
-        // 日级限流：禁用按钮直到页面刷新
         isDailyLimited.value = true
       } else if (error.retryAfter) {
-        // 分钟级限流：启动倒计时
         startRateLimitCountdown(error.retryAfter)
       }
-      // 重置验证码以便重试
       resetCaptcha()
     } else {
       errorMessage.value = t('recharge.orderCreateFailed')
-      // 重置验证码以便重试
       resetCaptcha()
     }
   } finally {
@@ -323,13 +493,144 @@ const handleSubmit = async () => {
   }
 }
 
+// 加载订单列表
+const loadOrders = async () => {
+  ordersLoading.value = true
+  ordersPage.value = 1
+  try {
+    const result = await rechargeAPI.listOrders({ page: 1, page_size: 10 })
+    orders.value = result.orders
+    ordersTotal.value = result.total
+  } catch (error) {
+    console.error('Failed to load orders:', error)
+  } finally {
+    ordersLoading.value = false
+  }
+}
+
+// 加载更多订单
+const loadMoreOrders = async () => {
+  if (ordersLoading.value) return
+  ordersLoading.value = true
+  try {
+    const nextPage = ordersPage.value + 1
+    const result = await rechargeAPI.listOrders({ page: nextPage, page_size: 10 })
+    orders.value = [...orders.value, ...result.orders]
+    ordersPage.value = nextPage
+    ordersTotal.value = result.total
+  } catch (error) {
+    console.error('Failed to load more orders:', error)
+  } finally {
+    ordersLoading.value = false
+  }
+}
+
+// 打开支付弹框
+const openPaymentModal = (orderNo: string) => {
+  currentPaymentOrderNo.value = orderNo
+  paymentModalVisible.value = true
+}
+
+// 打开订单详情弹框
+const openDetailModal = (orderNo: string) => {
+  currentDetailOrderNo.value = orderNo
+  detailModalVisible.value = true
+}
+
+// 支付成功
+const onPaymentSuccess = () => {
+  pendingOrder.value = null
+  authStore.refreshUser()
+  loadOrders()
+}
+
+// 支付过期
+const onPaymentExpired = () => {
+  pendingOrder.value = null
+  loadOrders()
+}
+
+// 支付弹框关闭
+const onPaymentModalClose = () => {
+  // 关闭弹框后，如果有待支付订单，显示提示条
+  // pendingOrder 已经在创建时设置
+}
+
+// 判断订单是否可以重新支付
+const canRepay = (item: OrderListItem) => {
+  if (item.status !== 'pending') return false
+  // 需要获取完整订单信息来判断是否过期
+  // 这里简单处理：如果状态是 pending 就认为可以支付
+  return true
+}
+
+// 获取状态样式
+const getStatusClass = (status: string) => {
+  switch (status) {
+    case 'pending':
+      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+    case 'paid':
+      return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+    case 'failed':
+    case 'expired':
+      return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+    case 'cancelled':
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+    case 'refunded':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+  }
+}
+
+// 获取状态文案
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'pending':
+      return t('recharge.statusPending')
+    case 'paid':
+      return t('recharge.statusPaid')
+    case 'failed':
+      return t('recharge.statusFailed')
+    case 'expired':
+      return t('recharge.statusExpired')
+    case 'cancelled':
+      return t('recharge.statusCancelled')
+    case 'refunded':
+      return t('recharge.statusRefunded')
+    default:
+      return t('recharge.statusUnknown')
+  }
+}
+
+// 截断订单号显示
+const truncateOrderNo = (orderNo: string) => {
+  if (orderNo.length <= 20) return orderNo
+  return orderNo.slice(0, 16) + '...' + orderNo.slice(-4)
+}
+
+// 格式化日期
+const formatDate = (dateStr: string) => {
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 // 页面加载时刷新用户数据以获取最新余额
 onMounted(async () => {
   try {
-    // 并行加载用户数据和充值配置
-    await Promise.all([authStore.refreshUser(), rechargeStore.fetchConfig()])
+    await Promise.all([
+      authStore.refreshUser(),
+      rechargeStore.fetchConfig(),
+      loadOrders()
+    ])
   } catch (error) {
-    console.error('Failed to refresh user data:', error)
+    console.error('Failed to refresh data:', error)
   } finally {
     loading.value = false
   }
@@ -347,5 +648,11 @@ onUnmounted(() => {
 /* 余额卡片渐变背景 */
 .balance-card {
   background: linear-gradient(135deg, #d97757 0%, #c45a3a 100%);
+}
+
+/* 按钮小尺寸 */
+.btn-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
 }
 </style>

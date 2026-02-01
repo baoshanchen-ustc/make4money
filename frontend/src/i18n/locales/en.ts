@@ -3398,7 +3398,31 @@ export default {
         failed: 'Order failed or expired',
         unknown: 'Unknown order status, please try again later'
       }
-    }
+    },
+    // Modal dialogs
+    modal: {
+      orderDetail: 'Order Details',
+      createdAt: 'Created At',
+      refreshStatus: 'Refresh Status',
+      repay: 'Pay Again',
+      loadError: 'Failed to load order',
+      cancelPayment: 'Pay Later',
+      confirmPaid: 'I\'ve Paid',
+      qrcodeExpire: 'QR code expires in: ',
+      orderCancelled: 'Order cancelled'
+    },
+    // Records section in recharge page
+    records: {
+      title: 'Recharge Records',
+      refresh: 'Refresh',
+      viewDetail: 'Details',
+      actions: 'Actions',
+      loadMore: 'Load More'
+    },
+    // Pending order banner
+    pendingOrderCreated: 'Payment order created',
+    pendingOrderHint: 'Please scan the QR code with WeChat to complete payment',
+    viewQrcode: 'View QR Code'
   },
 
   // Recharge Records Page

@@ -3547,7 +3547,31 @@ export default {
         failed: '订单已失败或过期',
         unknown: '订单状态未知，请稍后再试'
       }
-    }
+    },
+    // Modal dialogs
+    modal: {
+      orderDetail: '订单详情',
+      createdAt: '创建时间',
+      refreshStatus: '刷新状态',
+      repay: '重新支付',
+      loadError: '加载订单失败',
+      cancelPayment: '暂不支付',
+      confirmPaid: '我已完成支付',
+      qrcodeExpire: '二维码有效期：',
+      orderCancelled: '订单已取消'
+    },
+    // Records section in recharge page
+    records: {
+      title: '充值记录',
+      refresh: '刷新',
+      viewDetail: '查看详情',
+      actions: '操作',
+      loadMore: '加载更多'
+    },
+    // Pending order banner
+    pendingOrderCreated: '支付订单已创建',
+    pendingOrderHint: '请使用微信扫一扫完成支付',
+    viewQrcode: '查看支付二维码'
   },
 
   // Recharge Records Page
