@@ -348,6 +348,10 @@ export interface CreateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  is_purchasable?: boolean
+  price_cny?: number | null
+  display_order?: number
+  purchasable_description?: string | null
 }
 
 export interface UpdateGroupRequest {
@@ -366,6 +370,10 @@ export interface UpdateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  is_purchasable?: boolean
+  price_cny?: number | null
+  display_order?: number
+  purchasable_description?: string | null
 }
 
 // ==================== Account & Proxy Types ====================

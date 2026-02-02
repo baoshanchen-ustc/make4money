@@ -241,7 +241,7 @@ func wechatSyntheticEmail(wechatID string) string {
 }
 
 // wechatShortUsername 生成简短的微信用户名
-// 将 OpenID (如 o_isI6pVkFSb7KBs-ODhwmXduzLU) 转换为 wx_isI6pVkF
+// 将 OpenID (如 o_isI6pVkFSb7KBs-ODhwmXduzLU) 转换为 wx_isI6pV
 func wechatShortUsername(wechatID string) string {
 	wechatID = strings.TrimSpace(wechatID)
 	if wechatID == "" {
@@ -249,9 +249,9 @@ func wechatShortUsername(wechatID string) string {
 	}
 	// 去掉 o_ 前缀（如果有）
 	id := strings.TrimPrefix(wechatID, "o_")
-	// 取前 8 个字符
-	if len(id) > 8 {
-		id = id[:8]
+	// 取前 6 个字符（用户名总长度 9 字符）
+	if len(id) > 6 {
+		id = id[:6]
 	}
 	return "wx_" + id
 }

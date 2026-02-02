@@ -43,6 +43,11 @@ type CreateGroupRequest struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
+	// 可购买配置
+	IsPurchasable          bool     `json:"is_purchasable"`
+	PriceCNY               *float64 `json:"price_cny"`
+	DisplayOrder           int      `json:"display_order"`
+	PurchasableDescription *string  `json:"purchasable_description"`
 }
 
 // UpdateGroupRequest represents update group request
@@ -66,6 +71,11 @@ type UpdateGroupRequest struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
+	// 可购买配置
+	IsPurchasable          *bool    `json:"is_purchasable"`
+	PriceCNY               *float64 `json:"price_cny"`
+	DisplayOrder           *int     `json:"display_order"`
+	PurchasableDescription *string  `json:"purchasable_description"`
 }
 
 // List handles listing all groups with pagination
@@ -155,22 +165,26 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	}
 
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
-		Name:                req.Name,
-		Description:         req.Description,
-		Platform:            req.Platform,
-		RateMultiplier:      req.RateMultiplier,
-		IsExclusive:         req.IsExclusive,
-		SubscriptionType:    req.SubscriptionType,
-		DailyLimitUSD:       req.DailyLimitUSD,
-		WeeklyLimitUSD:      req.WeeklyLimitUSD,
-		MonthlyLimitUSD:     req.MonthlyLimitUSD,
-		ImagePrice1K:        req.ImagePrice1K,
-		ImagePrice2K:        req.ImagePrice2K,
-		ImagePrice4K:        req.ImagePrice4K,
-		ClaudeCodeOnly:      req.ClaudeCodeOnly,
-		FallbackGroupID:     req.FallbackGroupID,
-		ModelRouting:        req.ModelRouting,
-		ModelRoutingEnabled: req.ModelRoutingEnabled,
+		Name:                   req.Name,
+		Description:            req.Description,
+		Platform:               req.Platform,
+		RateMultiplier:         req.RateMultiplier,
+		IsExclusive:            req.IsExclusive,
+		SubscriptionType:       req.SubscriptionType,
+		DailyLimitUSD:          req.DailyLimitUSD,
+		WeeklyLimitUSD:         req.WeeklyLimitUSD,
+		MonthlyLimitUSD:        req.MonthlyLimitUSD,
+		ImagePrice1K:           req.ImagePrice1K,
+		ImagePrice2K:           req.ImagePrice2K,
+		ImagePrice4K:           req.ImagePrice4K,
+		ClaudeCodeOnly:         req.ClaudeCodeOnly,
+		FallbackGroupID:        req.FallbackGroupID,
+		ModelRouting:           req.ModelRouting,
+		ModelRoutingEnabled:    req.ModelRoutingEnabled,
+		IsPurchasable:          req.IsPurchasable,
+		PriceCNY:               req.PriceCNY,
+		DisplayOrder:           req.DisplayOrder,
+		PurchasableDescription: req.PurchasableDescription,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -196,23 +210,27 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
-		Name:                req.Name,
-		Description:         req.Description,
-		Platform:            req.Platform,
-		RateMultiplier:      req.RateMultiplier,
-		IsExclusive:         req.IsExclusive,
-		Status:              req.Status,
-		SubscriptionType:    req.SubscriptionType,
-		DailyLimitUSD:       req.DailyLimitUSD,
-		WeeklyLimitUSD:      req.WeeklyLimitUSD,
-		MonthlyLimitUSD:     req.MonthlyLimitUSD,
-		ImagePrice1K:        req.ImagePrice1K,
-		ImagePrice2K:        req.ImagePrice2K,
-		ImagePrice4K:        req.ImagePrice4K,
-		ClaudeCodeOnly:      req.ClaudeCodeOnly,
-		FallbackGroupID:     req.FallbackGroupID,
-		ModelRouting:        req.ModelRouting,
-		ModelRoutingEnabled: req.ModelRoutingEnabled,
+		Name:                   req.Name,
+		Description:            req.Description,
+		Platform:               req.Platform,
+		RateMultiplier:         req.RateMultiplier,
+		IsExclusive:            req.IsExclusive,
+		Status:                 req.Status,
+		SubscriptionType:       req.SubscriptionType,
+		DailyLimitUSD:          req.DailyLimitUSD,
+		WeeklyLimitUSD:         req.WeeklyLimitUSD,
+		MonthlyLimitUSD:        req.MonthlyLimitUSD,
+		ImagePrice1K:           req.ImagePrice1K,
+		ImagePrice2K:           req.ImagePrice2K,
+		ImagePrice4K:           req.ImagePrice4K,
+		ClaudeCodeOnly:         req.ClaudeCodeOnly,
+		FallbackGroupID:        req.FallbackGroupID,
+		ModelRouting:           req.ModelRouting,
+		ModelRoutingEnabled:    req.ModelRoutingEnabled,
+		IsPurchasable:          req.IsPurchasable,
+		PriceCNY:               req.PriceCNY,
+		DisplayOrder:           req.DisplayOrder,
+		PurchasableDescription: req.PurchasableDescription,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

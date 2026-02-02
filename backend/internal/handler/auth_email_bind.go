@@ -147,6 +147,19 @@ func (h *AuthHandler) BindEmail(c *gin.Context) {
 		return
 	}
 
+	// 如果用户原邮箱是微信合成邮箱，先保存 WeChat OpenID
+	// 防止绑定邮箱后微信再次登录时无法识别用户
+	if isWeChatSyntheticEmail(currentUser.Email) {
+		wechatOpenID := extractWeChatOpenID(currentUser.Email)
+		if wechatOpenID != "" {
+			if err := h.userService.BindWeChatOpenID(c.Request.Context(), subject.UserID, wechatOpenID); err != nil {
+				// 只记录日志，不阻断邮箱绑定流程
+				// 因为 wechat_openid 可能已经存在（用户之前绑定过微信）
+				_ = err
+			}
+		}
+	}
+
 	// 更新用户邮箱
 	if err := h.userService.UpdateEmail(c.Request.Context(), subject.UserID, email); err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("UPDATE_FAILED", "更新邮箱失败"))
@@ -164,4 +177,25 @@ func isSyntheticEmail(email string) bool {
 	email = strings.ToLower(email)
 	return strings.HasSuffix(email, WeChatSyntheticEmailDomain) ||
 		strings.HasSuffix(email, LinuxDoSyntheticEmailDomain)
+}
+
+// isWeChatSyntheticEmail 判断是否为微信合成邮箱
+func isWeChatSyntheticEmail(email string) bool {
+	return strings.HasSuffix(strings.ToLower(email), WeChatSyntheticEmailDomain)
+}
+
+// extractWeChatOpenID 从微信合成邮箱中提取 OpenID
+// 例如：wechat-o_xxx@wechat-auth.invalid -> o_xxx
+func extractWeChatOpenID(email string) string {
+	email = strings.ToLower(email)
+	if !strings.HasSuffix(email, WeChatSyntheticEmailDomain) {
+		return ""
+	}
+	// 去掉后缀 @wechat-auth.invalid
+	localPart := strings.TrimSuffix(email, WeChatSyntheticEmailDomain)
+	// 去掉前缀 wechat-
+	if strings.HasPrefix(localPart, "wechat-") {
+		return strings.TrimPrefix(localPart, "wechat-")
+	}
+	return ""
 }

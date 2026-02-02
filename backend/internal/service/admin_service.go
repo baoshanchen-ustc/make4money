@@ -110,6 +110,11 @@ type CreateGroupInput struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool // 是否启用模型路由
+	// 可购买配置
+	IsPurchasable          bool     // 是否可在线购买
+	PriceCNY               *float64 // 套餐价格（人民币）
+	DisplayOrder           int      // 显示排序（小的在前）
+	PurchasableDescription *string  // 套餐描述（展示给用户）
 }
 
 type UpdateGroupInput struct {
@@ -132,6 +137,11 @@ type UpdateGroupInput struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled *bool // 是否启用模型路由
+	// 可购买配置
+	IsPurchasable          *bool    // 是否可在线购买
+	PriceCNY               *float64 // 套餐价格（人民币）
+	DisplayOrder           *int     // 显示排序（小的在前）
+	PurchasableDescription *string  // 套餐描述（展示给用户）
 }
 
 type CreateAccountInput struct {
@@ -572,23 +582,32 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 	}
 
+	// 校验套餐价格
+	if input.PriceCNY != nil && *input.PriceCNY < 0 {
+		return nil, errors.New("price_cny must be >= 0")
+	}
+
 	group := &Group{
-		Name:             input.Name,
-		Description:      input.Description,
-		Platform:         platform,
-		RateMultiplier:   input.RateMultiplier,
-		IsExclusive:      input.IsExclusive,
-		Status:           StatusActive,
-		SubscriptionType: subscriptionType,
-		DailyLimitUSD:    dailyLimit,
-		WeeklyLimitUSD:   weeklyLimit,
-		MonthlyLimitUSD:  monthlyLimit,
-		ImagePrice1K:     imagePrice1K,
-		ImagePrice2K:     imagePrice2K,
-		ImagePrice4K:     imagePrice4K,
-		ClaudeCodeOnly:   input.ClaudeCodeOnly,
-		FallbackGroupID:  input.FallbackGroupID,
-		ModelRouting:     input.ModelRouting,
+		Name:                   input.Name,
+		Description:            input.Description,
+		Platform:               platform,
+		RateMultiplier:         input.RateMultiplier,
+		IsExclusive:            input.IsExclusive,
+		Status:                 StatusActive,
+		SubscriptionType:       subscriptionType,
+		DailyLimitUSD:          dailyLimit,
+		WeeklyLimitUSD:         weeklyLimit,
+		MonthlyLimitUSD:        monthlyLimit,
+		ImagePrice1K:           imagePrice1K,
+		ImagePrice2K:           imagePrice2K,
+		ImagePrice4K:           imagePrice4K,
+		ClaudeCodeOnly:         input.ClaudeCodeOnly,
+		FallbackGroupID:        input.FallbackGroupID,
+		ModelRouting:           input.ModelRouting,
+		IsPurchasable:          input.IsPurchasable,
+		PriceCNY:               input.PriceCNY,
+		DisplayOrder:           input.DisplayOrder,
+		PurchasableDescription: input.PurchasableDescription,
 	}
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -723,6 +742,23 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.ModelRoutingEnabled != nil {
 		group.ModelRoutingEnabled = *input.ModelRoutingEnabled
+	}
+
+	// 可购买配置
+	if input.IsPurchasable != nil {
+		group.IsPurchasable = *input.IsPurchasable
+	}
+	if input.PriceCNY != nil {
+		if *input.PriceCNY < 0 {
+			return nil, errors.New("price_cny must be >= 0")
+		}
+		group.PriceCNY = input.PriceCNY
+	}
+	if input.DisplayOrder != nil {
+		group.DisplayOrder = *input.DisplayOrder
+	}
+	if input.PurchasableDescription != nil {
+		group.PurchasableDescription = input.PurchasableDescription
 	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

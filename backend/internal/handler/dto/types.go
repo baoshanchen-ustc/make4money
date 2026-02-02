@@ -66,6 +66,12 @@ type Group struct {
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
 
+	// 可购买配置
+	IsPurchasable          bool     `json:"is_purchasable"`
+	PriceCNY               *float64 `json:"price_cny"`
+	DisplayOrder           int      `json:"display_order"`
+	PurchasableDescription *string  `json:"purchasable_description"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
