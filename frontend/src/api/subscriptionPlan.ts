@@ -24,10 +24,20 @@ export interface SubscriptionPlan {
   purchasable_description: string | null
   platform: string
   price_cny: number
+  validity_days: number
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
   display_order: number
+}
+
+/**
+ * List plans response from backend
+ */
+export interface ListPlansResponse {
+  plans: SubscriptionPlan[]
+  payment_enabled: boolean
+  contact_info?: string
 }
 
 /**
@@ -128,9 +138,10 @@ export interface SyncOrderStatusResponse {
 export const subscriptionPlanAPI = {
   /**
    * Get purchasable subscription plans (public, no auth required)
+   * Returns plans array, payment status, and contact info
    */
-  async listPlans(): Promise<SubscriptionPlan[]> {
-    const response = await apiClient.get<SubscriptionPlan[]>('/subscription-plans')
+  async listPlans(): Promise<ListPlansResponse> {
+    const response = await apiClient.get<ListPlansResponse>('/subscription-plans')
     return response.data
   },
 

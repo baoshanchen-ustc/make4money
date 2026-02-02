@@ -326,12 +326,12 @@ function setPlanCardRef(planId: number, el: unknown) {
 async function loadData() {
   try {
     loading.value = true
-    const [subs, plans] = await Promise.all([
+    const [subs, plansResponse] = await Promise.all([
       subscriptionsAPI.getMySubscriptions(),
-      subscriptionPlanAPI.listPlans().catch(() => [])
+      subscriptionPlanAPI.listPlans().catch(() => ({ plans: [], payment_enabled: false }))
     ])
     subscriptions.value = subs
-    purchasablePlans.value = plans
+    purchasablePlans.value = plansResponse.plans
     plansLoaded.value = true
   } catch (error) {
     console.error('Failed to load subscriptions:', error)
