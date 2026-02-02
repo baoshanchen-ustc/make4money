@@ -13,6 +13,7 @@ type AdminHandlers struct {
 	User             *admin.UserHandler
 	Group            *admin.GroupHandler
 	Account          *admin.AccountHandler
+	Announcement     *admin.AnnouncementHandler
 	OAuth            *admin.OAuthHandler
 	OpenAIOAuth      *admin.OpenAIOAuthHandler
 	GeminiOAuth      *admin.GeminiOAuthHandler
@@ -31,21 +32,22 @@ type AdminHandlers struct {
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	Auth              *AuthHandler
-	User              *UserHandler
-	APIKey            *APIKeyHandler
-	Usage             *UsageHandler
-	Redeem            *RedeemHandler
-	Subscription      *SubscriptionHandler
-	Admin             *AdminHandlers
-	Gateway           *GatewayHandler
-	OpenAIGateway     *OpenAIGatewayHandler
-	Setting           *SettingHandler
-	Totp              *TotpHandler
-	UsageReport       *UserUsageReportHandler
-	Recharge          *recharge.RechargeHandler
-	WeChatPayWebhook  *webhook.WeChatPayWebhookHandler
-	SubscriptionPlan  *subscription.SubscriptionPlanHandler
+	Auth             *AuthHandler
+	User             *UserHandler
+	APIKey           *APIKeyHandler
+	Usage            *UsageHandler
+	Redeem           *RedeemHandler
+	Subscription     *SubscriptionHandler
+	Announcement     *AnnouncementHandler
+	Admin            *AdminHandlers
+	Gateway          *GatewayHandler
+	OpenAIGateway    *OpenAIGatewayHandler
+	Setting          *SettingHandler
+	Totp             *TotpHandler
+	UsageReport      *UserUsageReportHandler
+	Recharge         *recharge.RechargeHandler
+	WeChatPayWebhook *webhook.WeChatPayWebhookHandler
+	SubscriptionPlan *subscription.SubscriptionPlanHandler
 }
 
 // BuildInfo contains build-time information
