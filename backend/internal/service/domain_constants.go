@@ -100,9 +100,10 @@ const (
 	SettingKeyLinuxDoConnectRedirectURL  = "linuxdo_connect_redirect_url"
 
 	// 微信公众号验证码登录设置
-	SettingKeyWeChatAuthEnabled      = "wechat_auth_enabled"       // 是否启用微信登录
-	SettingKeyWeChatServerAddress    = "wechat_server_address"     // 微信服务器地址
-	SettingKeyWeChatServerToken      = "wechat_server_token"       // 微信服务器认证令牌
+	SettingKeyWeChatAuthEnabled       = "wechat_auth_enabled"        // 是否启用微信登录
+	SettingKeyWeChatAccountType       = "wechat_account_type"        // 公众号类型: "subscription"(订阅号) 或 "unverified_official"(未认证公众号)
+	SettingKeyWeChatServerAddress     = "wechat_server_address"      // 微信服务器地址
+	SettingKeyWeChatServerToken       = "wechat_server_token"        // 微信服务器认证令牌
 	SettingKeyWeChatAccountQRCodeURL  = "wechat_account_qrcode_url"  // 微信公众号二维码URL
 	SettingKeyWeChatAccountQRCodeData = "wechat_account_qrcode_data" // 微信公众号二维码图片数据 (Base64)
 	SettingKeyWeChatAppID             = "wechat_app_id"              // 微信公众号 AppID
@@ -229,3 +230,9 @@ const (
 
 // DefaultRechargeAmounts is the default quick amount options
 var DefaultRechargeAmounts = []float64{10, 50, 100, 200, 500}
+
+// WeChat account type constants
+const (
+	WeChatAccountTypeSubscription     = "subscription"       // 订阅号
+	WeChatAccountTypeUnverifiedOfficial = "unverified_official" // 未认证公众号
+)

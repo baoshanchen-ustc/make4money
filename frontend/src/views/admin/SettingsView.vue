@@ -603,6 +603,40 @@
               class="border-t border-gray-100 pt-4 dark:border-dark-700"
             >
               <div class="grid grid-cols-1 gap-6">
+                <!-- 公众号类型选择 -->
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.wechat.accountType') }}
+                  </label>
+                  <div class="flex gap-6">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input
+                        v-model="form.wechat_account_type"
+                        type="radio"
+                        value="subscription"
+                        class="h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600"
+                      />
+                      <span class="text-sm text-gray-700 dark:text-gray-300">
+                        {{ t('admin.settings.wechat.accountTypeSubscription') }}
+                      </span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input
+                        v-model="form.wechat_account_type"
+                        type="radio"
+                        value="unverified_official"
+                        class="h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600"
+                      />
+                      <span class="text-sm text-gray-700 dark:text-gray-300">
+                        {{ t('admin.settings.wechat.accountTypeUnverifiedOfficial') }}
+                      </span>
+                    </label>
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.wechat.accountTypeHint') }}
+                  </p>
+                </div>
+
                 <div>
                   <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                     {{ t('admin.settings.wechat.serverAddress') }}
@@ -1937,6 +1971,7 @@ const form = reactive<SettingsForm>({
   linuxdo_connect_redirect_url: '',
   // 微信公众号验证码登录
   wechat_auth_enabled: false,
+  wechat_account_type: 'subscription',
   wechat_server_address: '',
   wechat_server_token: '',
   wechat_server_token_configured: false,
@@ -2128,6 +2163,8 @@ async function loadSettings() {
     form.smtp_password = ''
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
+    form.wechat_server_token = ''
+    form.wechat_app_secret = ''
   } catch (error: any) {
     appStore.showError(
       t('admin.settings.failedToLoad') + ': ' + (error.message || t('common.unknownError'))
@@ -2176,6 +2213,7 @@ async function saveSettings() {
       linuxdo_connect_client_secret: form.linuxdo_connect_client_secret || undefined,
       linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
       wechat_auth_enabled: form.wechat_auth_enabled,
+      wechat_account_type: form.wechat_account_type,
       wechat_server_address: form.wechat_server_address,
       wechat_server_token: form.wechat_server_token || undefined,
       wechat_account_qrcode_url: form.wechat_account_qrcode_url,
@@ -2199,6 +2237,8 @@ async function saveSettings() {
     form.smtp_password = ''
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
+    form.wechat_server_token = ''
+    form.wechat_app_secret = ''
     // Refresh cached public settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true)
     appStore.showSuccess(t('admin.settings.settingsSaved'))

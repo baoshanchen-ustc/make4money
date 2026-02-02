@@ -44,6 +44,7 @@
           v-if="wechatAuthEnabled"
           :disabled="isLoading"
           :qr-code-url="wechatAccountQRCodeURL"
+          :account-type="wechatAccountType"
         />
 
         <!-- 切换到邮箱密码注册 -->
@@ -312,6 +313,7 @@ const turnstileSiteKey = ref<string>('')
 const siteName = ref<string>('Code80')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatAuthEnabled = ref<boolean>(false)
+const wechatAccountType = ref<string>('subscription')
 const wechatAccountQRCodeURL = ref<string>('')
 
 // Turnstile
@@ -361,6 +363,7 @@ onMounted(async () => {
       siteName.value = settings.site_name || 'Code80'
       linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
       wechatAuthEnabled.value = settings.wechat_auth_enabled
+      wechatAccountType.value = settings.wechat_account_type || 'subscription'
       // 上传的图片 (Base64) 优先于 API 生成的 URL
       wechatAccountQRCodeURL.value = settings.wechat_account_qrcode_data || settings.wechat_account_qrcode_url || ''
 

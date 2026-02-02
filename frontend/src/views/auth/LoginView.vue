@@ -44,6 +44,7 @@
           v-if="wechatAuthEnabled"
           :disabled="isLoading"
           :qr-code-url="wechatAccountQRCodeURL"
+          :account-type="wechatAccountType"
           @need-email-bind="handleNeedEmailBind"
         />
 
@@ -199,6 +200,7 @@
     <WeChatBindModal
       :show="showWeChatBindModal"
       :qr-code-url="wechatAccountQRCodeURL"
+      :account-type="wechatAccountType"
       @close="showWeChatBindModal = false"
       @skip="handleSkipWeChatBind"
       @success="handleWeChatBindSuccess"
@@ -276,6 +278,7 @@ const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatAuthEnabled = ref<boolean>(false)
+const wechatAccountType = ref<string>('subscription')
 const wechatAccountQRCodeURL = ref<string>('')
 const passwordResetEnabled = ref<boolean>(false)
 
@@ -339,6 +342,7 @@ onMounted(async () => {
       turnstileSiteKey.value = settings.turnstile_site_key || ''
       linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
       wechatAuthEnabled.value = settings.wechat_auth_enabled
+      wechatAccountType.value = settings.wechat_account_type || 'subscription'
       // 上传的图片 (Base64) 优先于 API 生成的 URL
       wechatAccountQRCodeURL.value = settings.wechat_account_qrcode_data || settings.wechat_account_qrcode_url || ''
       passwordResetEnabled.value = settings.password_reset_enabled

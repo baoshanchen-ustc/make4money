@@ -71,7 +71,7 @@
                 </div>
               </div>
               <p class="text-center text-sm text-gray-500 dark:text-dark-400">
-                {{ t('auth.wechat.scanTip') }}
+                {{ accountType === 'unverified_official' ? t('auth.wechat.scanTipOfficial') : t('auth.wechat.scanTip') }}
               </p>
             </div>
 
@@ -143,6 +143,7 @@ import { wechatAuth } from '@/api/auth'
 defineProps<{
   disabled?: boolean
   qrCodeUrl?: string
+  accountType?: string
 }>()
 
 const emit = defineEmits<{

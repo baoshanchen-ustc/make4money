@@ -90,6 +90,7 @@ export interface PublicSettings {
   purchase_subscription_url: string
   linuxdo_oauth_enabled: boolean
   wechat_auth_enabled: boolean
+  wechat_account_type: string
   wechat_account_qrcode_url: string
   wechat_account_qrcode_data: string
   version: string

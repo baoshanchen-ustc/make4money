@@ -339,6 +339,7 @@ export const useAppStore = defineStore('app', () => {
         purchase_subscription_url: '',
         linuxdo_oauth_enabled: false,
         wechat_auth_enabled: false,
+        wechat_account_type: 'subscription',
         wechat_account_qrcode_url: '',
         wechat_account_qrcode_data: '',
         version: siteVersion.value

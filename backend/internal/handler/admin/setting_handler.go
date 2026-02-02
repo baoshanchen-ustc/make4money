@@ -71,6 +71,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		LinuxDoConnectClientSecretConfigured: settings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:            settings.LinuxDoConnectRedirectURL,
 		WeChatAuthEnabled:                    settings.WeChatAuthEnabled,
+		WeChatAccountType:                    settings.WeChatAccountType,
 		WeChatServerAddress:                  settings.WeChatServerAddress,
 		WeChatServerTokenConfigured:          settings.WeChatServerTokenConfigured,
 		WeChatAccountQRCodeURL:               settings.WeChatAccountQRCodeURL,
@@ -140,6 +141,7 @@ type UpdateSettingsRequest struct {
 
 	// 微信公众号验证码登录
 	WeChatAuthEnabled       bool   `json:"wechat_auth_enabled"`
+	WeChatAccountType       string `json:"wechat_account_type"`
 	WeChatServerAddress     string `json:"wechat_server_address"`
 	WeChatServerToken       string `json:"wechat_server_token"`
 	WeChatAccountQRCodeURL  string `json:"wechat_account_qrcode_url"`
@@ -286,6 +288,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.WeChatServerAddress = strings.TrimSpace(req.WeChatServerAddress)
 		req.WeChatServerToken = strings.TrimSpace(req.WeChatServerToken)
 
+		// 校验公众号类型
+		if req.WeChatAccountType != "" &&
+			req.WeChatAccountType != service.WeChatAccountTypeSubscription &&
+			req.WeChatAccountType != service.WeChatAccountTypeUnverifiedOfficial {
+			response.BadRequest(c, "WeChat Account Type must be 'subscription' or 'unverified_official'")
+			return
+		}
+		if req.WeChatAccountType == "" {
+			req.WeChatAccountType = service.WeChatAccountTypeSubscription
+		}
+
 		if req.WeChatServerAddress == "" {
 			response.BadRequest(c, "WeChat Server Address is required when enabled")
 			return
@@ -366,6 +379,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientSecret:  req.LinuxDoConnectClientSecret,
 		LinuxDoConnectRedirectURL:   req.LinuxDoConnectRedirectURL,
 		WeChatAuthEnabled:           req.WeChatAuthEnabled,
+		WeChatAccountType:           req.WeChatAccountType,
 		WeChatServerAddress:         req.WeChatServerAddress,
 		WeChatServerToken:           req.WeChatServerToken,
 		WeChatAccountQRCodeURL:      req.WeChatAccountQRCodeURL,
@@ -474,6 +488,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientSecretConfigured: updatedSettings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:            updatedSettings.LinuxDoConnectRedirectURL,
 		WeChatAuthEnabled:                    updatedSettings.WeChatAuthEnabled,
+		WeChatAccountType:                    updatedSettings.WeChatAccountType,
 		WeChatServerAddress:                  updatedSettings.WeChatServerAddress,
 		WeChatServerTokenConfigured:          updatedSettings.WeChatServerTokenConfigured,
 		WeChatAccountQRCodeURL:               updatedSettings.WeChatAccountQRCodeURL,
@@ -590,6 +605,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.WeChatAuthEnabled != after.WeChatAuthEnabled {
 		changed = append(changed, "wechat_auth_enabled")
+	}
+	if before.WeChatAccountType != after.WeChatAccountType {
+		changed = append(changed, "wechat_account_type")
 	}
 	if before.WeChatServerAddress != after.WeChatServerAddress {
 		changed = append(changed, "wechat_server_address")

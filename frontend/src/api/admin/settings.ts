@@ -54,6 +54,7 @@ export interface SystemSettings {
 
   // WeChat public account verification code login settings
   wechat_auth_enabled: boolean
+  wechat_account_type: 'subscription' | 'unverified_official' | string
   wechat_server_address: string
   wechat_server_token_configured: boolean
   wechat_account_qrcode_url: string
@@ -120,6 +121,7 @@ export interface UpdateSettingsRequest {
   linuxdo_connect_client_secret?: string
   linuxdo_connect_redirect_url?: string
   wechat_auth_enabled?: boolean
+  wechat_account_type?: 'subscription' | 'unverified_official' | string
   wechat_server_address?: string
   wechat_server_token?: string
   wechat_account_qrcode_url?: string

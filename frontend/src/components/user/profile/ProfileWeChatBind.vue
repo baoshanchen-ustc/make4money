@@ -87,7 +87,7 @@
                 </div>
               </div>
               <p class="text-center text-sm text-gray-500 dark:text-dark-400">
-                {{ t('auth.wechat.scanTip') }}
+                {{ wechatAccountType === 'unverified_official' ? t('auth.wechat.scanTipOfficial') : t('auth.wechat.scanTip') }}
               </p>
             </div>
 
@@ -230,6 +230,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const wechatAuthEnabled = ref(false)
+const wechatAccountType = ref('subscription')
 const qrCodeUrl = ref('')
 const showBindModal = ref(false)
 const showUnbindConfirm = ref(false)
@@ -247,6 +248,7 @@ onMounted(async () => {
   try {
     const settings = await authAPI.getPublicSettings()
     wechatAuthEnabled.value = settings.wechat_auth_enabled
+    wechatAccountType.value = settings.wechat_account_type || 'subscription'
     qrCodeUrl.value = settings.wechat_account_qrcode_data || settings.wechat_account_qrcode_url || ''
   } catch (error) {
     console.error('Failed to load public settings:', error)

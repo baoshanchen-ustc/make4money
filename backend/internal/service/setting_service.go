@@ -330,6 +330,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPurchaseSubscriptionURL,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyWeChatAuthEnabled,
+		SettingKeyWeChatAccountType,
 		SettingKeyWeChatAccountQRCodeURL,
 		SettingKeyWeChatAccountQRCodeData,
 	}
@@ -373,6 +374,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PurchaseSubscriptionURL:     strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		LinuxDoOAuthEnabled:         linuxDoEnabled,
 		WeChatAuthEnabled:           settings[SettingKeyWeChatAuthEnabled] == "true",
+		WeChatAccountType:           s.getStringOrDefault(settings, SettingKeyWeChatAccountType, WeChatAccountTypeSubscription),
 		WeChatAccountQRCodeURL:      settings[SettingKeyWeChatAccountQRCodeURL],
 		WeChatAccountQRCodeData:     settings[SettingKeyWeChatAccountQRCodeData],
 	}, nil
@@ -421,6 +423,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PurchaseSubscriptionURL     string `json:"purchase_subscription_url,omitempty"`
 		LinuxDoOAuthEnabled         bool   `json:"linuxdo_oauth_enabled"`
 		WeChatAuthEnabled           bool   `json:"wechat_auth_enabled"`
+		WeChatAccountType           string `json:"wechat_account_type,omitempty"`
 		WeChatAccountQRCodeURL      string `json:"wechat_account_qrcode_url,omitempty"`
 		WeChatAccountQRCodeData     string `json:"wechat_account_qrcode_data,omitempty"`
 		Version                     string `json:"version,omitempty"`
@@ -447,6 +450,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PurchaseSubscriptionURL:     settings.PurchaseSubscriptionURL,
 		LinuxDoOAuthEnabled:         settings.LinuxDoOAuthEnabled,
 		WeChatAuthEnabled:           settings.WeChatAuthEnabled,
+		WeChatAccountType:           settings.WeChatAccountType,
 		WeChatAccountQRCodeURL:      settings.WeChatAccountQRCodeURL,
 		WeChatAccountQRCodeData:     settings.WeChatAccountQRCodeData,
 		Version:                     s.version,
@@ -492,6 +496,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 
 	// 微信公众号验证码登录
 	updates[SettingKeyWeChatAuthEnabled] = strconv.FormatBool(settings.WeChatAuthEnabled)
+	updates[SettingKeyWeChatAccountType] = settings.WeChatAccountType
 	updates[SettingKeyWeChatServerAddress] = settings.WeChatServerAddress
 	if settings.WeChatServerToken != "" {
 		updates[SettingKeyWeChatServerToken] = settings.WeChatServerToken
@@ -779,6 +784,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 微信公众号验证码登录设置
 	result.WeChatAuthEnabled = settings[SettingKeyWeChatAuthEnabled] == "true"
+	result.WeChatAccountType = s.getStringOrDefault(settings, SettingKeyWeChatAccountType, WeChatAccountTypeSubscription)
 	result.WeChatServerAddress = strings.TrimSpace(settings[SettingKeyWeChatServerAddress])
 	result.WeChatServerToken = strings.TrimSpace(settings[SettingKeyWeChatServerToken])
 	result.WeChatServerTokenConfigured = result.WeChatServerToken != ""

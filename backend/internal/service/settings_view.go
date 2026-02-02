@@ -30,6 +30,7 @@ type SystemSettings struct {
 
 	// 微信公众号验证码登录
 	WeChatAuthEnabled           bool
+	WeChatAccountType           string // "subscription" 或 "unverified_official"
 	WeChatServerAddress         string
 	WeChatServerToken           string
 	WeChatServerTokenConfigured bool
@@ -105,6 +106,7 @@ type PublicSettings struct {
 	LinuxDoOAuthEnabled bool
 	// 微信登录
 	WeChatAuthEnabled       bool
+	WeChatAccountType       string // "subscription" 或 "unverified_official"
 	WeChatAccountQRCodeURL  string
 	WeChatAccountQRCodeData string // 上传的二维码图片数据 (Base64)
 	Version                 string

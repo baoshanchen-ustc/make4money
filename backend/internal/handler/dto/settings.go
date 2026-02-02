@@ -28,6 +28,7 @@ type SystemSettings struct {
 
 	// 微信公众号验证码登录
 	WeChatAuthEnabled           bool   `json:"wechat_auth_enabled"`
+	WeChatAccountType           string `json:"wechat_account_type"`
 	WeChatServerAddress         string `json:"wechat_server_address"`
 	WeChatServerTokenConfigured bool   `json:"wechat_server_token_configured"`
 	WeChatAccountQRCodeURL      string `json:"wechat_account_qrcode_url"`
@@ -98,6 +99,7 @@ type PublicSettings struct {
 	PurchaseSubscriptionURL     string `json:"purchase_subscription_url"`
 	LinuxDoOAuthEnabled         bool   `json:"linuxdo_oauth_enabled"`
 	WeChatAuthEnabled           bool   `json:"wechat_auth_enabled"`
+	WeChatAccountType           string `json:"wechat_account_type,omitempty"`
 	WeChatAccountQRCodeURL      string `json:"wechat_account_qrcode_url"`
 	WeChatAccountQRCodeData     string `json:"wechat_account_qrcode_data"`
 	Version                     string `json:"version"`

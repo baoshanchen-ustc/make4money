@@ -54,6 +54,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		PurchaseSubscriptionURL:     settings.PurchaseSubscriptionURL,
 		LinuxDoOAuthEnabled:         settings.LinuxDoOAuthEnabled,
 		WeChatAuthEnabled:           settings.WeChatAuthEnabled,
+		WeChatAccountType:           settings.WeChatAccountType,
 		WeChatAccountQRCodeURL:      settings.WeChatAccountQRCodeURL,
 		WeChatAccountQRCodeData:     settings.WeChatAccountQRCodeData,
 		Version:                     h.version,
