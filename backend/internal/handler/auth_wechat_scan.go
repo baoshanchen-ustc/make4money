@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -221,22 +222,30 @@ func (h *AuthHandler) handleWeChatMPVerify(c *gin.Context) {
 
 // handleWeChatMPEvent 处理微信公众号事件
 func (h *AuthHandler) handleWeChatMPEvent(c *gin.Context) {
-	// 验证签名
-	signature := c.Query("signature")
-	timestamp := c.Query("timestamp")
-	nonce := c.Query("nonce")
+	// 检查是否为内部转发请求（来自 wechat-server 的转发不带签名参数）
+	forwardedBy := c.GetHeader("X-Forwarded-By")
+	isInternalForward := forwardedBy == "wechat-server"
 
-	cfg, err := h.settingSvc.GetWeChatConfig(c.Request.Context())
-	if err != nil {
-		log.Printf("[WeChatMPEvent] Failed to get config: %v", err)
-		c.String(200, "success")
-		return
-	}
+	if !isInternalForward {
+		// 直接来自微信的请求，验证签名
+		signature := c.Query("signature")
+		timestamp := c.Query("timestamp")
+		nonce := c.Query("nonce")
 
-	if !verifyWeChatSignature(signature, timestamp, nonce, cfg.ServerToken) {
-		log.Printf("[WeChatMPEvent] Invalid signature")
-		c.String(200, "success")
-		return
+		cfg, err := h.settingSvc.GetWeChatConfig(c.Request.Context())
+		if err != nil {
+			log.Printf("[WeChatMPEvent] Failed to get config: %v", err)
+			c.String(200, "success")
+			return
+		}
+
+		if !verifyWeChatSignature(signature, timestamp, nonce, cfg.ServerToken) {
+			log.Printf("[WeChatMPEvent] Invalid signature")
+			c.String(200, "success")
+			return
+		}
+	} else {
+		log.Printf("[WeChatMPEvent] Accepted internal forward from wechat-server")
 	}
 
 	// 读取并解析消息
@@ -299,6 +308,80 @@ func (h *AuthHandler) handleWeChatScanEvent(c *gin.Context, msg *WeChatMPMessage
 
 	// 返回空字符串表示不回复消息
 	c.String(200, "success")
+}
+
+// WeChatScanBindPoll 轮询扫码绑定状态（已登录用户）
+// GET /api/v1/auth/wechat/scan/bind/poll?scene_id=xxx
+func (h *AuthHandler) WeChatScanBindPoll(c *gin.Context) {
+	sceneID := c.Query("scene_id")
+	if sceneID == "" {
+		response.BadRequest(c, "scene_id 不能为空")
+		return
+	}
+
+	// 获取当前登录用户
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
+
+	// 检查扫码登录服务是否可用
+	if h.scanLoginSvc == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("SCAN_LOGIN_NOT_AVAILABLE", "扫码登录服务不可用"))
+		return
+	}
+
+	// 检查扫码结果
+	result, err := h.scanLoginSvc.CheckScanResult(c.Request.Context(), sceneID)
+	if err != nil {
+		log.Printf("[WeChatScanBindPoll] Failed to check scan result: %v", err)
+		response.ErrorFrom(c, infraerrors.InternalServer("CHECK_FAILED", "查询扫码状态失败"))
+		return
+	}
+
+	// 如果还在等待
+	if result.Status == "waiting" {
+		response.Success(c, gin.H{
+			"status": "waiting",
+		})
+		return
+	}
+
+	// 扫码成功，执行绑定逻辑
+	openID := result.OpenID
+
+	// 检查该 OpenID 是否已被其他用户绑定
+	exists, err := h.userService.ExistsByWeChatOpenID(c.Request.Context(), openID)
+	if err != nil {
+		log.Printf("[WeChatScanBindPoll] Failed to check wechat openid exists: %v", err)
+		response.ErrorFrom(c, infraerrors.InternalServer("INTERNAL_ERROR", "检查绑定状态失败"))
+		return
+	}
+	if exists {
+		response.ErrorFrom(c, infraerrors.Conflict("WECHAT_ALREADY_BOUND", "该微信账号已被其他用户绑定"))
+		return
+	}
+
+	// 保存绑定关系
+	if err := h.userService.BindWeChatOpenID(c.Request.Context(), subject.UserID, openID); err != nil {
+		log.Printf("[WeChatScanBindPoll] Failed to bind wechat openid: %v", err)
+		response.ErrorFrom(c, infraerrors.InternalServer("BIND_FAILED", "绑定失败"))
+		return
+	}
+
+	// 绑定成功后再消费扫码结果（冲突时不消费，用户可重试）
+	if err := h.scanLoginSvc.ConsumeScanResult(c.Request.Context(), sceneID); err != nil {
+		log.Printf("[WeChatScanBindPoll] Failed to consume scan result: %v", err)
+	}
+
+	log.Printf("[WeChatScanBindPoll] Bind success: userID=%d, openID=%s", subject.UserID, openID)
+
+	response.Success(c, gin.H{
+		"status":        "confirmed",
+		"wechat_openid": openID,
+		"message":       "绑定成功",
+	})
 }
 
 // verifyWeChatSignature 验证微信签名

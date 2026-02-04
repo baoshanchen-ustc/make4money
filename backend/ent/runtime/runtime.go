@@ -1136,6 +1136,28 @@ func init() {
 	userDescTotpEnabled := userFields[9].Descriptor()
 	// user.DefaultTotpEnabled holds the default value on creation for the totp_enabled field.
 	user.DefaultTotpEnabled = userDescTotpEnabled.Default.(bool)
+	// userDescWechatOpenid is the schema descriptor for wechat_openid field.
+	userDescWechatOpenid := userFields[11].Descriptor()
+	// user.DefaultWechatOpenid holds the default value on creation for the wechat_openid field.
+	user.DefaultWechatOpenid = userDescWechatOpenid.Default.(string)
+	// user.WechatOpenidValidator is a validator for the "wechat_openid" field. It is called by the builders before save.
+	user.WechatOpenidValidator = userDescWechatOpenid.Validators[0].(func(string) error)
+	// userDescUsageReportEnabled is the schema descriptor for usage_report_enabled field.
+	userDescUsageReportEnabled := userFields[12].Descriptor()
+	// user.DefaultUsageReportEnabled holds the default value on creation for the usage_report_enabled field.
+	user.DefaultUsageReportEnabled = userDescUsageReportEnabled.Default.(bool)
+	// userDescUsageReportSchedule is the schema descriptor for usage_report_schedule field.
+	userDescUsageReportSchedule := userFields[13].Descriptor()
+	// user.DefaultUsageReportSchedule holds the default value on creation for the usage_report_schedule field.
+	user.DefaultUsageReportSchedule = userDescUsageReportSchedule.Default.(string)
+	// user.UsageReportScheduleValidator is a validator for the "usage_report_schedule" field. It is called by the builders before save.
+	user.UsageReportScheduleValidator = userDescUsageReportSchedule.Validators[0].(func(string) error)
+	// userDescUsageReportTimezone is the schema descriptor for usage_report_timezone field.
+	userDescUsageReportTimezone := userFields[14].Descriptor()
+	// user.DefaultUsageReportTimezone holds the default value on creation for the usage_report_timezone field.
+	user.DefaultUsageReportTimezone = userDescUsageReportTimezone.Default.(string)
+	// user.UsageReportTimezoneValidator is a validator for the "usage_report_timezone" field. It is called by the builders before save.
+	user.UsageReportTimezoneValidator = userDescUsageReportTimezone.Validators[0].(func(string) error)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

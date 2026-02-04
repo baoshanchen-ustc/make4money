@@ -84,6 +84,10 @@ func RegisterAuthRoutes(
 		authenticated.DELETE("/auth/oauth/wechat/bind", rateLimiter.LimitWithOptions("wechat-unbind", 10, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.WeChatUnbind)
+		// 微信扫码绑定轮询（需要登录，订阅号模式）
+		authenticated.GET("/auth/wechat/scan/bind/poll", rateLimiter.LimitWithOptions("wechat-scan-bind-poll", 120, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.WeChatScanBindPoll)
 		// 发送绑定邮箱验证码（需要登录，用于微信登录用户绑定真实邮箱）
 		authenticated.POST("/auth/send-bind-email-code", rateLimiter.LimitWithOptions("send-bind-email-code", 5, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,

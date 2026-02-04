@@ -45,6 +45,14 @@ type User struct {
 	TotpEnabled bool `json:"totp_enabled,omitempty"`
 	// TotpEnabledAt holds the value of the "totp_enabled_at" field.
 	TotpEnabledAt *time.Time `json:"totp_enabled_at,omitempty"`
+	// WechatOpenid holds the value of the "wechat_openid" field.
+	WechatOpenid string `json:"wechat_openid,omitempty"`
+	// UsageReportEnabled holds the value of the "usage_report_enabled" field.
+	UsageReportEnabled bool `json:"usage_report_enabled,omitempty"`
+	// UsageReportSchedule holds the value of the "usage_report_schedule" field.
+	UsageReportSchedule string `json:"usage_report_schedule,omitempty"`
+	// UsageReportTimezone holds the value of the "usage_report_timezone" field.
+	UsageReportTimezone string `json:"usage_report_timezone,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserQuery when eager-loading is set.
 	Edges        UserEdges `json:"edges"`
@@ -206,13 +214,13 @@ func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case user.FieldTotpEnabled:
+		case user.FieldTotpEnabled, user.FieldUsageReportEnabled:
 			values[i] = new(sql.NullBool)
 		case user.FieldBalance:
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldWechatOpenid, user.FieldUsageReportSchedule, user.FieldUsageReportTimezone:
 			values[i] = new(sql.NullString)
 		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt:
 			values[i] = new(sql.NullTime)
@@ -323,6 +331,30 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.TotpEnabledAt = new(time.Time)
 				*_m.TotpEnabledAt = value.Time
+			}
+		case user.FieldWechatOpenid:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field wechat_openid", values[i])
+			} else if value.Valid {
+				_m.WechatOpenid = value.String
+			}
+		case user.FieldUsageReportEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_report_enabled", values[i])
+			} else if value.Valid {
+				_m.UsageReportEnabled = value.Bool
+			}
+		case user.FieldUsageReportSchedule:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_report_schedule", values[i])
+			} else if value.Valid {
+				_m.UsageReportSchedule = value.String
+			}
+		case user.FieldUsageReportTimezone:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_report_timezone", values[i])
+			} else if value.Valid {
+				_m.UsageReportTimezone = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -472,6 +504,18 @@ func (_m *User) String() string {
 		builder.WriteString("totp_enabled_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("wechat_openid=")
+	builder.WriteString(_m.WechatOpenid)
+	builder.WriteString(", ")
+	builder.WriteString("usage_report_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UsageReportEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("usage_report_schedule=")
+	builder.WriteString(_m.UsageReportSchedule)
+	builder.WriteString(", ")
+	builder.WriteString("usage_report_timezone=")
+	builder.WriteString(_m.UsageReportTimezone)
 	builder.WriteByte(')')
 	return builder.String()
 }

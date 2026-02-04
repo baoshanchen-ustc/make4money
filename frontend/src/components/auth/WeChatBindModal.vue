@@ -73,27 +73,73 @@
 
           <!-- QR Code -->
           <div class="mb-6 flex flex-col items-center space-y-4">
-            <div class="rounded-lg border border-gray-200 bg-white p-2 dark:border-dark-600">
+            <div class="rounded-lg border border-gray-200 bg-white p-2 dark:border-dark-600 relative">
+              <!-- Loading state (subscription mode) -->
+              <div
+                v-if="scanLoading"
+                class="flex h-48 w-48 items-center justify-center"
+              >
+                <svg class="h-8 w-8 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              <!-- QR code image -->
               <img
-                v-if="qrCodeUrl"
-                :src="qrCodeUrl"
+                v-else-if="displayQrCodeUrl"
+                :src="displayQrCodeUrl"
                 :alt="t('auth.wechat.qrCodeAlt')"
                 class="h-48 w-48 object-contain"
+                :class="{ 'opacity-30': scanExpired }"
               />
+              <!-- No QR code -->
               <div
                 v-else
                 class="flex h-48 w-48 items-center justify-center text-gray-400"
               >
                 {{ t('auth.wechat.noQrCode') }}
               </div>
+              <!-- Expired overlay (subscription mode) -->
+              <div
+                v-if="scanExpired && !scanLoading && isSubscriptionMode"
+                class="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-dark-800/80"
+              >
+                <p class="text-sm text-gray-500 dark:text-dark-400 mb-2">{{ t('auth.wechat.scanExpired') }}</p>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  @click="initScanBind"
+                >
+                  {{ t('auth.wechat.scanRefresh') }}
+                </button>
+              </div>
             </div>
-            <p class="text-center text-sm text-gray-500 dark:text-dark-400">
-              {{ accountType === 'unverified_official' ? t('auth.wechat.scanTipOfficial') : t('auth.wechat.scanTip') }}
+
+            <!-- Status message for subscription mode -->
+            <div v-if="isSubscriptionMode" class="text-center">
+              <p v-if="scanStatus === 'waiting'" class="text-sm text-gray-500 dark:text-dark-400">
+                {{ t('auth.wechat.scanAutoTip') }}
+              </p>
+              <p v-else-if="scanStatus === 'confirmed'" class="text-sm text-green-600 dark:text-green-400">
+                {{ t('auth.wechatBind.success') }}
+              </p>
+              <p v-if="scanStatus === 'waiting' && !scanExpired && !scanLoading" class="text-xs text-gray-400 dark:text-dark-500 mt-1">
+                {{ t('auth.wechat.scanWaiting') }}
+              </p>
+            </div>
+            <!-- Status message for unverified_official mode -->
+            <p v-else class="text-center text-sm text-gray-500 dark:text-dark-400">
+              {{ t('auth.wechat.scanTipOfficial') }}
             </p>
           </div>
 
-          <!-- Verification Code Input -->
-          <div class="mb-6 space-y-4">
+          <!-- Error message for scan mode -->
+          <p v-if="scanError && isSubscriptionMode" class="mb-4 text-center text-sm text-red-500">
+            {{ scanError }}
+          </p>
+
+          <!-- Verification Code Input (only for unverified_official mode) -->
+          <div v-if="!isSubscriptionMode" class="mb-6 space-y-4">
             <div>
               <label for="wechat-bind-code" class="input-label">
                 {{ t('auth.wechat.codeLabel') }}
@@ -153,6 +199,17 @@
               </button>
             </div>
           </div>
+
+          <!-- Skip button for subscription mode -->
+          <div v-if="isSubscriptionMode" class="flex gap-3">
+            <button
+              type="button"
+              class="btn btn-secondary flex-1"
+              @click="handleSkip"
+            >
+              {{ t('auth.wechatBind.skip') }}
+            </button>
+          </div>
         </div>
       </div>
     </transition>
@@ -160,12 +217,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore } from '@/stores'
-import { wechatBind } from '@/api/auth'
+import { wechatBind, wechatScanInit, wechatScanBindPoll } from '@/api/auth'
 
-defineProps<{
+const props = defineProps<{
   show: boolean
   qrCodeUrl?: string
   accountType?: string
@@ -185,12 +242,137 @@ const verifyCode = ref('')
 const codeError = ref('')
 const isLoading = ref(false)
 
+// Scan bind state (for subscription mode)
+const scanSceneId = ref('')
+const scanQrCodeUrl = ref('')
+const scanStatus = ref<'waiting' | 'confirmed'>('waiting')
+const scanExpired = ref(false)
+const scanLoading = ref(false)
+const scanError = ref('')
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let expireTimer: ReturnType<typeof setTimeout> | null = null
+
+const isSubscriptionMode = computed(() => props.accountType === 'subscription')
+
+// Display either the dynamic scan QR code or the static prop QR code
+const displayQrCodeUrl = computed(() => {
+  if (isSubscriptionMode.value && scanQrCodeUrl.value) {
+    return scanQrCodeUrl.value
+  }
+  return props.qrCodeUrl
+})
+
+// Watch for modal open to initialize scan bind
+watch(() => props.show, (newVal) => {
+  if (newVal && isSubscriptionMode.value) {
+    initScanBind()
+  }
+  if (!newVal) {
+    resetState()
+  }
+})
+
+onUnmounted(() => {
+  clearTimers()
+})
+
+function clearTimers(): void {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+  if (expireTimer) {
+    clearTimeout(expireTimer)
+    expireTimer = null
+  }
+}
+
+function resetState(): void {
+  verifyCode.value = ''
+  codeError.value = ''
+  scanSceneId.value = ''
+  scanQrCodeUrl.value = ''
+  scanStatus.value = 'waiting'
+  scanExpired.value = false
+  scanLoading.value = false
+  scanError.value = ''
+  clearTimers()
+}
+
 function handleCancel(): void {
   emit('close')
 }
 
 function handleSkip(): void {
   emit('skip')
+}
+
+async function initScanBind(): Promise<void> {
+  scanLoading.value = true
+  scanError.value = ''
+  scanExpired.value = false
+  scanStatus.value = 'waiting'
+  clearTimers()
+
+  try {
+    const result = await wechatScanInit()
+    scanSceneId.value = result.scene_id
+    scanQrCodeUrl.value = result.qr_code_url
+
+    // Start polling
+    startBindPolling()
+
+    // Set expiration timer
+    expireTimer = setTimeout(() => {
+      scanExpired.value = true
+      clearTimers()
+    }, result.expire_seconds * 1000)
+  } catch (error: unknown) {
+    const err = error as { message?: string }
+    scanError.value = err.message || t('auth.wechat.scanError')
+  } finally {
+    scanLoading.value = false
+  }
+}
+
+function startBindPolling(): void {
+  if (pollTimer) return
+
+  pollTimer = setInterval(async () => {
+    if (!scanSceneId.value || scanExpired.value) {
+      clearTimers()
+      return
+    }
+
+    try {
+      const result = await wechatScanBindPoll(scanSceneId.value)
+
+      if (result.status === 'confirmed') {
+        scanStatus.value = 'confirmed'
+        clearTimers()
+
+        // Refresh user info
+        await authStore.checkAuth()
+
+        // Show success
+        appStore.showSuccess(t('auth.wechatBind.success'))
+
+        // Emit success event after a short delay
+        setTimeout(() => {
+          emit('success')
+        }, 500)
+      }
+    } catch (error: unknown) {
+      const err = error as { status?: number; message?: string }
+      // If it's a conflict error (already bound), show error and stop polling
+      if (err.status === 409) {
+        scanError.value = err.message || t('auth.wechatBind.bindFailed')
+        appStore.showError(scanError.value)
+        clearTimers()
+      }
+      // Ignore other polling errors, will retry
+    }
+  }, 2000)
 }
 
 async function handleBind(): Promise<void> {
@@ -214,16 +396,9 @@ async function handleBind(): Promise<void> {
     // Emit success event
     emit('success')
   } catch (error: unknown) {
-    const err = error as { message?: string; response?: { data?: { detail?: string } } }
+    const err = error as { message?: string }
 
-    if (err.response?.data?.detail) {
-      codeError.value = err.response.data.detail
-    } else if (err.message) {
-      codeError.value = err.message
-    } else {
-      codeError.value = t('auth.wechatBind.bindFailed')
-    }
-
+    codeError.value = err.message || t('auth.wechatBind.bindFailed')
     appStore.showError(codeError.value)
   } finally {
     isLoading.value = false

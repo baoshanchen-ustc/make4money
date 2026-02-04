@@ -964,6 +964,10 @@ var (
 		{Name: "totp_secret_encrypted", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "totp_enabled", Type: field.TypeBool, Default: false},
 		{Name: "totp_enabled_at", Type: field.TypeTime, Nullable: true},
+		{Name: "wechat_openid", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "usage_report_enabled", Type: field.TypeBool, Default: true},
+		{Name: "usage_report_schedule", Type: field.TypeString, Size: 20, Default: "09:00"},
+		{Name: "usage_report_timezone", Type: field.TypeString, Size: 50, Default: "Asia/Shanghai"},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{

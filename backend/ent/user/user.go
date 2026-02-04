@@ -43,6 +43,14 @@ const (
 	FieldTotpEnabled = "totp_enabled"
 	// FieldTotpEnabledAt holds the string denoting the totp_enabled_at field in the database.
 	FieldTotpEnabledAt = "totp_enabled_at"
+	// FieldWechatOpenid holds the string denoting the wechat_openid field in the database.
+	FieldWechatOpenid = "wechat_openid"
+	// FieldUsageReportEnabled holds the string denoting the usage_report_enabled field in the database.
+	FieldUsageReportEnabled = "usage_report_enabled"
+	// FieldUsageReportSchedule holds the string denoting the usage_report_schedule field in the database.
+	FieldUsageReportSchedule = "usage_report_schedule"
+	// FieldUsageReportTimezone holds the string denoting the usage_report_timezone field in the database.
+	FieldUsageReportTimezone = "usage_report_timezone"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -179,6 +187,10 @@ var Columns = []string{
 	FieldTotpSecretEncrypted,
 	FieldTotpEnabled,
 	FieldTotpEnabledAt,
+	FieldWechatOpenid,
+	FieldUsageReportEnabled,
+	FieldUsageReportSchedule,
+	FieldUsageReportTimezone,
 }
 
 var (
@@ -235,6 +247,20 @@ var (
 	DefaultNotes string
 	// DefaultTotpEnabled holds the default value on creation for the "totp_enabled" field.
 	DefaultTotpEnabled bool
+	// DefaultWechatOpenid holds the default value on creation for the "wechat_openid" field.
+	DefaultWechatOpenid string
+	// WechatOpenidValidator is a validator for the "wechat_openid" field. It is called by the builders before save.
+	WechatOpenidValidator func(string) error
+	// DefaultUsageReportEnabled holds the default value on creation for the "usage_report_enabled" field.
+	DefaultUsageReportEnabled bool
+	// DefaultUsageReportSchedule holds the default value on creation for the "usage_report_schedule" field.
+	DefaultUsageReportSchedule string
+	// UsageReportScheduleValidator is a validator for the "usage_report_schedule" field. It is called by the builders before save.
+	UsageReportScheduleValidator func(string) error
+	// DefaultUsageReportTimezone holds the default value on creation for the "usage_report_timezone" field.
+	DefaultUsageReportTimezone string
+	// UsageReportTimezoneValidator is a validator for the "usage_report_timezone" field. It is called by the builders before save.
+	UsageReportTimezoneValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -313,6 +339,26 @@ func ByTotpEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByTotpEnabledAt orders the results by the totp_enabled_at field.
 func ByTotpEnabledAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotpEnabledAt, opts...).ToFunc()
+}
+
+// ByWechatOpenid orders the results by the wechat_openid field.
+func ByWechatOpenid(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWechatOpenid, opts...).ToFunc()
+}
+
+// ByUsageReportEnabled orders the results by the usage_report_enabled field.
+func ByUsageReportEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsageReportEnabled, opts...).ToFunc()
+}
+
+// ByUsageReportSchedule orders the results by the usage_report_schedule field.
+func ByUsageReportSchedule(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsageReportSchedule, opts...).ToFunc()
+}
+
+// ByUsageReportTimezone orders the results by the usage_report_timezone field.
+func ByUsageReportTimezone(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsageReportTimezone, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

@@ -72,6 +72,21 @@ func (User) Fields() []ent.Field {
 		field.Time("totp_enabled_at").
 			Optional().
 			Nillable(),
+
+		// 微信 OpenID（扫码登录绑定）
+		field.String("wechat_openid").
+			MaxLen(64).
+			Default(""),
+
+		// 用户使用报告配置
+		field.Bool("usage_report_enabled").
+			Default(true),
+		field.String("usage_report_schedule").
+			MaxLen(20).
+			Default("09:00"),
+		field.String("usage_report_timezone").
+			MaxLen(50).
+			Default("Asia/Shanghai"),
 	}
 }
 

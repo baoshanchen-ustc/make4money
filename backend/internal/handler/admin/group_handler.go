@@ -202,10 +202,6 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		DisplayOrder:                    req.DisplayOrder,
 		PurchasableDescription:          req.PurchasableDescription,
 	})
-		SupportedModelScopes:            req.SupportedModelScopes,
-		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
->>>>>>> upstream/main
-	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

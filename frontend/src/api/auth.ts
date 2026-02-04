@@ -235,6 +235,27 @@ export async function wechatScanPoll(sceneId: string): Promise<WeChatScanPollRes
 }
 
 /**
+ * WeChat scan bind poll response
+ */
+export interface WeChatScanBindPollResponse {
+  status: 'waiting' | 'confirmed'
+  wechat_openid?: string
+  message?: string
+}
+
+/**
+ * Poll WeChat scan bind status (for logged-in users, subscription mode)
+ * @param sceneId - Scene ID from wechatScanInit
+ * @returns Status and bind result if confirmed
+ */
+export async function wechatScanBindPoll(sceneId: string): Promise<WeChatScanBindPollResponse> {
+  const { data } = await apiClient.get<WeChatScanBindPollResponse>('/auth/wechat/scan/bind/poll', {
+    params: { scene_id: sceneId }
+  })
+  return data
+}
+
+/**
  * Validate invitation code response
  */
 export interface ValidateInvitationCodeResponse {
@@ -388,6 +409,7 @@ export const authAPI = {
   wechatAuth,
   wechatScanInit,
   wechatScanPoll,
+  wechatScanBindPoll,
   wechatBind,
   wechatUnbind,
   forgotPassword,
