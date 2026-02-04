@@ -87,6 +87,11 @@ type APIKeyMutation struct {
 	appendip_whitelist []string
 	ip_blacklist       *[]string
 	appendip_blacklist []string
+	quota              *float64
+	addquota           *float64
+	quota_used         *float64
+	addquota_used      *float64
+	expires_at         *time.Time
 	clearedFields      map[string]struct{}
 	user               *int64
 	cleareduser        bool
@@ -642,6 +647,167 @@ func (m *APIKeyMutation) ResetIPBlacklist() {
 	delete(m.clearedFields, apikey.FieldIPBlacklist)
 }
 
+// SetQuota sets the "quota" field.
+func (m *APIKeyMutation) SetQuota(f float64) {
+	m.quota = &f
+	m.addquota = nil
+}
+
+// Quota returns the value of the "quota" field in the mutation.
+func (m *APIKeyMutation) Quota() (r float64, exists bool) {
+	v := m.quota
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuota returns the old "quota" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldQuota(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuota is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuota requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuota: %w", err)
+	}
+	return oldValue.Quota, nil
+}
+
+// AddQuota adds f to the "quota" field.
+func (m *APIKeyMutation) AddQuota(f float64) {
+	if m.addquota != nil {
+		*m.addquota += f
+	} else {
+		m.addquota = &f
+	}
+}
+
+// AddedQuota returns the value that was added to the "quota" field in this mutation.
+func (m *APIKeyMutation) AddedQuota() (r float64, exists bool) {
+	v := m.addquota
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetQuota resets all changes to the "quota" field.
+func (m *APIKeyMutation) ResetQuota() {
+	m.quota = nil
+	m.addquota = nil
+}
+
+// SetQuotaUsed sets the "quota_used" field.
+func (m *APIKeyMutation) SetQuotaUsed(f float64) {
+	m.quota_used = &f
+	m.addquota_used = nil
+}
+
+// QuotaUsed returns the value of the "quota_used" field in the mutation.
+func (m *APIKeyMutation) QuotaUsed() (r float64, exists bool) {
+	v := m.quota_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuotaUsed returns the old "quota_used" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldQuotaUsed(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuotaUsed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuotaUsed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuotaUsed: %w", err)
+	}
+	return oldValue.QuotaUsed, nil
+}
+
+// AddQuotaUsed adds f to the "quota_used" field.
+func (m *APIKeyMutation) AddQuotaUsed(f float64) {
+	if m.addquota_used != nil {
+		*m.addquota_used += f
+	} else {
+		m.addquota_used = &f
+	}
+}
+
+// AddedQuotaUsed returns the value that was added to the "quota_used" field in this mutation.
+func (m *APIKeyMutation) AddedQuotaUsed() (r float64, exists bool) {
+	v := m.addquota_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetQuotaUsed resets all changes to the "quota_used" field.
+func (m *APIKeyMutation) ResetQuotaUsed() {
+	m.quota_used = nil
+	m.addquota_used = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *APIKeyMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *APIKeyMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (m *APIKeyMutation) ClearExpiresAt() {
+	m.expires_at = nil
+	m.clearedFields[apikey.FieldExpiresAt] = struct{}{}
+}
+
+// ExpiresAtCleared returns if the "expires_at" field was cleared in this mutation.
+func (m *APIKeyMutation) ExpiresAtCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldExpiresAt]
+	return ok
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *APIKeyMutation) ResetExpiresAt() {
+	m.expires_at = nil
+	delete(m.clearedFields, apikey.FieldExpiresAt)
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *APIKeyMutation) ClearUser() {
 	m.cleareduser = true
@@ -784,7 +950,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 13)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -815,6 +981,15 @@ func (m *APIKeyMutation) Fields() []string {
 	if m.ip_blacklist != nil {
 		fields = append(fields, apikey.FieldIPBlacklist)
 	}
+	if m.quota != nil {
+		fields = append(fields, apikey.FieldQuota)
+	}
+	if m.quota_used != nil {
+		fields = append(fields, apikey.FieldQuotaUsed)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, apikey.FieldExpiresAt)
+	}
 	return fields
 }
 
@@ -843,6 +1018,12 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.IPWhitelist()
 	case apikey.FieldIPBlacklist:
 		return m.IPBlacklist()
+	case apikey.FieldQuota:
+		return m.Quota()
+	case apikey.FieldQuotaUsed:
+		return m.QuotaUsed()
+	case apikey.FieldExpiresAt:
+		return m.ExpiresAt()
 	}
 	return nil, false
 }
@@ -872,6 +1053,12 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldIPWhitelist(ctx)
 	case apikey.FieldIPBlacklist:
 		return m.OldIPBlacklist(ctx)
+	case apikey.FieldQuota:
+		return m.OldQuota(ctx)
+	case apikey.FieldQuotaUsed:
+		return m.OldQuotaUsed(ctx)
+	case apikey.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -951,6 +1138,27 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetIPBlacklist(v)
 		return nil
+	case apikey.FieldQuota:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuota(v)
+		return nil
+	case apikey.FieldQuotaUsed:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuotaUsed(v)
+		return nil
+	case apikey.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -959,6 +1167,12 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *APIKeyMutation) AddedFields() []string {
 	var fields []string
+	if m.addquota != nil {
+		fields = append(fields, apikey.FieldQuota)
+	}
+	if m.addquota_used != nil {
+		fields = append(fields, apikey.FieldQuotaUsed)
+	}
 	return fields
 }
 
@@ -967,6 +1181,10 @@ func (m *APIKeyMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case apikey.FieldQuota:
+		return m.AddedQuota()
+	case apikey.FieldQuotaUsed:
+		return m.AddedQuotaUsed()
 	}
 	return nil, false
 }
@@ -976,6 +1194,20 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case apikey.FieldQuota:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddQuota(v)
+		return nil
+	case apikey.FieldQuotaUsed:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddQuotaUsed(v)
+		return nil
 	}
 	return fmt.Errorf("unknown APIKey numeric field %s", name)
 }
@@ -995,6 +1227,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(apikey.FieldIPBlacklist) {
 		fields = append(fields, apikey.FieldIPBlacklist)
+	}
+	if m.FieldCleared(apikey.FieldExpiresAt) {
+		fields = append(fields, apikey.FieldExpiresAt)
 	}
 	return fields
 }
@@ -1021,6 +1256,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldIPBlacklist:
 		m.ClearIPBlacklist()
+		return nil
+	case apikey.FieldExpiresAt:
+		m.ClearExpiresAt()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey nullable field %s", name)
@@ -1059,6 +1297,15 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldIPBlacklist:
 		m.ResetIPBlacklist()
+		return nil
+	case apikey.FieldQuota:
+		m.ResetQuota()
+		return nil
+	case apikey.FieldQuotaUsed:
+		m.ResetQuotaUsed()
+		return nil
+	case apikey.FieldExpiresAt:
+		m.ResetExpiresAt()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -6591,70 +6838,75 @@ func (m *BalanceLogMutation) ResetEdge(name string) error {
 // GroupMutation represents an operation that mutates the Group nodes in the graph.
 type GroupMutation struct {
 	config
-	op                         Op
-	typ                        string
-	id                         *int64
-	created_at                 *time.Time
-	updated_at                 *time.Time
-	deleted_at                 *time.Time
-	name                       *string
-	description                *string
-	rate_multiplier            *float64
-	addrate_multiplier         *float64
-	is_exclusive               *bool
-	status                     *string
-	platform                   *string
-	subscription_type          *string
-	daily_limit_usd            *float64
-	adddaily_limit_usd         *float64
-	weekly_limit_usd           *float64
-	addweekly_limit_usd        *float64
-	monthly_limit_usd          *float64
-	addmonthly_limit_usd       *float64
-	default_validity_days      *int
-	adddefault_validity_days   *int
-	image_price_1k             *float64
-	addimage_price_1k          *float64
-	image_price_2k             *float64
-	addimage_price_2k          *float64
-	image_price_4k             *float64
-	addimage_price_4k          *float64
-	claude_code_only           *bool
-	fallback_group_id          *int64
-	addfallback_group_id       *int64
-	model_routing              *map[string][]int64
-	model_routing_enabled      *bool
-	is_purchasable             *bool
-	price_cny                  *float64
-	addprice_cny               *float64
-	display_order              *int
-	adddisplay_order           *int
-	purchasable_description    *string
-	clearedFields              map[string]struct{}
-	api_keys                   map[int64]struct{}
-	removedapi_keys            map[int64]struct{}
-	clearedapi_keys            bool
-	redeem_codes               map[int64]struct{}
-	removedredeem_codes        map[int64]struct{}
-	clearedredeem_codes        bool
-	subscriptions              map[int64]struct{}
-	removedsubscriptions       map[int64]struct{}
-	clearedsubscriptions       bool
-	usage_logs                 map[int64]struct{}
-	removedusage_logs          map[int64]struct{}
-	clearedusage_logs          bool
-	subscription_orders        map[int64]struct{}
-	removedsubscription_orders map[int64]struct{}
-	clearedsubscription_orders bool
-	accounts                   map[int64]struct{}
-	removedaccounts            map[int64]struct{}
-	clearedaccounts            bool
-	allowed_users              map[int64]struct{}
-	removedallowed_users       map[int64]struct{}
-	clearedallowed_users       bool
-	done                       bool
-	oldValue                   func(context.Context) (*Group, error)
-	predicates                 []predicate.Group
+	op                                      Op
+	typ                                     string
+	id                                      *int64
+	created_at                              *time.Time
+	updated_at                              *time.Time
+	deleted_at                              *time.Time
+	name                                    *string
+	description                             *string
+	rate_multiplier                         *float64
+	addrate_multiplier                      *float64
+	is_exclusive                            *bool
+	status                                  *string
+	platform                                *string
+	subscription_type                       *string
+	daily_limit_usd                         *float64
+	adddaily_limit_usd                      *float64
+	weekly_limit_usd                        *float64
+	addweekly_limit_usd                     *float64
+	monthly_limit_usd                       *float64
+	addmonthly_limit_usd                    *float64
+	default_validity_days                   *int
+	adddefault_validity_days                *int
+	image_price_1k                          *float64
+	addimage_price_1k                       *float64
+	image_price_2k                          *float64
+	addimage_price_2k                       *float64
+	image_price_4k                          *float64
+	addimage_price_4k                       *float64
+	claude_code_only                        *bool
+	fallback_group_id                       *int64
+	addfallback_group_id                    *int64
+	fallback_group_id_on_invalid_request    *int64
+	addfallback_group_id_on_invalid_request *int64
+	model_routing                           *map[string][]int64
+	model_routing_enabled                   *bool
+	mcp_xml_inject                          *bool
+	supported_model_scopes                  *[]string
+	appendsupported_model_scopes            []string
+	is_purchasable                          *bool
+	price_cny                               *float64
+	addprice_cny                            *float64
+	display_order                           *int
+	adddisplay_order                        *int
+	purchasable_description                 *string
+	clearedFields                           map[string]struct{}
+	api_keys                                map[int64]struct{}
+	removedapi_keys                         map[int64]struct{}
+	clearedapi_keys                         bool
+	redeem_codes                            map[int64]struct{}
+	removedredeem_codes                     map[int64]struct{}
+	clearedredeem_codes                     bool
+	subscriptions                           map[int64]struct{}
+	removedsubscriptions                    map[int64]struct{}
+	clearedsubscriptions                    bool
+	usage_logs                              map[int64]struct{}
+	removedusage_logs                       map[int64]struct{}
+	clearedusage_logs                       bool
+	subscription_orders                     map[int64]struct{}
+	removedsubscription_orders              map[int64]struct{}
+	clearedsubscription_orders              bool
+	accounts                                map[int64]struct{}
+	removedaccounts                         map[int64]struct{}
+	clearedaccounts                         bool
+	allowed_users                           map[int64]struct{}
+	removedallowed_users                    map[int64]struct{}
+	clearedallowed_users                    bool
+	done                                    bool
+	oldValue                                func(context.Context) (*Group, error)
+	predicates                              []predicate.Group
 }
 
 var _ ent.Mutation = (*GroupMutation)(nil)
@@ -7743,6 +7995,76 @@ func (m *GroupMutation) ResetFallbackGroupID() {
 	delete(m.clearedFields, group.FieldFallbackGroupID)
 }
 
+// SetFallbackGroupIDOnInvalidRequest sets the "fallback_group_id_on_invalid_request" field.
+func (m *GroupMutation) SetFallbackGroupIDOnInvalidRequest(i int64) {
+	m.fallback_group_id_on_invalid_request = &i
+	m.addfallback_group_id_on_invalid_request = nil
+}
+
+// FallbackGroupIDOnInvalidRequest returns the value of the "fallback_group_id_on_invalid_request" field in the mutation.
+func (m *GroupMutation) FallbackGroupIDOnInvalidRequest() (r int64, exists bool) {
+	v := m.fallback_group_id_on_invalid_request
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackGroupIDOnInvalidRequest returns the old "fallback_group_id_on_invalid_request" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldFallbackGroupIDOnInvalidRequest(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackGroupIDOnInvalidRequest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackGroupIDOnInvalidRequest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackGroupIDOnInvalidRequest: %w", err)
+	}
+	return oldValue.FallbackGroupIDOnInvalidRequest, nil
+}
+
+// AddFallbackGroupIDOnInvalidRequest adds i to the "fallback_group_id_on_invalid_request" field.
+func (m *GroupMutation) AddFallbackGroupIDOnInvalidRequest(i int64) {
+	if m.addfallback_group_id_on_invalid_request != nil {
+		*m.addfallback_group_id_on_invalid_request += i
+	} else {
+		m.addfallback_group_id_on_invalid_request = &i
+	}
+}
+
+// AddedFallbackGroupIDOnInvalidRequest returns the value that was added to the "fallback_group_id_on_invalid_request" field in this mutation.
+func (m *GroupMutation) AddedFallbackGroupIDOnInvalidRequest() (r int64, exists bool) {
+	v := m.addfallback_group_id_on_invalid_request
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
+func (m *GroupMutation) ClearFallbackGroupIDOnInvalidRequest() {
+	m.fallback_group_id_on_invalid_request = nil
+	m.addfallback_group_id_on_invalid_request = nil
+	m.clearedFields[group.FieldFallbackGroupIDOnInvalidRequest] = struct{}{}
+}
+
+// FallbackGroupIDOnInvalidRequestCleared returns if the "fallback_group_id_on_invalid_request" field was cleared in this mutation.
+func (m *GroupMutation) FallbackGroupIDOnInvalidRequestCleared() bool {
+	_, ok := m.clearedFields[group.FieldFallbackGroupIDOnInvalidRequest]
+	return ok
+}
+
+// ResetFallbackGroupIDOnInvalidRequest resets all changes to the "fallback_group_id_on_invalid_request" field.
+func (m *GroupMutation) ResetFallbackGroupIDOnInvalidRequest() {
+	m.fallback_group_id_on_invalid_request = nil
+	m.addfallback_group_id_on_invalid_request = nil
+	delete(m.clearedFields, group.FieldFallbackGroupIDOnInvalidRequest)
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (m *GroupMutation) SetModelRouting(value map[string][]int64) {
 	m.model_routing = &value
@@ -7826,6 +8148,93 @@ func (m *GroupMutation) OldModelRoutingEnabled(ctx context.Context) (v bool, err
 // ResetModelRoutingEnabled resets all changes to the "model_routing_enabled" field.
 func (m *GroupMutation) ResetModelRoutingEnabled() {
 	m.model_routing_enabled = nil
+}
+
+// SetMcpXMLInject sets the "mcp_xml_inject" field.
+func (m *GroupMutation) SetMcpXMLInject(b bool) {
+	m.mcp_xml_inject = &b
+}
+
+// McpXMLInject returns the value of the "mcp_xml_inject" field in the mutation.
+func (m *GroupMutation) McpXMLInject() (r bool, exists bool) {
+	v := m.mcp_xml_inject
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMcpXMLInject returns the old "mcp_xml_inject" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldMcpXMLInject(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMcpXMLInject is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMcpXMLInject requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMcpXMLInject: %w", err)
+	}
+	return oldValue.McpXMLInject, nil
+}
+
+// ResetMcpXMLInject resets all changes to the "mcp_xml_inject" field.
+func (m *GroupMutation) ResetMcpXMLInject() {
+	m.mcp_xml_inject = nil
+}
+
+// SetSupportedModelScopes sets the "supported_model_scopes" field.
+func (m *GroupMutation) SetSupportedModelScopes(s []string) {
+	m.supported_model_scopes = &s
+	m.appendsupported_model_scopes = nil
+}
+
+// SupportedModelScopes returns the value of the "supported_model_scopes" field in the mutation.
+func (m *GroupMutation) SupportedModelScopes() (r []string, exists bool) {
+	v := m.supported_model_scopes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSupportedModelScopes returns the old "supported_model_scopes" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSupportedModelScopes(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSupportedModelScopes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSupportedModelScopes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSupportedModelScopes: %w", err)
+	}
+	return oldValue.SupportedModelScopes, nil
+}
+
+// AppendSupportedModelScopes adds s to the "supported_model_scopes" field.
+func (m *GroupMutation) AppendSupportedModelScopes(s []string) {
+	m.appendsupported_model_scopes = append(m.appendsupported_model_scopes, s...)
+}
+
+// AppendedSupportedModelScopes returns the list of values that were appended to the "supported_model_scopes" field in this mutation.
+func (m *GroupMutation) AppendedSupportedModelScopes() ([]string, bool) {
+	if len(m.appendsupported_model_scopes) == 0 {
+		return nil, false
+	}
+	return m.appendsupported_model_scopes, true
+}
+
+// ResetSupportedModelScopes resets all changes to the "supported_model_scopes" field.
+func (m *GroupMutation) ResetSupportedModelScopes() {
+	m.supported_model_scopes = nil
+	m.appendsupported_model_scopes = nil
 }
 
 // SetIsPurchasable sets the "is_purchasable" field.
@@ -8451,7 +8860,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 28)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -8509,11 +8918,20 @@ func (m *GroupMutation) Fields() []string {
 	if m.fallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
 	}
+	if m.fallback_group_id_on_invalid_request != nil {
+		fields = append(fields, group.FieldFallbackGroupIDOnInvalidRequest)
+	}
 	if m.model_routing != nil {
 		fields = append(fields, group.FieldModelRouting)
 	}
 	if m.model_routing_enabled != nil {
 		fields = append(fields, group.FieldModelRoutingEnabled)
+	}
+	if m.mcp_xml_inject != nil {
+		fields = append(fields, group.FieldMcpXMLInject)
+	}
+	if m.supported_model_scopes != nil {
+		fields = append(fields, group.FieldSupportedModelScopes)
 	}
 	if m.is_purchasable != nil {
 		fields = append(fields, group.FieldIsPurchasable)
@@ -8573,10 +8991,16 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
 		return m.FallbackGroupID()
+	case group.FieldFallbackGroupIDOnInvalidRequest:
+		return m.FallbackGroupIDOnInvalidRequest()
 	case group.FieldModelRouting:
 		return m.ModelRouting()
 	case group.FieldModelRoutingEnabled:
 		return m.ModelRoutingEnabled()
+	case group.FieldMcpXMLInject:
+		return m.McpXMLInject()
+	case group.FieldSupportedModelScopes:
+		return m.SupportedModelScopes()
 	case group.FieldIsPurchasable:
 		return m.IsPurchasable()
 	case group.FieldPriceCny:
@@ -8632,10 +9056,16 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
 		return m.OldFallbackGroupID(ctx)
+	case group.FieldFallbackGroupIDOnInvalidRequest:
+		return m.OldFallbackGroupIDOnInvalidRequest(ctx)
 	case group.FieldModelRouting:
 		return m.OldModelRouting(ctx)
 	case group.FieldModelRoutingEnabled:
 		return m.OldModelRoutingEnabled(ctx)
+	case group.FieldMcpXMLInject:
+		return m.OldMcpXMLInject(ctx)
+	case group.FieldSupportedModelScopes:
+		return m.OldSupportedModelScopes(ctx)
 	case group.FieldIsPurchasable:
 		return m.OldIsPurchasable(ctx)
 	case group.FieldPriceCny:
@@ -8786,6 +9216,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFallbackGroupID(v)
 		return nil
+	case group.FieldFallbackGroupIDOnInvalidRequest:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackGroupIDOnInvalidRequest(v)
+		return nil
 	case group.FieldModelRouting:
 		v, ok := value.(map[string][]int64)
 		if !ok {
@@ -8799,6 +9236,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelRoutingEnabled(v)
+		return nil
+	case group.FieldMcpXMLInject:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMcpXMLInject(v)
+		return nil
+	case group.FieldSupportedModelScopes:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSupportedModelScopes(v)
 		return nil
 	case group.FieldIsPurchasable:
 		v, ok := value.(bool)
@@ -8863,6 +9314,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addfallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
 	}
+	if m.addfallback_group_id_on_invalid_request != nil {
+		fields = append(fields, group.FieldFallbackGroupIDOnInvalidRequest)
+	}
 	if m.addprice_cny != nil {
 		fields = append(fields, group.FieldPriceCny)
 	}
@@ -8895,6 +9349,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedImagePrice4k()
 	case group.FieldFallbackGroupID:
 		return m.AddedFallbackGroupID()
+	case group.FieldFallbackGroupIDOnInvalidRequest:
+		return m.AddedFallbackGroupIDOnInvalidRequest()
 	case group.FieldPriceCny:
 		return m.AddedPriceCny()
 	case group.FieldDisplayOrder:
@@ -8971,6 +9427,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddFallbackGroupID(v)
 		return nil
+	case group.FieldFallbackGroupIDOnInvalidRequest:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFallbackGroupIDOnInvalidRequest(v)
+		return nil
 	case group.FieldPriceCny:
 		v, ok := value.(float64)
 		if !ok {
@@ -9019,6 +9482,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(group.FieldFallbackGroupID) {
 		fields = append(fields, group.FieldFallbackGroupID)
+	}
+	if m.FieldCleared(group.FieldFallbackGroupIDOnInvalidRequest) {
+		fields = append(fields, group.FieldFallbackGroupIDOnInvalidRequest)
 	}
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
@@ -9069,6 +9535,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldFallbackGroupID:
 		m.ClearFallbackGroupID()
+		return nil
+	case group.FieldFallbackGroupIDOnInvalidRequest:
+		m.ClearFallbackGroupIDOnInvalidRequest()
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
@@ -9144,11 +9613,20 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldFallbackGroupID:
 		m.ResetFallbackGroupID()
 		return nil
+	case group.FieldFallbackGroupIDOnInvalidRequest:
+		m.ResetFallbackGroupIDOnInvalidRequest()
+		return nil
 	case group.FieldModelRouting:
 		m.ResetModelRouting()
 		return nil
 	case group.FieldModelRoutingEnabled:
 		m.ResetModelRoutingEnabled()
+		return nil
+	case group.FieldMcpXMLInject:
+		m.ResetMcpXMLInject()
+		return nil
+	case group.FieldSupportedModelScopes:
+		m.ResetSupportedModelScopes()
 		return nil
 	case group.FieldIsPurchasable:
 		m.ResetIsPurchasable()
@@ -21783,13 +22261,9 @@ type UserMutation struct {
 	status                        *string
 	username                      *string
 	notes                         *string
-	wechat_openid                 *string
 	totp_secret_encrypted         *string
 	totp_enabled                  *bool
 	totp_enabled_at               *time.Time
-	usage_report_enabled          *bool
-	usage_report_schedule         *string
-	usage_report_timezone         *string
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -21818,12 +22292,12 @@ type UserMutation struct {
 	promo_code_usages             map[int64]struct{}
 	removedpromo_code_usages      map[int64]struct{}
 	clearedpromo_code_usages      bool
-	recharge_orders               map[int64]struct{}
-	removedrecharge_orders        map[int64]struct{}
-	clearedrecharge_orders        bool
 	balance_logs                  map[int64]struct{}
 	removedbalance_logs           map[int64]struct{}
 	clearedbalance_logs           bool
+	recharge_orders               map[int64]struct{}
+	removedrecharge_orders        map[int64]struct{}
+	clearedrecharge_orders        bool
 	subscription_orders           map[int64]struct{}
 	removedsubscription_orders    map[int64]struct{}
 	clearedsubscription_orders    bool
@@ -22379,42 +22853,6 @@ func (m *UserMutation) ResetNotes() {
 	m.notes = nil
 }
 
-// SetWechatOpenid sets the "wechat_openid" field.
-func (m *UserMutation) SetWechatOpenid(s string) {
-	m.wechat_openid = &s
-}
-
-// WechatOpenid returns the value of the "wechat_openid" field in the mutation.
-func (m *UserMutation) WechatOpenid() (r string, exists bool) {
-	v := m.wechat_openid
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldWechatOpenid returns the old "wechat_openid" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldWechatOpenid(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldWechatOpenid is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldWechatOpenid requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldWechatOpenid: %w", err)
-	}
-	return oldValue.WechatOpenid, nil
-}
-
-// ResetWechatOpenid resets all changes to the "wechat_openid" field.
-func (m *UserMutation) ResetWechatOpenid() {
-	m.wechat_openid = nil
-}
-
 // SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
 func (m *UserMutation) SetTotpSecretEncrypted(s string) {
 	m.totp_secret_encrypted = &s
@@ -22547,114 +22985,6 @@ func (m *UserMutation) TotpEnabledAtCleared() bool {
 func (m *UserMutation) ResetTotpEnabledAt() {
 	m.totp_enabled_at = nil
 	delete(m.clearedFields, user.FieldTotpEnabledAt)
-}
-
-// SetUsageReportEnabled sets the "usage_report_enabled" field.
-func (m *UserMutation) SetUsageReportEnabled(b bool) {
-	m.usage_report_enabled = &b
-}
-
-// UsageReportEnabled returns the value of the "usage_report_enabled" field in the mutation.
-func (m *UserMutation) UsageReportEnabled() (r bool, exists bool) {
-	v := m.usage_report_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUsageReportEnabled returns the old "usage_report_enabled" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldUsageReportEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUsageReportEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUsageReportEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUsageReportEnabled: %w", err)
-	}
-	return oldValue.UsageReportEnabled, nil
-}
-
-// ResetUsageReportEnabled resets all changes to the "usage_report_enabled" field.
-func (m *UserMutation) ResetUsageReportEnabled() {
-	m.usage_report_enabled = nil
-}
-
-// SetUsageReportSchedule sets the "usage_report_schedule" field.
-func (m *UserMutation) SetUsageReportSchedule(s string) {
-	m.usage_report_schedule = &s
-}
-
-// UsageReportSchedule returns the value of the "usage_report_schedule" field in the mutation.
-func (m *UserMutation) UsageReportSchedule() (r string, exists bool) {
-	v := m.usage_report_schedule
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUsageReportSchedule returns the old "usage_report_schedule" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldUsageReportSchedule(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUsageReportSchedule is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUsageReportSchedule requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUsageReportSchedule: %w", err)
-	}
-	return oldValue.UsageReportSchedule, nil
-}
-
-// ResetUsageReportSchedule resets all changes to the "usage_report_schedule" field.
-func (m *UserMutation) ResetUsageReportSchedule() {
-	m.usage_report_schedule = nil
-}
-
-// SetUsageReportTimezone sets the "usage_report_timezone" field.
-func (m *UserMutation) SetUsageReportTimezone(s string) {
-	m.usage_report_timezone = &s
-}
-
-// UsageReportTimezone returns the value of the "usage_report_timezone" field in the mutation.
-func (m *UserMutation) UsageReportTimezone() (r string, exists bool) {
-	v := m.usage_report_timezone
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUsageReportTimezone returns the old "usage_report_timezone" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldUsageReportTimezone(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUsageReportTimezone is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUsageReportTimezone requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUsageReportTimezone: %w", err)
-	}
-	return oldValue.UsageReportTimezone, nil
-}
-
-// ResetUsageReportTimezone resets all changes to the "usage_report_timezone" field.
-func (m *UserMutation) ResetUsageReportTimezone() {
-	m.usage_report_timezone = nil
 }
 
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
@@ -23143,60 +23473,6 @@ func (m *UserMutation) ResetPromoCodeUsages() {
 	m.removedpromo_code_usages = nil
 }
 
-// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by ids.
-func (m *UserMutation) AddRechargeOrderIDs(ids ...int64) {
-	if m.recharge_orders == nil {
-		m.recharge_orders = make(map[int64]struct{})
-	}
-	for i := range ids {
-		m.recharge_orders[ids[i]] = struct{}{}
-	}
-}
-
-// ClearRechargeOrders clears the "recharge_orders" edge to the RechargeOrder entity.
-func (m *UserMutation) ClearRechargeOrders() {
-	m.clearedrecharge_orders = true
-}
-
-// RechargeOrdersCleared reports if the "recharge_orders" edge to the RechargeOrder entity was cleared.
-func (m *UserMutation) RechargeOrdersCleared() bool {
-	return m.clearedrecharge_orders
-}
-
-// RemoveRechargeOrderIDs removes the "recharge_orders" edge to the RechargeOrder entity by IDs.
-func (m *UserMutation) RemoveRechargeOrderIDs(ids ...int64) {
-	if m.removedrecharge_orders == nil {
-		m.removedrecharge_orders = make(map[int64]struct{})
-	}
-	for i := range ids {
-		delete(m.recharge_orders, ids[i])
-		m.removedrecharge_orders[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedRechargeOrders returns the removed IDs of the "recharge_orders" edge to the RechargeOrder entity.
-func (m *UserMutation) RemovedRechargeOrdersIDs() (ids []int64) {
-	for id := range m.removedrecharge_orders {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// RechargeOrdersIDs returns the "recharge_orders" edge IDs in the mutation.
-func (m *UserMutation) RechargeOrdersIDs() (ids []int64) {
-	for id := range m.recharge_orders {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// ResetRechargeOrders resets all changes to the "recharge_orders" edge.
-func (m *UserMutation) ResetRechargeOrders() {
-	m.recharge_orders = nil
-	m.clearedrecharge_orders = false
-	m.removedrecharge_orders = nil
-}
-
 // AddBalanceLogIDs adds the "balance_logs" edge to the BalanceLog entity by ids.
 func (m *UserMutation) AddBalanceLogIDs(ids ...int64) {
 	if m.balance_logs == nil {
@@ -23249,6 +23525,60 @@ func (m *UserMutation) ResetBalanceLogs() {
 	m.balance_logs = nil
 	m.clearedbalance_logs = false
 	m.removedbalance_logs = nil
+}
+
+// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by ids.
+func (m *UserMutation) AddRechargeOrderIDs(ids ...int64) {
+	if m.recharge_orders == nil {
+		m.recharge_orders = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.recharge_orders[ids[i]] = struct{}{}
+	}
+}
+
+// ClearRechargeOrders clears the "recharge_orders" edge to the RechargeOrder entity.
+func (m *UserMutation) ClearRechargeOrders() {
+	m.clearedrecharge_orders = true
+}
+
+// RechargeOrdersCleared reports if the "recharge_orders" edge to the RechargeOrder entity was cleared.
+func (m *UserMutation) RechargeOrdersCleared() bool {
+	return m.clearedrecharge_orders
+}
+
+// RemoveRechargeOrderIDs removes the "recharge_orders" edge to the RechargeOrder entity by IDs.
+func (m *UserMutation) RemoveRechargeOrderIDs(ids ...int64) {
+	if m.removedrecharge_orders == nil {
+		m.removedrecharge_orders = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.recharge_orders, ids[i])
+		m.removedrecharge_orders[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedRechargeOrders returns the removed IDs of the "recharge_orders" edge to the RechargeOrder entity.
+func (m *UserMutation) RemovedRechargeOrdersIDs() (ids []int64) {
+	for id := range m.removedrecharge_orders {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// RechargeOrdersIDs returns the "recharge_orders" edge IDs in the mutation.
+func (m *UserMutation) RechargeOrdersIDs() (ids []int64) {
+	for id := range m.recharge_orders {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetRechargeOrders resets all changes to the "recharge_orders" edge.
+func (m *UserMutation) ResetRechargeOrders() {
+	m.recharge_orders = nil
+	m.clearedrecharge_orders = false
+	m.removedrecharge_orders = nil
 }
 
 // AddSubscriptionOrderIDs adds the "subscription_orders" edge to the SubscriptionOrder entity by ids.
@@ -23339,7 +23669,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 14)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -23373,9 +23703,6 @@ func (m *UserMutation) Fields() []string {
 	if m.notes != nil {
 		fields = append(fields, user.FieldNotes)
 	}
-	if m.wechat_openid != nil {
-		fields = append(fields, user.FieldWechatOpenid)
-	}
 	if m.totp_secret_encrypted != nil {
 		fields = append(fields, user.FieldTotpSecretEncrypted)
 	}
@@ -23384,15 +23711,6 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.totp_enabled_at != nil {
 		fields = append(fields, user.FieldTotpEnabledAt)
-	}
-	if m.usage_report_enabled != nil {
-		fields = append(fields, user.FieldUsageReportEnabled)
-	}
-	if m.usage_report_schedule != nil {
-		fields = append(fields, user.FieldUsageReportSchedule)
-	}
-	if m.usage_report_timezone != nil {
-		fields = append(fields, user.FieldUsageReportTimezone)
 	}
 	return fields
 }
@@ -23424,20 +23742,12 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Username()
 	case user.FieldNotes:
 		return m.Notes()
-	case user.FieldWechatOpenid:
-		return m.WechatOpenid()
 	case user.FieldTotpSecretEncrypted:
 		return m.TotpSecretEncrypted()
 	case user.FieldTotpEnabled:
 		return m.TotpEnabled()
 	case user.FieldTotpEnabledAt:
 		return m.TotpEnabledAt()
-	case user.FieldUsageReportEnabled:
-		return m.UsageReportEnabled()
-	case user.FieldUsageReportSchedule:
-		return m.UsageReportSchedule()
-	case user.FieldUsageReportTimezone:
-		return m.UsageReportTimezone()
 	}
 	return nil, false
 }
@@ -23469,20 +23779,12 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldUsername(ctx)
 	case user.FieldNotes:
 		return m.OldNotes(ctx)
-	case user.FieldWechatOpenid:
-		return m.OldWechatOpenid(ctx)
 	case user.FieldTotpSecretEncrypted:
 		return m.OldTotpSecretEncrypted(ctx)
 	case user.FieldTotpEnabled:
 		return m.OldTotpEnabled(ctx)
 	case user.FieldTotpEnabledAt:
 		return m.OldTotpEnabledAt(ctx)
-	case user.FieldUsageReportEnabled:
-		return m.OldUsageReportEnabled(ctx)
-	case user.FieldUsageReportSchedule:
-		return m.OldUsageReportSchedule(ctx)
-	case user.FieldUsageReportTimezone:
-		return m.OldUsageReportTimezone(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -23569,13 +23871,6 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetNotes(v)
 		return nil
-	case user.FieldWechatOpenid:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetWechatOpenid(v)
-		return nil
 	case user.FieldTotpSecretEncrypted:
 		v, ok := value.(string)
 		if !ok {
@@ -23596,27 +23891,6 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTotpEnabledAt(v)
-		return nil
-	case user.FieldUsageReportEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUsageReportEnabled(v)
-		return nil
-	case user.FieldUsageReportSchedule:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUsageReportSchedule(v)
-		return nil
-	case user.FieldUsageReportTimezone:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUsageReportTimezone(v)
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
@@ -23748,9 +24022,6 @@ func (m *UserMutation) ResetField(name string) error {
 	case user.FieldNotes:
 		m.ResetNotes()
 		return nil
-	case user.FieldWechatOpenid:
-		m.ResetWechatOpenid()
-		return nil
 	case user.FieldTotpSecretEncrypted:
 		m.ResetTotpSecretEncrypted()
 		return nil
@@ -23759,15 +24030,6 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldTotpEnabledAt:
 		m.ResetTotpEnabledAt()
-		return nil
-	case user.FieldUsageReportEnabled:
-		m.ResetUsageReportEnabled()
-		return nil
-	case user.FieldUsageReportSchedule:
-		m.ResetUsageReportSchedule()
-		return nil
-	case user.FieldUsageReportTimezone:
-		m.ResetUsageReportTimezone()
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
@@ -23803,11 +24065,11 @@ func (m *UserMutation) AddedEdges() []string {
 	if m.promo_code_usages != nil {
 		edges = append(edges, user.EdgePromoCodeUsages)
 	}
-	if m.recharge_orders != nil {
-		edges = append(edges, user.EdgeRechargeOrders)
-	}
 	if m.balance_logs != nil {
 		edges = append(edges, user.EdgeBalanceLogs)
+	}
+	if m.recharge_orders != nil {
+		edges = append(edges, user.EdgeRechargeOrders)
 	}
 	if m.subscription_orders != nil {
 		edges = append(edges, user.EdgeSubscriptionOrders)
@@ -23873,15 +24135,15 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case user.EdgeRechargeOrders:
-		ids := make([]ent.Value, 0, len(m.recharge_orders))
-		for id := range m.recharge_orders {
-			ids = append(ids, id)
-		}
-		return ids
 	case user.EdgeBalanceLogs:
 		ids := make([]ent.Value, 0, len(m.balance_logs))
 		for id := range m.balance_logs {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeRechargeOrders:
+		ids := make([]ent.Value, 0, len(m.recharge_orders))
+		for id := range m.recharge_orders {
 			ids = append(ids, id)
 		}
 		return ids
@@ -23925,11 +24187,11 @@ func (m *UserMutation) RemovedEdges() []string {
 	if m.removedpromo_code_usages != nil {
 		edges = append(edges, user.EdgePromoCodeUsages)
 	}
-	if m.removedrecharge_orders != nil {
-		edges = append(edges, user.EdgeRechargeOrders)
-	}
 	if m.removedbalance_logs != nil {
 		edges = append(edges, user.EdgeBalanceLogs)
+	}
+	if m.removedrecharge_orders != nil {
+		edges = append(edges, user.EdgeRechargeOrders)
 	}
 	if m.removedsubscription_orders != nil {
 		edges = append(edges, user.EdgeSubscriptionOrders)
@@ -23995,15 +24257,15 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case user.EdgeRechargeOrders:
-		ids := make([]ent.Value, 0, len(m.removedrecharge_orders))
-		for id := range m.removedrecharge_orders {
-			ids = append(ids, id)
-		}
-		return ids
 	case user.EdgeBalanceLogs:
 		ids := make([]ent.Value, 0, len(m.removedbalance_logs))
 		for id := range m.removedbalance_logs {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeRechargeOrders:
+		ids := make([]ent.Value, 0, len(m.removedrecharge_orders))
+		for id := range m.removedrecharge_orders {
 			ids = append(ids, id)
 		}
 		return ids
@@ -24047,11 +24309,11 @@ func (m *UserMutation) ClearedEdges() []string {
 	if m.clearedpromo_code_usages {
 		edges = append(edges, user.EdgePromoCodeUsages)
 	}
-	if m.clearedrecharge_orders {
-		edges = append(edges, user.EdgeRechargeOrders)
-	}
 	if m.clearedbalance_logs {
 		edges = append(edges, user.EdgeBalanceLogs)
+	}
+	if m.clearedrecharge_orders {
+		edges = append(edges, user.EdgeRechargeOrders)
 	}
 	if m.clearedsubscription_orders {
 		edges = append(edges, user.EdgeSubscriptionOrders)
@@ -24081,10 +24343,10 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedattribute_values
 	case user.EdgePromoCodeUsages:
 		return m.clearedpromo_code_usages
-	case user.EdgeRechargeOrders:
-		return m.clearedrecharge_orders
 	case user.EdgeBalanceLogs:
 		return m.clearedbalance_logs
+	case user.EdgeRechargeOrders:
+		return m.clearedrecharge_orders
 	case user.EdgeSubscriptionOrders:
 		return m.clearedsubscription_orders
 	}
@@ -24130,11 +24392,11 @@ func (m *UserMutation) ResetEdge(name string) error {
 	case user.EdgePromoCodeUsages:
 		m.ResetPromoCodeUsages()
 		return nil
-	case user.EdgeRechargeOrders:
-		m.ResetRechargeOrders()
-		return nil
 	case user.EdgeBalanceLogs:
 		m.ResetBalanceLogs()
+		return nil
+	case user.EdgeRechargeOrders:
+		m.ResetRechargeOrders()
 		return nil
 	case user.EdgeSubscriptionOrders:
 		m.ResetSubscriptionOrders()

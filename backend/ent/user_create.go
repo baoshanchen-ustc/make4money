@@ -171,20 +171,6 @@ func (_c *UserCreate) SetNillableNotes(v *string) *UserCreate {
 	return _c
 }
 
-// SetWechatOpenid sets the "wechat_openid" field.
-func (_c *UserCreate) SetWechatOpenid(v string) *UserCreate {
-	_c.mutation.SetWechatOpenid(v)
-	return _c
-}
-
-// SetNillableWechatOpenid sets the "wechat_openid" field if the given value is not nil.
-func (_c *UserCreate) SetNillableWechatOpenid(v *string) *UserCreate {
-	if v != nil {
-		_c.SetWechatOpenid(*v)
-	}
-	return _c
-}
-
 // SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
 func (_c *UserCreate) SetTotpSecretEncrypted(v string) *UserCreate {
 	_c.mutation.SetTotpSecretEncrypted(v)
@@ -223,48 +209,6 @@ func (_c *UserCreate) SetTotpEnabledAt(v time.Time) *UserCreate {
 func (_c *UserCreate) SetNillableTotpEnabledAt(v *time.Time) *UserCreate {
 	if v != nil {
 		_c.SetTotpEnabledAt(*v)
-	}
-	return _c
-}
-
-// SetUsageReportEnabled sets the "usage_report_enabled" field.
-func (_c *UserCreate) SetUsageReportEnabled(v bool) *UserCreate {
-	_c.mutation.SetUsageReportEnabled(v)
-	return _c
-}
-
-// SetNillableUsageReportEnabled sets the "usage_report_enabled" field if the given value is not nil.
-func (_c *UserCreate) SetNillableUsageReportEnabled(v *bool) *UserCreate {
-	if v != nil {
-		_c.SetUsageReportEnabled(*v)
-	}
-	return _c
-}
-
-// SetUsageReportSchedule sets the "usage_report_schedule" field.
-func (_c *UserCreate) SetUsageReportSchedule(v string) *UserCreate {
-	_c.mutation.SetUsageReportSchedule(v)
-	return _c
-}
-
-// SetNillableUsageReportSchedule sets the "usage_report_schedule" field if the given value is not nil.
-func (_c *UserCreate) SetNillableUsageReportSchedule(v *string) *UserCreate {
-	if v != nil {
-		_c.SetUsageReportSchedule(*v)
-	}
-	return _c
-}
-
-// SetUsageReportTimezone sets the "usage_report_timezone" field.
-func (_c *UserCreate) SetUsageReportTimezone(v string) *UserCreate {
-	_c.mutation.SetUsageReportTimezone(v)
-	return _c
-}
-
-// SetNillableUsageReportTimezone sets the "usage_report_timezone" field if the given value is not nil.
-func (_c *UserCreate) SetNillableUsageReportTimezone(v *string) *UserCreate {
-	if v != nil {
-		_c.SetUsageReportTimezone(*v)
 	}
 	return _c
 }
@@ -404,21 +348,6 @@ func (_c *UserCreate) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserCreate {
 	return _c.AddPromoCodeUsageIDs(ids...)
 }
 
-// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by IDs.
-func (_c *UserCreate) AddRechargeOrderIDs(ids ...int64) *UserCreate {
-	_c.mutation.AddRechargeOrderIDs(ids...)
-	return _c
-}
-
-// AddRechargeOrders adds the "recharge_orders" edges to the RechargeOrder entity.
-func (_c *UserCreate) AddRechargeOrders(v ...*RechargeOrder) *UserCreate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _c.AddRechargeOrderIDs(ids...)
-}
-
 // AddBalanceLogIDs adds the "balance_logs" edge to the BalanceLog entity by IDs.
 func (_c *UserCreate) AddBalanceLogIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddBalanceLogIDs(ids...)
@@ -432,6 +361,21 @@ func (_c *UserCreate) AddBalanceLogs(v ...*BalanceLog) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddBalanceLogIDs(ids...)
+}
+
+// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by IDs.
+func (_c *UserCreate) AddRechargeOrderIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddRechargeOrderIDs(ids...)
+	return _c
+}
+
+// AddRechargeOrders adds the "recharge_orders" edges to the RechargeOrder entity.
+func (_c *UserCreate) AddRechargeOrders(v ...*RechargeOrder) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddRechargeOrderIDs(ids...)
 }
 
 // AddSubscriptionOrderIDs adds the "subscription_orders" edge to the SubscriptionOrder entity by IDs.
@@ -524,25 +468,9 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultNotes
 		_c.mutation.SetNotes(v)
 	}
-	if _, ok := _c.mutation.WechatOpenid(); !ok {
-		v := user.DefaultWechatOpenid
-		_c.mutation.SetWechatOpenid(v)
-	}
 	if _, ok := _c.mutation.TotpEnabled(); !ok {
 		v := user.DefaultTotpEnabled
 		_c.mutation.SetTotpEnabled(v)
-	}
-	if _, ok := _c.mutation.UsageReportEnabled(); !ok {
-		v := user.DefaultUsageReportEnabled
-		_c.mutation.SetUsageReportEnabled(v)
-	}
-	if _, ok := _c.mutation.UsageReportSchedule(); !ok {
-		v := user.DefaultUsageReportSchedule
-		_c.mutation.SetUsageReportSchedule(v)
-	}
-	if _, ok := _c.mutation.UsageReportTimezone(); !ok {
-		v := user.DefaultUsageReportTimezone
-		_c.mutation.SetUsageReportTimezone(v)
 	}
 	return nil
 }
@@ -604,35 +532,8 @@ func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.Notes(); !ok {
 		return &ValidationError{Name: "notes", err: errors.New(`ent: missing required field "User.notes"`)}
 	}
-	if _, ok := _c.mutation.WechatOpenid(); !ok {
-		return &ValidationError{Name: "wechat_openid", err: errors.New(`ent: missing required field "User.wechat_openid"`)}
-	}
-	if v, ok := _c.mutation.WechatOpenid(); ok {
-		if err := user.WechatOpenidValidator(v); err != nil {
-			return &ValidationError{Name: "wechat_openid", err: fmt.Errorf(`ent: validator failed for field "User.wechat_openid": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.TotpEnabled(); !ok {
 		return &ValidationError{Name: "totp_enabled", err: errors.New(`ent: missing required field "User.totp_enabled"`)}
-	}
-	if _, ok := _c.mutation.UsageReportEnabled(); !ok {
-		return &ValidationError{Name: "usage_report_enabled", err: errors.New(`ent: missing required field "User.usage_report_enabled"`)}
-	}
-	if _, ok := _c.mutation.UsageReportSchedule(); !ok {
-		return &ValidationError{Name: "usage_report_schedule", err: errors.New(`ent: missing required field "User.usage_report_schedule"`)}
-	}
-	if v, ok := _c.mutation.UsageReportSchedule(); ok {
-		if err := user.UsageReportScheduleValidator(v); err != nil {
-			return &ValidationError{Name: "usage_report_schedule", err: fmt.Errorf(`ent: validator failed for field "User.usage_report_schedule": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.UsageReportTimezone(); !ok {
-		return &ValidationError{Name: "usage_report_timezone", err: errors.New(`ent: missing required field "User.usage_report_timezone"`)}
-	}
-	if v, ok := _c.mutation.UsageReportTimezone(); ok {
-		if err := user.UsageReportTimezoneValidator(v); err != nil {
-			return &ValidationError{Name: "usage_report_timezone", err: fmt.Errorf(`ent: validator failed for field "User.usage_report_timezone": %w`, err)}
-		}
 	}
 	return nil
 }
@@ -705,10 +606,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
 		_node.Notes = value
 	}
-	if value, ok := _c.mutation.WechatOpenid(); ok {
-		_spec.SetField(user.FieldWechatOpenid, field.TypeString, value)
-		_node.WechatOpenid = value
-	}
 	if value, ok := _c.mutation.TotpSecretEncrypted(); ok {
 		_spec.SetField(user.FieldTotpSecretEncrypted, field.TypeString, value)
 		_node.TotpSecretEncrypted = &value
@@ -720,18 +617,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TotpEnabledAt(); ok {
 		_spec.SetField(user.FieldTotpEnabledAt, field.TypeTime, value)
 		_node.TotpEnabledAt = &value
-	}
-	if value, ok := _c.mutation.UsageReportEnabled(); ok {
-		_spec.SetField(user.FieldUsageReportEnabled, field.TypeBool, value)
-		_node.UsageReportEnabled = value
-	}
-	if value, ok := _c.mutation.UsageReportSchedule(); ok {
-		_spec.SetField(user.FieldUsageReportSchedule, field.TypeString, value)
-		_node.UsageReportSchedule = value
-	}
-	if value, ok := _c.mutation.UsageReportTimezone(); ok {
-		_spec.SetField(user.FieldUsageReportTimezone, field.TypeString, value)
-		_node.UsageReportTimezone = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -881,22 +766,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
-	if nodes := _c.mutation.RechargeOrdersIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.RechargeOrdersTable,
-			Columns: []string{user.RechargeOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges = append(_spec.Edges, edge)
-	}
 	if nodes := _c.mutation.BalanceLogsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -906,6 +775,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.RechargeOrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1119,18 +1004,6 @@ func (u *UserUpsert) UpdateNotes() *UserUpsert {
 	return u
 }
 
-// SetWechatOpenid sets the "wechat_openid" field.
-func (u *UserUpsert) SetWechatOpenid(v string) *UserUpsert {
-	u.Set(user.FieldWechatOpenid, v)
-	return u
-}
-
-// UpdateWechatOpenid sets the "wechat_openid" field to the value that was provided on create.
-func (u *UserUpsert) UpdateWechatOpenid() *UserUpsert {
-	u.SetExcluded(user.FieldWechatOpenid)
-	return u
-}
-
 // SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
 func (u *UserUpsert) SetTotpSecretEncrypted(v string) *UserUpsert {
 	u.Set(user.FieldTotpSecretEncrypted, v)
@@ -1176,42 +1049,6 @@ func (u *UserUpsert) UpdateTotpEnabledAt() *UserUpsert {
 // ClearTotpEnabledAt clears the value of the "totp_enabled_at" field.
 func (u *UserUpsert) ClearTotpEnabledAt() *UserUpsert {
 	u.SetNull(user.FieldTotpEnabledAt)
-	return u
-}
-
-// SetUsageReportEnabled sets the "usage_report_enabled" field.
-func (u *UserUpsert) SetUsageReportEnabled(v bool) *UserUpsert {
-	u.Set(user.FieldUsageReportEnabled, v)
-	return u
-}
-
-// UpdateUsageReportEnabled sets the "usage_report_enabled" field to the value that was provided on create.
-func (u *UserUpsert) UpdateUsageReportEnabled() *UserUpsert {
-	u.SetExcluded(user.FieldUsageReportEnabled)
-	return u
-}
-
-// SetUsageReportSchedule sets the "usage_report_schedule" field.
-func (u *UserUpsert) SetUsageReportSchedule(v string) *UserUpsert {
-	u.Set(user.FieldUsageReportSchedule, v)
-	return u
-}
-
-// UpdateUsageReportSchedule sets the "usage_report_schedule" field to the value that was provided on create.
-func (u *UserUpsert) UpdateUsageReportSchedule() *UserUpsert {
-	u.SetExcluded(user.FieldUsageReportSchedule)
-	return u
-}
-
-// SetUsageReportTimezone sets the "usage_report_timezone" field.
-func (u *UserUpsert) SetUsageReportTimezone(v string) *UserUpsert {
-	u.Set(user.FieldUsageReportTimezone, v)
-	return u
-}
-
-// UpdateUsageReportTimezone sets the "usage_report_timezone" field to the value that was provided on create.
-func (u *UserUpsert) UpdateUsageReportTimezone() *UserUpsert {
-	u.SetExcluded(user.FieldUsageReportTimezone)
 	return u
 }
 
@@ -1421,20 +1258,6 @@ func (u *UserUpsertOne) UpdateNotes() *UserUpsertOne {
 	})
 }
 
-// SetWechatOpenid sets the "wechat_openid" field.
-func (u *UserUpsertOne) SetWechatOpenid(v string) *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.SetWechatOpenid(v)
-	})
-}
-
-// UpdateWechatOpenid sets the "wechat_openid" field to the value that was provided on create.
-func (u *UserUpsertOne) UpdateWechatOpenid() *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateWechatOpenid()
-	})
-}
-
 // SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
 func (u *UserUpsertOne) SetTotpSecretEncrypted(v string) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
@@ -1488,48 +1311,6 @@ func (u *UserUpsertOne) UpdateTotpEnabledAt() *UserUpsertOne {
 func (u *UserUpsertOne) ClearTotpEnabledAt() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearTotpEnabledAt()
-	})
-}
-
-// SetUsageReportEnabled sets the "usage_report_enabled" field.
-func (u *UserUpsertOne) SetUsageReportEnabled(v bool) *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.SetUsageReportEnabled(v)
-	})
-}
-
-// UpdateUsageReportEnabled sets the "usage_report_enabled" field to the value that was provided on create.
-func (u *UserUpsertOne) UpdateUsageReportEnabled() *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateUsageReportEnabled()
-	})
-}
-
-// SetUsageReportSchedule sets the "usage_report_schedule" field.
-func (u *UserUpsertOne) SetUsageReportSchedule(v string) *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.SetUsageReportSchedule(v)
-	})
-}
-
-// UpdateUsageReportSchedule sets the "usage_report_schedule" field to the value that was provided on create.
-func (u *UserUpsertOne) UpdateUsageReportSchedule() *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateUsageReportSchedule()
-	})
-}
-
-// SetUsageReportTimezone sets the "usage_report_timezone" field.
-func (u *UserUpsertOne) SetUsageReportTimezone(v string) *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.SetUsageReportTimezone(v)
-	})
-}
-
-// UpdateUsageReportTimezone sets the "usage_report_timezone" field to the value that was provided on create.
-func (u *UserUpsertOne) UpdateUsageReportTimezone() *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateUsageReportTimezone()
 	})
 }
 
@@ -1905,20 +1686,6 @@ func (u *UserUpsertBulk) UpdateNotes() *UserUpsertBulk {
 	})
 }
 
-// SetWechatOpenid sets the "wechat_openid" field.
-func (u *UserUpsertBulk) SetWechatOpenid(v string) *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.SetWechatOpenid(v)
-	})
-}
-
-// UpdateWechatOpenid sets the "wechat_openid" field to the value that was provided on create.
-func (u *UserUpsertBulk) UpdateWechatOpenid() *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateWechatOpenid()
-	})
-}
-
 // SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
 func (u *UserUpsertBulk) SetTotpSecretEncrypted(v string) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
@@ -1972,48 +1739,6 @@ func (u *UserUpsertBulk) UpdateTotpEnabledAt() *UserUpsertBulk {
 func (u *UserUpsertBulk) ClearTotpEnabledAt() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearTotpEnabledAt()
-	})
-}
-
-// SetUsageReportEnabled sets the "usage_report_enabled" field.
-func (u *UserUpsertBulk) SetUsageReportEnabled(v bool) *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.SetUsageReportEnabled(v)
-	})
-}
-
-// UpdateUsageReportEnabled sets the "usage_report_enabled" field to the value that was provided on create.
-func (u *UserUpsertBulk) UpdateUsageReportEnabled() *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateUsageReportEnabled()
-	})
-}
-
-// SetUsageReportSchedule sets the "usage_report_schedule" field.
-func (u *UserUpsertBulk) SetUsageReportSchedule(v string) *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.SetUsageReportSchedule(v)
-	})
-}
-
-// UpdateUsageReportSchedule sets the "usage_report_schedule" field to the value that was provided on create.
-func (u *UserUpsertBulk) UpdateUsageReportSchedule() *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateUsageReportSchedule()
-	})
-}
-
-// SetUsageReportTimezone sets the "usage_report_timezone" field.
-func (u *UserUpsertBulk) SetUsageReportTimezone(v string) *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.SetUsageReportTimezone(v)
-	})
-}
-
-// UpdateUsageReportTimezone sets the "usage_report_timezone" field to the value that was provided on create.
-func (u *UserUpsertBulk) UpdateUsageReportTimezone() *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateUsageReportTimezone()
 	})
 }
 

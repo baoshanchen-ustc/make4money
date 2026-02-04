@@ -45,8 +45,8 @@ type UserQuery struct {
 	withUsageLogs             *UsageLogQuery
 	withAttributeValues       *UserAttributeValueQuery
 	withPromoCodeUsages       *PromoCodeUsageQuery
-	withRechargeOrders        *RechargeOrderQuery
 	withBalanceLogs           *BalanceLogQuery
+	withRechargeOrders        *RechargeOrderQuery
 	withSubscriptionOrders    *SubscriptionOrderQuery
 	withUserAllowedGroups     *UserAllowedGroupQuery
 	modifiers                 []func(*sql.Selector)
@@ -284,28 +284,6 @@ func (_q *UserQuery) QueryPromoCodeUsages() *PromoCodeUsageQuery {
 	return query
 }
 
-// QueryRechargeOrders chains the current query on the "recharge_orders" edge.
-func (_q *UserQuery) QueryRechargeOrders() *RechargeOrderQuery {
-	query := (&RechargeOrderClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, selector),
-			sqlgraph.To(rechargeorder.Table, rechargeorder.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, user.RechargeOrdersTable, user.RechargeOrdersColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
 // QueryBalanceLogs chains the current query on the "balance_logs" edge.
 func (_q *UserQuery) QueryBalanceLogs() *BalanceLogQuery {
 	query := (&BalanceLogClient{config: _q.config}).Query()
@@ -321,6 +299,28 @@ func (_q *UserQuery) QueryBalanceLogs() *BalanceLogQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(balancelog.Table, balancelog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.BalanceLogsTable, user.BalanceLogsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryRechargeOrders chains the current query on the "recharge_orders" edge.
+func (_q *UserQuery) QueryRechargeOrders() *RechargeOrderQuery {
+	query := (&RechargeOrderClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(rechargeorder.Table, rechargeorder.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.RechargeOrdersTable, user.RechargeOrdersColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -573,8 +573,8 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withUsageLogs:             _q.withUsageLogs.Clone(),
 		withAttributeValues:       _q.withAttributeValues.Clone(),
 		withPromoCodeUsages:       _q.withPromoCodeUsages.Clone(),
-		withRechargeOrders:        _q.withRechargeOrders.Clone(),
 		withBalanceLogs:           _q.withBalanceLogs.Clone(),
+		withRechargeOrders:        _q.withRechargeOrders.Clone(),
 		withSubscriptionOrders:    _q.withSubscriptionOrders.Clone(),
 		withUserAllowedGroups:     _q.withUserAllowedGroups.Clone(),
 		// clone intermediate query.
@@ -682,17 +682,6 @@ func (_q *UserQuery) WithPromoCodeUsages(opts ...func(*PromoCodeUsageQuery)) *Us
 	return _q
 }
 
-// WithRechargeOrders tells the query-builder to eager-load the nodes that are connected to
-// the "recharge_orders" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *UserQuery) WithRechargeOrders(opts ...func(*RechargeOrderQuery)) *UserQuery {
-	query := (&RechargeOrderClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withRechargeOrders = query
-	return _q
-}
-
 // WithBalanceLogs tells the query-builder to eager-load the nodes that are connected to
 // the "balance_logs" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithBalanceLogs(opts ...func(*BalanceLogQuery)) *UserQuery {
@@ -701,6 +690,17 @@ func (_q *UserQuery) WithBalanceLogs(opts ...func(*BalanceLogQuery)) *UserQuery 
 		opt(query)
 	}
 	_q.withBalanceLogs = query
+	return _q
+}
+
+// WithRechargeOrders tells the query-builder to eager-load the nodes that are connected to
+// the "recharge_orders" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithRechargeOrders(opts ...func(*RechargeOrderQuery)) *UserQuery {
+	query := (&RechargeOrderClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withRechargeOrders = query
 	return _q
 }
 
@@ -814,8 +814,8 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withUsageLogs != nil,
 			_q.withAttributeValues != nil,
 			_q.withPromoCodeUsages != nil,
-			_q.withRechargeOrders != nil,
 			_q.withBalanceLogs != nil,
+			_q.withRechargeOrders != nil,
 			_q.withSubscriptionOrders != nil,
 			_q.withUserAllowedGroups != nil,
 		}
@@ -906,17 +906,17 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			return nil, err
 		}
 	}
-	if query := _q.withRechargeOrders; query != nil {
-		if err := _q.loadRechargeOrders(ctx, query, nodes,
-			func(n *User) { n.Edges.RechargeOrders = []*RechargeOrder{} },
-			func(n *User, e *RechargeOrder) { n.Edges.RechargeOrders = append(n.Edges.RechargeOrders, e) }); err != nil {
-			return nil, err
-		}
-	}
 	if query := _q.withBalanceLogs; query != nil {
 		if err := _q.loadBalanceLogs(ctx, query, nodes,
 			func(n *User) { n.Edges.BalanceLogs = []*BalanceLog{} },
 			func(n *User, e *BalanceLog) { n.Edges.BalanceLogs = append(n.Edges.BalanceLogs, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withRechargeOrders; query != nil {
+		if err := _q.loadRechargeOrders(ctx, query, nodes,
+			func(n *User) { n.Edges.RechargeOrders = []*RechargeOrder{} },
+			func(n *User, e *RechargeOrder) { n.Edges.RechargeOrders = append(n.Edges.RechargeOrders, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1246,36 +1246,6 @@ func (_q *UserQuery) loadPromoCodeUsages(ctx context.Context, query *PromoCodeUs
 	}
 	return nil
 }
-func (_q *UserQuery) loadRechargeOrders(ctx context.Context, query *RechargeOrderQuery, nodes []*User, init func(*User), assign func(*User, *RechargeOrder)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[int64]*User)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(rechargeorder.FieldUserID)
-	}
-	query.Where(predicate.RechargeOrder(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(user.RechargeOrdersColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.UserID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
 func (_q *UserQuery) loadBalanceLogs(ctx context.Context, query *BalanceLogQuery, nodes []*User, init func(*User), assign func(*User, *BalanceLog)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[int64]*User)
@@ -1291,6 +1261,36 @@ func (_q *UserQuery) loadBalanceLogs(ctx context.Context, query *BalanceLogQuery
 	}
 	query.Where(predicate.BalanceLog(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.BalanceLogsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadRechargeOrders(ctx context.Context, query *RechargeOrderQuery, nodes []*User, init func(*User), assign func(*User, *RechargeOrder)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(rechargeorder.FieldUserID)
+	}
+	query.Where(predicate.RechargeOrder(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.RechargeOrdersColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

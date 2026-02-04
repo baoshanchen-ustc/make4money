@@ -191,20 +191,6 @@ func (_u *UserUpdate) SetNillableNotes(v *string) *UserUpdate {
 	return _u
 }
 
-// SetWechatOpenid sets the "wechat_openid" field.
-func (_u *UserUpdate) SetWechatOpenid(v string) *UserUpdate {
-	_u.mutation.SetWechatOpenid(v)
-	return _u
-}
-
-// SetNillableWechatOpenid sets the "wechat_openid" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableWechatOpenid(v *string) *UserUpdate {
-	if v != nil {
-		_u.SetWechatOpenid(*v)
-	}
-	return _u
-}
-
 // SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
 func (_u *UserUpdate) SetTotpSecretEncrypted(v string) *UserUpdate {
 	_u.mutation.SetTotpSecretEncrypted(v)
@@ -256,48 +242,6 @@ func (_u *UserUpdate) SetNillableTotpEnabledAt(v *time.Time) *UserUpdate {
 // ClearTotpEnabledAt clears the value of the "totp_enabled_at" field.
 func (_u *UserUpdate) ClearTotpEnabledAt() *UserUpdate {
 	_u.mutation.ClearTotpEnabledAt()
-	return _u
-}
-
-// SetUsageReportEnabled sets the "usage_report_enabled" field.
-func (_u *UserUpdate) SetUsageReportEnabled(v bool) *UserUpdate {
-	_u.mutation.SetUsageReportEnabled(v)
-	return _u
-}
-
-// SetNillableUsageReportEnabled sets the "usage_report_enabled" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableUsageReportEnabled(v *bool) *UserUpdate {
-	if v != nil {
-		_u.SetUsageReportEnabled(*v)
-	}
-	return _u
-}
-
-// SetUsageReportSchedule sets the "usage_report_schedule" field.
-func (_u *UserUpdate) SetUsageReportSchedule(v string) *UserUpdate {
-	_u.mutation.SetUsageReportSchedule(v)
-	return _u
-}
-
-// SetNillableUsageReportSchedule sets the "usage_report_schedule" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableUsageReportSchedule(v *string) *UserUpdate {
-	if v != nil {
-		_u.SetUsageReportSchedule(*v)
-	}
-	return _u
-}
-
-// SetUsageReportTimezone sets the "usage_report_timezone" field.
-func (_u *UserUpdate) SetUsageReportTimezone(v string) *UserUpdate {
-	_u.mutation.SetUsageReportTimezone(v)
-	return _u
-}
-
-// SetNillableUsageReportTimezone sets the "usage_report_timezone" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableUsageReportTimezone(v *string) *UserUpdate {
-	if v != nil {
-		_u.SetUsageReportTimezone(*v)
-	}
 	return _u
 }
 
@@ -436,21 +380,6 @@ func (_u *UserUpdate) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate {
 	return _u.AddPromoCodeUsageIDs(ids...)
 }
 
-// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by IDs.
-func (_u *UserUpdate) AddRechargeOrderIDs(ids ...int64) *UserUpdate {
-	_u.mutation.AddRechargeOrderIDs(ids...)
-	return _u
-}
-
-// AddRechargeOrders adds the "recharge_orders" edges to the RechargeOrder entity.
-func (_u *UserUpdate) AddRechargeOrders(v ...*RechargeOrder) *UserUpdate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddRechargeOrderIDs(ids...)
-}
-
 // AddBalanceLogIDs adds the "balance_logs" edge to the BalanceLog entity by IDs.
 func (_u *UserUpdate) AddBalanceLogIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddBalanceLogIDs(ids...)
@@ -464,6 +393,21 @@ func (_u *UserUpdate) AddBalanceLogs(v ...*BalanceLog) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddBalanceLogIDs(ids...)
+}
+
+// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by IDs.
+func (_u *UserUpdate) AddRechargeOrderIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddRechargeOrderIDs(ids...)
+	return _u
+}
+
+// AddRechargeOrders adds the "recharge_orders" edges to the RechargeOrder entity.
+func (_u *UserUpdate) AddRechargeOrders(v ...*RechargeOrder) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddRechargeOrderIDs(ids...)
 }
 
 // AddSubscriptionOrderIDs adds the "subscription_orders" edge to the SubscriptionOrder entity by IDs.
@@ -675,27 +619,6 @@ func (_u *UserUpdate) RemovePromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate {
 	return _u.RemovePromoCodeUsageIDs(ids...)
 }
 
-// ClearRechargeOrders clears all "recharge_orders" edges to the RechargeOrder entity.
-func (_u *UserUpdate) ClearRechargeOrders() *UserUpdate {
-	_u.mutation.ClearRechargeOrders()
-	return _u
-}
-
-// RemoveRechargeOrderIDs removes the "recharge_orders" edge to RechargeOrder entities by IDs.
-func (_u *UserUpdate) RemoveRechargeOrderIDs(ids ...int64) *UserUpdate {
-	_u.mutation.RemoveRechargeOrderIDs(ids...)
-	return _u
-}
-
-// RemoveRechargeOrders removes "recharge_orders" edges to RechargeOrder entities.
-func (_u *UserUpdate) RemoveRechargeOrders(v ...*RechargeOrder) *UserUpdate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveRechargeOrderIDs(ids...)
-}
-
 // ClearBalanceLogs clears all "balance_logs" edges to the BalanceLog entity.
 func (_u *UserUpdate) ClearBalanceLogs() *UserUpdate {
 	_u.mutation.ClearBalanceLogs()
@@ -715,6 +638,27 @@ func (_u *UserUpdate) RemoveBalanceLogs(v ...*BalanceLog) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveBalanceLogIDs(ids...)
+}
+
+// ClearRechargeOrders clears all "recharge_orders" edges to the RechargeOrder entity.
+func (_u *UserUpdate) ClearRechargeOrders() *UserUpdate {
+	_u.mutation.ClearRechargeOrders()
+	return _u
+}
+
+// RemoveRechargeOrderIDs removes the "recharge_orders" edge to RechargeOrder entities by IDs.
+func (_u *UserUpdate) RemoveRechargeOrderIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveRechargeOrderIDs(ids...)
+	return _u
+}
+
+// RemoveRechargeOrders removes "recharge_orders" edges to RechargeOrder entities.
+func (_u *UserUpdate) RemoveRechargeOrders(v ...*RechargeOrder) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveRechargeOrderIDs(ids...)
 }
 
 // ClearSubscriptionOrders clears all "subscription_orders" edges to the SubscriptionOrder entity.
@@ -807,21 +751,6 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.WechatOpenid(); ok {
-		if err := user.WechatOpenidValidator(v); err != nil {
-			return &ValidationError{Name: "wechat_openid", err: fmt.Errorf(`ent: validator failed for field "User.wechat_openid": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.UsageReportSchedule(); ok {
-		if err := user.UsageReportScheduleValidator(v); err != nil {
-			return &ValidationError{Name: "usage_report_schedule", err: fmt.Errorf(`ent: validator failed for field "User.usage_report_schedule": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.UsageReportTimezone(); ok {
-		if err := user.UsageReportTimezoneValidator(v); err != nil {
-			return &ValidationError{Name: "usage_report_timezone", err: fmt.Errorf(`ent: validator failed for field "User.usage_report_timezone": %w`, err)}
-		}
-	}
 	return nil
 }
 
@@ -876,9 +805,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.WechatOpenid(); ok {
-		_spec.SetField(user.FieldWechatOpenid, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.TotpSecretEncrypted(); ok {
 		_spec.SetField(user.FieldTotpSecretEncrypted, field.TypeString, value)
 	}
@@ -893,15 +819,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.TotpEnabledAtCleared() {
 		_spec.ClearField(user.FieldTotpEnabledAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.UsageReportEnabled(); ok {
-		_spec.SetField(user.FieldUsageReportEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.UsageReportSchedule(); ok {
-		_spec.SetField(user.FieldUsageReportSchedule, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.UsageReportTimezone(); ok {
-		_spec.SetField(user.FieldUsageReportTimezone, field.TypeString, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1320,51 +1237,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if _u.mutation.RechargeOrdersCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.RechargeOrdersTable,
-			Columns: []string{user.RechargeOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedRechargeOrdersIDs(); len(nodes) > 0 && !_u.mutation.RechargeOrdersCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.RechargeOrdersTable,
-			Columns: []string{user.RechargeOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RechargeOrdersIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.RechargeOrdersTable,
-			Columns: []string{user.RechargeOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
 	if _u.mutation.BalanceLogsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1403,6 +1275,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.RechargeOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedRechargeOrdersIDs(); len(nodes) > 0 && !_u.mutation.RechargeOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RechargeOrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1627,20 +1544,6 @@ func (_u *UserUpdateOne) SetNillableNotes(v *string) *UserUpdateOne {
 	return _u
 }
 
-// SetWechatOpenid sets the "wechat_openid" field.
-func (_u *UserUpdateOne) SetWechatOpenid(v string) *UserUpdateOne {
-	_u.mutation.SetWechatOpenid(v)
-	return _u
-}
-
-// SetNillableWechatOpenid sets the "wechat_openid" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableWechatOpenid(v *string) *UserUpdateOne {
-	if v != nil {
-		_u.SetWechatOpenid(*v)
-	}
-	return _u
-}
-
 // SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
 func (_u *UserUpdateOne) SetTotpSecretEncrypted(v string) *UserUpdateOne {
 	_u.mutation.SetTotpSecretEncrypted(v)
@@ -1692,48 +1595,6 @@ func (_u *UserUpdateOne) SetNillableTotpEnabledAt(v *time.Time) *UserUpdateOne {
 // ClearTotpEnabledAt clears the value of the "totp_enabled_at" field.
 func (_u *UserUpdateOne) ClearTotpEnabledAt() *UserUpdateOne {
 	_u.mutation.ClearTotpEnabledAt()
-	return _u
-}
-
-// SetUsageReportEnabled sets the "usage_report_enabled" field.
-func (_u *UserUpdateOne) SetUsageReportEnabled(v bool) *UserUpdateOne {
-	_u.mutation.SetUsageReportEnabled(v)
-	return _u
-}
-
-// SetNillableUsageReportEnabled sets the "usage_report_enabled" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableUsageReportEnabled(v *bool) *UserUpdateOne {
-	if v != nil {
-		_u.SetUsageReportEnabled(*v)
-	}
-	return _u
-}
-
-// SetUsageReportSchedule sets the "usage_report_schedule" field.
-func (_u *UserUpdateOne) SetUsageReportSchedule(v string) *UserUpdateOne {
-	_u.mutation.SetUsageReportSchedule(v)
-	return _u
-}
-
-// SetNillableUsageReportSchedule sets the "usage_report_schedule" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableUsageReportSchedule(v *string) *UserUpdateOne {
-	if v != nil {
-		_u.SetUsageReportSchedule(*v)
-	}
-	return _u
-}
-
-// SetUsageReportTimezone sets the "usage_report_timezone" field.
-func (_u *UserUpdateOne) SetUsageReportTimezone(v string) *UserUpdateOne {
-	_u.mutation.SetUsageReportTimezone(v)
-	return _u
-}
-
-// SetNillableUsageReportTimezone sets the "usage_report_timezone" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableUsageReportTimezone(v *string) *UserUpdateOne {
-	if v != nil {
-		_u.SetUsageReportTimezone(*v)
-	}
 	return _u
 }
 
@@ -1872,21 +1733,6 @@ func (_u *UserUpdateOne) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserUpdateOne
 	return _u.AddPromoCodeUsageIDs(ids...)
 }
 
-// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by IDs.
-func (_u *UserUpdateOne) AddRechargeOrderIDs(ids ...int64) *UserUpdateOne {
-	_u.mutation.AddRechargeOrderIDs(ids...)
-	return _u
-}
-
-// AddRechargeOrders adds the "recharge_orders" edges to the RechargeOrder entity.
-func (_u *UserUpdateOne) AddRechargeOrders(v ...*RechargeOrder) *UserUpdateOne {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddRechargeOrderIDs(ids...)
-}
-
 // AddBalanceLogIDs adds the "balance_logs" edge to the BalanceLog entity by IDs.
 func (_u *UserUpdateOne) AddBalanceLogIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddBalanceLogIDs(ids...)
@@ -1900,6 +1746,21 @@ func (_u *UserUpdateOne) AddBalanceLogs(v ...*BalanceLog) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddBalanceLogIDs(ids...)
+}
+
+// AddRechargeOrderIDs adds the "recharge_orders" edge to the RechargeOrder entity by IDs.
+func (_u *UserUpdateOne) AddRechargeOrderIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddRechargeOrderIDs(ids...)
+	return _u
+}
+
+// AddRechargeOrders adds the "recharge_orders" edges to the RechargeOrder entity.
+func (_u *UserUpdateOne) AddRechargeOrders(v ...*RechargeOrder) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddRechargeOrderIDs(ids...)
 }
 
 // AddSubscriptionOrderIDs adds the "subscription_orders" edge to the SubscriptionOrder entity by IDs.
@@ -2111,27 +1972,6 @@ func (_u *UserUpdateOne) RemovePromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate
 	return _u.RemovePromoCodeUsageIDs(ids...)
 }
 
-// ClearRechargeOrders clears all "recharge_orders" edges to the RechargeOrder entity.
-func (_u *UserUpdateOne) ClearRechargeOrders() *UserUpdateOne {
-	_u.mutation.ClearRechargeOrders()
-	return _u
-}
-
-// RemoveRechargeOrderIDs removes the "recharge_orders" edge to RechargeOrder entities by IDs.
-func (_u *UserUpdateOne) RemoveRechargeOrderIDs(ids ...int64) *UserUpdateOne {
-	_u.mutation.RemoveRechargeOrderIDs(ids...)
-	return _u
-}
-
-// RemoveRechargeOrders removes "recharge_orders" edges to RechargeOrder entities.
-func (_u *UserUpdateOne) RemoveRechargeOrders(v ...*RechargeOrder) *UserUpdateOne {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveRechargeOrderIDs(ids...)
-}
-
 // ClearBalanceLogs clears all "balance_logs" edges to the BalanceLog entity.
 func (_u *UserUpdateOne) ClearBalanceLogs() *UserUpdateOne {
 	_u.mutation.ClearBalanceLogs()
@@ -2151,6 +1991,27 @@ func (_u *UserUpdateOne) RemoveBalanceLogs(v ...*BalanceLog) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveBalanceLogIDs(ids...)
+}
+
+// ClearRechargeOrders clears all "recharge_orders" edges to the RechargeOrder entity.
+func (_u *UserUpdateOne) ClearRechargeOrders() *UserUpdateOne {
+	_u.mutation.ClearRechargeOrders()
+	return _u
+}
+
+// RemoveRechargeOrderIDs removes the "recharge_orders" edge to RechargeOrder entities by IDs.
+func (_u *UserUpdateOne) RemoveRechargeOrderIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveRechargeOrderIDs(ids...)
+	return _u
+}
+
+// RemoveRechargeOrders removes "recharge_orders" edges to RechargeOrder entities.
+func (_u *UserUpdateOne) RemoveRechargeOrders(v ...*RechargeOrder) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveRechargeOrderIDs(ids...)
 }
 
 // ClearSubscriptionOrders clears all "subscription_orders" edges to the SubscriptionOrder entity.
@@ -2256,21 +2117,6 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.WechatOpenid(); ok {
-		if err := user.WechatOpenidValidator(v); err != nil {
-			return &ValidationError{Name: "wechat_openid", err: fmt.Errorf(`ent: validator failed for field "User.wechat_openid": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.UsageReportSchedule(); ok {
-		if err := user.UsageReportScheduleValidator(v); err != nil {
-			return &ValidationError{Name: "usage_report_schedule", err: fmt.Errorf(`ent: validator failed for field "User.usage_report_schedule": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.UsageReportTimezone(); ok {
-		if err := user.UsageReportTimezoneValidator(v); err != nil {
-			return &ValidationError{Name: "usage_report_timezone", err: fmt.Errorf(`ent: validator failed for field "User.usage_report_timezone": %w`, err)}
-		}
-	}
 	return nil
 }
 
@@ -2342,9 +2188,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.WechatOpenid(); ok {
-		_spec.SetField(user.FieldWechatOpenid, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.TotpSecretEncrypted(); ok {
 		_spec.SetField(user.FieldTotpSecretEncrypted, field.TypeString, value)
 	}
@@ -2359,15 +2202,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.TotpEnabledAtCleared() {
 		_spec.ClearField(user.FieldTotpEnabledAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.UsageReportEnabled(); ok {
-		_spec.SetField(user.FieldUsageReportEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.UsageReportSchedule(); ok {
-		_spec.SetField(user.FieldUsageReportSchedule, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.UsageReportTimezone(); ok {
-		_spec.SetField(user.FieldUsageReportTimezone, field.TypeString, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2786,51 +2620,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if _u.mutation.RechargeOrdersCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.RechargeOrdersTable,
-			Columns: []string{user.RechargeOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedRechargeOrdersIDs(); len(nodes) > 0 && !_u.mutation.RechargeOrdersCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.RechargeOrdersTable,
-			Columns: []string{user.RechargeOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RechargeOrdersIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.RechargeOrdersTable,
-			Columns: []string{user.RechargeOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
 	if _u.mutation.BalanceLogsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -2869,6 +2658,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(balancelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.RechargeOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedRechargeOrdersIDs(); len(nodes) > 0 && !_u.mutation.RechargeOrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RechargeOrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RechargeOrdersTable,
+			Columns: []string{user.RechargeOrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(rechargeorder.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

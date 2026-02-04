@@ -110,11 +110,6 @@ func Notes(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldNotes, v))
 }
 
-// WechatOpenid applies equality check predicate on the "wechat_openid" field. It's identical to WechatOpenidEQ.
-func WechatOpenid(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldWechatOpenid, v))
-}
-
 // TotpSecretEncrypted applies equality check predicate on the "totp_secret_encrypted" field. It's identical to TotpSecretEncryptedEQ.
 func TotpSecretEncrypted(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotpSecretEncrypted, v))
@@ -128,21 +123,6 @@ func TotpEnabled(v bool) predicate.User {
 // TotpEnabledAt applies equality check predicate on the "totp_enabled_at" field. It's identical to TotpEnabledAtEQ.
 func TotpEnabledAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotpEnabledAt, v))
-}
-
-// UsageReportEnabled applies equality check predicate on the "usage_report_enabled" field. It's identical to UsageReportEnabledEQ.
-func UsageReportEnabled(v bool) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldUsageReportEnabled, v))
-}
-
-// UsageReportSchedule applies equality check predicate on the "usage_report_schedule" field. It's identical to UsageReportScheduleEQ.
-func UsageReportSchedule(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldUsageReportSchedule, v))
-}
-
-// UsageReportTimezone applies equality check predicate on the "usage_report_timezone" field. It's identical to UsageReportTimezoneEQ.
-func UsageReportTimezone(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldUsageReportTimezone, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
@@ -745,71 +725,6 @@ func NotesContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldNotes, v))
 }
 
-// WechatOpenidEQ applies the EQ predicate on the "wechat_openid" field.
-func WechatOpenidEQ(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldWechatOpenid, v))
-}
-
-// WechatOpenidNEQ applies the NEQ predicate on the "wechat_openid" field.
-func WechatOpenidNEQ(v string) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldWechatOpenid, v))
-}
-
-// WechatOpenidIn applies the In predicate on the "wechat_openid" field.
-func WechatOpenidIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldIn(FieldWechatOpenid, vs...))
-}
-
-// WechatOpenidNotIn applies the NotIn predicate on the "wechat_openid" field.
-func WechatOpenidNotIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldWechatOpenid, vs...))
-}
-
-// WechatOpenidGT applies the GT predicate on the "wechat_openid" field.
-func WechatOpenidGT(v string) predicate.User {
-	return predicate.User(sql.FieldGT(FieldWechatOpenid, v))
-}
-
-// WechatOpenidGTE applies the GTE predicate on the "wechat_openid" field.
-func WechatOpenidGTE(v string) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldWechatOpenid, v))
-}
-
-// WechatOpenidLT applies the LT predicate on the "wechat_openid" field.
-func WechatOpenidLT(v string) predicate.User {
-	return predicate.User(sql.FieldLT(FieldWechatOpenid, v))
-}
-
-// WechatOpenidLTE applies the LTE predicate on the "wechat_openid" field.
-func WechatOpenidLTE(v string) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldWechatOpenid, v))
-}
-
-// WechatOpenidContains applies the Contains predicate on the "wechat_openid" field.
-func WechatOpenidContains(v string) predicate.User {
-	return predicate.User(sql.FieldContains(FieldWechatOpenid, v))
-}
-
-// WechatOpenidHasPrefix applies the HasPrefix predicate on the "wechat_openid" field.
-func WechatOpenidHasPrefix(v string) predicate.User {
-	return predicate.User(sql.FieldHasPrefix(FieldWechatOpenid, v))
-}
-
-// WechatOpenidHasSuffix applies the HasSuffix predicate on the "wechat_openid" field.
-func WechatOpenidHasSuffix(v string) predicate.User {
-	return predicate.User(sql.FieldHasSuffix(FieldWechatOpenid, v))
-}
-
-// WechatOpenidEqualFold applies the EqualFold predicate on the "wechat_openid" field.
-func WechatOpenidEqualFold(v string) predicate.User {
-	return predicate.User(sql.FieldEqualFold(FieldWechatOpenid, v))
-}
-
-// WechatOpenidContainsFold applies the ContainsFold predicate on the "wechat_openid" field.
-func WechatOpenidContainsFold(v string) predicate.User {
-	return predicate.User(sql.FieldContainsFold(FieldWechatOpenid, v))
-}
-
 // TotpSecretEncryptedEQ applies the EQ predicate on the "totp_secret_encrypted" field.
 func TotpSecretEncryptedEQ(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotpSecretEncrypted, v))
@@ -943,146 +858,6 @@ func TotpEnabledAtIsNil() predicate.User {
 // TotpEnabledAtNotNil applies the NotNil predicate on the "totp_enabled_at" field.
 func TotpEnabledAtNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldTotpEnabledAt))
-}
-
-// UsageReportEnabledEQ applies the EQ predicate on the "usage_report_enabled" field.
-func UsageReportEnabledEQ(v bool) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldUsageReportEnabled, v))
-}
-
-// UsageReportEnabledNEQ applies the NEQ predicate on the "usage_report_enabled" field.
-func UsageReportEnabledNEQ(v bool) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldUsageReportEnabled, v))
-}
-
-// UsageReportScheduleEQ applies the EQ predicate on the "usage_report_schedule" field.
-func UsageReportScheduleEQ(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleNEQ applies the NEQ predicate on the "usage_report_schedule" field.
-func UsageReportScheduleNEQ(v string) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleIn applies the In predicate on the "usage_report_schedule" field.
-func UsageReportScheduleIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldIn(FieldUsageReportSchedule, vs...))
-}
-
-// UsageReportScheduleNotIn applies the NotIn predicate on the "usage_report_schedule" field.
-func UsageReportScheduleNotIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldUsageReportSchedule, vs...))
-}
-
-// UsageReportScheduleGT applies the GT predicate on the "usage_report_schedule" field.
-func UsageReportScheduleGT(v string) predicate.User {
-	return predicate.User(sql.FieldGT(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleGTE applies the GTE predicate on the "usage_report_schedule" field.
-func UsageReportScheduleGTE(v string) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleLT applies the LT predicate on the "usage_report_schedule" field.
-func UsageReportScheduleLT(v string) predicate.User {
-	return predicate.User(sql.FieldLT(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleLTE applies the LTE predicate on the "usage_report_schedule" field.
-func UsageReportScheduleLTE(v string) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleContains applies the Contains predicate on the "usage_report_schedule" field.
-func UsageReportScheduleContains(v string) predicate.User {
-	return predicate.User(sql.FieldContains(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleHasPrefix applies the HasPrefix predicate on the "usage_report_schedule" field.
-func UsageReportScheduleHasPrefix(v string) predicate.User {
-	return predicate.User(sql.FieldHasPrefix(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleHasSuffix applies the HasSuffix predicate on the "usage_report_schedule" field.
-func UsageReportScheduleHasSuffix(v string) predicate.User {
-	return predicate.User(sql.FieldHasSuffix(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleEqualFold applies the EqualFold predicate on the "usage_report_schedule" field.
-func UsageReportScheduleEqualFold(v string) predicate.User {
-	return predicate.User(sql.FieldEqualFold(FieldUsageReportSchedule, v))
-}
-
-// UsageReportScheduleContainsFold applies the ContainsFold predicate on the "usage_report_schedule" field.
-func UsageReportScheduleContainsFold(v string) predicate.User {
-	return predicate.User(sql.FieldContainsFold(FieldUsageReportSchedule, v))
-}
-
-// UsageReportTimezoneEQ applies the EQ predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneEQ(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneNEQ applies the NEQ predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneNEQ(v string) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneIn applies the In predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldIn(FieldUsageReportTimezone, vs...))
-}
-
-// UsageReportTimezoneNotIn applies the NotIn predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneNotIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldUsageReportTimezone, vs...))
-}
-
-// UsageReportTimezoneGT applies the GT predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneGT(v string) predicate.User {
-	return predicate.User(sql.FieldGT(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneGTE applies the GTE predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneGTE(v string) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneLT applies the LT predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneLT(v string) predicate.User {
-	return predicate.User(sql.FieldLT(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneLTE applies the LTE predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneLTE(v string) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneContains applies the Contains predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneContains(v string) predicate.User {
-	return predicate.User(sql.FieldContains(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneHasPrefix applies the HasPrefix predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneHasPrefix(v string) predicate.User {
-	return predicate.User(sql.FieldHasPrefix(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneHasSuffix applies the HasSuffix predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneHasSuffix(v string) predicate.User {
-	return predicate.User(sql.FieldHasSuffix(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneEqualFold applies the EqualFold predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneEqualFold(v string) predicate.User {
-	return predicate.User(sql.FieldEqualFold(FieldUsageReportTimezone, v))
-}
-
-// UsageReportTimezoneContainsFold applies the ContainsFold predicate on the "usage_report_timezone" field.
-func UsageReportTimezoneContainsFold(v string) predicate.User {
-	return predicate.User(sql.FieldContainsFold(FieldUsageReportTimezone, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
@@ -1292,29 +1067,6 @@ func HasPromoCodeUsagesWith(preds ...predicate.PromoCodeUsage) predicate.User {
 	})
 }
 
-// HasRechargeOrders applies the HasEdge predicate on the "recharge_orders" edge.
-func HasRechargeOrders() predicate.User {
-	return predicate.User(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, RechargeOrdersTable, RechargeOrdersColumn),
-		)
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasRechargeOrdersWith applies the HasEdge predicate on the "recharge_orders" edge with a given conditions (other predicates).
-func HasRechargeOrdersWith(preds ...predicate.RechargeOrder) predicate.User {
-	return predicate.User(func(s *sql.Selector) {
-		step := newRechargeOrdersStep()
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
 // HasBalanceLogs applies the HasEdge predicate on the "balance_logs" edge.
 func HasBalanceLogs() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1330,6 +1082,29 @@ func HasBalanceLogs() predicate.User {
 func HasBalanceLogsWith(preds ...predicate.BalanceLog) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newBalanceLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasRechargeOrders applies the HasEdge predicate on the "recharge_orders" edge.
+func HasRechargeOrders() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, RechargeOrdersTable, RechargeOrdersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasRechargeOrdersWith applies the HasEdge predicate on the "recharge_orders" edge with a given conditions (other predicates).
+func HasRechargeOrdersWith(preds ...predicate.RechargeOrder) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newRechargeOrdersStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

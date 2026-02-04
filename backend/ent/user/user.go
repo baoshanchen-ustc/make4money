@@ -37,20 +37,12 @@ const (
 	FieldUsername = "username"
 	// FieldNotes holds the string denoting the notes field in the database.
 	FieldNotes = "notes"
-	// FieldWechatOpenid holds the string denoting the wechat_openid field in the database.
-	FieldWechatOpenid = "wechat_openid"
 	// FieldTotpSecretEncrypted holds the string denoting the totp_secret_encrypted field in the database.
 	FieldTotpSecretEncrypted = "totp_secret_encrypted"
 	// FieldTotpEnabled holds the string denoting the totp_enabled field in the database.
 	FieldTotpEnabled = "totp_enabled"
 	// FieldTotpEnabledAt holds the string denoting the totp_enabled_at field in the database.
 	FieldTotpEnabledAt = "totp_enabled_at"
-	// FieldUsageReportEnabled holds the string denoting the usage_report_enabled field in the database.
-	FieldUsageReportEnabled = "usage_report_enabled"
-	// FieldUsageReportSchedule holds the string denoting the usage_report_schedule field in the database.
-	FieldUsageReportSchedule = "usage_report_schedule"
-	// FieldUsageReportTimezone holds the string denoting the usage_report_timezone field in the database.
-	FieldUsageReportTimezone = "usage_report_timezone"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -69,10 +61,10 @@ const (
 	EdgeAttributeValues = "attribute_values"
 	// EdgePromoCodeUsages holds the string denoting the promo_code_usages edge name in mutations.
 	EdgePromoCodeUsages = "promo_code_usages"
-	// EdgeRechargeOrders holds the string denoting the recharge_orders edge name in mutations.
-	EdgeRechargeOrders = "recharge_orders"
 	// EdgeBalanceLogs holds the string denoting the balance_logs edge name in mutations.
 	EdgeBalanceLogs = "balance_logs"
+	// EdgeRechargeOrders holds the string denoting the recharge_orders edge name in mutations.
+	EdgeRechargeOrders = "recharge_orders"
 	// EdgeSubscriptionOrders holds the string denoting the subscription_orders edge name in mutations.
 	EdgeSubscriptionOrders = "subscription_orders"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
@@ -140,13 +132,6 @@ const (
 	PromoCodeUsagesInverseTable = "promo_code_usages"
 	// PromoCodeUsagesColumn is the table column denoting the promo_code_usages relation/edge.
 	PromoCodeUsagesColumn = "user_id"
-	// RechargeOrdersTable is the table that holds the recharge_orders relation/edge.
-	RechargeOrdersTable = "recharge_orders"
-	// RechargeOrdersInverseTable is the table name for the RechargeOrder entity.
-	// It exists in this package in order to avoid circular dependency with the "rechargeorder" package.
-	RechargeOrdersInverseTable = "recharge_orders"
-	// RechargeOrdersColumn is the table column denoting the recharge_orders relation/edge.
-	RechargeOrdersColumn = "user_id"
 	// BalanceLogsTable is the table that holds the balance_logs relation/edge.
 	BalanceLogsTable = "balance_logs"
 	// BalanceLogsInverseTable is the table name for the BalanceLog entity.
@@ -154,6 +139,13 @@ const (
 	BalanceLogsInverseTable = "balance_logs"
 	// BalanceLogsColumn is the table column denoting the balance_logs relation/edge.
 	BalanceLogsColumn = "user_id"
+	// RechargeOrdersTable is the table that holds the recharge_orders relation/edge.
+	RechargeOrdersTable = "recharge_orders"
+	// RechargeOrdersInverseTable is the table name for the RechargeOrder entity.
+	// It exists in this package in order to avoid circular dependency with the "rechargeorder" package.
+	RechargeOrdersInverseTable = "recharge_orders"
+	// RechargeOrdersColumn is the table column denoting the recharge_orders relation/edge.
+	RechargeOrdersColumn = "user_id"
 	// SubscriptionOrdersTable is the table that holds the subscription_orders relation/edge.
 	SubscriptionOrdersTable = "subscription_orders"
 	// SubscriptionOrdersInverseTable is the table name for the SubscriptionOrder entity.
@@ -184,13 +176,9 @@ var Columns = []string{
 	FieldStatus,
 	FieldUsername,
 	FieldNotes,
-	FieldWechatOpenid,
 	FieldTotpSecretEncrypted,
 	FieldTotpEnabled,
 	FieldTotpEnabledAt,
-	FieldUsageReportEnabled,
-	FieldUsageReportSchedule,
-	FieldUsageReportTimezone,
 }
 
 var (
@@ -245,22 +233,8 @@ var (
 	UsernameValidator func(string) error
 	// DefaultNotes holds the default value on creation for the "notes" field.
 	DefaultNotes string
-	// DefaultWechatOpenid holds the default value on creation for the "wechat_openid" field.
-	DefaultWechatOpenid string
-	// WechatOpenidValidator is a validator for the "wechat_openid" field. It is called by the builders before save.
-	WechatOpenidValidator func(string) error
 	// DefaultTotpEnabled holds the default value on creation for the "totp_enabled" field.
 	DefaultTotpEnabled bool
-	// DefaultUsageReportEnabled holds the default value on creation for the "usage_report_enabled" field.
-	DefaultUsageReportEnabled bool
-	// DefaultUsageReportSchedule holds the default value on creation for the "usage_report_schedule" field.
-	DefaultUsageReportSchedule string
-	// UsageReportScheduleValidator is a validator for the "usage_report_schedule" field. It is called by the builders before save.
-	UsageReportScheduleValidator func(string) error
-	// DefaultUsageReportTimezone holds the default value on creation for the "usage_report_timezone" field.
-	DefaultUsageReportTimezone string
-	// UsageReportTimezoneValidator is a validator for the "usage_report_timezone" field. It is called by the builders before save.
-	UsageReportTimezoneValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -326,11 +300,6 @@ func ByNotes(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNotes, opts...).ToFunc()
 }
 
-// ByWechatOpenid orders the results by the wechat_openid field.
-func ByWechatOpenid(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldWechatOpenid, opts...).ToFunc()
-}
-
 // ByTotpSecretEncrypted orders the results by the totp_secret_encrypted field.
 func ByTotpSecretEncrypted(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotpSecretEncrypted, opts...).ToFunc()
@@ -344,21 +313,6 @@ func ByTotpEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByTotpEnabledAt orders the results by the totp_enabled_at field.
 func ByTotpEnabledAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotpEnabledAt, opts...).ToFunc()
-}
-
-// ByUsageReportEnabled orders the results by the usage_report_enabled field.
-func ByUsageReportEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldUsageReportEnabled, opts...).ToFunc()
-}
-
-// ByUsageReportSchedule orders the results by the usage_report_schedule field.
-func ByUsageReportSchedule(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldUsageReportSchedule, opts...).ToFunc()
-}
-
-// ByUsageReportTimezone orders the results by the usage_report_timezone field.
-func ByUsageReportTimezone(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldUsageReportTimezone, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.
@@ -487,20 +441,6 @@ func ByPromoCodeUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// ByRechargeOrdersCount orders the results by recharge_orders count.
-func ByRechargeOrdersCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newRechargeOrdersStep(), opts...)
-	}
-}
-
-// ByRechargeOrders orders the results by recharge_orders terms.
-func ByRechargeOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newRechargeOrdersStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
 // ByBalanceLogsCount orders the results by balance_logs count.
 func ByBalanceLogsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -512,6 +452,20 @@ func ByBalanceLogsCount(opts ...sql.OrderTermOption) OrderOption {
 func ByBalanceLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newBalanceLogsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByRechargeOrdersCount orders the results by recharge_orders count.
+func ByRechargeOrdersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newRechargeOrdersStep(), opts...)
+	}
+}
+
+// ByRechargeOrders orders the results by recharge_orders terms.
+func ByRechargeOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRechargeOrdersStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -605,18 +559,18 @@ func newPromoCodeUsagesStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.O2M, false, PromoCodeUsagesTable, PromoCodeUsagesColumn),
 	)
 }
-func newRechargeOrdersStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(RechargeOrdersInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, RechargeOrdersTable, RechargeOrdersColumn),
-	)
-}
 func newBalanceLogsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(BalanceLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, BalanceLogsTable, BalanceLogsColumn),
+	)
+}
+func newRechargeOrdersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RechargeOrdersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, RechargeOrdersTable, RechargeOrdersColumn),
 	)
 }
 func newSubscriptionOrdersStep() *sqlgraph.Step {

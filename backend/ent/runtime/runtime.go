@@ -95,6 +95,14 @@ func init() {
 	apikey.DefaultStatus = apikeyDescStatus.Default.(string)
 	// apikey.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	apikey.StatusValidator = apikeyDescStatus.Validators[0].(func(string) error)
+	// apikeyDescQuota is the schema descriptor for quota field.
+	apikeyDescQuota := apikeyFields[7].Descriptor()
+	// apikey.DefaultQuota holds the default value on creation for the quota field.
+	apikey.DefaultQuota = apikeyDescQuota.Default.(float64)
+	// apikeyDescQuotaUsed is the schema descriptor for quota_used field.
+	apikeyDescQuotaUsed := apikeyFields[8].Descriptor()
+	// apikey.DefaultQuotaUsed holds the default value on creation for the quota_used field.
+	apikey.DefaultQuotaUsed = apikeyDescQuotaUsed.Default.(float64)
 	accountMixin := schema.Account{}.Mixin()
 	accountMixinHooks1 := accountMixin[1].Hooks()
 	account.Hooks[0] = accountMixinHooks1[0]
@@ -393,15 +401,23 @@ func init() {
 	// group.DefaultClaudeCodeOnly holds the default value on creation for the claude_code_only field.
 	group.DefaultClaudeCodeOnly = groupDescClaudeCodeOnly.Default.(bool)
 	// groupDescModelRoutingEnabled is the schema descriptor for model_routing_enabled field.
-	groupDescModelRoutingEnabled := groupFields[17].Descriptor()
+	groupDescModelRoutingEnabled := groupFields[18].Descriptor()
 	// group.DefaultModelRoutingEnabled holds the default value on creation for the model_routing_enabled field.
 	group.DefaultModelRoutingEnabled = groupDescModelRoutingEnabled.Default.(bool)
+	// groupDescMcpXMLInject is the schema descriptor for mcp_xml_inject field.
+	groupDescMcpXMLInject := groupFields[19].Descriptor()
+	// group.DefaultMcpXMLInject holds the default value on creation for the mcp_xml_inject field.
+	group.DefaultMcpXMLInject = groupDescMcpXMLInject.Default.(bool)
+	// groupDescSupportedModelScopes is the schema descriptor for supported_model_scopes field.
+	groupDescSupportedModelScopes := groupFields[20].Descriptor()
+	// group.DefaultSupportedModelScopes holds the default value on creation for the supported_model_scopes field.
+	group.DefaultSupportedModelScopes = groupDescSupportedModelScopes.Default.([]string)
 	// groupDescIsPurchasable is the schema descriptor for is_purchasable field.
-	groupDescIsPurchasable := groupFields[18].Descriptor()
+	groupDescIsPurchasable := groupFields[21].Descriptor()
 	// group.DefaultIsPurchasable holds the default value on creation for the is_purchasable field.
 	group.DefaultIsPurchasable = groupDescIsPurchasable.Default.(bool)
 	// groupDescDisplayOrder is the schema descriptor for display_order field.
-	groupDescDisplayOrder := groupFields[20].Descriptor()
+	groupDescDisplayOrder := groupFields[23].Descriptor()
 	// group.DefaultDisplayOrder holds the default value on creation for the display_order field.
 	group.DefaultDisplayOrder = groupDescDisplayOrder.Default.(int)
 	paymentcallbackMixin := schema.PaymentCallback{}.Mixin()
@@ -1116,32 +1132,10 @@ func init() {
 	userDescNotes := userFields[7].Descriptor()
 	// user.DefaultNotes holds the default value on creation for the notes field.
 	user.DefaultNotes = userDescNotes.Default.(string)
-	// userDescWechatOpenid is the schema descriptor for wechat_openid field.
-	userDescWechatOpenid := userFields[8].Descriptor()
-	// user.DefaultWechatOpenid holds the default value on creation for the wechat_openid field.
-	user.DefaultWechatOpenid = userDescWechatOpenid.Default.(string)
-	// user.WechatOpenidValidator is a validator for the "wechat_openid" field. It is called by the builders before save.
-	user.WechatOpenidValidator = userDescWechatOpenid.Validators[0].(func(string) error)
 	// userDescTotpEnabled is the schema descriptor for totp_enabled field.
-	userDescTotpEnabled := userFields[10].Descriptor()
+	userDescTotpEnabled := userFields[9].Descriptor()
 	// user.DefaultTotpEnabled holds the default value on creation for the totp_enabled field.
 	user.DefaultTotpEnabled = userDescTotpEnabled.Default.(bool)
-	// userDescUsageReportEnabled is the schema descriptor for usage_report_enabled field.
-	userDescUsageReportEnabled := userFields[12].Descriptor()
-	// user.DefaultUsageReportEnabled holds the default value on creation for the usage_report_enabled field.
-	user.DefaultUsageReportEnabled = userDescUsageReportEnabled.Default.(bool)
-	// userDescUsageReportSchedule is the schema descriptor for usage_report_schedule field.
-	userDescUsageReportSchedule := userFields[13].Descriptor()
-	// user.DefaultUsageReportSchedule holds the default value on creation for the usage_report_schedule field.
-	user.DefaultUsageReportSchedule = userDescUsageReportSchedule.Default.(string)
-	// user.UsageReportScheduleValidator is a validator for the "usage_report_schedule" field. It is called by the builders before save.
-	user.UsageReportScheduleValidator = userDescUsageReportSchedule.Validators[0].(func(string) error)
-	// userDescUsageReportTimezone is the schema descriptor for usage_report_timezone field.
-	userDescUsageReportTimezone := userFields[14].Descriptor()
-	// user.DefaultUsageReportTimezone holds the default value on creation for the usage_report_timezone field.
-	user.DefaultUsageReportTimezone = userDescUsageReportTimezone.Default.(string)
-	// user.UsageReportTimezoneValidator is a validator for the "usage_report_timezone" field. It is called by the builders before save.
-	user.UsageReportTimezoneValidator = userDescUsageReportTimezone.Validators[0].(func(string) error)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

@@ -45,7 +45,7 @@ type UserRepository interface {
 	GetByWeChatOpenID(ctx context.Context, openID string) (*User, error)
 	ExistsByWeChatOpenID(ctx context.Context, openID string) (bool, error)
 
-	// TOTP 相关方法
+	// TOTP 双因素认证
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error

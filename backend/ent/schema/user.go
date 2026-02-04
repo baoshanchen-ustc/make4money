@@ -61,10 +61,6 @@ func (User) Fields() []ent.Field {
 		field.String("notes").
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
-		// WeChat OpenID for account binding (see migration 044)
-		field.String("wechat_openid").
-			MaxLen(64).
-			Default(""),
 
 		// TOTP 双因素认证字段
 		field.String("totp_secret_encrypted").
@@ -76,16 +72,6 @@ func (User) Fields() []ent.Field {
 		field.Time("totp_enabled_at").
 			Optional().
 			Nillable(),
-
-		// 使用报告邮件配置字段
-		field.Bool("usage_report_enabled").
-			Default(false),
-		field.String("usage_report_schedule").
-			MaxLen(20).
-			Default("09:00"),
-		field.String("usage_report_timezone").
-			MaxLen(50).
-			Default("Asia/Shanghai"),
 	}
 }
 
@@ -101,8 +87,8 @@ func (User) Edges() []ent.Edge {
 		edge.To("usage_logs", UsageLog.Type),
 		edge.To("attribute_values", UserAttributeValue.Type),
 		edge.To("promo_code_usages", PromoCodeUsage.Type),
-		edge.To("recharge_orders", RechargeOrder.Type),
 		edge.To("balance_logs", BalanceLog.Type),
+		edge.To("recharge_orders", RechargeOrder.Type),
 		edge.To("subscription_orders", SubscriptionOrder.Type),
 	}
 }

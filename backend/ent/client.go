@@ -3431,22 +3431,6 @@ func (c *UserClient) QueryPromoCodeUsages(_m *User) *PromoCodeUsageQuery {
 	return query
 }
 
-// QueryRechargeOrders queries the recharge_orders edge of a User.
-func (c *UserClient) QueryRechargeOrders(_m *User) *RechargeOrderQuery {
-	query := (&RechargeOrderClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, id),
-			sqlgraph.To(rechargeorder.Table, rechargeorder.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, user.RechargeOrdersTable, user.RechargeOrdersColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // QueryBalanceLogs queries the balance_logs edge of a User.
 func (c *UserClient) QueryBalanceLogs(_m *User) *BalanceLogQuery {
 	query := (&BalanceLogClient{config: c.config}).Query()
@@ -3456,6 +3440,22 @@ func (c *UserClient) QueryBalanceLogs(_m *User) *BalanceLogQuery {
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(balancelog.Table, balancelog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.BalanceLogsTable, user.BalanceLogsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryRechargeOrders queries the recharge_orders edge of a User.
+func (c *UserClient) QueryRechargeOrders(_m *User) *RechargeOrderQuery {
+	query := (&RechargeOrderClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(rechargeorder.Table, rechargeorder.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.RechargeOrdersTable, user.RechargeOrdersColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil

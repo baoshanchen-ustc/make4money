@@ -53,10 +53,16 @@ const (
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
 	FieldFallbackGroupID = "fallback_group_id"
+	// FieldFallbackGroupIDOnInvalidRequest holds the string denoting the fallback_group_id_on_invalid_request field in the database.
+	FieldFallbackGroupIDOnInvalidRequest = "fallback_group_id_on_invalid_request"
 	// FieldModelRouting holds the string denoting the model_routing field in the database.
 	FieldModelRouting = "model_routing"
 	// FieldModelRoutingEnabled holds the string denoting the model_routing_enabled field in the database.
 	FieldModelRoutingEnabled = "model_routing_enabled"
+	// FieldMcpXMLInject holds the string denoting the mcp_xml_inject field in the database.
+	FieldMcpXMLInject = "mcp_xml_inject"
+	// FieldSupportedModelScopes holds the string denoting the supported_model_scopes field in the database.
+	FieldSupportedModelScopes = "supported_model_scopes"
 	// FieldIsPurchasable holds the string denoting the is_purchasable field in the database.
 	FieldIsPurchasable = "is_purchasable"
 	// FieldPriceCny holds the string denoting the price_cny field in the database.
@@ -168,8 +174,11 @@ var Columns = []string{
 	FieldImagePrice4k,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
+	FieldFallbackGroupIDOnInvalidRequest,
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
+	FieldMcpXMLInject,
+	FieldSupportedModelScopes,
 	FieldIsPurchasable,
 	FieldPriceCny,
 	FieldDisplayOrder,
@@ -233,6 +242,10 @@ var (
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
 	DefaultModelRoutingEnabled bool
+	// DefaultMcpXMLInject holds the default value on creation for the "mcp_xml_inject" field.
+	DefaultMcpXMLInject bool
+	// DefaultSupportedModelScopes holds the default value on creation for the "supported_model_scopes" field.
+	DefaultSupportedModelScopes []string
 	// DefaultIsPurchasable holds the default value on creation for the "is_purchasable" field.
 	DefaultIsPurchasable bool
 	// DefaultDisplayOrder holds the default value on creation for the "display_order" field.
@@ -342,9 +355,19 @@ func ByFallbackGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFallbackGroupID, opts...).ToFunc()
 }
 
+// ByFallbackGroupIDOnInvalidRequest orders the results by the fallback_group_id_on_invalid_request field.
+func ByFallbackGroupIDOnInvalidRequest(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFallbackGroupIDOnInvalidRequest, opts...).ToFunc()
+}
+
 // ByModelRoutingEnabled orders the results by the model_routing_enabled field.
 func ByModelRoutingEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelRoutingEnabled, opts...).ToFunc()
+}
+
+// ByMcpXMLInject orders the results by the mcp_xml_inject field.
+func ByMcpXMLInject(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMcpXMLInject, opts...).ToFunc()
 }
 
 // ByIsPurchasable orders the results by the is_purchasable field.
