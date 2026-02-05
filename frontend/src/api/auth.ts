@@ -278,6 +278,12 @@ export async function wechatAuth(code: string): Promise<AuthResponse> {
 
   // Store token and user data
   setAuthToken(data.access_token)
+  if (data.refresh_token) {
+    setRefreshToken(data.refresh_token)
+  }
+  if (data.expires_in) {
+    setTokenExpiresAt(data.expires_in)
+  }
   localStorage.setItem('auth_user', JSON.stringify(data.user))
 
   return data
@@ -298,6 +304,8 @@ export interface WeChatScanInitResponse {
 export interface WeChatScanPollResponse {
   status: 'waiting' | 'confirmed'
   access_token?: string
+  refresh_token?: string
+  expires_in?: number
   token_type?: string
   user?: {
     id: string
@@ -330,6 +338,12 @@ export async function wechatScanPoll(sceneId: string): Promise<WeChatScanPollRes
   // If confirmed, store token and user data
   if (data.status === 'confirmed' && data.access_token && data.user) {
     setAuthToken(data.access_token)
+    if (data.refresh_token) {
+      setRefreshToken(data.refresh_token)
+    }
+    if (data.expires_in) {
+      setTokenExpiresAt(data.expires_in)
+    }
     localStorage.setItem('auth_user', JSON.stringify(data.user))
   }
 
