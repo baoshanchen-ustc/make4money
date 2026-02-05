@@ -229,7 +229,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -358,9 +358,14 @@ const handlePageSizeChange = (pageSize: number) => {
 // --- Data ---
 const users = ref<BalanceGroupUserStats[]>([])
 const loading = ref(false)
+let abortController: AbortController | null = null
 
 const loadData = async () => {
   if (!selectedGroupId.value) return
+  // Cancel previous request
+  if (abortController) abortController.abort()
+  abortController = new AbortController()
+
   loading.value = true
   try {
     const result = await adminAPI.balance.getBalanceGroupUserStats({
@@ -372,10 +377,11 @@ const loadData = async () => {
       sort_by: sortBy.value,
       sort_order: sortOrder.value,
       search: searchKeyword.value || undefined
-    })
+    }, { signal: abortController.signal })
     users.value = result.users || []
     pagination.total = result.total || 0
   } catch (error: any) {
+    if (error?.name === 'AbortError' || error?.name === 'CanceledError') return
     console.error('Failed to load balance stats:', error)
     users.value = []
     pagination.total = 0
@@ -524,5 +530,10 @@ onMounted(async () => {
   if (selectedGroupId.value) {
     loadData()
   }
+})
+
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (abortController) abortController.abort()
 })
 </script>

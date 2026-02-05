@@ -1,8 +1,10 @@
 package admin
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -74,7 +76,16 @@ func (h *BalanceHandler) GetStats(c *gin.Context) {
 
 	result, err := h.usageService.GetBalanceGroupUserStats(c.Request.Context(), params)
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, err.Error())
+		// Service validation errors contain safe messages; internal errors should not be exposed
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "is required") ||
+			strings.Contains(errMsg, "must be after") ||
+			strings.Contains(errMsg, "must not exceed") {
+			response.Error(c, http.StatusBadRequest, errMsg)
+		} else {
+			slog.Error("failed to get balance group user stats", "error", err)
+			response.Error(c, http.StatusInternalServerError, "failed to get balance stats")
+		}
 		return
 	}
 

@@ -2394,6 +2394,10 @@ type BalanceGroupUserStatsParams = usagestats.BalanceGroupUserStatsParams
 
 // GetBalanceGroupUserStats returns aggregated usage statistics per user for a balance group within a time range.
 func (r *usageLogRepository) GetBalanceGroupUserStats(ctx context.Context, params *BalanceGroupUserStatsParams) (resp *BalanceGroupUserStatsResponse, err error) {
+	if params.StartDate == nil || params.EndDate == nil {
+		return nil, fmt.Errorf("start_date and end_date are required")
+	}
+
 	// Build dynamic WHERE clause for search
 	args := []any{params.GroupID, *params.StartDate, *params.EndDate}
 	argPos := 4
