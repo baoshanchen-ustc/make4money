@@ -28,6 +28,12 @@ func RegisterAuthRoutes(
 		auth.POST("/login", h.Auth.Login)
 		auth.POST("/login/2fa", h.Auth.Login2FA)
 		auth.POST("/send-verify-code", h.Auth.SendVerifyCode)
+		// Token刷新接口添加速率限制：每分钟最多 30 次（Redis 故障时 fail-close）
+		auth.POST("/refresh", rateLimiter.LimitWithOptions("refresh-token", 30, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.RefreshToken)
+		// 登出接口（公开，允许未认证用户调用以撤销Refresh Token）
+		auth.POST("/logout", h.Auth.Logout)
 		// 优惠码验证接口添加速率限制：每分钟最多 10 次（Redis 故障时 fail-close）
 		auth.POST("/validate-promo-code", rateLimiter.LimitWithOptions("validate-promo", 10, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
@@ -96,5 +102,7 @@ func RegisterAuthRoutes(
 		authenticated.POST("/auth/bind-email", rateLimiter.LimitWithOptions("bind-email", 10, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.BindEmail)
+		// 撤销所有会话（需要认证）
+		authenticated.POST("/auth/revoke-all-sessions", h.Auth.RevokeAllSessions)
 	}
 }

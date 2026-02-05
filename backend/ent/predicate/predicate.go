@@ -24,6 +24,9 @@ type AnnouncementRead func(*sql.Selector)
 // BalanceLog is the predicate function for balancelog builders.
 type BalanceLog func(*sql.Selector)
 
+// ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
+type ErrorPassthroughRule func(*sql.Selector)
+
 // Group is the predicate function for group builders.
 type Group func(*sql.Selector)
 

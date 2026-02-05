@@ -316,4 +316,5 @@ var ProviderSet = wire.NewSet(
 	ProvideOrderCompensationScheduler,
 	NewRechargeRateLimitService,
 	NewWeChatScanLoginService,
+	NewErrorPassthroughService,
 )

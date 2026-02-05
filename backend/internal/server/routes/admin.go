@@ -70,6 +70,9 @@ func RegisterAdminRoutes(
 
 		// 充值订单管理（退款）
 		registerRechargeAdminRoutes(admin, h)
+
+		// 错误透传规则管理
+		registerErrorPassthroughRoutes(admin, h)
 	}
 }
 
@@ -409,5 +412,16 @@ func registerRechargeAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		recharge.GET("/orders/:order_no/logs", h.Admin.Recharge.GetOrderLogs)
 		// 退款
 		recharge.POST("/orders/:order_no/refund", h.Admin.Recharge.RefundOrder)
+	}
+}
+
+func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	rules := admin.Group("/error-passthrough-rules")
+	{
+		rules.GET("", h.Admin.ErrorPassthrough.List)
+		rules.GET("/:id", h.Admin.ErrorPassthrough.GetByID)
+		rules.POST("", h.Admin.ErrorPassthrough.Create)
+		rules.PUT("/:id", h.Admin.ErrorPassthrough.Update)
+		rules.DELETE("/:id", h.Admin.ErrorPassthrough.Delete)
 	}
 }

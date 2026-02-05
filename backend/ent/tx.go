@@ -26,6 +26,8 @@ type Tx struct {
 	AnnouncementRead *AnnouncementReadClient
 	// BalanceLog is the client for interacting with the BalanceLog builders.
 	BalanceLog *BalanceLogClient
+	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
+	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
 	// PaymentCallback is the client for interacting with the PaymentCallback builders.
@@ -195,6 +197,7 @@ func (tx *Tx) init() {
 	tx.Announcement = NewAnnouncementClient(tx.config)
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
 	tx.BalanceLog = NewBalanceLogClient(tx.config)
+	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
 	tx.PaymentCallback = NewPaymentCallbackClient(tx.config)
 	tx.PromoCode = NewPromoCodeClient(tx.config)

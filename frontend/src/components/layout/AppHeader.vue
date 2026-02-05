@@ -281,7 +281,12 @@ function closeDropdown() {
 
 async function handleLogout() {
   closeDropdown()
-  authStore.logout()
+  try {
+    await authStore.logout()
+  } catch (error) {
+    // Ignore logout errors - still redirect to login
+    console.error('Logout error:', error)
+  }
   await router.push('/login')
 }
 
