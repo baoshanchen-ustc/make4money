@@ -19,7 +19,8 @@ func NewRedeemCodeRepository(client *dbent.Client) service.RedeemCodeRepository 
 }
 
 func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemCode) error {
-	created, err := r.client.RedeemCode.Create().
+	client := clientFromContext(ctx, r.client)
+	created, err := client.RedeemCode.Create().
 		SetCode(code.Code).
 		SetType(code.Type).
 		SetValue(code.Value).
@@ -42,10 +43,11 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 		return nil
 	}
 
+	client := clientFromContext(ctx, r.client)
 	builders := make([]*dbent.RedeemCodeCreate, 0, len(codes))
 	for i := range codes {
 		c := &codes[i]
-		b := r.client.RedeemCode.Create().
+		b := client.RedeemCode.Create().
 			SetCode(c.Code).
 			SetType(c.Type).
 			SetValue(c.Value).
@@ -58,7 +60,7 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 		builders = append(builders, b)
 	}
 
-	return r.client.RedeemCode.CreateBulk(builders...).Exec(ctx)
+	return client.RedeemCode.CreateBulk(builders...).Exec(ctx)
 }
 
 func (r *redeemCodeRepository) GetByID(ctx context.Context, id int64) (*service.RedeemCode, error) {

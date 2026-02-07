@@ -697,6 +697,16 @@ export default {
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
     passwordChangeFailed: 'Failed to change password',
+    checkin: {
+      checkInNow: 'Daily Check-in',
+      checkedInToday: 'Checked in today',
+      checkingIn: 'Checking in...',
+      loading: 'Loading...',
+      rewardAmount: "Today's check-in reward: +${amount}",
+      success: 'Check-in successful. You received ${amount} balance',
+      failed: 'Check-in failed',
+      unavailable: 'Daily check-in is currently unavailable'
+    },
     // TOTP 2FA
     totp: {
       title: 'Two-Factor Authentication (2FA)',
@@ -3190,6 +3200,18 @@ export default {
         defaultBalanceHint: 'Initial balance for new users',
         defaultConcurrency: 'Default Concurrency',
         defaultConcurrencyHint: 'Maximum concurrent requests for new users'
+      },
+      dailyCheckin: {
+        title: 'Daily Check-in',
+        description: 'Configure reward range for the daily check-in feature',
+        enabled: 'Enable Daily Check-in',
+        enabledHint: 'When enabled, regular users can check in once per day on profile page',
+        rewardMin: 'Minimum Reward',
+        rewardMinHint: 'Minimum check-in reward in USD (must be greater than or equal to 0)',
+        rewardMax: 'Maximum Reward',
+        rewardMaxHint: 'Maximum check-in reward in USD (must be greater than or equal to minimum)',
+        invalidMin: 'Minimum reward must be greater than or equal to 0',
+        invalidRange: 'Maximum reward must be greater than or equal to minimum reward'
       },
       site: {
         title: 'Site Settings',

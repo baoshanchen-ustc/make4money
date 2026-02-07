@@ -68,7 +68,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userService := service.NewUserService(userRepository, apiKeyAuthCacheInvalidator)
 	subscriptionService := service.NewSubscriptionService(groupRepository, userSubscriptionRepository, billingCacheService)
 	redeemCache := repository.NewRedeemCache(redisClient)
-	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator)
+	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, settingService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator)
 	secretEncryptor, err := repository.NewAESEncryptor(configConfig)
 	if err != nil {
 		return nil, err
