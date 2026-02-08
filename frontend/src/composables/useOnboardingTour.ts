@@ -3,6 +3,8 @@ import { driver, type Driver, type DriveStep } from 'driver.js'
 import 'driver.js/dist/driver.css'
 import { useAuthStore as useUserStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
+import { useAppStore } from '@/stores/app'
+import { useRechargeStore } from '@/stores/recharge'
 import { useI18n } from 'vue-i18n'
 import { getAdminSteps, getUserSteps } from '@/components/Guide/steps'
 
@@ -15,6 +17,8 @@ export function useOnboardingTour(options: OnboardingOptions) {
   const { t } = useI18n()
   const userStore = useUserStore()
   const onboardingStore = useOnboardingStore()
+  const appStore = useAppStore()
+  const rechargeStore = useRechargeStore()
   const storageVersion = 'v4_interactive' // Bump version for new tour type
 
   // Timing constants for better maintainability
@@ -95,7 +99,11 @@ export function useOnboardingTour(options: OnboardingOptions) {
     // 动态获取当前用户角色和步骤
     const isAdmin = userStore.user?.role === 'admin'
     const isSimpleMode = userStore.isSimpleMode
-    const steps = isAdmin ? getAdminSteps(t, isSimpleMode) : getUserSteps(t)
+    const steps = isAdmin ? getAdminSteps(t, isSimpleMode) : getUserSteps(t, {
+      isSimpleMode,
+      purchaseEnabled: !!appStore.cachedPublicSettings?.purchase_subscription_enabled,
+      rechargeEnabled: rechargeStore.isEnabled
+    })
 
     // 确保 DOM 就绪
     await nextTick()
@@ -399,6 +407,8 @@ export function useOnboardingTour(options: OnboardingOptions) {
 
       onDestroyed: () => {
         cleanupClickListener()
+        // 确保 tour 被标记为已查看（覆盖 moveNext 在最后一步触发 destroy 的情况）
+        markAsSeen()
         // 清理全局监听器 (由此处唯一管理)
         if (globalKeyboardHandler) {
           document.removeEventListener('keydown', globalKeyboardHandler, { capture: true })
@@ -531,19 +541,18 @@ export function useOnboardingTour(options: OnboardingOptions) {
       return
     }
 
-    // 简易模式下禁用新手引导
-    if (userStore.isSimpleMode) {
-      return
-    }
-
-    // 只在管理员+标准模式下自动启动
+    // 管理员在简易模式下禁用新手引导（普通用户在简易模式下仍可引导密钥创建）
     const isAdmin = userStore.user?.role === 'admin'
-    if (!isAdmin) {
+    if (userStore.isSimpleMode && isAdmin) {
       return
     }
 
     if (!options.autoStart || hasSeen()) return
-    autoStartTimer = setTimeout(() => {
+    autoStartTimer = setTimeout(async () => {
+      // 确保充值配置已加载，以便引导完成步骤能正确显示余额获取方式
+      if (!rechargeStore.loaded) {
+        await rechargeStore.fetchConfig()
+      }
       void startTour()
     }, TIMING.AUTO_START_DELAY_MS)
   })

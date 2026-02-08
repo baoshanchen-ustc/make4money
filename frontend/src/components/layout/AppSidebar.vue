@@ -71,7 +71,7 @@
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path) }"
             :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+            :data-tour="getSidebarTourAttr(item.path)"
             @click="handleMenuItemClick(item.path)"
           >
             <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -92,7 +92,7 @@
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path) }"
             :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+            :data-tour="getSidebarTourAttr(item.path)"
             @click="handleMenuItemClick(item.path)"
           >
             <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -597,6 +597,21 @@ function closeMobile() {
   appStore.setMobileOpen(false)
 }
 
+/**
+ * 将侧边栏路径映射到 data-tour 属性值
+ */
+function getSidebarTourAttr(path: string): string | undefined {
+  const tourMap: Record<string, string> = {
+    '/keys': 'sidebar-my-keys',
+    '/subscriptions': 'sidebar-subscriptions',
+    '/purchase': 'sidebar-purchase',
+    '/recharge': 'sidebar-recharge',
+    '/usage': 'sidebar-usage',
+    '/redeem': 'sidebar-redeem'
+  }
+  return tourMap[path]
+}
+
 function handleMenuItemClick(itemPath: string) {
   if (mobileOpen.value) {
     setTimeout(() => {
@@ -608,7 +623,8 @@ function handleMenuItemClick(itemPath: string) {
   const pathToSelector: Record<string, string> = {
     '/admin/groups': '#sidebar-group-manage',
     '/admin/accounts': '#sidebar-channel-manage',
-    '/keys': '[data-tour="sidebar-my-keys"]'
+    '/keys': '[data-tour="sidebar-my-keys"]',
+    '/subscriptions': '[data-tour="sidebar-subscriptions"]'
   }
 
   const selector = pathToSelector[itemPath]

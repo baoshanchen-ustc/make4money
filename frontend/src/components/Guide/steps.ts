@@ -244,66 +244,125 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
 }
 
 /**
- * 普通用户引导流程
+ * 普通用户引导流程上下文
  */
-export const getUserSteps = (t: (key: string) => string): DriveStep[] => [
-  {
-    popover: {
-      title: t('onboarding.user.welcome.title'),
-      description: t('onboarding.user.welcome.description'),
-      align: 'center',
-      nextBtnText: t('onboarding.user.welcome.nextBtn'),
-      prevBtnText: t('onboarding.user.welcome.prevBtn')
+export interface UserStepsContext {
+  isSimpleMode: boolean
+  purchaseEnabled: boolean
+  rechargeEnabled: boolean
+}
+
+/**
+ * 普通用户引导流程
+ * @param t 国际化函数
+ * @param context 上下文信息（模式、功能开关等）
+ */
+export const getUserSteps = (t: (key: string) => string, context: UserStepsContext): DriveStep[] => {
+  const isSimpleMode = context.isSimpleMode
+
+  const steps: DriveStep[] = [
+    // ========== 欢迎介绍 ==========
+    {
+      popover: {
+        title: t('onboarding.user.welcome.title'),
+        description: isSimpleMode
+          ? t('onboarding.user.welcome.description')
+          : t('onboarding.user.welcome.descriptionStandard'),
+        align: 'center',
+        nextBtnText: t('onboarding.user.welcome.nextBtn'),
+        prevBtnText: t('onboarding.user.welcome.prevBtn')
+      }
+    },
+
+    // ========== 密钥创建流程 ==========
+    {
+      element: '[data-tour="sidebar-my-keys"]',
+      popover: {
+        title: t('onboarding.user.keyManage.title'),
+        description: t('onboarding.user.keyManage.description'),
+        side: 'right',
+        align: 'center',
+        showButtons: ['close']
+      }
+    },
+    {
+      element: '[data-tour="keys-create-btn"]',
+      popover: {
+        title: t('onboarding.user.createKey.title'),
+        description: t('onboarding.user.createKey.description'),
+        side: 'bottom',
+        align: 'end',
+        showButtons: ['close']
+      }
+    },
+    {
+      element: '[data-tour="key-form-name"]',
+      popover: {
+        title: t('onboarding.user.keyName.title'),
+        description: t('onboarding.user.keyName.description'),
+        side: 'right',
+        align: 'start',
+        showButtons: ['next', 'previous']
+      }
+    },
+    {
+      element: '[data-tour="key-form-group"]',
+      popover: {
+        title: t('onboarding.user.keyGroup.title'),
+        description: t('onboarding.user.keyGroup.description'),
+        side: 'right',
+        align: 'start',
+        showButtons: ['next', 'previous']
+      }
+    },
+    {
+      element: '[data-tour="key-form-submit"]',
+      popover: {
+        title: t('onboarding.user.keySubmit.title'),
+        description: t('onboarding.user.keySubmit.description'),
+        side: 'left',
+        align: 'center',
+        showButtons: ['close']
+      }
     }
-  },
-  {
-    element: '[data-tour="sidebar-my-keys"]',
-    popover: {
-      title: t('onboarding.user.keyManage.title'),
-      description: t('onboarding.user.keyManage.description'),
-      side: 'right',
-      align: 'center',
-      showButtons: ['close']
+  ]
+
+  // ========== Standard 模式：追加订阅和完成步骤 ==========
+  if (!isSimpleMode) {
+    // 步骤 7：订阅与余额介绍
+    steps.push({
+      element: '[data-tour="sidebar-subscriptions"]',
+      popover: {
+        title: t('onboarding.user.subscriptions.title'),
+        description: t('onboarding.user.subscriptions.description'),
+        side: 'right',
+        align: 'center',
+        showButtons: ['next', 'previous']
+      }
+    })
+
+    // 步骤 8：完成总结，动态列出获取余额的方式
+    const methods: string[] = []
+    if (context.purchaseEnabled) {
+      methods.push(`<li>${t('onboarding.user.complete.methodPurchase')}</li>`)
     }
-  },
-  {
-    element: '[data-tour="keys-create-btn"]',
-    popover: {
-      title: t('onboarding.user.createKey.title'),
-      description: t('onboarding.user.createKey.description'),
-      side: 'bottom',
-      align: 'end',
-      showButtons: ['close']
+    if (context.rechargeEnabled) {
+      methods.push(`<li>${t('onboarding.user.complete.methodRecharge')}</li>`)
     }
-  },
-  {
-    element: '[data-tour="key-form-name"]',
-    popover: {
-      title: t('onboarding.user.keyName.title'),
-      description: t('onboarding.user.keyName.description'),
-      side: 'right',
-      align: 'start',
-      showButtons: ['next', 'previous']
-    }
-  },
-  {
-    element: '[data-tour="key-form-group"]',
-    popover: {
-      title: t('onboarding.user.keyGroup.title'),
-      description: t('onboarding.user.keyGroup.description'),
-      side: 'right',
-      align: 'start',
-      showButtons: ['next', 'previous']
-    }
-  },
-  {
-    element: '[data-tour="key-form-submit"]',
-    popover: {
-      title: t('onboarding.user.keySubmit.title'),
-      description: t('onboarding.user.keySubmit.description'),
-      side: 'left',
-      align: 'center',
-      showButtons: ['close']
-    }
+    // 兑换码始终可用
+    methods.push(`<li>${t('onboarding.user.complete.methodRedeem')}</li>`)
+
+    const completeDescription = t('onboarding.user.complete.description')
+      .replace('__METHODS__', methods.join(''))
+
+    steps.push({
+      popover: {
+        title: t('onboarding.user.complete.title'),
+        description: completeDescription,
+        align: 'center'
+      }
+    })
   }
-]
+
+  return steps
+}

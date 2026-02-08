@@ -227,9 +227,12 @@ const hasQRCode = computed(() => !!contactQRCodeWechat.value || !!contactQRCodeG
 const showQRCodeModal = ref(false)
 const docUrl = computed(() => appStore.docUrl)
 
-// 只在标准模式的管理员下显示新手引导按钮
+// 管理员和普通用户都显示重新查看引导按钮（简易模式下仅普通用户显示）
 const showOnboardingButton = computed(() => {
-  return !authStore.isSimpleMode && user.value?.role === 'admin'
+  if (authStore.isSimpleMode) {
+    return user.value?.role !== 'admin'
+  }
+  return true
 })
 
 const userInitials = computed(() => {
