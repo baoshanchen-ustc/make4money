@@ -139,6 +139,11 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Comment("套餐描述（展示给用户）"),
+
+		// 分组排序 (added by migration 052)
+		field.Int("sort_order").
+			Default(0).
+			Comment("分组显示排序，数值越小越靠前"),
 	}
 }
 
@@ -169,5 +174,6 @@ func (Group) Indexes() []ent.Index {
 		index.Fields("is_exclusive"),
 		index.Fields("deleted_at"),
 		index.Fields("is_purchasable"),
+		index.Fields("sort_order"),
 	}
 }

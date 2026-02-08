@@ -476,6 +476,10 @@ func init() {
 	groupDescDisplayOrder := groupFields[23].Descriptor()
 	// group.DefaultDisplayOrder holds the default value on creation for the display_order field.
 	group.DefaultDisplayOrder = groupDescDisplayOrder.Default.(int)
+	// groupDescSortOrder is the schema descriptor for sort_order field.
+	groupDescSortOrder := groupFields[25].Descriptor()
+	// group.DefaultSortOrder holds the default value on creation for the sort_order field.
+	group.DefaultSortOrder = groupDescSortOrder.Default.(int)
 	paymentcallbackMixin := schema.PaymentCallback{}.Mixin()
 	paymentcallbackMixinFields0 := paymentcallbackMixin[0].Fields()
 	_ = paymentcallbackMixinFields0

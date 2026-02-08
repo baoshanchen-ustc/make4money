@@ -432,6 +432,7 @@ var (
 		{Name: "price_cny", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "display_order", Type: field.TypeInt, Default: 0},
 		{Name: "purchasable_description", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
@@ -468,6 +469,11 @@ var (
 				Name:    "group_is_purchasable",
 				Unique:  false,
 				Columns: []*schema.Column{GroupsColumns[25]},
+			},
+			{
+				Name:    "group_sort_order",
+				Unique:  false,
+				Columns: []*schema.Column{GroupsColumns[29]},
 			},
 		},
 	}

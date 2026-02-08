@@ -51,6 +51,9 @@ type Group struct {
 	DisplayOrder           int      // 显示排序（小的在前）
 	PurchasableDescription *string  // 套餐描述（展示给用户）
 
+	// 分组排序
+	SortOrder int
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

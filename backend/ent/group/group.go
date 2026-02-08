@@ -71,6 +71,8 @@ const (
 	FieldDisplayOrder = "display_order"
 	// FieldPurchasableDescription holds the string denoting the purchasable_description field in the database.
 	FieldPurchasableDescription = "purchasable_description"
+	// FieldSortOrder holds the string denoting the sort_order field in the database.
+	FieldSortOrder = "sort_order"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -183,6 +185,7 @@ var Columns = []string{
 	FieldPriceCny,
 	FieldDisplayOrder,
 	FieldPurchasableDescription,
+	FieldSortOrder,
 }
 
 var (
@@ -250,6 +253,8 @@ var (
 	DefaultIsPurchasable bool
 	// DefaultDisplayOrder holds the default value on creation for the "display_order" field.
 	DefaultDisplayOrder int
+	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
+	DefaultSortOrder int
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -388,6 +393,11 @@ func ByDisplayOrder(opts ...sql.OrderTermOption) OrderOption {
 // ByPurchasableDescription orders the results by the purchasable_description field.
 func ByPurchasableDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPurchasableDescription, opts...).ToFunc()
+}
+
+// BySortOrder orders the results by the sort_order field.
+func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSortOrder, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.
