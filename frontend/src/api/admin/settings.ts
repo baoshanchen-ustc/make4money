@@ -88,6 +88,10 @@ export interface SystemSettings {
   // Homepage & Install Guide
   install_guide_videos: string
   home_testimonials: string
+
+  // Account expiry reminder
+  account_expiry_reminder_email: string
+  account_expiry_reminder_advance_days: number
 }
 
 export interface UpdateSettingsRequest {
@@ -153,6 +157,10 @@ export interface UpdateSettingsRequest {
   // Homepage & Install Guide
   install_guide_videos?: string
   home_testimonials?: string
+
+  // Account expiry reminder
+  account_expiry_reminder_email?: string
+  account_expiry_reminder_advance_days?: number
 }
 
 /**

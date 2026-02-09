@@ -568,6 +568,10 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyInstallGuideVideos] = settings.InstallGuideVideos
 	updates[SettingKeyHomeTestimonials] = settings.HomeTestimonials
 
+	// Account expiry reminder
+	updates[SettingKeyAccountExpiryReminderEmail] = strings.TrimSpace(settings.AccountExpiryReminderEmail)
+	updates[SettingKeyAccountExpiryReminderAdvanceDays] = strconv.Itoa(settings.AccountExpiryReminderAdvanceDays)
+
 	err := s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil && s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
@@ -866,6 +870,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Homepage & Install Guide
 	result.InstallGuideVideos = settings[SettingKeyInstallGuideVideos]
 	result.HomeTestimonials = settings[SettingKeyHomeTestimonials]
+
+	// Account expiry reminder
+	result.AccountExpiryReminderEmail = strings.TrimSpace(settings[SettingKeyAccountExpiryReminderEmail])
+	result.AccountExpiryReminderAdvanceDays = 7
+	if raw := strings.TrimSpace(settings[SettingKeyAccountExpiryReminderAdvanceDays]); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			result.AccountExpiryReminderAdvanceDays = v
+		}
+	}
 
 	return result
 }

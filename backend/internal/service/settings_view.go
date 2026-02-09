@@ -83,6 +83,10 @@ type SystemSettings struct {
 	// Homepage & Install Guide
 	InstallGuideVideos string // JSON config for install guide video URLs
 	HomeTestimonials   string // JSON array of user testimonials
+
+	// Account expiry reminder
+	AccountExpiryReminderEmail       string
+	AccountExpiryReminderAdvanceDays int
 }
 
 type PublicSettings struct {

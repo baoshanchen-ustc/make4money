@@ -3842,6 +3842,14 @@ export default {
         globalSchedule: '全局发送时间',
         globalScheduleHint: '非「仅启用报告的用户」模式下使用此时间发送'
       },
+      accountExpiryReminder: {
+        title: '账号到期提醒',
+        description: '配置 Claude OAuth 账号到期前的邮件提醒',
+        email: '提醒邮箱',
+        emailHint: '接收到期提醒的管理员邮箱，留空则不发送提醒',
+        advanceDays: '提前提醒天数',
+        advanceDaysHint: '账号过期前多少天开始发送提醒（默认 7 天）'
+      },
       opsMonitoring: {
         title: '运维监控',
         description: '启用运维监控模块，用于排障与健康可视化',

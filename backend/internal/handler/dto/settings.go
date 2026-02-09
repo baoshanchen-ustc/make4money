@@ -79,6 +79,10 @@ type SystemSettings struct {
 	// Homepage & Install Guide
 	InstallGuideVideos string `json:"install_guide_videos"`
 	HomeTestimonials   string `json:"home_testimonials"`
+
+	// Account expiry reminder
+	AccountExpiryReminderEmail       string `json:"account_expiry_reminder_email"`
+	AccountExpiryReminderAdvanceDays int    `json:"account_expiry_reminder_advance_days"`
 }
 
 type PublicSettings struct {

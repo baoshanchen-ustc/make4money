@@ -110,6 +110,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		UsageReportGlobalSchedule:            settings.UsageReportGlobalSchedule,
 		InstallGuideVideos:                   settings.InstallGuideVideos,
 		HomeTestimonials:                     settings.HomeTestimonials,
+		AccountExpiryReminderEmail:           settings.AccountExpiryReminderEmail,
+		AccountExpiryReminderAdvanceDays:     settings.AccountExpiryReminderAdvanceDays,
 	})
 }
 
@@ -197,6 +199,10 @@ type UpdateSettingsRequest struct {
 	// Homepage & Install Guide
 	InstallGuideVideos *string `json:"install_guide_videos"`
 	HomeTestimonials   *string `json:"home_testimonials"`
+
+	// Account expiry reminder
+	AccountExpiryReminderEmail       *string `json:"account_expiry_reminder_email"`
+	AccountExpiryReminderAdvanceDays *int    `json:"account_expiry_reminder_advance_days"`
 }
 
 // UpdateSettings 更新系统设置
@@ -366,6 +372,26 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.OpsMetricsIntervalSeconds = &v
 	}
 
+	// Account expiry reminder validation
+	if req.AccountExpiryReminderAdvanceDays != nil {
+		v := *req.AccountExpiryReminderAdvanceDays
+		if v < 1 {
+			v = 1
+		}
+		if v > 30 {
+			v = 30
+		}
+		req.AccountExpiryReminderAdvanceDays = &v
+	}
+	if req.AccountExpiryReminderEmail != nil {
+		email := strings.TrimSpace(*req.AccountExpiryReminderEmail)
+		if email != "" && !strings.Contains(email, "@") {
+			response.BadRequest(c, "Account expiry reminder email is not a valid email address")
+			return
+		}
+		req.AccountExpiryReminderEmail = &email
+	}
+
 	settings := &service.SystemSettings{
 		RegistrationEnabled:         req.RegistrationEnabled,
 		EmailVerifyEnabled:          req.EmailVerifyEnabled,
@@ -471,6 +497,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.HomeTestimonials
 		}(),
+		AccountExpiryReminderEmail: func() string {
+			if req.AccountExpiryReminderEmail != nil {
+				return *req.AccountExpiryReminderEmail
+			}
+			return previousSettings.AccountExpiryReminderEmail
+		}(),
+		AccountExpiryReminderAdvanceDays: func() int {
+			if req.AccountExpiryReminderAdvanceDays != nil {
+				return *req.AccountExpiryReminderAdvanceDays
+			}
+			return previousSettings.AccountExpiryReminderAdvanceDays
+		}(),
 	}
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -548,6 +586,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		UsageReportGlobalSchedule:            updatedSettings.UsageReportGlobalSchedule,
 		InstallGuideVideos:                   updatedSettings.InstallGuideVideos,
 		HomeTestimonials:                     updatedSettings.HomeTestimonials,
+		AccountExpiryReminderEmail:           updatedSettings.AccountExpiryReminderEmail,
+		AccountExpiryReminderAdvanceDays:     updatedSettings.AccountExpiryReminderAdvanceDays,
 	})
 }
 
@@ -731,6 +771,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.HomeTestimonials != after.HomeTestimonials {
 		changed = append(changed, "home_testimonials")
+	}
+	if before.AccountExpiryReminderEmail != after.AccountExpiryReminderEmail {
+		changed = append(changed, "account_expiry_reminder_email")
+	}
+	if before.AccountExpiryReminderAdvanceDays != after.AccountExpiryReminderAdvanceDays {
+		changed = append(changed, "account_expiry_reminder_advance_days")
 	}
 	return changed
 }

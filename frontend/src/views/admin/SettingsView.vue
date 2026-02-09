@@ -1901,6 +1901,49 @@
           </div>
         </div>
 
+        <!-- Account Expiry Reminder Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.accountExpiryReminder.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.accountExpiryReminder.description') }}
+            </p>
+          </div>
+          <div class="space-y-4 p-6">
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.accountExpiryReminder.email') }}
+              </label>
+              <input
+                v-model="form.account_expiry_reminder_email"
+                type="email"
+                class="input w-full sm:w-80"
+                placeholder="admin@example.com"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.accountExpiryReminder.emailHint') }}
+              </p>
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.accountExpiryReminder.advanceDays') }}
+              </label>
+              <input
+                v-model.number="form.account_expiry_reminder_advance_days"
+                type="number"
+                min="1"
+                max="30"
+                class="input w-40"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.accountExpiryReminder.advanceDaysHint') }}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- Save Button -->
         <div class="flex justify-end">
           <button type="submit" :disabled="saving" class="btn btn-primary">
@@ -2066,7 +2109,10 @@ const form = reactive<SettingsForm>({
   // Usage report settings
   usage_report_global_enabled: false,
   usage_report_target_scope: 'opted_in',
-  usage_report_global_schedule: '09:00'
+  usage_report_global_schedule: '09:00',
+  // Account expiry reminder
+  account_expiry_reminder_email: '',
+  account_expiry_reminder_advance_days: 7
 })
 
 // LinuxDo OAuth redirect URL suggestion
@@ -2323,7 +2369,10 @@ async function saveSettings() {
       // Usage report settings
       usage_report_global_enabled: form.usage_report_global_enabled,
       usage_report_target_scope: form.usage_report_target_scope,
-      usage_report_global_schedule: form.usage_report_global_schedule
+      usage_report_global_schedule: form.usage_report_global_schedule,
+      // Account expiry reminder
+      account_expiry_reminder_email: form.account_expiry_reminder_email,
+      account_expiry_reminder_advance_days: form.account_expiry_reminder_advance_days
     }
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)

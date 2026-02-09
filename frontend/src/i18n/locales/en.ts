@@ -3667,6 +3667,14 @@ export default {
         globalSchedule: 'Global Send Time',
         globalScheduleHint: 'Used for non-opted-in modes'
       },
+      accountExpiryReminder: {
+        title: 'Account Expiry Reminder',
+        description: 'Configure email reminders before Claude OAuth accounts expire',
+        email: 'Reminder Email',
+        emailHint: 'Admin email to receive expiry reminders. Leave empty to disable',
+        advanceDays: 'Advance Reminder Days',
+        advanceDaysHint: 'How many days before expiry to start sending reminders (default 7)'
+      },
       opsMonitoring: {
         title: 'Ops Monitoring',
         description: 'Enable ops monitoring for troubleshooting and health visibility',
