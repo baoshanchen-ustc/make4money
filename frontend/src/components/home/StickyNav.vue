@@ -39,6 +39,17 @@
           <Icon v-else-if="themeMode === 'dark'" name="moon" size="sm" class="text-indigo-400" />
           <Icon v-else name="clock" size="sm" class="text-emerald-500" />
         </button>
+        <!-- Docs Link -->
+        <a
+          v-if="docUrl"
+          :href="docUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="hidden rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800 sm:inline-flex"
+          :title="t('home.docs')"
+        >
+          <Icon name="book" size="sm" />
+        </a>
         <!-- Install Guide -->
         <router-link
           to="/install-guide"
@@ -74,6 +85,7 @@ const appStore = useAppStore()
 const { isDark, themeMode, toggleTheme } = useTheme()
 
 // Site settings
+const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Code80')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const siteLogoDark = computed(() => appStore.cachedPublicSettings?.site_logo_dark || appStore.siteLogoDark || '')
