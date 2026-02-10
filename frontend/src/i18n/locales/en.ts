@@ -3828,6 +3828,7 @@ export default {
       custom: 'Custom',
       code: 'Code',
       body: 'Body',
+      skipMonitoring: 'Skip Monitoring',
 
       // Columns
       columns: {
@@ -3872,6 +3873,8 @@ export default {
         passthroughBody: 'Passthrough upstream error message',
         customMessage: 'Custom error message',
         customMessagePlaceholder: 'Error message to return to client...',
+        skipMonitoring: 'Skip monitoring',
+        skipMonitoringHint: 'When enabled, errors matching this rule will not be recorded in ops monitoring',
         enabled: 'Enable this rule'
       },
 
