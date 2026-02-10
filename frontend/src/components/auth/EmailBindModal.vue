@@ -144,47 +144,45 @@
               </p>
             </div>
 
-            <!-- Password Input (required 模式下显示) -->
-            <template v-if="required">
-              <div>
-                <label for="email-bind-password" class="input-label">
-                  {{ t('auth.emailBind.passwordLabel') }}
-                </label>
-                <input
-                  id="email-bind-password"
-                  v-model="password"
-                  type="password"
-                  :disabled="isLoading"
-                  class="input"
-                  :class="{ 'input-error': passwordError }"
-                  :placeholder="t('auth.emailBind.passwordPlaceholder')"
-                  autocomplete="new-password"
-                />
-                <p v-if="passwordError" class="input-error-text mt-1">
-                  {{ passwordError }}
-                </p>
-              </div>
+            <!-- Password Input (绑定邮箱时必须设置密码) -->
+            <div>
+              <label for="email-bind-password" class="input-label">
+                {{ t('auth.emailBind.passwordLabel') }}
+              </label>
+              <input
+                id="email-bind-password"
+                v-model="password"
+                type="password"
+                :disabled="isLoading"
+                class="input"
+                :class="{ 'input-error': passwordError }"
+                :placeholder="t('auth.emailBind.passwordPlaceholder')"
+                autocomplete="new-password"
+              />
+              <p v-if="passwordError" class="input-error-text mt-1">
+                {{ passwordError }}
+              </p>
+            </div>
 
-              <div>
-                <label for="email-bind-confirm-password" class="input-label">
-                  {{ t('auth.emailBind.confirmPasswordLabel') }}
-                </label>
-                <input
-                  id="email-bind-confirm-password"
-                  v-model="confirmPassword"
-                  type="password"
-                  :disabled="isLoading"
-                  class="input"
-                  :class="{ 'input-error': confirmPasswordError }"
-                  :placeholder="t('auth.emailBind.confirmPasswordPlaceholder')"
-                  autocomplete="new-password"
-                  @keyup.enter="handleBind"
-                />
-                <p v-if="confirmPasswordError" class="input-error-text mt-1">
-                  {{ confirmPasswordError }}
-                </p>
-              </div>
-            </template>
+            <div>
+              <label for="email-bind-confirm-password" class="input-label">
+                {{ t('auth.emailBind.confirmPasswordLabel') }}
+              </label>
+              <input
+                id="email-bind-confirm-password"
+                v-model="confirmPassword"
+                type="password"
+                :disabled="isLoading"
+                class="input"
+                :class="{ 'input-error': confirmPasswordError }"
+                :placeholder="t('auth.emailBind.confirmPasswordPlaceholder')"
+                autocomplete="new-password"
+                @keyup.enter="handleBind"
+              />
+              <p v-if="confirmPasswordError" class="input-error-text mt-1">
+                {{ confirmPasswordError }}
+              </p>
+            </div>
 
             <!-- Turnstile Widget -->
             <div v-if="turnstileEnabled && turnstileSiteKey">
@@ -422,8 +420,8 @@ async function handleBind(): Promise<void> {
     return
   }
 
-  // required 模式下验证密码
-  if (props.required && !validatePassword()) {
+  // 绑定邮箱时必须设置密码
+  if (!validatePassword()) {
     return
   }
 
@@ -434,7 +432,7 @@ async function handleBind(): Promise<void> {
     await bindEmail({
       email: email.value.trim(),
       verify_code: verifyCode.value.trim(),
-      password: props.required ? password.value : undefined
+      password: password.value
     })
   } catch (error: unknown) {
     const err = error as { message?: string; response?: { data?: { detail?: string } } }

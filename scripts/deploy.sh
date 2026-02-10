@@ -121,29 +121,34 @@ main() {
         print_warning "Step 2/4: 跳过后端编译"
     fi
 
-    # Step 3: 上传到服务器
+    # Step 3: 上传到服务器（先传到临时位置，避免覆盖运行中的二进制）
     print_info "Step 3/4: 上传到服务器..."
+    TEMP_FILE="/tmp/${BINARY_NAME}.new.$$"
 
-    # 先停止远程服务
-    print_info "停止远程服务..."
-    ssh_cmd "pkill -f $BINARY_NAME" || true
+    scp_cmd "backend/$BINARY_NAME" "${REMOTE_USER}@${REMOTE_HOST}:${TEMP_FILE}"
+    ssh_cmd "chmod +x ${TEMP_FILE}"
 
     # 备份旧版本
     ssh_cmd "[ -f ${REMOTE_DIR}/backend/${BINARY_NAME} ] && cp ${REMOTE_DIR}/backend/${BINARY_NAME} ${REMOTE_DIR}/backend/${BINARY_NAME}.backup" || true
 
-    # 上传新版本
-    scp_cmd "backend/$BINARY_NAME" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/backend/${BINARY_NAME}"
-
-    # 设置执行权限
-    ssh_cmd "chmod +x ${REMOTE_DIR}/backend/${BINARY_NAME}"
-
     print_success "上传完成"
 
-    # Step 4: 重启服务
-    print_info "Step 4/4: 重启远程服务..."
+    # Step 4: 停止服务、替换、重启
+    print_info "Step 4/4: 停止服务并替换..."
 
-    # 尝试用 supervisor 重启，如果失败则直接启动
-    ssh_cmd "cd ${REMOTE_DIR}/backend && supervisorctl restart $BINARY_NAME 2>/dev/null || (nohup ./$BINARY_NAME > /tmp/${BINARY_NAME}.log 2>&1 &)"
+    # 停止服务并等待进程完全退出
+    ssh_cmd "supervisorctl stop $BINARY_NAME 2>/dev/null || pkill -f $BINARY_NAME || true"
+    sleep 2
+    # 确保进程已退出
+    ssh_cmd "pkill -9 -f $BINARY_NAME 2>/dev/null || true"
+    sleep 1
+
+    # mv 原子替换（不受 Text file busy 影响）
+    ssh_cmd "mv ${TEMP_FILE} ${REMOTE_DIR}/backend/${BINARY_NAME}"
+
+    # 启动服务
+    print_info "启动服务..."
+    ssh_cmd "cd ${REMOTE_DIR}/backend && (supervisorctl start $BINARY_NAME 2>/dev/null || nohup ./$BINARY_NAME > /tmp/${BINARY_NAME}.log 2>&1 &)"
 
     sleep 2
 
@@ -153,6 +158,10 @@ main() {
     else
         print_error "服务启动失败，请检查日志"
         ssh_cmd "tail -20 /tmp/${BINARY_NAME}.log" || true
+
+        # 尝试回滚
+        print_warning "尝试回滚到备份版本..."
+        ssh_cmd "cd ${REMOTE_DIR}/backend && [ -f ${BINARY_NAME}.backup ] && mv ${BINARY_NAME}.backup ${BINARY_NAME} && (supervisorctl start $BINARY_NAME 2>/dev/null || nohup ./$BINARY_NAME > /tmp/${BINARY_NAME}.log 2>&1 &)" || true
         exit 1
     fi
 

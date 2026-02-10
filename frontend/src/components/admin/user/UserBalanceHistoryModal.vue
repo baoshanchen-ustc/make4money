@@ -89,7 +89,7 @@
       <div v-else class="max-h-[28rem] space-y-3 overflow-y-auto">
         <div
           v-for="item in history"
-          :key="item.id"
+          :key="item.type + '-' + item.id"
           class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-600 dark:bg-dark-800"
         >
           <div class="flex items-start justify-between">

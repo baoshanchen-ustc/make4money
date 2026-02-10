@@ -90,6 +90,15 @@ func (h *AuthHandler) WeChatAuth(c *gin.Context) {
 		return
 	}
 
+	// 补设 wechat_openid（新用户注册时未设置，老用户登录时回填）
+	if user.WeChatOpenID == "" {
+		if err := h.userService.BindWeChatOpenID(c.Request.Context(), user.ID, wechatID); err != nil {
+			log.Printf("[WeChat Auth] Failed to backfill wechat_openid: user_id=%d err=%v", user.ID, err)
+		} else {
+			user.WeChatOpenID = wechatID
+		}
+	}
+
 	response.Success(c, AuthResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",

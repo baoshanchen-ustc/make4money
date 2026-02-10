@@ -626,10 +626,9 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 	if s.rechargeOrderRepo != nil {
 		wechatTotal, err := s.rechargeOrderRepo.SumCreditedAmountByUser(ctx, userID)
 		if err != nil {
-			log.Printf("[AdminService] GetUserBalanceHistory: SumCreditedAmountByUser failed: user_id=%d err=%v", userID, err)
-		} else {
-			totalRecharged += wechatTotal
+			return nil, 0, 0, fmt.Errorf("sum credited amount: %w", err)
 		}
+		totalRecharged += wechatTotal
 	}
 
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
@@ -659,81 +658,75 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 	}
 }
 
+// fetchWechatOrdersAsRedeemCodes queries paid and refunded recharge orders and converts them to RedeemCode.
+func (s *adminServiceImpl) fetchWechatOrdersAsRedeemCodes(ctx context.Context, userID int64, fetchParams pagination.PaginationParams) ([]RedeemCode, error) {
+	paidResult, err := s.rechargeOrderRepo.ListByUserID(ctx, userID, &ListRechargeOrdersRequest{
+		PaginationParams: fetchParams,
+		Status:           OrderStatusPaid,
+	})
+	if err != nil {
+		return nil, err
+	}
+	refundedResult, err := s.rechargeOrderRepo.ListByUserID(ctx, userID, &ListRechargeOrdersRequest{
+		PaginationParams: fetchParams,
+		Status:           OrderStatusRefunded,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	codes := make([]RedeemCode, 0, len(paidResult.Orders)+len(refundedResult.Orders))
+	for _, order := range paidResult.Orders {
+		codes = append(codes, rechargeOrderToRedeemCode(order))
+	}
+	for _, order := range refundedResult.Orders {
+		codes = append(codes, rechargeOrderToRedeemCode(order))
+	}
+	return codes, nil
+}
+
 // getUserWechatRechargeHistory queries recharge_orders and adapts to RedeemCode for display.
 func (s *adminServiceImpl) getUserWechatRechargeHistory(ctx context.Context, userID int64, params pagination.PaginationParams, totalRecharged float64) ([]RedeemCode, int64, float64, error) {
 	if s.rechargeOrderRepo == nil {
 		return nil, 0, totalRecharged, nil
 	}
-	maxFetch := pagination.PaginationParams{Page: 1, PageSize: 1000}
 
-	// Query paid and refunded orders separately (both use full fetch for accurate merge)
-	paidResult, err := s.rechargeOrderRepo.ListByUserID(ctx, userID, &ListRechargeOrdersRequest{
-		PaginationParams: maxFetch,
-		Status:           OrderStatusPaid,
-	})
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	refundedResult, err := s.rechargeOrderRepo.ListByUserID(ctx, userID, &ListRechargeOrdersRequest{
-		PaginationParams: maxFetch,
-		Status:           OrderStatusRefunded,
-	})
+	// Fetch all wechat orders for this user (balance history per user is bounded)
+	allFetch := pagination.PaginationParams{Page: 1, PageSize: 10000}
+	codes, err := s.fetchWechatOrdersAsRedeemCodes(ctx, userID, allFetch)
 	if err != nil {
 		return nil, 0, 0, err
 	}
 
-	// Adapt all orders
-	allCodes := make([]RedeemCode, 0, len(paidResult.Orders)+len(refundedResult.Orders))
-	for _, order := range paidResult.Orders {
-		allCodes = append(allCodes, rechargeOrderToRedeemCode(order))
-	}
-	for _, order := range refundedResult.Orders {
-		allCodes = append(allCodes, rechargeOrderToRedeemCode(order))
-	}
-
-	sortRedeemCodesByTimeDesc(allCodes)
-
-	totalItems := paidResult.Pagination.Total + refundedResult.Pagination.Total
-	return paginateRedeemCodes(allCodes, params, totalItems, totalRecharged)
+	sortRedeemCodesByTimeDesc(codes)
+	return paginateRedeemCodes(codes, params, totalRecharged)
 }
 
 // getUserMergedBalanceHistory merges redeem_codes and recharge_orders, sorted by time descending.
 func (s *adminServiceImpl) getUserMergedBalanceHistory(ctx context.Context, userID int64, params pagination.PaginationParams, totalRecharged float64) ([]RedeemCode, int64, float64, error) {
-	maxFetch := pagination.PaginationParams{Page: 1, PageSize: 1000}
+	// Fetch all records from both sources for merge-sort
+	// Balance history per user is bounded (typically < 10000 records)
+	allFetch := pagination.PaginationParams{Page: 1, PageSize: 10000}
 
-	codes, redeemResult, err := s.redeemCodeRepo.ListByUserPaginated(ctx, userID, maxFetch, "")
+	codes, redeemResult, err := s.redeemCodeRepo.ListByUserPaginated(ctx, userID, allFetch, "")
 	if err != nil {
 		return nil, 0, 0, err
 	}
 
-	// Query paid and refunded orders separately for accurate total count
-	paidResult, err := s.rechargeOrderRepo.ListByUserID(ctx, userID, &ListRechargeOrdersRequest{
-		PaginationParams: maxFetch,
-		Status:           OrderStatusPaid,
-	})
+	wechatCodes, err := s.fetchWechatOrdersAsRedeemCodes(ctx, userID, allFetch)
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	refundedResult, err := s.rechargeOrderRepo.ListByUserID(ctx, userID, &ListRechargeOrdersRequest{
-		PaginationParams: maxFetch,
-		Status:           OrderStatusRefunded,
-	})
-	if err != nil {
-		return nil, 0, 0, err
-	}
-
-	for _, order := range paidResult.Orders {
-		codes = append(codes, rechargeOrderToRedeemCode(order))
-	}
-	for _, order := range refundedResult.Orders {
-		codes = append(codes, rechargeOrderToRedeemCode(order))
-	}
+	codes = append(codes, wechatCodes...)
 
 	sortRedeemCodesByTimeDesc(codes)
 
-	// Total from DB counts (accurate even when records exceed 1000)
-	totalItems := redeemResult.Total + paidResult.Pagination.Total + refundedResult.Pagination.Total
-	return paginateRedeemCodes(codes, params, totalItems, totalRecharged)
+	// Log if we hit the fetch limit (indicates need for a proper UNION query)
+	if redeemResult.Total > int64(allFetch.PageSize) || len(wechatCodes) >= allFetch.PageSize {
+		log.Printf("[AdminService] GetUserBalanceHistory: user_id=%d has more records than fetch limit (%d), pagination may be incomplete", userID, allFetch.PageSize)
+	}
+
+	return paginateRedeemCodes(codes, params, totalRecharged)
 }
 
 // sortRedeemCodesByTimeDesc sorts RedeemCode slice by UsedAt (or CreatedAt) descending.
@@ -752,7 +745,9 @@ func sortRedeemCodesByTimeDesc(codes []RedeemCode) {
 }
 
 // paginateRedeemCodes applies in-memory pagination on a sorted slice.
-func paginateRedeemCodes(codes []RedeemCode, params pagination.PaginationParams, totalItems int64, totalRecharged float64) ([]RedeemCode, int64, float64, error) {
+// totalItems is derived from the actual fetched data to ensure pagination consistency.
+func paginateRedeemCodes(codes []RedeemCode, params pagination.PaginationParams, totalRecharged float64) ([]RedeemCode, int64, float64, error) {
+	totalItems := int64(len(codes))
 	offset := (params.Page - 1) * params.PageSize
 	if offset < 0 {
 		offset = 0
@@ -774,9 +769,9 @@ func rechargeOrderToRedeemCode(order *RechargeOrder) RedeemCode {
 		value = *order.CreditedAmount
 	}
 
-	notes := fmt.Sprintf("微信支付 ¥%.2f", order.Amount)
+	notes := fmt.Sprintf("WeChat Pay ¥%.2f", order.Amount)
 	if order.CreditedAmount != nil && *order.CreditedAmount > 0 {
-		notes = fmt.Sprintf("微信支付 ¥%.2f → $%.2f", order.Amount, *order.CreditedAmount)
+		notes = fmt.Sprintf("WeChat Pay ¥%.2f → $%.2f", order.Amount, *order.CreditedAmount)
 	}
 
 	status := StatusUsed

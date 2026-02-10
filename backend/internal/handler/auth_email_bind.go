@@ -123,12 +123,6 @@ func (h *AuthHandler) BindEmail(c *gin.Context) {
 		return
 	}
 
-	// 验证密码长度（如果提供了密码）
-	if password != "" && len(password) < 6 {
-		response.ErrorFrom(c, infraerrors.BadRequest("PASSWORD_TOO_SHORT", "密码至少需要6个字符"))
-		return
-	}
-
 	// 获取当前用户信息
 	currentUser, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
 	if err != nil {
@@ -139,6 +133,18 @@ func (h *AuthHandler) BindEmail(c *gin.Context) {
 	// 检查用户当前邮箱是否为合成邮箱（只有合成邮箱用户才需要绑定真实邮箱）
 	if !isSyntheticEmail(currentUser.Email) {
 		response.ErrorFrom(c, infraerrors.BadRequest("ALREADY_HAS_EMAIL", "您已绑定真实邮箱"))
+		return
+	}
+
+	// 用户没有密码时，绑定邮箱必须同时设置密码
+	if !currentUser.HasPassword && password == "" {
+		response.ErrorFrom(c, infraerrors.BadRequest("PASSWORD_REQUIRED", "绑定邮箱时必须设置密码"))
+		return
+	}
+
+	// 验证密码长度（如果提供了密码）
+	if password != "" && len(password) < 6 {
+		response.ErrorFrom(c, infraerrors.BadRequest("PASSWORD_TOO_SHORT", "密码至少需要6个字符"))
 		return
 	}
 

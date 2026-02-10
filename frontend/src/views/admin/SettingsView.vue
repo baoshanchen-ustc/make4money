@@ -600,6 +600,19 @@
               </div>
             </div>
 
+            <!-- 强制绑定邮箱（独立于验证码登录，对所有微信登录方式生效） -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.wechat.forceEmailBind')
+                }}</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.wechat.forceEmailBindHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.force_email_bind" />
+            </div>
+
             <div class="flex items-center justify-between">
               <div>
                 <label class="font-medium text-gray-900 dark:text-white">{{
@@ -617,19 +630,6 @@
               class="border-t border-gray-100 pt-4 dark:border-dark-700"
             >
               <div class="grid grid-cols-1 gap-6">
-                <!-- 强制绑定邮箱 -->
-                <div class="flex items-center justify-between">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">{{
-                      t('admin.settings.wechat.forceEmailBind')
-                    }}</label>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                      {{ t('admin.settings.wechat.forceEmailBindHint') }}
-                    </p>
-                  </div>
-                  <Toggle v-model="form.force_email_bind" />
-                </div>
-
                 <!-- 公众号类型选择 -->
                 <div>
                   <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
