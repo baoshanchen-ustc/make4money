@@ -402,8 +402,10 @@ func (s *RechargeOrderService) SyncOrderStatus(ctx context.Context, userID int64
 		return nil, ErrOrderNotBelongToUser
 	}
 
-	// 3. 如果订单已经是终态，直接返回（无需查询微信）
-	if order.Status != OrderStatusPending {
+	// 3. 如果订单已经是已处理终态，直接返回（无需查询微信）
+	// paid/refunded 视为已完成；pending/expired/failed/cancelled 仍允许补偿查询
+	_, alreadyProcessed := evaluateRechargeOrderStatusForPayment(order.Status)
+	if alreadyProcessed {
 		return &SyncOrderStatusResult{
 			OrderNo:      orderNo,
 			Status:       order.Status,
@@ -421,8 +423,8 @@ func (s *RechargeOrderService) SyncOrderStatus(ctx context.Context, userID int64
 	// 5. 根据微信状态映射本地状态
 	localStatus := mapWeChatStatusToLocal(wechatResult.TradeState)
 
-	// 6. 如果微信显示已支付但本地是 pending，触发补偿到账
-	if wechatResult.TradeState == "SUCCESS" && order.Status == OrderStatusPending {
+	// 6. 如果微信显示已支付且本地未完成，触发补偿到账
+	if wechatResult.TradeState == "SUCCESS" {
 		if s.paymentCallbackService != nil {
 			result := s.paymentCallbackService.ProcessPaymentSuccess(ctx, ProcessPaymentSuccessParams{
 				OrderNo:       orderNo,

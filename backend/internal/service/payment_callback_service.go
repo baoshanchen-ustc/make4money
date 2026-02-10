@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -21,14 +22,14 @@ import (
 // - 余额变动日志记录
 // - 异步发送充值成功通知
 type PaymentCallbackService struct {
-	entClient       *dbent.Client
-	redisClient     *redis.Client
-	orderRepo       RechargeOrderRepository
-	userRepo        UserRepository
-	balanceLogRepo  BalanceLogRepository
-	emailService    *EmailService
-	settingService  *SettingService
-	balanceLotSvc   *BalanceLotService
+	entClient      *dbent.Client
+	redisClient    *redis.Client
+	orderRepo      RechargeOrderRepository
+	userRepo       UserRepository
+	balanceLogRepo BalanceLogRepository
+	emailService   *EmailService
+	settingService *SettingService
+	balanceLotSvc  *BalanceLotService
 }
 
 // NewPaymentCallbackService 创建支付回调业务处理服务
@@ -88,6 +89,23 @@ type ProcessPaymentResult struct {
 	ExchangeRate   float64 // 使用的汇率
 	UserID         int64   // 用户ID
 	ErrorMessage   string  // 错误信息
+}
+
+var errRechargePaymentAlreadyProcessed = errors.New("recharge payment already processed")
+
+// evaluateRechargeOrderStatusForPayment 评估订单状态是否允许处理支付成功
+// 返回值：
+//   - canProcess: 是否允许继续执行到账流程
+//   - alreadyProcessed: 是否属于已处理状态（幂等返回）
+func evaluateRechargeOrderStatusForPayment(status string) (canProcess bool, alreadyProcessed bool) {
+	switch status {
+	case OrderStatusPending, OrderStatusExpired, OrderStatusFailed, OrderStatusCancelled:
+		return true, false
+	case OrderStatusPaid, "refunded":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 // ProcessPaymentCallback 处理支付回调
@@ -156,12 +174,20 @@ func (s *PaymentCallbackService) ProcessPaymentCallback(
 	result.UserID = order.UserID
 
 	// 检查订单状态
-	if order.Status != OrderStatusPending {
-		// 订单已处理过（幂等）
-		result.Success = true
-		result.AlreadyPaid = true
-		log.Printf("[PaymentCallback] Order already processed: order_no=%s, status=%s", orderNo, order.Status)
+	canProcess, alreadyProcessed := evaluateRechargeOrderStatusForPayment(order.Status)
+	if !canProcess {
+		if alreadyProcessed {
+			result.Success = true
+			result.AlreadyPaid = true
+			log.Printf("[PaymentCallback] Order already processed: order_no=%s, status=%s", orderNo, order.Status)
+			return result
+		}
+		result.ErrorMessage = fmt.Sprintf("order status does not allow payment processing: %s", order.Status)
+		log.Printf("[PaymentCallback] Unexpected order status for payment: order_no=%s, status=%s", orderNo, order.Status)
 		return result
+	}
+	if order.Status != OrderStatusPending {
+		log.Printf("[PaymentCallback] Processing successful payment for non-pending order: order_no=%s, status=%s", orderNo, order.Status)
 	}
 
 	// 3. 验证金额（以分为单位）
@@ -189,6 +215,12 @@ func (s *PaymentCallbackService) ProcessPaymentCallback(
 	// 6. 在事务中更新订单状态和用户余额
 	err = s.processPaymentInTransactionWithDesc(ctx, order, result.TransactionID, description, creditedAmount, exchangeRate)
 	if err != nil {
+		if errors.Is(err, errRechargePaymentAlreadyProcessed) {
+			result.Success = true
+			result.AlreadyPaid = true
+			log.Printf("[PaymentCallback] Order already processed during transaction: order_no=%s", orderNo)
+			return result
+		}
 		result.ErrorMessage = fmt.Sprintf("transaction failed: %v", err)
 		return result
 	}
@@ -248,13 +280,23 @@ func (s *PaymentCallbackService) ProcessPaymentSuccess(
 	result.TransactionID = params.TransactionID
 
 	// 3. 检查订单状态
-	if order.Status != OrderStatusPending {
-		// 订单已处理过（幂等）
-		result.Success = true
-		result.AlreadyPaid = true
-		log.Printf("[PaymentCallback] Order already processed: order_no=%s, status=%s, source=%s",
+	canProcess, alreadyProcessed := evaluateRechargeOrderStatusForPayment(order.Status)
+	if !canProcess {
+		if alreadyProcessed {
+			result.Success = true
+			result.AlreadyPaid = true
+			log.Printf("[PaymentCallback] Order already processed: order_no=%s, status=%s, source=%s",
+				params.OrderNo, order.Status, params.Source)
+			return result
+		}
+		result.ErrorMessage = fmt.Sprintf("order status does not allow payment processing: %s", order.Status)
+		log.Printf("[PaymentCallback] Unexpected order status for payment: order_no=%s, status=%s, source=%s",
 			params.OrderNo, order.Status, params.Source)
 		return result
+	}
+	if order.Status != OrderStatusPending {
+		log.Printf("[PaymentCallback] Processing successful payment for non-pending order: order_no=%s, status=%s, source=%s",
+			params.OrderNo, order.Status, params.Source)
 	}
 
 	// 4. 验证金额（仅当 AmountInFen > 0 时验证）
@@ -280,6 +322,13 @@ func (s *PaymentCallbackService) ProcessPaymentSuccess(
 	// 7. 在事务中更新订单状态和用户余额
 	err = s.processPaymentInTransactionWithDesc(ctx, order, params.TransactionID, description, creditedAmount, exchangeRate)
 	if err != nil {
+		if errors.Is(err, errRechargePaymentAlreadyProcessed) {
+			result.Success = true
+			result.AlreadyPaid = true
+			log.Printf("[PaymentCallback] Order already processed during transaction: order_no=%s, source=%s",
+				params.OrderNo, params.Source)
+			return result
+		}
 		result.ErrorMessage = fmt.Sprintf("transaction failed: %v", err)
 		return result
 	}
@@ -356,8 +405,29 @@ func (s *PaymentCallbackService) processPaymentInTransactionWithDesc(
 	// 使用事务上下文
 	txCtx := dbent.NewTxContext(ctx, tx)
 
+	// 二次校验订单状态，避免与退款/并发回调产生竞态导致重复到账
+	freshOrder, err := s.orderRepo.GetByID(txCtx, order.ID)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("get order in tx: %w", err)
+	}
+
+	canProcess, alreadyProcessed := evaluateRechargeOrderStatusForPayment(freshOrder.Status)
+	if !canProcess {
+		_ = tx.Rollback()
+		if alreadyProcessed {
+			return errRechargePaymentAlreadyProcessed
+		}
+		return fmt.Errorf("order status does not allow payment processing in tx: %s", freshOrder.Status)
+	}
+
+	if freshOrder.Status != OrderStatusPending {
+		log.Printf("[PaymentCallback] Transaction processing non-pending order: order_no=%s, status=%s",
+			freshOrder.OrderNo, freshOrder.Status)
+	}
+
 	// 查询用户当前余额（用于日志记录）
-	user, err := s.userRepo.GetByID(txCtx, order.UserID)
+	user, err := s.userRepo.GetByID(txCtx, freshOrder.UserID)
 	if err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("get user: %w", err)
@@ -366,40 +436,32 @@ func (s *PaymentCallbackService) processPaymentInTransactionWithDesc(
 
 	// 更新订单状态（包含汇率信息）
 	now := time.Now()
-	order.Status = OrderStatusPaid
-	order.WeChatTransactionID = &transactionID
-	order.PaidAt = &now
-	order.CreditedAmount = &creditedAmount
-	order.ExchangeRateUsed = &exchangeRate
+	freshOrder.Status = OrderStatusPaid
+	freshOrder.WeChatTransactionID = &transactionID
+	freshOrder.PaidAt = &now
+	freshOrder.CreditedAmount = &creditedAmount
+	freshOrder.ExchangeRateUsed = &exchangeRate
 
-	if err := s.orderRepo.Update(txCtx, order); err != nil {
+	if err := s.orderRepo.Update(txCtx, freshOrder); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("update order: %w", err)
 	}
 
 	// 增加用户余额（使用汇率转换后的额度）
-	if err := s.userRepo.UpdateBalance(txCtx, order.UserID, creditedAmount); err != nil {
+	if err := s.userRepo.UpdateBalance(txCtx, freshOrder.UserID, creditedAmount); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("update user balance: %w", err)
-	}
-
-	// 创建余额批次（非关键操作，失败不影响支付流程）
-	if s.balanceLotSvc != nil {
-		if err := s.balanceLotSvc.CreateLot(txCtx, order.UserID, creditedAmount, BalanceLotSourceRecharge, &order.OrderNo, description); err != nil {
-			log.Printf("[PaymentCallback] Failed to create balance lot for order %s, user %d, amount %.2f: %v (payment still processed)",
-				order.OrderNo, order.UserID, creditedAmount, err)
-		}
 	}
 
 	// 插入余额变动日志
 	balanceAfter := balanceBefore + creditedAmount
 	balanceLog := &BalanceLog{
-		UserID:         order.UserID,
+		UserID:         freshOrder.UserID,
 		ChangeType:     BalanceChangeTypeRecharge,
 		Amount:         creditedAmount,
 		BalanceBefore:  balanceBefore,
 		BalanceAfter:   balanceAfter,
-		RelatedOrderNo: &order.OrderNo,
+		RelatedOrderNo: &freshOrder.OrderNo,
 		Description:    description,
 		OperatorID:     0,
 		OperatorType:   OperatorTypeSystem,
@@ -412,6 +474,14 @@ func (s *PaymentCallbackService) processPaymentInTransactionWithDesc(
 	// 提交事务
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// 事务提交成功后，创建余额批次（非关键操作，在事务外执行避免污染事务）
+	if s.balanceLotSvc != nil {
+		if err := s.balanceLotSvc.CreateLot(ctx, freshOrder.UserID, creditedAmount, BalanceLotSourceRecharge, &freshOrder.OrderNo, description); err != nil {
+			log.Printf("[PaymentCallback] Failed to create balance lot for order %s, user %d, amount %.2f: %v (payment already completed)",
+				freshOrder.OrderNo, freshOrder.UserID, creditedAmount, err)
+		}
 	}
 
 	return nil

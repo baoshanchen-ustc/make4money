@@ -297,14 +297,6 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		if err := s.userRepo.UpdateBalance(txCtx, userID, redeemCode.Value); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
 		}
-		// 创建余额批次（非关键操作，失败不影响兑换流程）
-		if s.balanceLotSvc != nil {
-			code := redeemCode.Code
-			desc := fmt.Sprintf("兑换码兑换: %s", code)
-			if err := s.balanceLotSvc.CreateLot(txCtx, userID, redeemCode.Value, BalanceLotSourceRedeem, &code, desc); err != nil {
-				log.Printf("[RedeemService] Failed to create balance lot for user %d, code %s: %v", userID, code, err)
-			}
-		}
 
 	case RedeemTypeConcurrency:
 		// 增加用户并发数
@@ -335,6 +327,15 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	// 提交事务
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// 事务提交成功后，创建余额批次（非关键操作，在事务外执行避免污染事务）
+	if redeemCode.Type == RedeemTypeBalance && s.balanceLotSvc != nil {
+		code := redeemCode.Code
+		desc := fmt.Sprintf("兑换码兑换: %s", code)
+		if err := s.balanceLotSvc.CreateLot(ctx, userID, redeemCode.Value, BalanceLotSourceRedeem, &code, desc); err != nil {
+			log.Printf("[RedeemService] Failed to create balance lot for user %d, code %s: %v (redeem already completed)", userID, code, err)
+		}
 	}
 
 	// 事务提交成功后失效缓存
