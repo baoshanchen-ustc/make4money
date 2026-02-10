@@ -100,6 +100,7 @@ export interface PublicSettings {
   wechat_account_type: string
   wechat_account_qrcode_url: string
   wechat_account_qrcode_data: string
+  force_email_bind: boolean
   install_guide_videos: string
   home_testimonials: string
   version: string

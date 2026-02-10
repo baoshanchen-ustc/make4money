@@ -36,6 +36,7 @@ type SystemSettings struct {
 	WeChatAccountQRCodeData     string `json:"wechat_account_qrcode_data"`
 	WeChatAppID                 string `json:"wechat_app_id"`
 	WeChatAppSecretConfigured   bool   `json:"wechat_app_secret_configured"`
+	ForceEmailBind              bool   `json:"force_email_bind"`
 
 	SiteName                    string `json:"site_name"`
 	SiteLogo                    string `json:"site_logo"`
@@ -117,6 +118,7 @@ type PublicSettings struct {
 	WeChatAccountType           string `json:"wechat_account_type,omitempty"`
 	WeChatAccountQRCodeURL      string `json:"wechat_account_qrcode_url"`
 	WeChatAccountQRCodeData     string `json:"wechat_account_qrcode_data"`
+	ForceEmailBind              bool   `json:"force_email_bind"`
 	Version                     string `json:"version"`
 
 	// Homepage & Install Guide

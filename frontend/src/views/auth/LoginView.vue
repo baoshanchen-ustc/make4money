@@ -311,11 +311,6 @@ const errors = reactive({
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
-  // 检测：已登录但邮箱是合成邮箱（被路由守卫重定向到此，或页面刷新）
-  if (authStore.isAuthenticated && authStore.user?.email?.endsWith('.invalid')) {
-    showEmailBindModal.value = true
-  }
-
   const expiredFlag = sessionStorage.getItem('auth_expired')
   if (expiredFlag) {
     sessionStorage.removeItem('auth_expired')
@@ -342,6 +337,11 @@ onMounted(async () => {
       // 上传的图片 (Base64) 优先于 API 生成的 URL
       wechatAccountQRCodeURL.value = settings.wechat_account_qrcode_data || settings.wechat_account_qrcode_url || ''
       passwordResetEnabled.value = settings.password_reset_enabled
+
+      // 检测：已登录但邮箱是合成邮箱，且启用了强制绑定（被路由守卫重定向到此，或页面刷新）
+      if (settings.force_email_bind && authStore.isAuthenticated && authStore.user?.email?.endsWith('.invalid')) {
+        showEmailBindModal.value = true
+      }
     }
   } catch (error) {
     console.error('Failed to load public settings:', error)
@@ -492,7 +492,14 @@ function handleWeChatBindSuccess(): void {
 
 // Handle need email bind (WeChat login users with synthetic email)
 function handleNeedEmailBind(): void {
-  showEmailBindModal.value = true
+  const settings = appStore.cachedPublicSettings
+  if (settings?.force_email_bind) {
+    showEmailBindModal.value = true
+  } else {
+    // 非强制模式下，直接跳转到 dashboard，由 EmailBindReminder 提醒
+    const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
+    router.push(redirectTo)
+  }
 }
 
 // Handle email bind success

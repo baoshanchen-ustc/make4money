@@ -79,6 +79,7 @@ const (
 	SettingKeyPromoCodeEnabled      = "promo_code_enabled"      // 是否启用优惠码功能
 	SettingKeyPasswordResetEnabled  = "password_reset_enabled"  // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyInvitationCodeEnabled = "invitation_code_enabled" // 是否启用邀请码注册
+	SettingKeyForceEmailBind       = "force_email_bind"        // 是否强制 OAuth 用户绑定邮箱
 
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址

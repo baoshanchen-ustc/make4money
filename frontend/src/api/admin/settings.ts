@@ -62,6 +62,7 @@ export interface SystemSettings {
   wechat_account_qrcode_data: string
   wechat_app_id: string
   wechat_app_secret_configured: boolean
+  force_email_bind: boolean
 
   // Model fallback configuration
   enable_model_fallback: boolean
@@ -135,6 +136,7 @@ export interface UpdateSettingsRequest {
   linuxdo_connect_client_id?: string
   linuxdo_connect_client_secret?: string
   linuxdo_connect_redirect_url?: string
+  force_email_bind?: boolean
   wechat_auth_enabled?: boolean
   wechat_account_type?: 'subscription' | 'unverified_official' | string
   wechat_server_address?: string

@@ -334,6 +334,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyWeChatAccountType,
 		SettingKeyWeChatAccountQRCodeURL,
 		SettingKeyWeChatAccountQRCodeData,
+		SettingKeyForceEmailBind,
 		SettingKeyInstallGuideVideos,
 		SettingKeyHomeTestimonials,
 	}
@@ -381,6 +382,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatAccountType:           s.getStringOrDefault(settings, SettingKeyWeChatAccountType, WeChatAccountTypeSubscription),
 		WeChatAccountQRCodeURL:      settings[SettingKeyWeChatAccountQRCodeURL],
 		WeChatAccountQRCodeData:     settings[SettingKeyWeChatAccountQRCodeData],
+		ForceEmailBind:              settings[SettingKeyForceEmailBind] == "true",
 		InstallGuideVideos:          settings[SettingKeyInstallGuideVideos],
 		HomeTestimonials:            settings[SettingKeyHomeTestimonials],
 	}, nil
@@ -433,6 +435,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		WeChatAccountType           string `json:"wechat_account_type,omitempty"`
 		WeChatAccountQRCodeURL      string `json:"wechat_account_qrcode_url,omitempty"`
 		WeChatAccountQRCodeData     string `json:"wechat_account_qrcode_data,omitempty"`
+		ForceEmailBind              bool   `json:"force_email_bind"`
 		Version                     string `json:"version,omitempty"`
 		InstallGuideVideos          string `json:"install_guide_videos,omitempty"`
 		HomeTestimonials            string `json:"home_testimonials,omitempty"`
@@ -463,6 +466,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		WeChatAccountType:           settings.WeChatAccountType,
 		WeChatAccountQRCodeURL:      settings.WeChatAccountQRCodeURL,
 		WeChatAccountQRCodeData:     settings.WeChatAccountQRCodeData,
+		ForceEmailBind:              settings.ForceEmailBind,
 		Version:                     s.version,
 		InstallGuideVideos:          settings.InstallGuideVideos,
 		HomeTestimonials:            settings.HomeTestimonials,
@@ -506,6 +510,9 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	if settings.LinuxDoConnectClientSecret != "" {
 		updates[SettingKeyLinuxDoConnectClientSecret] = settings.LinuxDoConnectClientSecret
 	}
+
+	// 强制绑定邮箱
+	updates[SettingKeyForceEmailBind] = strconv.FormatBool(settings.ForceEmailBind)
 
 	// 微信公众号验证码登录
 	updates[SettingKeyWeChatAuthEnabled] = strconv.FormatBool(settings.WeChatAuthEnabled)
@@ -834,6 +841,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.WeChatAppID = strings.TrimSpace(settings[SettingKeyWeChatAppID])
 	result.WeChatAppSecret = strings.TrimSpace(settings[SettingKeyWeChatAppSecret])
 	result.WeChatAppSecretConfigured = result.WeChatAppSecret != ""
+	result.ForceEmailBind = settings[SettingKeyForceEmailBind] == "true"
 
 	// Model fallback settings
 	result.EnableModelFallback = settings[SettingKeyEnableModelFallback] == "true"

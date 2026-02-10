@@ -507,8 +507,9 @@ router.beforeEach(async (to, _from, next) => {
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
 
-  // Helper: check if user has synthetic email (OAuth user who hasn't bound real email)
-  const needsEmailBind = authStore.isAuthenticated && authStore.user?.email?.endsWith('.invalid')
+  // Helper: check if user has synthetic email AND force_email_bind is enabled
+  const forceEmailBind = appStore.cachedPublicSettings?.force_email_bind === true
+  const needsEmailBind = forceEmailBind && authStore.isAuthenticated && authStore.user?.email?.endsWith('.invalid')
 
   // If route doesn't require auth, allow access
   if (!requiresAuth) {

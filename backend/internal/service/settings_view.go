@@ -40,6 +40,7 @@ type SystemSettings struct {
 	WeChatAppID                 string
 	WeChatAppSecret             string
 	WeChatAppSecretConfigured   bool
+	ForceEmailBind              bool // 是否强制 OAuth 用户绑定邮箱
 
 	SiteName                    string
 	SiteLogo                    string
@@ -124,6 +125,7 @@ type PublicSettings struct {
 	WeChatAccountType       string // "subscription" 或 "unverified_official"
 	WeChatAccountQRCodeURL  string
 	WeChatAccountQRCodeData string // 上传的二维码图片数据 (Base64)
+	ForceEmailBind          bool   // 是否强制 OAuth 用户绑定邮箱
 	Version                 string
 
 	// Homepage & Install Guide

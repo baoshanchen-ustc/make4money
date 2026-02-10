@@ -79,6 +79,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		WeChatAccountQRCodeData:              settings.WeChatAccountQRCodeData,
 		WeChatAppID:                          settings.WeChatAppID,
 		WeChatAppSecretConfigured:            settings.WeChatAppSecretConfigured,
+		ForceEmailBind:                       settings.ForceEmailBind,
 		SiteName:                             settings.SiteName,
 		SiteLogo:                             settings.SiteLogo,
 		SiteLogoDark:                         settings.SiteLogoDark,
@@ -147,6 +148,9 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectClientID     string `json:"linuxdo_connect_client_id"`
 	LinuxDoConnectClientSecret string `json:"linuxdo_connect_client_secret"`
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
+
+	// 强制绑定邮箱
+	ForceEmailBind bool `json:"force_email_bind"`
 
 	// 微信公众号验证码登录
 	WeChatAuthEnabled       bool   `json:"wechat_auth_enabled"`
@@ -443,6 +447,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientID:      req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:  req.LinuxDoConnectClientSecret,
 		LinuxDoConnectRedirectURL:   req.LinuxDoConnectRedirectURL,
+		ForceEmailBind:              req.ForceEmailBind,
 		WeChatAuthEnabled:           req.WeChatAuthEnabled,
 		WeChatAccountType:           req.WeChatAccountType,
 		WeChatServerAddress:         req.WeChatServerAddress,
@@ -603,6 +608,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		WeChatAccountQRCodeData:              updatedSettings.WeChatAccountQRCodeData,
 		WeChatAppID:                          updatedSettings.WeChatAppID,
 		WeChatAppSecretConfigured:            updatedSettings.WeChatAppSecretConfigured,
+		ForceEmailBind:                       updatedSettings.ForceEmailBind,
 		SiteName:                             updatedSettings.SiteName,
 		SiteLogo:                             updatedSettings.SiteLogo,
 		SiteLogoDark:                         updatedSettings.SiteLogoDark,

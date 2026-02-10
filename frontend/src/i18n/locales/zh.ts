@@ -3709,7 +3709,9 @@ export default {
         finalPreview: '最终效果预览',
         source: '来源',
         sourceUpload: '已上传',
-        sourceGenerated: 'API生成'
+        sourceGenerated: 'API生成',
+        forceEmailBind: '强制绑定邮箱',
+        forceEmailBindHint: '启用后，微信登录用户必须绑定邮箱并设置密码才能使用系统'
       },
       wechatPay: {
         title: '微信支付配置',

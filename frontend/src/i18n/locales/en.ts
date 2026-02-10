@@ -3537,7 +3537,9 @@ export default {
         finalPreview: 'Final Preview',
         source: 'Source',
         sourceUpload: 'Uploaded',
-        sourceGenerated: 'API Generated'
+        sourceGenerated: 'API Generated',
+        forceEmailBind: 'Force Email Binding',
+        forceEmailBindHint: 'When enabled, WeChat users must bind email and set password before using the system'
       },
       wechatPay: {
         title: 'WeChat Pay Configuration',
