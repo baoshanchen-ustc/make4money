@@ -1,10 +1,7 @@
 package admin
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -61,13 +58,11 @@ func TestProxyExportDataRespectsFilters(t *testing.T) {
 		},
 	}
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/proxies/data?protocol=https", nil)
-	router.ServeHTTP(rec, req)
+	rec := performRequest(t, router, http.MethodGet, "/api/v1/admin/proxies/data?protocol=https", nil, "")
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	var resp proxyDataResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	decodeJSONResponse(t, rec, &resp)
 	require.Equal(t, 0, resp.Code)
 	require.Empty(t, resp.Data.Type)
 	require.Equal(t, 0, resp.Data.Version)
@@ -102,13 +97,11 @@ func TestProxyExportDataWithSelectedIDs(t *testing.T) {
 		},
 	}
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/proxies/data?ids=2", nil)
-	router.ServeHTTP(rec, req)
+	rec := performRequest(t, router, http.MethodGet, "/api/v1/admin/proxies/data?ids=2", nil, "")
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	var resp proxyDataResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	decodeJSONResponse(t, rec, &resp)
 	require.Equal(t, 0, resp.Code)
 	require.Len(t, resp.Data.Proxies, 1)
 	require.Equal(t, "https", resp.Data.Proxies[0].Protocol)
@@ -161,15 +154,11 @@ func TestProxyImportDataReusesAndTriggersLatencyProbe(t *testing.T) {
 		},
 	}
 
-	body, _ := json.Marshal(payload)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies/data", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := performJSONRequest(t, router, http.MethodPost, "/api/v1/admin/proxies/data", payload)
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	var resp proxyImportResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	decodeJSONResponse(t, rec, &resp)
 	require.Equal(t, 0, resp.Code)
 	require.Equal(t, 1, resp.Data.ProxyCreated)
 	require.Equal(t, 1, resp.Data.ProxyReused)

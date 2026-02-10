@@ -112,6 +112,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		HomeTestimonials:                     settings.HomeTestimonials,
 		AccountExpiryReminderEmail:           settings.AccountExpiryReminderEmail,
 		AccountExpiryReminderAdvanceDays:     settings.AccountExpiryReminderAdvanceDays,
+		BalanceLotExpiryDays:                 settings.BalanceLotExpiryDays,
+		BalanceExpiryReminderEnabled:         settings.BalanceExpiryReminderEnabled,
+		BalanceExpiryReminderAdvanceDays:     settings.BalanceExpiryReminderAdvanceDays,
 	})
 }
 
@@ -203,6 +206,11 @@ type UpdateSettingsRequest struct {
 	// Account expiry reminder
 	AccountExpiryReminderEmail       *string `json:"account_expiry_reminder_email"`
 	AccountExpiryReminderAdvanceDays *int    `json:"account_expiry_reminder_advance_days"`
+
+	// Balance lot expiry
+	BalanceLotExpiryDays             *int  `json:"balance_lot_expiry_days"`
+	BalanceExpiryReminderEnabled     *bool `json:"balance_expiry_reminder_enabled"`
+	BalanceExpiryReminderAdvanceDays *int  `json:"balance_expiry_reminder_advance_days"`
 }
 
 // UpdateSettings 更新系统设置
@@ -392,6 +400,28 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.AccountExpiryReminderEmail = &email
 	}
 
+	// Balance lot expiry validation
+	if req.BalanceLotExpiryDays != nil {
+		v := *req.BalanceLotExpiryDays
+		if v < 1 {
+			v = 1
+		}
+		if v > 365 {
+			v = 365
+		}
+		req.BalanceLotExpiryDays = &v
+	}
+	if req.BalanceExpiryReminderAdvanceDays != nil {
+		v := *req.BalanceExpiryReminderAdvanceDays
+		if v < 1 {
+			v = 1
+		}
+		if v > 30 {
+			v = 30
+		}
+		req.BalanceExpiryReminderAdvanceDays = &v
+	}
+
 	settings := &service.SystemSettings{
 		RegistrationEnabled:         req.RegistrationEnabled,
 		EmailVerifyEnabled:          req.EmailVerifyEnabled,
@@ -509,6 +539,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AccountExpiryReminderAdvanceDays
 		}(),
+		BalanceLotExpiryDays: func() int {
+			if req.BalanceLotExpiryDays != nil {
+				return *req.BalanceLotExpiryDays
+			}
+			return previousSettings.BalanceLotExpiryDays
+		}(),
+		BalanceExpiryReminderEnabled: func() bool {
+			if req.BalanceExpiryReminderEnabled != nil {
+				return *req.BalanceExpiryReminderEnabled
+			}
+			return previousSettings.BalanceExpiryReminderEnabled
+		}(),
+		BalanceExpiryReminderAdvanceDays: func() int {
+			if req.BalanceExpiryReminderAdvanceDays != nil {
+				return *req.BalanceExpiryReminderAdvanceDays
+			}
+			return previousSettings.BalanceExpiryReminderAdvanceDays
+		}(),
 	}
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -588,6 +636,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		HomeTestimonials:                     updatedSettings.HomeTestimonials,
 		AccountExpiryReminderEmail:           updatedSettings.AccountExpiryReminderEmail,
 		AccountExpiryReminderAdvanceDays:     updatedSettings.AccountExpiryReminderAdvanceDays,
+		BalanceLotExpiryDays:                 updatedSettings.BalanceLotExpiryDays,
+		BalanceExpiryReminderEnabled:         updatedSettings.BalanceExpiryReminderEnabled,
+		BalanceExpiryReminderAdvanceDays:     updatedSettings.BalanceExpiryReminderAdvanceDays,
 	})
 }
 
@@ -777,6 +828,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AccountExpiryReminderAdvanceDays != after.AccountExpiryReminderAdvanceDays {
 		changed = append(changed, "account_expiry_reminder_advance_days")
+	}
+	if before.BalanceLotExpiryDays != after.BalanceLotExpiryDays {
+		changed = append(changed, "balance_lot_expiry_days")
+	}
+	if before.BalanceExpiryReminderEnabled != after.BalanceExpiryReminderEnabled {
+		changed = append(changed, "balance_expiry_reminder_enabled")
+	}
+	if before.BalanceExpiryReminderAdvanceDays != after.BalanceExpiryReminderAdvanceDays {
+		changed = append(changed, "balance_expiry_reminder_advance_days")
 	}
 	return changed
 }

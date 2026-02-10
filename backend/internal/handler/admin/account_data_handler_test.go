@@ -1,10 +1,7 @@
 package admin
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -112,13 +109,11 @@ func TestExportDataIncludesSecrets(t *testing.T) {
 		},
 	}
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/data", nil)
-	router.ServeHTTP(rec, req)
+	rec := performRequest(t, router, http.MethodGet, "/api/v1/admin/accounts/data", nil, "")
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	var resp dataResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	decodeJSONResponse(t, rec, &resp)
 	require.Equal(t, 0, resp.Code)
 	require.Empty(t, resp.Data.Type)
 	require.Equal(t, 0, resp.Data.Version)
@@ -158,13 +153,11 @@ func TestExportDataWithoutProxies(t *testing.T) {
 		},
 	}
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/data?include_proxies=false", nil)
-	router.ServeHTTP(rec, req)
+	rec := performRequest(t, router, http.MethodGet, "/api/v1/admin/accounts/data?include_proxies=false", nil, "")
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	var resp dataResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	decodeJSONResponse(t, rec, &resp)
 	require.Equal(t, 0, resp.Code)
 	require.Len(t, resp.Data.Proxies, 0)
 	require.Len(t, resp.Data.Accounts, 1)
@@ -218,11 +211,7 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 		"skip_default_group_bind": true,
 	}
 
-	body, _ := json.Marshal(dataPayload)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(rec, req)
+	rec := performJSONRequest(t, router, http.MethodPost, "/api/v1/admin/accounts/data", dataPayload)
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.Len(t, adminSvc.createdProxies, 0)

@@ -99,6 +99,7 @@ func (s *BalanceLotExpiryScheduler) maybeMigrateLegacyBalances() {
 
 	// Redis SetNX 防止重复迁移
 	migrationKey := "balance_lots_migration_done"
+	migrationRetryTTL := 6 * time.Hour
 	ok, err := s.redisClient.SetNX(ctx, migrationKey, "1", 0).Result()
 	if err != nil {
 		log.Printf("[BalanceLotExpiry] Failed to check migration lock: %v", err)
@@ -110,6 +111,8 @@ func (s *BalanceLotExpiryScheduler) maybeMigrateLegacyBalances() {
 	}
 
 	log.Printf("[BalanceLotExpiry] Starting legacy balance migration...")
+
+	migrationFailed := false
 
 	// 获取过期天数配置
 	days := s.balanceLotService.GetExpiryDays(ctx)
@@ -129,8 +132,7 @@ func (s *BalanceLotExpiryScheduler) maybeMigrateLegacyBalances() {
 	rows, err := s.balanceLotService.entClient.QueryContext(ctx, query)
 	if err != nil {
 		log.Printf("[BalanceLotExpiry] Failed to query users for migration: %v", err)
-		// 删除 Redis 键让下次重试
-		s.redisClient.Del(ctx, migrationKey)
+		s.setMigrationRetryMarker(ctx, migrationKey, migrationRetryTTL)
 		return
 	}
 	defer rows.Close()
@@ -143,6 +145,7 @@ func (s *BalanceLotExpiryScheduler) maybeMigrateLegacyBalances() {
 		var balance float64
 		if err := rows.Scan(&userID, &balance); err != nil {
 			log.Printf("[BalanceLotExpiry] Failed to scan user row: %v", err)
+			migrationFailed = true
 			continue
 		}
 
@@ -159,6 +162,7 @@ func (s *BalanceLotExpiryScheduler) maybeMigrateLegacyBalances() {
 
 		if err := s.balanceLotService.lotRepo.Create(ctx, lot); err != nil {
 			log.Printf("[BalanceLotExpiry] Failed to create migration lot for user %d: %v", userID, err)
+			migrationFailed = true
 			continue
 		}
 
@@ -167,7 +171,27 @@ func (s *BalanceLotExpiryScheduler) maybeMigrateLegacyBalances() {
 
 	if err := rows.Err(); err != nil {
 		log.Printf("[BalanceLotExpiry] Row iteration error: %v", err)
+		migrationFailed = true
+	}
+
+	if migrationFailed {
+		log.Printf("[BalanceLotExpiry] Legacy balance migration completed with partial failures: %d users migrated, retry in up to %s", totalMigrated, migrationRetryTTL)
+		s.setMigrationRetryMarker(ctx, migrationKey, migrationRetryTTL)
+		return
+	}
+
+	// 迁移成功后保留完成标记，并设置较长 TTL 以降低误触发概率
+	if err := s.redisClient.Expire(ctx, migrationKey, 365*24*time.Hour).Err(); err != nil {
+		log.Printf("[BalanceLotExpiry] Failed to set migration marker TTL: %v", err)
 	}
 
 	log.Printf("[BalanceLotExpiry] Legacy balance migration completed: %d users migrated", totalMigrated)
+}
+
+func (s *BalanceLotExpiryScheduler) setMigrationRetryMarker(ctx context.Context, migrationKey string, retryTTL time.Duration) {
+	if err := s.redisClient.Set(ctx, migrationKey, "1", retryTTL).Err(); err != nil {
+		log.Printf("[BalanceLotExpiry] Failed to set retry marker TTL: %v", err)
+		// 回退：清空标记，确保下次可重试
+		s.redisClient.Del(ctx, migrationKey)
+	}
 }

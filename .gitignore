@@ -117,6 +117,7 @@ backend/data/
 # ===================
 backend/config.yaml
 deploy/config.yaml
+backend/certs/
 backend/.installed
 
 # ===================

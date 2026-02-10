@@ -83,6 +83,11 @@ type SystemSettings struct {
 	// Account expiry reminder
 	AccountExpiryReminderEmail       string `json:"account_expiry_reminder_email"`
 	AccountExpiryReminderAdvanceDays int    `json:"account_expiry_reminder_advance_days"`
+
+	// Balance lot expiry
+	BalanceLotExpiryDays             int  `json:"balance_lot_expiry_days"`
+	BalanceExpiryReminderEnabled     bool `json:"balance_expiry_reminder_enabled"`
+	BalanceExpiryReminderAdvanceDays int  `json:"balance_expiry_reminder_advance_days"`
 }
 
 type PublicSettings struct {

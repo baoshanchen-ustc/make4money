@@ -183,6 +183,7 @@ type OpenAIGatewayService struct {
 	httpUpstream        HTTPUpstream
 	deferredService     *DeferredService
 	openAITokenProvider *OpenAITokenProvider
+	balanceLotSvc       *BalanceLotService
 	toolCorrector       *CodexToolCorrector
 }
 
@@ -202,6 +203,7 @@ func NewOpenAIGatewayService(
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
 	openAITokenProvider *OpenAITokenProvider,
+	balanceLotSvc *BalanceLotService,
 ) *OpenAIGatewayService {
 	return &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -218,6 +220,7 @@ func NewOpenAIGatewayService(
 		httpUpstream:        httpUpstream,
 		deferredService:     deferredService,
 		openAITokenProvider: openAITokenProvider,
+		balanceLotSvc:       balanceLotSvc,
 		toolCorrector:       NewCodexToolCorrector(),
 	}
 }
@@ -1818,7 +1821,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 	} else {
 		if shouldBill && cost.ActualCost > 0 {
-			_ = s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost)
+			if s.balanceLotSvc != nil {
+				if err := s.balanceLotSvc.DeductFromLots(ctx, user.ID, cost.ActualCost); err != nil {
+					log.Printf("Deduct from balance lots failed: %v", err)
+				}
+			} else {
+				if err := s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost); err != nil {
+					log.Printf("Deduct balance failed: %v", err)
+				}
+			}
 			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
 		}
 	}
