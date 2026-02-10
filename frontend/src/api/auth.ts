@@ -467,6 +467,7 @@ export async function resetPassword(request: ResetPasswordRequest): Promise<Rese
 export interface BindEmailRequest {
   email: string
   verify_code: string
+  password?: string
 }
 
 /**

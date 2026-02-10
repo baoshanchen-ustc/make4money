@@ -297,6 +297,36 @@ func (s *UserService) GetByEmail(ctx context.Context, email string) (*User, erro
 	return s.userRepo.GetByEmail(ctx, email)
 }
 
+// BindEmailWithPassword 绑定邮箱并设置密码（一次事务完成）
+// 用于微信等 OAuth 用户绑定真实邮箱时同时设置密码
+func (s *UserService) BindEmailWithPassword(ctx context.Context, userID int64, email, password string) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	user.Email = email
+
+	if password != "" && !user.HasPassword {
+		if err := user.SetPassword(password); err != nil {
+			return fmt.Errorf("set password: %w", err)
+		}
+		user.HasPassword = true
+		user.TokenVersion++
+	}
+
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("update user: %w", err)
+	}
+
+	// Invalidate auth cache
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+
+	return nil
+}
+
 // UpdateEmail 更新用户邮箱
 func (s *UserService) UpdateEmail(ctx context.Context, userID int64, email string) error {
 	user, err := s.userRepo.GetByID(ctx, userID)

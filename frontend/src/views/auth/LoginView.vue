@@ -196,11 +196,12 @@
       @success="handleWeChatBindSuccess"
     />
 
-    <!-- Email Bind Modal -->
+    <!-- Email Bind Modal (微信登录用户强制绑定邮箱) -->
     <EmailBindModal
       :show="showEmailBindModal"
-      @close="showEmailBindModal = false"
-      @skip="handleSkipEmailBind"
+      :required="true"
+      @close="handleEmailBindSuccess"
+      @skip="handleEmailBindSuccess"
       @success="handleEmailBindSuccess"
     />
 
@@ -310,6 +311,11 @@ const errors = reactive({
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  // 检测：已登录但邮箱是合成邮箱（被路由守卫重定向到此，或页面刷新）
+  if (authStore.isAuthenticated && authStore.user?.email?.endsWith('.invalid')) {
+    showEmailBindModal.value = true
+  }
+
   const expiredFlag = sessionStorage.getItem('auth_expired')
   if (expiredFlag) {
     sessionStorage.removeItem('auth_expired')
@@ -487,13 +493,6 @@ function handleWeChatBindSuccess(): void {
 // Handle need email bind (WeChat login users with synthetic email)
 function handleNeedEmailBind(): void {
   showEmailBindModal.value = true
-}
-
-// Handle skip email bind
-function handleSkipEmailBind(): void {
-  showEmailBindModal.value = false
-  const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
-  router.push(redirectTo)
 }
 
 // Handle email bind success

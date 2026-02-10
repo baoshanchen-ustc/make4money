@@ -4,7 +4,7 @@
       <div
         v-if="show"
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        @click.self="handleCancel"
+        @click.self="handleOverlayClick"
       >
         <div
           class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-dark-800"
@@ -29,11 +29,12 @@
               </div>
               <div>
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ t('auth.emailBind.title') }}
+                  {{ required ? t('auth.emailBind.titleRequired') : t('auth.emailBind.title') }}
                 </h3>
               </div>
             </div>
             <button
+              v-if="!required"
               type="button"
               @click="handleCancel"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
@@ -47,9 +48,9 @@
           <!-- 提示内容 -->
           <div class="mb-6 space-y-3">
             <p class="text-sm text-gray-600 dark:text-dark-400">
-              {{ t('auth.emailBind.description') }}
+              {{ required ? t('auth.emailBind.descriptionRequired') : t('auth.emailBind.description') }}
             </p>
-            <ul class="space-y-2 text-sm text-gray-600 dark:text-dark-400">
+            <ul v-if="!required" class="space-y-2 text-sm text-gray-600 dark:text-dark-400">
               <li class="flex items-start gap-2">
                 <svg class="h-5 w-5 flex-shrink-0 text-green-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -143,6 +144,48 @@
               </p>
             </div>
 
+            <!-- Password Input (required 模式下显示) -->
+            <template v-if="required">
+              <div>
+                <label for="email-bind-password" class="input-label">
+                  {{ t('auth.emailBind.passwordLabel') }}
+                </label>
+                <input
+                  id="email-bind-password"
+                  v-model="password"
+                  type="password"
+                  :disabled="isLoading"
+                  class="input"
+                  :class="{ 'input-error': passwordError }"
+                  :placeholder="t('auth.emailBind.passwordPlaceholder')"
+                  autocomplete="new-password"
+                />
+                <p v-if="passwordError" class="input-error-text mt-1">
+                  {{ passwordError }}
+                </p>
+              </div>
+
+              <div>
+                <label for="email-bind-confirm-password" class="input-label">
+                  {{ t('auth.emailBind.confirmPasswordLabel') }}
+                </label>
+                <input
+                  id="email-bind-confirm-password"
+                  v-model="confirmPassword"
+                  type="password"
+                  :disabled="isLoading"
+                  class="input"
+                  :class="{ 'input-error': confirmPasswordError }"
+                  :placeholder="t('auth.emailBind.confirmPasswordPlaceholder')"
+                  autocomplete="new-password"
+                  @keyup.enter="handleBind"
+                />
+                <p v-if="confirmPasswordError" class="input-error-text mt-1">
+                  {{ confirmPasswordError }}
+                </p>
+              </div>
+            </template>
+
             <!-- Turnstile Widget -->
             <div v-if="turnstileEnabled && turnstileSiteKey">
               <TurnstileWidget
@@ -159,6 +202,7 @@
 
             <div class="flex gap-3">
               <button
+                v-if="!required"
                 type="button"
                 :disabled="isLoading"
                 class="btn btn-secondary flex-1"
@@ -209,8 +253,9 @@ import { useAppStore, useAuthStore } from '@/stores'
 import { bindEmail, sendBindEmailCode } from '@/api/auth'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 
-defineProps<{
+const props = defineProps<{
   show: boolean
+  required?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -225,8 +270,12 @@ const authStore = useAuthStore()
 
 const email = ref('')
 const verifyCode = ref('')
+const password = ref('')
+const confirmPassword = ref('')
 const emailError = ref('')
 const codeError = ref('')
+const passwordError = ref('')
+const confirmPasswordError = ref('')
 const isLoading = ref(false)
 const isSendingCode = ref(false)
 const codeSent = ref(false)
@@ -253,6 +302,12 @@ onMounted(async () => {
     turnstileSiteKey.value = settings.turnstile_site_key || ''
   }
 })
+
+function handleOverlayClick(): void {
+  if (!props.required) {
+    emit('close')
+  }
+}
 
 function handleCancel(): void {
   emit('close')
@@ -339,9 +394,36 @@ async function handleSendCode(): Promise<void> {
   }
 }
 
+function validatePassword(): boolean {
+  passwordError.value = ''
+  confirmPasswordError.value = ''
+
+  if (!password.value) {
+    passwordError.value = t('auth.emailBind.passwordRequired')
+    return false
+  }
+
+  if (password.value.length < 6) {
+    passwordError.value = t('auth.emailBind.passwordMinLength')
+    return false
+  }
+
+  if (password.value !== confirmPassword.value) {
+    confirmPasswordError.value = t('auth.emailBind.passwordMismatch')
+    return false
+  }
+
+  return true
+}
+
 async function handleBind(): Promise<void> {
   if (!verifyCode.value.trim()) {
     codeError.value = t('auth.emailBind.codeRequired')
+    return
+  }
+
+  // required 模式下验证密码
+  if (props.required && !validatePassword()) {
     return
   }
 
@@ -351,17 +433,9 @@ async function handleBind(): Promise<void> {
   try {
     await bindEmail({
       email: email.value.trim(),
-      verify_code: verifyCode.value.trim()
+      verify_code: verifyCode.value.trim(),
+      password: props.required ? password.value : undefined
     })
-
-    // Refresh user info
-    await authStore.checkAuth()
-
-    // Show success
-    appStore.showSuccess(t('auth.emailBind.success'))
-
-    // Emit success event
-    emit('success')
   } catch (error: unknown) {
     const err = error as { message?: string; response?: { data?: { detail?: string } } }
 
@@ -374,9 +448,21 @@ async function handleBind(): Promise<void> {
     }
 
     appStore.showError(codeError.value)
-  } finally {
     isLoading.value = false
+    return
   }
+
+  // 绑定成功后刷新用户信息
+  // refreshUser 可能因密码设置导致 TokenVersion 变更而失败，不阻断成功流程
+  try {
+    await authStore.refreshUser()
+  } catch {
+    // 预期行为：设置密码后旧 token 失效，跳转后会获取新 token
+  }
+
+  isLoading.value = false
+  appStore.showSuccess(t('auth.emailBind.success'))
+  emit('success')
 }
 </script>
 

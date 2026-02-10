@@ -20,6 +20,7 @@ const (
 type BindEmailRequest struct {
 	Email      string `json:"email" binding:"required,email"`
 	VerifyCode string `json:"verify_code" binding:"required"`
+	Password   string `json:"password"` // 绑定时同时设置密码（可选）
 }
 
 // BindEmailResponse 邮箱绑定响应
@@ -114,10 +115,17 @@ func (h *AuthHandler) BindEmail(c *gin.Context) {
 
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 	verifyCode := strings.TrimSpace(req.VerifyCode)
+	password := req.Password
 
 	// 验证邮箱不是合成邮箱格式
 	if isSyntheticEmail(email) {
 		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_EMAIL", "不允许使用该邮箱格式"))
+		return
+	}
+
+	// 验证密码长度（如果提供了密码）
+	if password != "" && len(password) < 6 {
+		response.ErrorFrom(c, infraerrors.BadRequest("PASSWORD_TOO_SHORT", "密码至少需要6个字符"))
 		return
 	}
 
@@ -160,8 +168,8 @@ func (h *AuthHandler) BindEmail(c *gin.Context) {
 		}
 	}
 
-	// 更新用户邮箱
-	if err := h.userService.UpdateEmail(c.Request.Context(), subject.UserID, email); err != nil {
+	// 绑定邮箱并设置密码（如果提供了密码）
+	if err := h.userService.BindEmailWithPassword(c.Request.Context(), subject.UserID, email, password); err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("UPDATE_FAILED", "更新邮箱失败"))
 		return
 	}

@@ -507,10 +507,18 @@ router.beforeEach(async (to, _from, next) => {
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
 
+  // Helper: check if user has synthetic email (OAuth user who hasn't bound real email)
+  const needsEmailBind = authStore.isAuthenticated && authStore.user?.email?.endsWith('.invalid')
+
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+      // Allow synthetic email users to stay on login page for email binding
+      if (needsEmailBind) {
+        next()
+        return
+      }
       // Admin users go to admin dashboard, regular users go to user dashboard
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
@@ -526,6 +534,12 @@ router.beforeEach(async (to, _from, next) => {
       path: '/login',
       query: { redirect: to.fullPath } // Save intended destination
     })
+    return
+  }
+
+  // Check if user needs email binding before accessing any protected route
+  if (needsEmailBind) {
+    next({ path: '/login', query: { redirect: to.fullPath } })
     return
   }
 
