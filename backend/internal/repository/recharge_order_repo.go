@@ -441,6 +441,28 @@ func (r *rechargeOrderRepository) GetByRefundNo(ctx context.Context, refundNo st
 	return rechargeOrderEntityToService(m), nil
 }
 
+// SumCreditedAmountByUser 汇总用户有效到账的充值金额（仅 paid 订单的 credited_amount，已退款订单不计入）
+func (r *rechargeOrderRepository) SumCreditedAmountByUser(ctx context.Context, userID int64) (float64, error) {
+	var result []struct {
+		Sum float64 `json:"sum"`
+	}
+	err := r.client.RechargeOrder.Query().
+		Where(
+			rechargeorder.UserIDEQ(userID),
+			rechargeorder.StatusEQ(service.OrderStatusPaid),
+			rechargeorder.CreditedAmountNotNil(),
+		).
+		Aggregate(dbent.As(dbent.Sum(rechargeorder.FieldCreditedAmount), "sum")).
+		Scan(ctx, &result)
+	if err != nil {
+		return 0, err
+	}
+	if len(result) == 0 {
+		return 0, nil
+	}
+	return result[0].Sum, nil
+}
+
 // MarkOrderRefunded 将订单标记为已退款（支持事务上下文）
 func (r *rechargeOrderRepository) MarkOrderRefunded(ctx context.Context, orderNo string, notes string) error {
 	client := clientFromContext(ctx, r.client)

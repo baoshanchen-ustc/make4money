@@ -22,6 +22,7 @@ const (
 	OrderStatusFailed    = "failed"    // 支付失败
 	OrderStatusExpired   = "expired"   // 已过期
 	OrderStatusCancelled = "cancelled" // 已取消
+	OrderStatusRefunded  = "refunded"  // 已退款
 )
 
 // 订单类型常量
@@ -150,6 +151,8 @@ type RechargeOrderRepository interface {
 	GetByRefundNo(ctx context.Context, refundNo string) (*RechargeOrder, error)
 	// MarkOrderRefunded 将订单标记为已退款（在事务中使用）
 	MarkOrderRefunded(ctx context.Context, orderNo string, notes string) error
+	// SumCreditedAmountByUser 汇总用户有效到账的充值金额（仅 paid 订单，已退款不计入）
+	SumCreditedAmountByUser(ctx context.Context, userID int64) (float64, error)
 }
 
 // RechargeOrderService 充值订单服务

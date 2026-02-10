@@ -132,6 +132,12 @@
                 {{ t('redeem.adminAdjustment') }}
               </p>
               <p
+                v-else-if="isWechatRecharge(item.type)"
+                class="text-xs text-gray-400 dark:text-dark-500"
+              >
+                {{ t('redeem.wechatPay') }}
+              </p>
+              <p
                 v-else
                 class="font-mono text-xs text-gray-400 dark:text-dark-500"
               >
@@ -195,6 +201,7 @@ const typeOptions = computed(() => [
   { value: '', label: t('admin.users.allTypes') },
   { value: 'balance', label: t('admin.users.typeBalance') },
   { value: 'admin_balance', label: t('admin.users.typeAdminBalance') },
+  { value: 'wechat_recharge', label: t('admin.users.typeWechatRecharge') },
   { value: 'concurrency', label: t('admin.users.typeConcurrency') },
   { value: 'admin_concurrency', label: t('admin.users.typeAdminConcurrency') },
   { value: 'subscription', label: t('admin.users.typeSubscription') }
@@ -232,11 +239,17 @@ const loadHistory = async (page: number) => {
 // Helper: check if admin type
 const isAdminType = (type: string) => type === 'admin_balance' || type === 'admin_concurrency'
 
-// Helper: check if balance type (includes admin_balance)
-const isBalanceType = (type: string) => type === 'balance' || type === 'admin_balance'
+// Helper: check if balance type (includes admin_balance and wechat_recharge)
+const isBalanceType = (type: string) => type === 'balance' || type === 'admin_balance' || type === 'wechat_recharge'
 
 // Helper: check if subscription type
 const isSubscriptionType = (type: string) => type === 'subscription'
+
+// Helper: check if wechat recharge type
+const isWechatRecharge = (type: string) => type === 'wechat_recharge'
+
+// Helper: check if item is a refunded wechat recharge order
+const isRefundedOrder = (item: BalanceHistoryItem) => item.type === 'wechat_recharge' && item.status === 'refunded'
 
 // Icon name based on type
 const getIconName = (item: BalanceHistoryItem) => {
@@ -248,6 +261,7 @@ const getIconName = (item: BalanceHistoryItem) => {
 // Icon background color
 const getIconBg = (item: BalanceHistoryItem) => {
   if (isBalanceType(item.type)) {
+    if (isRefundedOrder(item)) return 'bg-red-100 dark:bg-red-900/30'
     return item.value >= 0
       ? 'bg-emerald-100 dark:bg-emerald-900/30'
       : 'bg-red-100 dark:bg-red-900/30'
@@ -261,6 +275,7 @@ const getIconBg = (item: BalanceHistoryItem) => {
 // Icon text color
 const getIconColor = (item: BalanceHistoryItem) => {
   if (isBalanceType(item.type)) {
+    if (isRefundedOrder(item)) return 'text-red-600 dark:text-red-400'
     return item.value >= 0
       ? 'text-emerald-600 dark:text-emerald-400'
       : 'text-red-600 dark:text-red-400'
@@ -274,6 +289,7 @@ const getIconColor = (item: BalanceHistoryItem) => {
 // Value text color
 const getValueColor = (item: BalanceHistoryItem) => {
   if (isBalanceType(item.type)) {
+    if (isRefundedOrder(item)) return 'text-red-600 dark:text-red-400 line-through'
     return item.value >= 0
       ? 'text-emerald-600 dark:text-emerald-400'
       : 'text-red-600 dark:text-red-400'
@@ -291,6 +307,8 @@ const getItemTitle = (item: BalanceHistoryItem) => {
       return t('redeem.balanceAddedRedeem')
     case 'admin_balance':
       return item.value >= 0 ? t('redeem.balanceAddedAdmin') : t('redeem.balanceDeductedAdmin')
+    case 'wechat_recharge':
+      return isRefundedOrder(item) ? t('redeem.wechatRefunded') : t('redeem.wechatRecharge')
     case 'concurrency':
       return t('redeem.concurrencyAddedRedeem')
     case 'admin_concurrency':
