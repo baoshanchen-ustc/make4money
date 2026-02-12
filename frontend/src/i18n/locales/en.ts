@@ -3469,6 +3469,13 @@ export default {
     settings: {
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
+      tabs: {
+        general: 'General',
+        auth: 'Security & Auth',
+        payment: 'Payment',
+        email: 'Email & Notifications',
+        advanced: 'Advanced'
+      },
       registration: {
         title: 'Registration Settings',
         description: 'Control user registration and verification',
@@ -3704,7 +3711,8 @@ export default {
         fromName: 'From Name',
         fromNamePlaceholder: 'Code80',
         useTls: 'Use TLS',
-        useTlsHint: 'Enable TLS encryption for SMTP connection'
+        useTlsHint: 'Enable TLS encryption for SMTP connection',
+        enableEmailVerifyHint: 'Email verification is not enabled. Please enable it in the Security & Auth tab to configure SMTP settings.'
       },
       testEmail: {
         title: 'Send Test Email',

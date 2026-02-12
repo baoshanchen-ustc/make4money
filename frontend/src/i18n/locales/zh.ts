@@ -3642,6 +3642,13 @@ export default {
     settings: {
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
+      tabs: {
+        general: '基础设置',
+        auth: '安全与认证',
+        payment: '支付与充值',
+        email: '邮件与通知',
+        advanced: '高级设置'
+      },
       registration: {
         title: '注册设置',
         description: '控制用户注册和验证',
@@ -3879,7 +3886,8 @@ export default {
         fromName: '发件人名称',
         fromNamePlaceholder: 'Code80',
         useTls: '使用 TLS',
-        useTlsHint: '为 SMTP 连接启用 TLS 加密'
+        useTlsHint: '为 SMTP 连接启用 TLS 加密',
+        enableEmailVerifyHint: '邮箱验证功能未启用。请在「安全与认证」标签页中启用邮箱验证，然后再配置 SMTP 设置。'
       },
       testEmail: {
         title: '发送测试邮件',
