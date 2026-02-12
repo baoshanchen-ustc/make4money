@@ -29,18 +29,20 @@
       <!-- Logo/Brand -->
       <div class="mb-8 text-center">
         <!-- Custom Logo or Default Logo -->
-        <div
-          class="mb-4 inline-flex h-16 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl shadow-lg shadow-primary-500/30 transition-transform hover:scale-105"
-          @click="handleLogoClick"
-        >
-          <img :src="currentLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
-        </div>
-        <h1 class="text-gradient mb-2 text-3xl font-bold">
-          {{ siteName }}
-        </h1>
-        <p class="text-sm text-gray-500 dark:text-dark-400">
-          {{ siteSubtitle }}
-        </p>
+        <template v-if="settingsLoaded">
+          <div
+            class="mb-4 inline-flex h-16 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl shadow-lg shadow-primary-500/30 transition-transform hover:scale-105"
+            @click="handleLogoClick"
+          >
+            <img :src="currentLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+          </div>
+          <h1 class="text-gradient mb-2 text-3xl font-bold">
+            {{ siteName }}
+          </h1>
+          <p class="text-sm text-gray-500 dark:text-dark-400">
+            {{ siteSubtitle }}
+          </p>
+        </template>
       </div>
 
       <!-- Card Container -->
@@ -72,11 +74,11 @@ const router = useRouter()
 const appStore = useAppStore()
 const { isDark } = useTheme()
 
-// Use computed properties to directly access appStore state (reactive and instant)
-const siteName = computed(() => appStore.siteName)
-const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo, { allowRelative: true }))
-const siteLogoDark = computed(() => sanitizeUrl(appStore.siteLogoDark, { allowRelative: true }))
-const siteSubtitle = computed(() => appStore.siteSubtitle)
+const siteName = computed(() => appStore.siteName || 'Sub2API')
+const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
+const siteLogoDark = computed(() => sanitizeUrl(appStore.siteLogoDark, { allowRelative: true, allowDataUrl: true }))
+const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'Subscription to API Conversion Platform')
+const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 // Current logo based on theme
 const currentLogo = computed(() => {
@@ -89,7 +91,6 @@ const currentLogo = computed(() => {
 const currentYear = computed(() => new Date().getFullYear())
 
 function handleLogoClick() {
-  // Play horn sound
   const busHornSound = new Audio('/audio/bus-horn.MP3')
   busHornSound.volume = 0.6
   busHornSound.play().catch(() => {
@@ -98,11 +99,8 @@ function handleLogoClick() {
   router.push('/')
 }
 
-// Ensure settings are loaded (will use cache if already loaded by App.vue)
-onMounted(async () => {
-  if (!appStore.cachedPublicSettings) {
-    await appStore.fetchPublicSettings()
-  }
+onMounted(() => {
+  appStore.fetchPublicSettings()
 })
 </script>
 
