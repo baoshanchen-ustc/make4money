@@ -338,6 +338,16 @@
         @expired="handlePaymentExpired"
         @close="handlePaymentModalClose"
       />
+
+      <ConfirmDialog
+        :show="showUpgradeKeyGuideDialog"
+        :title="t('subscriptionPlan.upgradeKeyGuideTitle')"
+        :message="t('subscriptionPlan.upgradeKeyGuideMessage')"
+        :confirm-text="t('subscriptionPlan.goToKeys')"
+        :cancel-text="t('subscriptionPlan.later')"
+        @confirm="handleUpgradeGuideConfirm"
+        @cancel="handleUpgradeGuideCancel"
+      />
     </div>
   </AppLayout>
 </template>
@@ -345,6 +355,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import { subscriptionPlanAPI, type SubscriptionPlan, type UpgradeOption } from '@/api/subscriptionPlan'
@@ -354,11 +365,13 @@ import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlanCard from '@/components/user/subscription/PlanCard.vue'
-import SubscriptionPaymentModal from '@/components/user/subscription/SubscriptionPaymentModal.vue'
+import SubscriptionPaymentModal, { type PaidEventPayload } from '@/components/user/subscription/SubscriptionPaymentModal.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { formatDateOnly } from '@/utils/format'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const router = useRouter()
 
 const subscriptions = ref<UserSubscription[]>([])
 const purchasablePlans = ref<SubscriptionPlan[]>([])
@@ -387,6 +400,7 @@ const subscribedGroupIds = computed(() =>
 // 支付弹框状态
 const paymentModalVisible = ref(false)
 const currentOrderNo = ref('')
+const showUpgradeKeyGuideDialog = ref(false)
 
 // 套餐卡片引用
 const planCardRefs = ref<Map<number, InstanceType<typeof PlanCard>>>(new Map())
@@ -488,9 +502,12 @@ async function handlePurchasePlan(planId: number) {
   }
 }
 
-function handlePaymentSuccess() {
+function handlePaymentSuccess(payload: PaidEventPayload) {
   paymentModalVisible.value = false
   currentOrderNo.value = ''
+  if (payload.orderType === 'upgrade') {
+    showUpgradeKeyGuideDialog.value = true
+  }
   // 刷新订阅列表
   loadData()
 }
@@ -502,6 +519,15 @@ function handlePaymentExpired() {
 
 function handlePaymentModalClose() {
   currentOrderNo.value = ''
+}
+
+function handleUpgradeGuideConfirm() {
+  showUpgradeKeyGuideDialog.value = false
+  router.push('/keys')
+}
+
+function handleUpgradeGuideCancel() {
+  showUpgradeKeyGuideDialog.value = false
 }
 
 function getProgressWidth(used: number | undefined, limit: number | null | undefined): string {

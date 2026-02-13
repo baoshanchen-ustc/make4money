@@ -255,6 +255,7 @@ type OrderDetailResponse struct {
 	OrderNo        string     `json:"order_no"`
 	GroupID        int64      `json:"group_id"`
 	GroupName      string     `json:"group_name"`
+	OrderType      string     `json:"order_type"`
 	Amount         float64    `json:"amount"`
 	ValidityDays   int        `json:"validity_days"`
 	Status         string     `json:"status"`
@@ -300,6 +301,7 @@ func (h *SubscriptionPlanHandler) GetOrder(c *gin.Context) {
 		OrderNo:        order.OrderNo,
 		GroupID:        order.GroupID,
 		GroupName:      groupName,
+		OrderType:      order.OrderType,
 		Amount:         order.Amount,
 		ValidityDays:   order.ValidityDays,
 		Status:         order.Status,

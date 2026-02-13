@@ -139,6 +139,11 @@ import { useAppStore } from '@/stores/app'
 import QRCodeDisplay from '../recharge/QRCodeDisplay.vue'
 import OrderCountdown from '../recharge/OrderCountdown.vue'
 
+export interface PaidEventPayload {
+  orderNo: string
+  orderType?: string
+}
+
 const props = defineProps<{
   visible: boolean
   orderNo: string
@@ -147,7 +152,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:visible': [value: boolean]
   'close': []
-  'paid': [orderNo: string]
+  'paid': [payload: PaidEventPayload]
   'expired': [orderNo: string]
 }>()
 
@@ -178,8 +183,11 @@ const stopPolling = () => {
 const handleStatusChange = (status: string) => {
   if (status === 'paid') {
     stopPolling()
-    emit('paid', props.orderNo)
     emit('update:visible', false)
+    emit('paid', {
+      orderNo: props.orderNo,
+      orderType: order.value?.order_type
+    })
     appStore.showSuccess(t('subscriptionPlan.paymentSuccess'))
   } else if (status === 'failed' || status === 'expired' || status === 'cancelled') {
     stopPolling()
