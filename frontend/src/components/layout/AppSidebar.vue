@@ -13,7 +13,7 @@
         class="flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-xl shadow-glow transition-transform hover:scale-105"
         @click="handleLogoClick"
       >
-        <img :src="currentLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+        <img v-if="settingsLoaded" :src="currentLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
       </div>
       <transition name="fade">
         <div v-if="!sidebarCollapsed" class="flex flex-col">
@@ -175,6 +175,7 @@ const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => appStore.siteLogo)
 const siteLogoDark = computed(() => appStore.siteLogoDark)
 const siteVersion = computed(() => appStore.siteVersion)
+const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 // Current logo based on theme
 const currentLogo = computed(() => {
