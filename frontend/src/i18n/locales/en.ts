@@ -115,39 +115,55 @@ export default {
     // Benefits
     benefits: {
       title: 'Why Choose Us',
-      subtitle: 'Focused on user value, solving real problems',
+      subtitle: 'Authentic subscription forwarding — identical to official experience',
       items: {
-        oneLineIntegration: {
-          title: 'One-line Integration',
-          desc: 'No code changes needed — just swap the API endpoint'
+        pureSubscription: {
+          title: 'Authentic Subscriptions',
+          desc: 'Real Claude Max / ChatGPT Plus&Pro / Google Plus&Ultra accounts — no reverse engineering'
+        },
+        extendedThinking: {
+          title: 'Extended Thinking',
+          desc: 'Full support for deep reasoning — zero compromise'
+        },
+        noInterruption: {
+          title: 'Zero Interruption',
+          desc: 'Official protocol forwarding — no random disconnects or errors'
+        },
+        fullContext: {
+          title: 'Full Context Window',
+          desc: 'Context length identical to official — no truncation'
+        },
+        autoCompression: {
+          title: 'Smart Compression',
+          desc: 'Automatic context compression for seamless long conversations'
         },
         highAvailability: {
           title: 'High Availability',
-          desc: 'Multi-account pool with automatic failover'
-        },
-        payAsYouGo: {
-          title: 'Pay as You Go',
-          desc: 'Pay only for what you use, no minimums'
-        },
-        subscriptionToApi: {
-          title: 'Subscription to API',
-          desc: 'Convert AI subscriptions into standard API calls'
+          desc: 'Multi-account pool with automatic failover — always online'
         },
         stickySession: {
           title: 'Sticky Session',
-          desc: 'Session persistence ensures conversation continuity'
+          desc: 'Same account for entire conversation — context never lost'
         },
-        realtimeMonitoring: {
-          title: 'Real-time Monitoring',
-          desc: 'Usage, costs, and status at a glance'
+        oneLineIntegration: {
+          title: 'One-line Setup',
+          desc: 'OpenAI-compatible API — just change the endpoint'
         },
         multiModel: {
           title: 'Multi-model Support',
           desc: 'Claude, GPT, Gemini — all in one place'
         },
+        realtimeMonitoring: {
+          title: 'Real-time Monitoring',
+          desc: 'Usage, costs, and account status at a glance'
+        },
+        payAsYouGo: {
+          title: 'Pay as You Go',
+          desc: 'Pay only for what you use — no minimums'
+        },
         flexibleQuota: {
           title: 'Flexible Quotas',
-          desc: 'Set daily, weekly, or monthly usage limits'
+          desc: 'Set monthly or balance-based usage limits'
         }
       }
     },
@@ -192,6 +208,11 @@ export default {
     testimonials: {
       title: 'What Users Say',
       subtitle: 'Feedback from real users'
+    },
+    // Gallery
+    gallery: {
+      all: 'All',
+      noImages: 'No images yet'
     },
     // FAQ
     faq: {
@@ -239,7 +260,12 @@ export default {
       installGuide: 'Install Guide',
       releaseNotes: 'Release Notes',
       faq: 'FAQ',
-      contactUs: 'Contact Us'
+      contactUs: 'Contact Us',
+      wechat: 'WeChat',
+      group: 'Community',
+      dashboard: 'Dashboard',
+      login: 'Sign In',
+      poweredBy: 'AI API Gateway'
     }
   },
 
@@ -3679,6 +3705,21 @@ export default {
         description: 'Configure user testimonials shown on the homepage (JSON array format)',
         placeholder: `[{'{'}"name":"John","role":"Developer","content":"Great service","rating":5{'}'}]`,
         hint: 'Format: JSON array, each item with name, role (optional), content, rating (1-5, optional)'
+      },
+      gallery: {
+        title: 'Subscription Gallery',
+        description: 'Show a 3D rotating gallery on the homepage to display subscription screenshots',
+        sectionTitle: 'Gallery Title',
+        sectionSubtitle: 'Gallery Subtitle',
+        categories: 'Categories',
+        addCategory: 'Add Category',
+        images: 'Images',
+        imageTitle: 'Image title',
+        upload: 'Upload',
+        uploadHint: 'Supports JPG/PNG/WebP, max 500KB per image, auto-compressed',
+        noCategoryError: 'Please add at least one category first',
+        save: 'Save Gallery',
+        saveSuccess: 'Gallery settings saved'
       },
       purchase: {
         title: 'Purchase Page',

@@ -13,7 +13,8 @@ import type {
   SendVerifyCodeResponse,
   PublicSettings,
   TotpLoginResponse,
-  TotpLogin2FARequest
+  TotpLogin2FARequest,
+  GalleryData
 } from '@/types'
 
 /**
@@ -508,6 +509,15 @@ export async function sendBindEmailCode(
   return data
 }
 
+/**
+ * Get home gallery data (no auth required)
+ * @returns Gallery data with categories and items
+ */
+export async function getHomeGallery(): Promise<GalleryData | null> {
+  const { data } = await apiClient.get<GalleryData | null>('/settings/gallery')
+  return data
+}
+
 export const authAPI = {
   login,
   login2FA,
@@ -538,7 +548,8 @@ export const authAPI = {
   bindEmail,
   sendBindEmailCode,
   refreshToken,
-  revokeAllSessions
+  revokeAllSessions,
+  getHomeGallery
 }
 
 export default authAPI

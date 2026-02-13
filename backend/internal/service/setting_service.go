@@ -338,6 +338,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyInstallGuideVideos,
 		SettingKeyHomeTestimonials,
 		SettingKeyBalanceLotExpiryDays,
+		SettingKeyHomeGalleryEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -387,6 +388,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		InstallGuideVideos:          settings[SettingKeyInstallGuideVideos],
 		HomeTestimonials:            settings[SettingKeyHomeTestimonials],
 		BalanceLotExpiryDays:        s.parseBalanceLotExpiryDays(settings[SettingKeyBalanceLotExpiryDays]),
+		HomeGalleryEnabled:          settings[SettingKeyHomeGalleryEnabled] == "true",
 	}, nil
 }
 
@@ -452,6 +454,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		InstallGuideVideos          string `json:"install_guide_videos,omitempty"`
 		HomeTestimonials            string `json:"home_testimonials,omitempty"`
 		BalanceLotExpiryDays        int    `json:"balance_lot_expiry_days"`
+		HomeGalleryEnabled          bool   `json:"home_gallery_enabled"`
 	}{
 		RegistrationEnabled:         settings.RegistrationEnabled,
 		EmailVerifyEnabled:          settings.EmailVerifyEnabled,
@@ -484,6 +487,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		InstallGuideVideos:          settings.InstallGuideVideos,
 		HomeTestimonials:            settings.HomeTestimonials,
 		BalanceLotExpiryDays:        settings.BalanceLotExpiryDays,
+		HomeGalleryEnabled:          settings.HomeGalleryEnabled,
 	}, nil
 }
 
@@ -1462,5 +1466,58 @@ func (s *SettingService) UpdateRechargeSettings(ctx context.Context, settings *R
 	}
 	s.rechargeCacheMu.Unlock()
 
+	return nil
+}
+
+// isGalleryEnabled 从 gallery JSON 中解析 enabled 字段
+func (s *SettingService) isGalleryEnabled(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	var data struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return false
+	}
+	return data.Enabled
+}
+
+// GetHomeGallery 获取首页画廊数据（JSON 全量）
+func (s *SettingService) GetHomeGallery(ctx context.Context) (string, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyHomeGallery)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return "", nil
+		}
+		return "", fmt.Errorf("get home gallery: %w", err)
+	}
+	return value, nil
+}
+
+// UpdateHomeGallery 更新首页画廊数据（JSON），限制 5MB
+func (s *SettingService) UpdateHomeGallery(ctx context.Context, data string) error {
+	const maxSize = 5 * 1024 * 1024 // 5MB
+	if len(data) > maxSize {
+		return infraerrors.New(400, "GALLERY_TOO_LARGE", "gallery data exceeds maximum size of 5MB")
+	}
+
+	// 验证是合法 JSON
+	if !json.Valid([]byte(data)) {
+		return infraerrors.New(400, "GALLERY_INVALID_JSON", "gallery data is not valid JSON")
+	}
+
+	// Atomic write: gallery data + enabled flag
+	enabled := s.isGalleryEnabled(data)
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
+		SettingKeyHomeGallery:        data,
+		SettingKeyHomeGalleryEnabled: strconv.FormatBool(enabled),
+	}); err != nil {
+		return fmt.Errorf("save home gallery: %w", err)
+	}
+
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
 	return nil
 }

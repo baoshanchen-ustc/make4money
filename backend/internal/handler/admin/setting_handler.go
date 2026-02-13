@@ -1,8 +1,10 @@
 package admin
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -1159,6 +1161,48 @@ func (h *SettingHandler) GenerateWeChatQRCode(c *gin.Context) {
 		QRCodeURL: result.ImageURL,
 		Ticket:    result.Ticket,
 	})
+}
+
+// GetHomeGallery 获取首页画廊数据
+// GET /api/v1/admin/settings/gallery
+func (h *SettingHandler) GetHomeGallery(c *gin.Context) {
+	data, err := h.settingService.GetHomeGallery(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if data == "" {
+		response.Success(c, nil)
+		return
+	}
+
+	if !json.Valid([]byte(data)) {
+		response.Success(c, nil)
+		return
+	}
+	response.Success(c, json.RawMessage(data))
+}
+
+// UpdateHomeGallery 更新首页画廊数据
+// PUT /api/v1/admin/settings/gallery
+func (h *SettingHandler) UpdateHomeGallery(c *gin.Context) {
+	// Limit body size at handler level before reading into memory
+	const maxBodySize = 5*1024*1024 + 1024 // 5MB data + 1KB overhead
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBodySize)
+
+	body, err := c.GetRawData()
+	if err != nil {
+		response.BadRequest(c, "Failed to read request body or body too large")
+		return
+	}
+
+	if err := h.settingService.UpdateHomeGallery(c.Request.Context(), string(body)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"message": "Gallery settings updated"})
 }
 
 // MaskString 脱敏字符串，保留前后指定位数

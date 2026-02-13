@@ -355,6 +355,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 充值业务配置
 		adminSettings.GET("/recharge", h.Admin.Setting.GetRechargeSettings)
 		adminSettings.PUT("/recharge", h.Admin.Setting.UpdateRechargeSettings)
+		// 首页画廊
+		adminSettings.GET("/gallery", h.Admin.Setting.GetHomeGallery)
+		adminSettings.PUT("/gallery", h.Admin.Setting.UpdateHomeGallery)
 	}
 }
 

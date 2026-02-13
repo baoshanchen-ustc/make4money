@@ -127,6 +127,9 @@ type PublicSettings struct {
 
 	// Balance lot expiry (public)
 	BalanceLotExpiryDays int `json:"balance_lot_expiry_days"`
+
+	// Homepage gallery
+	HomeGalleryEnabled bool `json:"home_gallery_enabled"`
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO

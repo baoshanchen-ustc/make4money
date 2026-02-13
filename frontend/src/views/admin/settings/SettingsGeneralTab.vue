@@ -431,6 +431,157 @@
       </div>
     </div>
 
+    <!-- Home Gallery Management -->
+    <div class="card">
+      <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.gallery.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.gallery.description') }}
+            </p>
+          </div>
+          <Toggle v-model="gallery.enabled" />
+        </div>
+      </div>
+      <div v-if="gallery.enabled" class="space-y-6 p-6">
+        <!-- Title & Subtitle -->
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.settings.gallery.sectionTitle') }}
+            </label>
+            <input v-model="gallery.title" type="text" class="input" />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.settings.gallery.sectionSubtitle') }}
+            </label>
+            <input v-model="gallery.subtitle" type="text" class="input" />
+          </div>
+        </div>
+
+        <!-- Categories -->
+        <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+          <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.settings.gallery.categories') }}
+          </label>
+          <div class="space-y-2">
+            <div v-for="(cat, idx) in gallery.categories" :key="idx" class="flex items-center gap-2">
+              <input
+                :value="cat.key"
+                type="text"
+                class="input w-32 text-sm"
+                placeholder="key"
+                @change="renameCategoryKey(idx, ($event.target as HTMLInputElement).value)"
+              />
+              <input v-model="cat.label" type="text" class="input flex-1 text-sm" placeholder="label" />
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                @click="removeCategory(idx)"
+              >
+                <Icon name="trash" size="sm" :stroke-width="2" />
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm mt-2"
+            @click="gallery.categories.push({ key: '', label: '' })"
+          >
+            {{ t('admin.settings.gallery.addCategory') }}
+          </button>
+        </div>
+
+        <!-- Category Tabs for Images -->
+        <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+          <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.settings.gallery.images') }}
+          </label>
+
+          <!-- Tab selector -->
+          <div v-if="gallery.categories.length > 0" class="mb-4 flex flex-wrap gap-2">
+            <button
+              v-for="cat in gallery.categories"
+              :key="cat.key"
+              class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
+              :class="galleryActiveTab === cat.key
+                ? 'bg-primary-500 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-dark-300'"
+              @click="galleryActiveTab = cat.key"
+            >
+              {{ cat.label || cat.key }} ({{ galleryItemsByCategory(cat.key).length }})
+            </button>
+          </div>
+
+          <!-- Image Grid -->
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            <div
+              v-for="item in galleryItemsByCategory(galleryActiveTab)"
+              :key="item.id"
+              class="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700"
+            >
+              <img :src="item.image" :alt="item.title" class="aspect-[3/2] w-full object-cover" />
+              <div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                <button
+                  type="button"
+                  class="rounded-full bg-red-500 p-1.5 text-white shadow hover:bg-red-600"
+                  @click="removeGalleryItem(item.id)"
+                >
+                  <Icon name="trash" size="sm" :stroke-width="2" />
+                </button>
+              </div>
+              <div class="p-1.5">
+                <input
+                  v-model="item.title"
+                  class="w-full border-0 bg-transparent p-0 text-xs text-gray-600 focus:ring-0 dark:text-dark-300"
+                  :placeholder="t('admin.settings.gallery.imageTitle')"
+                />
+              </div>
+            </div>
+
+            <!-- Upload Card -->
+            <label class="flex aspect-[3/2] cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 transition-colors hover:border-primary-400 hover:bg-primary-50 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-primary-500 dark:hover:bg-dark-700">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                class="hidden"
+                @change="handleGalleryImageUpload"
+              />
+              <div class="text-center">
+                <Icon name="upload" size="lg" class="mx-auto mb-1 text-gray-400" :stroke-width="1.5" />
+                <span class="text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('admin.settings.gallery.upload') }}
+                </span>
+              </div>
+            </label>
+          </div>
+
+          <p v-if="galleryError" class="mt-2 text-xs text-red-500">{{ galleryError }}</p>
+          <p class="mt-2 text-xs text-gray-400 dark:text-dark-500">
+            {{ t('admin.settings.gallery.uploadHint') }}
+          </p>
+        </div>
+
+        <!-- Save Button -->
+        <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="gallerySaving"
+            @click="saveGallery"
+          >
+            <span v-if="gallerySaving" class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+            {{ t('admin.settings.gallery.save') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Default Settings -->
     <div class="card">
       <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -524,13 +675,19 @@
 
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props */
-import { ref } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import { settingsAPI } from '@/api/admin/settings'
+import type { GalleryData } from '@/api/admin/settings'
+import { useImageCompress } from '@/composables/useImageCompress'
+import { useAppStore } from '@/stores'
 import type { SettingsForm } from './types'
 
 const { t } = useI18n()
+const appStore = useAppStore()
+const { compressImage } = useImageCompress()
 
 const props = defineProps<{
   form: SettingsForm
@@ -539,6 +696,139 @@ const props = defineProps<{
 const logoError = ref('')
 const logoDarkError = ref('')
 const qrcodeError = ref('')
+
+// ==================== Gallery Management (independent state) ====================
+const gallery = reactive<GalleryData>({
+  enabled: false,
+  title: '',
+  subtitle: '',
+  categories: [],
+  items: [],
+})
+const galleryActiveTab = ref('')
+const galleryError = ref('')
+const gallerySaving = ref(false)
+const galleryLoaded = ref(false)
+
+function galleryItemsByCategory(catKey: string) {
+  if (!catKey) return gallery.items
+  return gallery.items.filter(item => item.category === catKey)
+}
+
+function removeGalleryItem(id: string) {
+  const idx = gallery.items.findIndex(item => item.id === id)
+  if (idx >= 0) gallery.items.splice(idx, 1)
+}
+
+function renameCategoryKey(idx: number, newKey: string) {
+  const cat = gallery.categories[idx]
+  if (!cat) return
+  const oldKey = cat.key
+  cat.key = newKey
+  // Sync all items that belonged to the old key
+  if (oldKey && oldKey !== newKey) {
+    gallery.items.forEach(item => {
+      if (item.category === oldKey) item.category = newKey
+    })
+  }
+  // Update active tab if it was tracking the old key
+  if (galleryActiveTab.value === oldKey) {
+    galleryActiveTab.value = newKey
+  }
+}
+
+function removeCategory(idx: number) {
+  const cat = gallery.categories[idx]
+  if (!cat) return
+  // Remove all items belonging to this category
+  gallery.items = gallery.items.filter(item => item.category !== cat.key)
+  gallery.categories.splice(idx, 1)
+  // Reset active tab if the deleted category was active
+  if (galleryActiveTab.value === cat.key) {
+    galleryActiveTab.value = gallery.categories[0]?.key || ''
+  }
+}
+
+async function handleGalleryImageUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = input.files
+  galleryError.value = ''
+
+  if (!files || files.length === 0) return
+
+  const category = galleryActiveTab.value || gallery.categories[0]?.key || ''
+  if (!category) {
+    galleryError.value = t('admin.settings.gallery.noCategoryError')
+    input.value = ''
+    return
+  }
+
+  for (const file of Array.from(files)) {
+    if (!file.type.startsWith('image/')) continue
+
+    try {
+      const dataUrl = await compressImage(file, 1200, 500)
+      gallery.items.push({
+        id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        category,
+        title: file.name.replace(/\.[^.]+$/, ''),
+        image: dataUrl,
+        order: gallery.items.length,
+      })
+    } catch (err) {
+      galleryError.value = `${file.name}: ${err instanceof Error ? err.message : 'Failed'}`
+    }
+  }
+
+  input.value = ''
+}
+
+async function loadGallery() {
+  try {
+    const data = await settingsAPI.getHomeGallery()
+    if (data) {
+      gallery.enabled = data.enabled
+      gallery.title = data.title || ''
+      gallery.subtitle = data.subtitle || ''
+      gallery.categories = data.categories || []
+      gallery.items = data.items || []
+      if (gallery.categories.length > 0) {
+        galleryActiveTab.value = gallery.categories[0].key
+      }
+    }
+    galleryLoaded.value = true
+  } catch {
+    // Not configured yet, keep defaults
+    galleryLoaded.value = true
+  }
+}
+
+async function saveGallery() {
+  gallerySaving.value = true
+  galleryError.value = ''
+
+  try {
+    // Filter out categories with empty keys
+    gallery.categories = gallery.categories.filter(c => c.key.trim() !== '')
+
+    await settingsAPI.updateHomeGallery({
+      enabled: gallery.enabled,
+      title: gallery.title,
+      subtitle: gallery.subtitle,
+      categories: gallery.categories,
+      items: gallery.items,
+    })
+    appStore.showToast('success', t('admin.settings.gallery.saveSuccess'))
+  } catch (err: any) {
+    galleryError.value = err?.response?.data?.message || err?.message || 'Save failed'
+  } finally {
+    gallerySaving.value = false
+  }
+}
+
+onMounted(() => {
+  loadGallery()
+})
 
 function handleLogoUpload(event: Event, type: 'light' | 'dark' = 'light') {
   const input = event.target as HTMLInputElement

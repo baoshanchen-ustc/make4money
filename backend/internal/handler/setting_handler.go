@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -63,5 +65,30 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		InstallGuideVideos:          settings.InstallGuideVideos,
 		HomeTestimonials:            settings.HomeTestimonials,
 		BalanceLotExpiryDays:        settings.BalanceLotExpiryDays,
+		HomeGalleryEnabled:          settings.HomeGalleryEnabled,
 	})
+}
+
+// GetHomeGallery 获取首页画廊数据
+// GET /api/v1/settings/gallery
+func (h *SettingHandler) GetHomeGallery(c *gin.Context) {
+	// Allow client/CDN caching since gallery data changes infrequently
+	c.Header("Cache-Control", "public, max-age=300")
+
+	data, err := h.settingService.GetHomeGallery(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if data == "" {
+		response.Success(c, nil)
+		return
+	}
+
+	if !json.Valid([]byte(data)) {
+		response.Success(c, nil)
+		return
+	}
+	response.Success(c, json.RawMessage(data))
 }

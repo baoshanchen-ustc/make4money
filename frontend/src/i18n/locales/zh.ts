@@ -115,39 +115,55 @@ export default {
     // 优势卡片
     benefits: {
       title: '为什么选择我们',
-      subtitle: '聚焦用户价值，解决实际问题',
+      subtitle: '纯血订阅帐号转发，体验与官方一致',
       items: {
-        oneLineIntegration: {
-          title: '一行代码接入',
-          desc: '无需修改代码，只需更换 API 地址即可使用'
+        pureSubscription: {
+          title: '纯血订阅转发',
+          desc: '真实 Claude Max / ChatGPT Plus/Pro / Google Plus/Ultra 订阅帐号直连，非逆向破解'
+        },
+        extendedThinking: {
+          title: '深度思考',
+          desc: '完整支持 Extended Thinking，复杂推理不打折'
+        },
+        noInterruption: {
+          title: '零断流',
+          desc: '官方协议转发，告别逆向渠道的频繁掉线和报错'
+        },
+        fullContext: {
+          title: '上下文完整',
+          desc: '与官方一致的上下文窗口，不做任何裁剪'
+        },
+        autoCompression: {
+          title: '智能压缩',
+          desc: '自动上下文压缩，超长对话也能流畅续写'
         },
         highAvailability: {
-          title: '高可用保障',
-          desc: '多账户池自动切换，保证服务稳定可用'
-        },
-        payAsYouGo: {
-          title: '按量付费',
-          desc: '用多少付多少，无最低消费'
-        },
-        subscriptionToApi: {
-          title: '订阅转 API',
-          desc: '将 AI 订阅转为标准 API 调用'
+          title: '高可用调度',
+          desc: '多帐号池自动切换与故障转移，服务持续在线'
         },
         stickySession: {
           title: '会话保持',
-          desc: 'Sticky Session 确保对话连贯性'
+          desc: 'Sticky Session 锁定同一帐号，长对话上下文不丢失'
         },
-        realtimeMonitoring: {
-          title: '实时监控',
-          desc: '用量、费用、状态一目了然'
+        oneLineIntegration: {
+          title: '一行代码接入',
+          desc: '兼容 OpenAI API 格式，换个地址就能用'
         },
         multiModel: {
           title: '多模型支持',
-          desc: 'Claude、GPT、Gemini 一站式管理'
+          desc: 'Claude、GPT、Gemini 一站式管理，无需多平台切换'
+        },
+        realtimeMonitoring: {
+          title: '实时监控',
+          desc: '用量、费用、帐号状态一目了然'
+        },
+        payAsYouGo: {
+          title: '按量付费',
+          desc: '用多少付多少，无最低消费门槛'
         },
         flexibleQuota: {
           title: '灵活配额',
-          desc: '按包月/余额设置使用额度'
+          desc: '按包月或余额设置使用额度，丰俭由人'
         }
       }
     },
@@ -192,6 +208,11 @@ export default {
     testimonials: {
       title: '用户怎么说',
       subtitle: '来自真实用户的反馈'
+    },
+    // 订阅截图画廊
+    gallery: {
+      all: '全部',
+      noImages: '暂无图片'
     },
     // FAQ
     faq: {
@@ -239,7 +260,12 @@ export default {
       installGuide: '安装教程',
       releaseNotes: '版本发布',
       faq: '常见问题',
-      contactUs: '联系我们'
+      contactUs: '联系我们',
+      wechat: '微信客服',
+      group: '用户社群',
+      dashboard: '控制台',
+      login: '登录',
+      poweredBy: 'AI API Gateway'
     }
   },
 
@@ -3854,6 +3880,21 @@ export default {
         description: '配置首页展示的用户评价（JSON 数组格式）',
         placeholder: `[{'{'}"name":"张三","role":"全栈工程师","content":"效果很好","rating":5{'}'}]`,
         hint: '格式：JSON 数组，每项包含 name、role（可选）、content、rating（1-5，可选）字段'
+      },
+      gallery: {
+        title: '订阅截图画廊',
+        description: '在首页展示 3D 旋转画廊，用于展示各类订阅截图',
+        sectionTitle: '画廊标题',
+        sectionSubtitle: '画廊副标题',
+        categories: '分类管理',
+        addCategory: '添加分类',
+        images: '图片管理',
+        imageTitle: '图片标题',
+        upload: '上传图片',
+        uploadHint: '支持 JPG/PNG/WebP，单张不超过 500KB，自动压缩',
+        noCategoryError: '请先添加至少一个分类',
+        save: '保存画廊设置',
+        saveSuccess: '画廊设置保存成功'
       },
       purchase: {
         title: '购买订阅页面',

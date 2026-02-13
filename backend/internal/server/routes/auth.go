@@ -69,6 +69,7 @@ func RegisterAuthRoutes(
 	settings := v1.Group("/settings")
 	{
 		settings.GET("/public", h.Setting.GetPublicSettings)
+		settings.GET("/gallery", h.Setting.GetHomeGallery)
 	}
 
 	// 充值配置（无需认证）

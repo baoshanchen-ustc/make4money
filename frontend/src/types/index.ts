@@ -105,6 +105,30 @@ export interface PublicSettings {
   home_testimonials: string
   version: string
   balance_lot_expiry_days: number
+  home_gallery_enabled?: boolean
+}
+
+// ==================== Gallery Types ====================
+
+export interface GalleryItem {
+  id: string
+  category: string
+  title: string
+  image: string
+  order: number
+}
+
+export interface GalleryCategory {
+  key: string
+  label: string
+}
+
+export interface GalleryData {
+  enabled: boolean
+  title: string
+  subtitle: string
+  categories: GalleryCategory[]
+  items: GalleryItem[]
 }
 
 export interface AuthResponse {

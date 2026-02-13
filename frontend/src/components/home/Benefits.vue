@@ -34,44 +34,64 @@ const { t } = useI18n()
 
 const benefits = [
   {
-    key: 'oneLineIntegration',
-    icon: 'terminal' as const,
-    bgClass: 'bg-gradient-to-br from-blue-500 to-blue-600',
+    key: 'pureSubscription',
+    icon: 'shield' as const,
+    bgClass: 'bg-gradient-to-br from-primary-500 to-primary-600',
   },
   {
-    key: 'highAvailability',
-    icon: 'shield' as const,
+    key: 'extendedThinking',
+    icon: 'brain' as const,
+    bgClass: 'bg-gradient-to-br from-purple-500 to-purple-600',
+  },
+  {
+    key: 'noInterruption',
+    icon: 'bolt' as const,
     bgClass: 'bg-gradient-to-br from-emerald-500 to-emerald-600',
   },
   {
-    key: 'payAsYouGo',
-    icon: 'creditCard' as const,
+    key: 'fullContext',
+    icon: 'document' as const,
+    bgClass: 'bg-gradient-to-br from-blue-500 to-blue-600',
+  },
+  {
+    key: 'autoCompression',
+    icon: 'sparkles' as const,
     bgClass: 'bg-gradient-to-br from-amber-500 to-amber-600',
   },
   {
-    key: 'subscriptionToApi',
-    icon: 'swap' as const,
-    bgClass: 'bg-gradient-to-br from-primary-500 to-primary-600',
+    key: 'highAvailability',
+    icon: 'server' as const,
+    bgClass: 'bg-gradient-to-br from-rose-500 to-rose-600',
   },
   {
     key: 'stickySession',
     icon: 'link' as const,
-    bgClass: 'bg-gradient-to-br from-purple-500 to-purple-600',
+    bgClass: 'bg-gradient-to-br from-sky-500 to-sky-600',
   },
   {
-    key: 'realtimeMonitoring',
-    icon: 'chartBar' as const,
-    bgClass: 'bg-gradient-to-br from-rose-500 to-rose-600',
+    key: 'oneLineIntegration',
+    icon: 'terminal' as const,
+    bgClass: 'bg-gradient-to-br from-teal-500 to-teal-600',
   },
   {
     key: 'multiModel',
     icon: 'cube' as const,
-    bgClass: 'bg-gradient-to-br from-sky-500 to-sky-600',
+    bgClass: 'bg-gradient-to-br from-indigo-500 to-indigo-600',
+  },
+  {
+    key: 'realtimeMonitoring',
+    icon: 'chartBar' as const,
+    bgClass: 'bg-gradient-to-br from-cyan-500 to-cyan-600',
+  },
+  {
+    key: 'payAsYouGo',
+    icon: 'creditCard' as const,
+    bgClass: 'bg-gradient-to-br from-orange-500 to-orange-600',
   },
   {
     key: 'flexibleQuota',
-    icon: 'cog' as const,
-    bgClass: 'bg-gradient-to-br from-teal-500 to-teal-600',
+    icon: 'calculator' as const,
+    bgClass: 'bg-gradient-to-br from-fuchsia-500 to-fuchsia-600',
   },
 ]
 </script>

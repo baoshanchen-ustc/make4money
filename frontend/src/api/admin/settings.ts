@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client'
+import type { GalleryData } from '@/types'
 
 /**
  * System settings interface
@@ -394,6 +395,27 @@ export async function updateRechargeSettings(settings: RechargeSettings): Promis
   return data
 }
 
+export type { GalleryData }
+
+/**
+ * Get home gallery settings
+ * @returns Gallery data or null if not configured
+ */
+export async function getHomeGallery(): Promise<GalleryData | null> {
+  const { data } = await apiClient.get<GalleryData | null>('/admin/settings/gallery')
+  return data
+}
+
+/**
+ * Update home gallery settings
+ * @param galleryData - Full gallery data object
+ * @returns Success message
+ */
+export async function updateHomeGallery(galleryData: GalleryData): Promise<{ message: string }> {
+  const { data } = await apiClient.put<{ message: string }>('/admin/settings/gallery', galleryData)
+  return data
+}
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -407,7 +429,9 @@ export const settingsAPI = {
   generateWeChatQRCode,
   getWeChatPayStatus,
   getRechargeSettings,
-  updateRechargeSettings
+  updateRechargeSettings,
+  getHomeGallery,
+  updateHomeGallery
 }
 
 export default settingsAPI

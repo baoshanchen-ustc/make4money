@@ -205,6 +205,13 @@ const (
 	// SettingKeyHomeTestimonials stores JSON array of user testimonials for homepage.
 	SettingKeyHomeTestimonials = "home_testimonials"
 
+	// SettingKeyHomeGallery stores JSON config for homepage subscription screenshot gallery.
+	SettingKeyHomeGallery = "home_gallery"
+
+	// SettingKeyHomeGalleryEnabled is a lightweight flag ("true"/"false") for PublicSettings.
+	// Derived from home_gallery JSON on save, avoids reading large gallery data on every public settings request.
+	SettingKeyHomeGalleryEnabled = "home_gallery_enabled"
+
 	// =========================
 	// Recharge Settings
 	// =========================

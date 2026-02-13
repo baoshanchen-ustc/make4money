@@ -176,6 +176,17 @@
         <!-- Benefits -->
         <Benefits />
 
+        <!-- Gallery (real subscription screenshots) -->
+        <div v-if="homeGalleryEnabled" ref="galleryRef">
+          <CircularGallery
+            v-if="galleryData && galleryData.items.length > 0"
+            :items="galleryData.items"
+            :categories="galleryData.categories"
+            :title="galleryData.title"
+            :subtitle="galleryData.subtitle"
+          />
+        </div>
+
         <!-- How It Works -->
         <HowItWorks :video-config="videoConfig" />
 
@@ -194,43 +205,161 @@
     </div>
 
     <!-- Footer -->
-    <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
-      <div class="mx-auto max-w-6xl">
-        <div class="flex flex-col items-center justify-between gap-6 sm:flex-row">
-          <div class="flex items-center gap-4">
-            <p class="text-sm text-gray-500 dark:text-dark-400">
-              &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
+    <footer class="relative z-10 border-t border-gray-200/50 dark:border-dark-800/50">
+      <div class="mx-auto max-w-6xl px-6 py-10 sm:py-14">
+        <!-- Top: multi-column -->
+        <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <!-- Brand -->
+          <div class="sm:col-span-2 lg:col-span-2">
+            <div class="mb-3 flex items-center gap-2">
+              <img
+                v-if="footerLogo"
+                :src="footerLogo"
+                :alt="siteName"
+                class="h-7 w-7 rounded-lg object-contain"
+              />
+              <span class="text-base font-bold text-gray-900 dark:text-white">{{ siteName }}</span>
+            </div>
+            <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-400">
+              {{ siteSubtitle }}
             </p>
           </div>
-          <div class="flex items-center gap-4 text-sm">
-            <router-link to="/install-guide" class="text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white">
-              {{ t('home.footer.installGuide') }}
-            </router-link>
-            <router-link to="/release-notes" class="text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white">
-              {{ t('home.footer.releaseNotes') }}
-            </router-link>
-            <a
-              v-if="docUrl"
-              :href="docUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-            >
-              {{ t('home.docs') }}
-            </a>
+
+          <!-- Product -->
+          <div>
+            <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('home.footer.product') }}
+            </h4>
+            <ul class="space-y-2 text-sm">
+              <li>
+                <router-link to="/install-guide" class="text-gray-500 transition-colors hover:text-primary-600 dark:text-dark-400 dark:hover:text-primary-400">
+                  {{ t('home.footer.installGuide') }}
+                </router-link>
+              </li>
+              <li>
+                <router-link to="/release-notes" class="text-gray-500 transition-colors hover:text-primary-600 dark:text-dark-400 dark:hover:text-primary-400">
+                  {{ t('home.footer.releaseNotes') }}
+                </router-link>
+              </li>
+              <li v-if="docUrl">
+                <a :href="docUrl" target="_blank" rel="noopener noreferrer" class="text-gray-500 transition-colors hover:text-primary-600 dark:text-dark-400 dark:hover:text-primary-400">
+                  {{ t('home.docs') }}
+                </a>
+              </li>
+              <li>
+                <a href="#faq" class="text-gray-500 transition-colors hover:text-primary-600 dark:text-dark-400 dark:hover:text-primary-400">
+                  {{ t('home.footer.faq') }}
+                </a>
+              </li>
+            </ul>
           </div>
+
+          <!-- Contact -->
+          <div>
+            <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('home.footer.contactUs') }}
+            </h4>
+            <ul class="space-y-2 text-sm">
+              <li>
+                <a
+                  href="mailto:yian20133213@gmail.com"
+                  class="text-gray-500 transition-colors hover:text-primary-600 dark:text-dark-400 dark:hover:text-primary-400"
+                >
+                  yian20133213@gmail.com
+                </a>
+              </li>
+              <li v-if="contactInfo && contactInfo !== 'yian20133213@gmail.com'">
+                <a
+                  :href="contactHref"
+                  :target="contactIsLink ? '_blank' : undefined"
+                  :rel="contactIsLink ? 'noopener noreferrer' : undefined"
+                  class="text-gray-500 transition-colors hover:text-primary-600 dark:text-dark-400 dark:hover:text-primary-400"
+                >
+                  {{ contactInfo }}
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="mt-8 border-t border-gray-200/50 pt-6 dark:border-dark-800/50">
+          <p class="text-xs text-gray-400 dark:text-dark-500">
+            &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
+          </p>
         </div>
       </div>
     </footer>
+
+    <!-- Floating Contact Button -->
+    <Teleport to="body">
+      <!-- Click-outside overlay to close popup -->
+      <div
+        v-if="showContactPopup"
+        class="fixed inset-0 z-40"
+        @click="showContactPopup = false"
+      />
+      <div class="fixed bottom-6 right-6 z-50">
+        <!-- Popup -->
+        <Transition name="contact-popup">
+          <div
+            v-if="showContactPopup"
+            class="absolute bottom-16 right-0 w-72 rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-dark-700 dark:bg-dark-800"
+          >
+            <!-- Header -->
+            <div class="mb-4 flex items-center justify-between">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                {{ t('home.footer.contactUs') }}
+              </h3>
+              <button
+                class="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-white"
+                @click="showContactPopup = false"
+              >
+                <Icon name="x" size="sm" />
+              </button>
+            </div>
+            <!-- QR Codes -->
+            <div class="flex justify-center gap-4">
+              <div v-if="contactQRCodeWechat" class="text-center">
+                <img :src="contactQRCodeWechat" :alt="t('home.footer.wechat')" class="h-28 w-28 rounded-lg border border-gray-100 dark:border-dark-700" />
+                <p class="mt-2 text-xs font-medium text-gray-500 dark:text-dark-400">{{ t('home.footer.wechat') }}</p>
+              </div>
+              <div v-if="contactQRCodeGroup" class="text-center">
+                <img :src="contactQRCodeGroup" :alt="t('home.footer.group')" class="h-28 w-28 rounded-lg border border-gray-100 dark:border-dark-700" />
+                <p class="mt-2 text-xs font-medium text-gray-500 dark:text-dark-400">{{ t('home.footer.group') }}</p>
+              </div>
+            </div>
+            <!-- Fallback: no QR codes configured -->
+            <div v-if="!contactQRCodeWechat && !contactQRCodeGroup" class="text-center">
+              <p class="text-sm text-gray-500 dark:text-dark-400">
+                yian20133213@gmail.com
+              </p>
+            </div>
+          </div>
+        </Transition>
+
+        <!-- FAB Button -->
+        <button
+          class="flex h-14 w-14 items-center justify-center rounded-full bg-primary-500 text-white shadow-lg shadow-primary-500/30 transition-all hover:bg-primary-600 hover:shadow-xl hover:shadow-primary-500/40 active:scale-95"
+          @click="showContactPopup = !showContactPopup"
+        >
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 1a9 9 0 00-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7a9 9 0 00-9-9z" />
+          </svg>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive, nextTick, defineAsyncComponent, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import { useTheme } from '@/composables/useTheme'
 import { preloadImages } from '@/utils/preload'
+import { getHomeGallery } from '@/api/auth'
+import type { GalleryData } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 import StickyNav from '@/components/home/StickyNav.vue'
 import TrustLogos from '@/components/home/TrustLogos.vue'
@@ -240,6 +369,10 @@ import Pricing from '@/components/home/Pricing.vue'
 import Testimonials from '@/components/home/Testimonials.vue'
 import Faq from '@/components/home/Faq.vue'
 import FinalCta from '@/components/home/FinalCta.vue'
+
+const CircularGallery = defineAsyncComponent(() =>
+  import('@/components/home/CircularGallery.vue')
+)
 
 const { t } = useI18n()
 
@@ -253,6 +386,68 @@ const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const homeTestimonials = computed(() => appStore.cachedPublicSettings?.home_testimonials || '')
+const homeGalleryEnabled = computed(() => appStore.cachedPublicSettings?.home_gallery_enabled ?? false)
+
+// Footer data
+const footerLogo = computed(() => {
+  const settings = appStore.cachedPublicSettings
+  if (isDark.value && settings?.site_logo_dark) return settings.site_logo_dark
+  return settings?.site_logo || ''
+})
+const contactInfo = computed(() => appStore.cachedPublicSettings?.contact_info || '')
+const contactQRCodeWechat = computed(() => appStore.cachedPublicSettings?.contact_qrcode_wechat || '')
+const contactQRCodeGroup = computed(() => appStore.cachedPublicSettings?.contact_qrcode_group || '')
+const contactIsLink = computed(() => {
+  const info = contactInfo.value
+  return info.startsWith('http') || info.includes('@')
+})
+const contactHref = computed(() => {
+  const info = contactInfo.value
+  if (info.startsWith('http')) return info
+  if (info.includes('@')) return `mailto:${info}`
+  return '#'
+})
+
+// Gallery lazy loading
+const galleryRef = ref<HTMLElement | null>(null)
+const galleryData = ref<GalleryData | null>(null)
+const galleryLoaded = ref(false)
+let galleryObserver: IntersectionObserver | null = null
+
+async function loadGalleryData() {
+  if (galleryLoaded.value) return
+  try {
+    galleryData.value = await getHomeGallery()
+    galleryLoaded.value = true // Only mark loaded on success
+  } catch {
+    // Transient failure — leave galleryLoaded false so observer can retry on next intersection
+  }
+}
+
+// Set up IntersectionObserver when gallery becomes enabled (publicSettings loaded async)
+watch(
+  () => homeGalleryEnabled.value,
+  async (enabled) => {
+    if (!enabled) return
+    await nextTick()
+    if (!galleryRef.value || galleryLoaded.value) return
+    galleryObserver?.disconnect()
+    galleryObserver = new IntersectionObserver(
+      async (entries) => {
+        if (entries[0]?.isIntersecting) {
+          await loadGalleryData()
+          // Only disconnect if load succeeded (galleryLoaded becomes true)
+          if (galleryLoaded.value) {
+            galleryObserver?.disconnect()
+          }
+        }
+      },
+      { rootMargin: '200px' }
+    )
+    galleryObserver.observe(galleryRef.value)
+  },
+  { immediate: true }
+)
 const videoConfig = computed(() => {
   const raw = appStore.cachedPublicSettings?.install_guide_videos || ''
   if (!raw) return null
@@ -297,6 +492,9 @@ const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dash
 
 // Current year for footer
 const currentYear = computed(() => new Date().getFullYear())
+
+// Contact popup
+const showContactPopup = ref(false)
 
 // ==================== Opening Animation ====================
 const showAnimation = ref(true)
@@ -657,6 +855,8 @@ onMounted(async () => {
     appStore.fetchPublicSettings()
   }
   initAnimation()
+
+  // Gallery observer will be set up by the watcher below
 })
 
 onUnmounted(() => {
@@ -678,6 +878,7 @@ onUnmounted(() => {
     busHornSound.value.src = ''
     busHornSound.value = null
   }
+  galleryObserver?.disconnect()
 })
 </script>
 
@@ -807,5 +1008,16 @@ onUnmounted(() => {
     0 0 0 1px rgba(217, 119, 87, 0.2),
     0 0 40px rgba(217, 119, 87, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Contact popup transition */
+.contact-popup-enter-active,
+.contact-popup-leave-active {
+  transition: all 0.2s ease;
+}
+.contact-popup-enter-from,
+.contact-popup-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.95);
 }
 </style>
