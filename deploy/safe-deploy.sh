@@ -112,23 +112,24 @@ get_container_ip() {
 # ===================== 健康检查（对指定容器） =====================
 
 # 对指定容器直接做 HTTP 健康检查（不经过 Nginx）
+# 优先通过容器 IP 直连，如果获取不到 IP 则用 docker exec 回退
 check_container_health() {
     local container="$1"
     local ip
     ip=$(get_container_ip "$container")
 
-    if [ -z "$ip" ]; then
-        log ERROR "无法获取容器 ${container} 的 IP 地址"
-        return 1
-    fi
-
-    local health_url="http://${ip}:8080/health"
     log STEP "阶段 1/4: 等待容器 ${container} 启动 (最长 ${MAX_WAIT}s)"
 
     local elapsed=0
     local http_code="000"
     while [ $elapsed -lt $MAX_WAIT ]; do
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "${health_url}" 2>/dev/null || echo "000")
+        if [ -n "$ip" ]; then
+            # 优先：通过容器 IP 直连检查
+            http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "http://${ip}:8080/health" 2>/dev/null || echo "000")
+        else
+            # 回退：通过 docker exec 在容器内检查
+            http_code=$(docker exec "$container" curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "http://localhost:8080/health" 2>/dev/null || echo "000")
+        fi
 
         if [ "$http_code" = "200" ]; then
             log OK "容器 ${container} HTTP 健康检查通过 (${elapsed}s)"
@@ -178,15 +179,29 @@ check_smoke_test() {
     local container="$1"
     local ip
     ip=$(get_container_ip "$container")
-    local base_url="http://${ip}:8080"
+    local base_url
+    if [ -n "$ip" ]; then
+        base_url="http://${ip}:8080"
+    else
+        base_url="http://localhost:8080"
+    fi
 
     log STEP "阶段 3/4: API 烟雾测试 (${container})"
 
     local all_ok=true
 
+    # 辅助函数：根据是否有 IP 选择 curl 方式
+    _smoke_curl() {
+        if [ -n "$ip" ]; then
+            curl "$@" 2>/dev/null || echo "000"
+        else
+            docker exec "$container" curl "$@" 2>/dev/null || echo "000"
+        fi
+    }
+
     # 测试 1: /setup/status 可达
     local setup_code
-    setup_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "${base_url}/setup/status" 2>/dev/null || echo "000")
+    setup_code=$(_smoke_curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "${base_url}/setup/status")
     if [ "$setup_code" = "200" ]; then
         log OK "/setup/status 可达 (HTTP ${setup_code})"
     else
@@ -195,11 +210,11 @@ check_smoke_test() {
 
     # 测试 2: 登录接口可达（发空请求，期望 4xx 而不是 5xx）
     local login_code
-    login_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    login_code=$(_smoke_curl -s -o /dev/null -w "%{http_code}" \
         --connect-timeout 5 --max-time 10 \
         -X POST "${base_url}/api/v1/auth/login" \
         -H "Content-Type: application/json" \
-        -d '{}' 2>/dev/null || echo "000")
+        -d '{}')
 
     if [ "$login_code" -ge 200 ] 2>/dev/null && [ "$login_code" -lt 500 ] 2>/dev/null; then
         log OK "登录接口可达 (HTTP ${login_code})"
@@ -301,8 +316,7 @@ switch_nginx() {
     echo "server ${container}:8080;" > "${NGINX_UPSTREAM}"
 
     # 重载 Nginx（不重启，零断连）
-    docker exec sub2api-nginx nginx -s reload 2>/dev/null
-    if [ $? -eq 0 ]; then
+    if docker exec sub2api-nginx nginx -s reload 2>&1; then
         log OK "Nginx 已重载，流量指向 ${container}"
     else
         log ERROR "Nginx 重载失败"
@@ -329,11 +343,10 @@ do_init() {
         exit 1
     fi
 
-    # 创建 nginx 目录和默认 upstream
+    # 创建 nginx 目录，强制写入正确的 upstream（不管文件是否已存在）
     mkdir -p "${DEPLOY_DIR}/nginx"
-    if [ ! -f "${NGINX_UPSTREAM}" ]; then
-        echo "server sub2api-blue:8080;" > "${NGINX_UPSTREAM}"
-    fi
+    echo "server sub2api-blue:8080;" > "${NGINX_UPSTREAM}"
+    log INFO "upstream.conf → sub2api-blue:8080"
 
     # 创建数据目录
     mkdir -p data postgres_data redis_data
@@ -423,14 +436,20 @@ do_deploy() {
     # Step 2: 启动备用实例（线上不受影响）
     log STEP "Step 2: 启动备用实例 ${standby_container}（线上不受影响）"
 
-    # 先确保旧的备用容器被清理
-    docker compose -f "${COMPOSE_FILE}" --profile "${standby}" up -d "${standby_container}" 2>/dev/null || \
-    docker compose -f "${COMPOSE_FILE}" up -d "${standby_container}" 2>/dev/null || {
-        # 如果 compose 不支持 profile 启动，直接 docker run
-        log WARN "Compose profile 启动失败，尝试 recreate..."
-        docker rm -f "${standby_container}" 2>/dev/null || true
-        docker compose -f "${COMPOSE_FILE}" --profile "${standby}" up -d 2>/dev/null
-    }
+    # 清理可能残留的旧备用容器
+    docker rm -f "${standby_container}" 2>/dev/null || true
+
+    # 启动备用容器（green 需要 --profile green，blue 不需要 profile）
+    if [ "$standby" = "green" ]; then
+        docker compose -f "${COMPOSE_FILE}" --profile green up -d sub2api-green
+    else
+        docker compose -f "${COMPOSE_FILE}" up -d sub2api-blue
+    fi
+
+    if ! is_container_running "${standby_container}"; then
+        log ERROR "${standby_container} 启动失败"
+        return 1
+    fi
 
     log OK "${standby_container} 已启动"
 
@@ -511,8 +530,12 @@ do_rollback() {
     cd "${DEPLOY_DIR}"
 
     # 启动旧实例
-    docker compose -f "${COMPOSE_FILE}" --profile "${standby}" up -d "${standby_container}" 2>/dev/null || \
-    docker compose -f "${COMPOSE_FILE}" up -d "${standby_container}" 2>/dev/null
+    docker rm -f "${standby_container}" 2>/dev/null || true
+    if [ "$standby" = "green" ]; then
+        docker compose -f "${COMPOSE_FILE}" --profile green up -d sub2api-green
+    else
+        docker compose -f "${COMPOSE_FILE}" up -d sub2api-blue
+    fi
 
     sleep 5
 
