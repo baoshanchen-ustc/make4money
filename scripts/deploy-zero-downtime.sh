@@ -41,20 +41,81 @@ sync_output() {
     sleep 0.1
 }
 
+require_cmd() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        print_error "未找到命令: $1"
+        exit 1
+    fi
+}
+
 # SSH/SCP 命令封装
 ssh_cmd() {
+    local -a ssh_opts=(
+        -o ConnectTimeout=10
+        -o ServerAliveInterval=15
+        -o ServerAliveCountMax=6
+    )
+
     if [ -n "$SSH_KEY" ]; then
-        ssh -o ConnectTimeout=10 -i "$SSH_KEY" "${REMOTE_USER}@${REMOTE_HOST}" "$@"
+        ssh "${ssh_opts[@]}" -i "$SSH_KEY" "${REMOTE_USER}@${REMOTE_HOST}" "$@"
     else
-        ssh -o ConnectTimeout=10 "${REMOTE_USER}@${REMOTE_HOST}" "$@"
+        ssh "${ssh_opts[@]}" "${REMOTE_USER}@${REMOTE_HOST}" "$@"
+    fi
+}
+
+run_scp() {
+    local use_legacy="$1"
+    shift
+
+    local -a scp_opts=(
+        -o ConnectTimeout=10
+        -o ServerAliveInterval=15
+        -o ServerAliveCountMax=6
+    )
+
+    if [ "$use_legacy" = true ]; then
+        scp_opts=(-O "${scp_opts[@]}")
+    fi
+
+    if [ -n "$SSH_KEY" ]; then
+        scp "${scp_opts[@]}" -i "$SSH_KEY" "$@"
+    else
+        scp "${scp_opts[@]}" "$@"
     fi
 }
 
 scp_cmd() {
-    if [ -n "$SSH_KEY" ]; then
-        scp -o ConnectTimeout=10 -i "$SSH_KEY" "$@"
-    else
-        scp -o ConnectTimeout=10 "$@"
+    local max_attempts=3
+    local attempt=1
+    local legacy_mode=false
+
+    while [ "$attempt" -le "$max_attempts" ]; do
+        if [ "$attempt" -ge 2 ]; then
+            legacy_mode=true
+        fi
+
+        if run_scp "$legacy_mode" "$@"; then
+            return 0
+        fi
+
+        if [ "$legacy_mode" = false ]; then
+            print_warning "SCP 默认模式失败，下一次将使用 -O 兼容模式重试。"
+        else
+            print_warning "上传失败，准备第 ${attempt}/${max_attempts} 次重试..."
+        fi
+
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    return 1
+}
+
+ensure_local_binary_exists() {
+    if [ ! -f "backend/$BINARY_NAME" ]; then
+        print_error "未找到后端二进制: backend/$BINARY_NAME"
+        print_info "请先执行完整部署，或确认 --skip-build 时该文件已存在。"
+        exit 1
     fi
 }
 
@@ -105,8 +166,12 @@ main() {
     print_info "部署目录: ${REMOTE_DIR}"
     echo ""
 
+    require_cmd ssh
+    require_cmd scp
+
     # Step 1: 编译前端
     if [ "$SKIP_BUILD" = false ] && [ "$SKIP_FRONTEND" = false ]; then
+        require_cmd pnpm
         print_info "Step 1/5: 编译前端..."
         cd frontend
         pnpm install --frozen-lockfile 2>/dev/null || pnpm install
@@ -119,6 +184,7 @@ main() {
 
     # Step 2: 编译后端 (交叉编译 linux/amd64)
     if [ "$SKIP_BUILD" = false ]; then
+        require_cmd go
         print_info "Step 2/5: 编译后端 (linux/amd64)..."
         cd backend
         CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -tags embed -o "$BINARY_NAME" ./cmd/server
@@ -131,8 +197,13 @@ main() {
     # Step 3: 上传到临时位置（服务继续运行）
     print_info "Step 3/5: 上传到临时位置（服务保持运行）..."
     TEMP_FILE="/tmp/${BINARY_NAME}.new.$$"
+    ensure_local_binary_exists
 
-    scp_cmd "backend/$BINARY_NAME" "${REMOTE_USER}@${REMOTE_HOST}:${TEMP_FILE}"
+    if ! scp_cmd "backend/$BINARY_NAME" "${REMOTE_USER}@${REMOTE_HOST}:${TEMP_FILE}"; then
+        print_error "上传失败：连接中断或 SCP 协议不兼容。"
+        print_info "可手动测试：scp -O backend/$BINARY_NAME ${REMOTE_USER}@${REMOTE_HOST}:${TEMP_FILE}"
+        exit 1
+    fi
     ssh_cmd "chmod +x ${TEMP_FILE}"
 
     print_success "上传完成: ${TEMP_FILE}"

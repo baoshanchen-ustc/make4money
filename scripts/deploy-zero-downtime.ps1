@@ -15,6 +15,114 @@ if (-not (Test-Path $bashScript)) {
     exit 1
 }
 
+function Normalize-ConfigValue {
+    param(
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value) {
+        return ""
+    }
+
+    return $Value.Trim().Trim("`r")
+}
+
+function Read-DeployConfig {
+    param(
+        [string]$ScriptDirPath
+    )
+
+    $config = @{
+        REMOTE_HOST = "YOUR_SERVER_IP"
+        REMOTE_USER = "root"
+        BINARY_NAME = "code80"
+        SSH_KEY = ""
+    }
+
+    $configPath = Join-Path $ScriptDirPath "deploy.local.conf"
+    if (-not (Test-Path $configPath)) {
+        return $config
+    }
+
+    foreach ($line in Get-Content -Encoding UTF8 $configPath) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith("#")) {
+            continue
+        }
+
+        if ($trimmed -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$') {
+            $name = $Matches[1]
+            $rawValue = $Matches[2]
+
+            if ($rawValue -match '^"(.*)"(?:\s+#.*)?$') {
+                $config[$name] = Normalize-ConfigValue -Value $Matches[1]
+                continue
+            }
+
+            if ($rawValue -match "^'(.*)'(?:\s+#.*)?$") {
+                $config[$name] = Normalize-ConfigValue -Value $Matches[1]
+                continue
+            }
+
+            $cleanValue = ($rawValue -split '\s+#', 2)[0]
+            $config[$name] = Normalize-ConfigValue -Value $cleanValue
+        }
+    }
+
+    return $config
+}
+
+function Invoke-RemoteTempCleanup {
+    param(
+        [string]$ScriptDirPath
+    )
+
+    $config = Read-DeployConfig -ScriptDirPath $ScriptDirPath
+    $remoteHost = Normalize-ConfigValue -Value $config.REMOTE_HOST
+    $remoteUser = Normalize-ConfigValue -Value $config.REMOTE_USER
+    $binaryName = Normalize-ConfigValue -Value $config.BINARY_NAME
+    $sshKey = Normalize-ConfigValue -Value $config.SSH_KEY
+
+    if (-not $remoteHost -or $remoteHost -eq "YOUR_SERVER_IP") {
+        Write-Host "[WARNING] Skip temp cleanup: REMOTE_HOST is not configured."
+        return
+    }
+    if (-not $remoteUser) {
+        $remoteUser = "root"
+    }
+    if (-not $binaryName) {
+        $binaryName = "code80"
+    }
+
+    $sshCommand = Get-Command ssh -ErrorAction SilentlyContinue
+    if (-not $sshCommand) {
+        Write-Host "[WARNING] Skip temp cleanup: local ssh command was not found."
+        return
+    }
+
+    $sshArgs = @(
+        "-o", "ConnectTimeout=10",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=6"
+    )
+
+    if ($sshKey) {
+        $sshArgs += "-i"
+        $sshArgs += $sshKey
+    }
+
+    $remoteTarget = "$remoteUser@$remoteHost"
+    $safePattern = "$binaryName.new.*"
+    $remoteCommand = "find /tmp -maxdepth 1 -type f -name '$safePattern' -mmin +30 -print -delete 2>/dev/null; true"
+
+    Write-Host "[INFO] Cleaning old temp files on server: /tmp/$binaryName.new.* (keep recent 30 minutes)"
+    & $sshCommand.Source @sshArgs $remoteTarget $remoteCommand
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[WARNING] Temp cleanup failed (deployment result is unchanged)."
+    }
+}
+
 function Resolve-GitBashPath {
     param(
         [string]$OverridePath
@@ -72,4 +180,14 @@ if ($args.Count -gt 0) {
 }
 
 & $bashExe @bashArgs
-exit $LASTEXITCODE
+$deployExitCode = $LASTEXITCODE
+
+if ($deployExitCode -eq 0 -and -not $Help) {
+    try {
+        Invoke-RemoteTempCleanup -ScriptDirPath $scriptDir
+    } catch {
+        Write-Host "[WARNING] Temp cleanup raised an exception (deployment result is unchanged): $($_.Exception.Message)"
+    }
+}
+
+exit $deployExitCode
