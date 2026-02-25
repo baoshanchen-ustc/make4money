@@ -236,10 +236,8 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyNormali
 	require.NotContains(t, body, "\"name\":\"edit\"")
 }
 
-func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsRejectedBeforeUpstream(t *testing.T) {
+func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsInjectedBeforeUpstream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logSink, restore := captureStructuredLog(t)
-	defer restore()
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -248,7 +246,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsRejectedB
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
 
-	// Codex 模型且缺少 instructions，应在本地直接 403 拒绝，不触达上游。
+	// Codex 模型且缺少 instructions，应自动注入默认指令后正常转发。
 	originalBody := []byte(`{"model":"gpt-5.1-codex-max","stream":false,"store":true,"input":[{"type":"text","text":"hi"}]}`)
 
 	upstream := &httpUpstreamRecorder{
@@ -278,15 +276,12 @@ func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsRejectedB
 	}
 
 	result, err := svc.Forward(context.Background(), c, account, originalBody)
-	require.Error(t, err)
-	require.Nil(t, result)
-	require.Equal(t, http.StatusForbidden, rec.Code)
-	require.Contains(t, rec.Body.String(), "requires a non-empty instructions field")
-	require.Nil(t, upstream.lastReq)
-
-	require.True(t, logSink.ContainsMessage("OpenAI passthrough 本地拦截：Codex 请求缺少有效 instructions"))
-	require.True(t, logSink.ContainsFieldValue("request_user_agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown"))
-	require.True(t, logSink.ContainsFieldValue("reject_reason", "instructions_missing"))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	// 验证 instructions 已被注入
+	sentBody := gjson.ParseBytes(upstream.lastBody)
+	require.NotEmpty(t, sentBody.Get("instructions").String(), "instructions should be injected")
 }
 
 func TestOpenAIGatewayService_OAuthPassthrough_DisabledUsesLegacyTransform(t *testing.T) {
@@ -752,7 +747,11 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEnd
 	_, err := svc.Forward(context.Background(), c, account, originalBody)
 	require.NoError(t, err)
 	require.NotNil(t, upstream.lastReq)
-	require.Equal(t, originalBody, upstream.lastBody)
+	// body 会被注入 instructions 并剥离 max_output_tokens，不再原样保留
+	sentBody := gjson.ParseBytes(upstream.lastBody)
+	require.NotEmpty(t, sentBody.Get("instructions").String(), "instructions should be injected")
+	require.False(t, sentBody.Get("max_output_tokens").Exists(), "max_output_tokens should be stripped")
+	require.Equal(t, "gpt-5.2", sentBody.Get("model").String())
 	require.Equal(t, "https://api.openai.com/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer sk-api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "curl/8.0", upstream.lastReq.Header.Get("User-Agent"))
