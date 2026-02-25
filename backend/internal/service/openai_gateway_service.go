@@ -1309,6 +1309,19 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 	}
 
+	// 透传模式下，若 instructions 为空则自动注入默认指令，避免上游 400。
+	// 使用 gjson/sjson 轻量操作，不做全量 Unmarshal。
+	if isPassthroughInstructionsEmptyBytes(body) {
+		if instructions := strings.TrimSpace(GetOpenCodeInstructions()); instructions != "" {
+			if patched, err := sjson.SetBytes(body, "instructions", instructions); err == nil {
+				body = patched
+				logger.LegacyPrintf("service.openai_gateway",
+					"[OpenAI passthrough] Injected default instructions: account=%d model=%s",
+					account.ID, reqModel)
+			}
+		}
+	}
+
 	logger.LegacyPrintf("service.openai_gateway",
 		"[OpenAI 自动透传] 命中自动透传分支: account=%d name=%s type=%s model=%s stream=%v",
 		account.ID,

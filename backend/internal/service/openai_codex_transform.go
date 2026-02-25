@@ -3,6 +3,8 @@ package service
 import (
 	_ "embed"
 	"strings"
+
+	"github.com/tidwall/gjson"
 )
 
 //go:embed prompts/codex_cli_instructions.md
@@ -292,6 +294,19 @@ func isInstructionsEmpty(reqBody map[string]any) bool {
 		return true
 	}
 	return strings.TrimSpace(str) == ""
+}
+
+// isPassthroughInstructionsEmptyBytes 使用 gjson 检查原始 JSON 字节中 instructions 是否为空。
+// 用于 passthrough 路径，避免全量 Unmarshal。
+func isPassthroughInstructionsEmptyBytes(body []byte) bool {
+	result := gjson.GetBytes(body, "instructions")
+	if !result.Exists() {
+		return true
+	}
+	if result.Type != gjson.String {
+		return true
+	}
+	return strings.TrimSpace(result.String()) == ""
 }
 
 // filterCodexInput 按需过滤 item_reference 与 id。
