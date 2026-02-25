@@ -1318,6 +1318,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				logger.LegacyPrintf("service.openai_gateway",
 					"[OpenAI passthrough] Injected default instructions: account=%d model=%s",
 					account.ID, reqModel)
+			} else {
+				logger.LegacyPrintf("service.openai_gateway",
+					"[OpenAI passthrough] Failed to inject instructions: account=%d model=%s err=%v",
+					account.ID, reqModel, err)
 			}
 		}
 	}
