@@ -7,6 +7,7 @@ import "github.com/gin-gonic/gin"
 type AuthSubject struct {
 	UserID      int64
 	Concurrency int
+	MaxSessions int // 用户级最大活跃会话数
 }
 
 func GetAuthSubjectFromContext(c *gin.Context) (AuthSubject, bool) {

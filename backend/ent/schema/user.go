@@ -49,6 +49,9 @@ func (User) Fields() []ent.Field {
 			Default(0),
 		field.Int("concurrency").
 			Default(5),
+		field.Int("max_sessions").
+			Default(0).
+			Comment("用户级最大活跃会话数，0 = 不限制"),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),

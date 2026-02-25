@@ -61,4 +61,17 @@ type SessionLimitCache interface {
 	// GetWindowCostBatch 批量获取窗口费用缓存
 	// 返回 map[accountID]cost，缓存未命中的账号不在 map 中
 	GetWindowCostBatch(ctx context.Context, accountIDs []int64) (map[int64]float64, error)
+
+	// ========== 用户级会话限制 ==========
+	// Key 格式: session_limit:user:{userID}
+	// 逻辑与账号级 RegisterSession 相同，但维度是 userID
+
+	// RegisterUserSession 注册用户级会话活动
+	// 如果会话已存在，刷新时间戳并返回 true
+	// 如果会话不存在且活跃会话数 < maxSessions，添加新会话并返回 true
+	// 如果会话不存在且活跃会话数 >= maxSessions，返回 false（拒绝）
+	RegisterUserSession(ctx context.Context, userID int64, sessionUUID string, maxSessions int, idleTimeout time.Duration) (allowed bool, err error)
+
+	// GetActiveUserSessionCount 获取用户的活跃会话数
+	GetActiveUserSessionCount(ctx context.Context, userID int64) (int, error)
 }

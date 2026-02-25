@@ -342,3 +342,43 @@ func (c *sessionLimitCache) GetWindowCostBatch(ctx context.Context, accountIDs [
 
 	return results, nil
 }
+
+// ========== 用户级会话限制 ==========
+
+const userSessionLimitKeyPrefix = "session_limit:user:"
+
+func userSessionLimitKey(userID int64) string {
+	return fmt.Sprintf("%s%d", userSessionLimitKeyPrefix, userID)
+}
+
+// RegisterUserSession 注册用户级会话活动
+// 复用与账号级相同的 Lua 脚本，仅 key 维度不同
+func (c *sessionLimitCache) RegisterUserSession(ctx context.Context, userID int64, sessionUUID string, maxSessions int, idleTimeout time.Duration) (bool, error) {
+	if sessionUUID == "" || maxSessions <= 0 {
+		return true, nil
+	}
+
+	key := userSessionLimitKey(userID)
+	idleTimeoutSeconds := int(idleTimeout.Seconds())
+	if idleTimeoutSeconds <= 0 {
+		idleTimeoutSeconds = int(c.defaultIdleTimeout.Seconds())
+	}
+
+	result, err := registerSessionScript.Run(ctx, c.rdb, []string{key}, maxSessions, idleTimeoutSeconds, sessionUUID).Int()
+	if err != nil {
+		return true, err // 失败开放
+	}
+	return result == 1, nil
+}
+
+// GetActiveUserSessionCount 获取用户活跃会话数
+func (c *sessionLimitCache) GetActiveUserSessionCount(ctx context.Context, userID int64) (int, error) {
+	key := userSessionLimitKey(userID)
+	idleTimeoutSeconds := int(c.defaultIdleTimeout.Seconds())
+
+	result, err := getActiveSessionCountScript.Run(ctx, c.rdb, []string{key}, idleTimeoutSeconds).Int()
+	if err != nil {
+		return 0, err
+	}
+	return result, nil
+}

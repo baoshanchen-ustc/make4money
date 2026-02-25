@@ -71,6 +71,7 @@ func jwtAuth(authService *service.AuthService, userService *service.UserService)
 		c.Set(string(ContextKeyUser), AuthSubject{
 			UserID:      user.ID,
 			Concurrency: user.Concurrency,
+			MaxSessions: user.MaxSessions,
 		})
 		c.Set(string(ContextKeyUserRole), user.Role)
 

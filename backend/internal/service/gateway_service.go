@@ -604,44 +604,13 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		return s.hashContent(cacheableContent)
 	}
 
-	// 3. 最后 fallback: 使用 session上下文 + system + 所有消息的完整摘要串
-	var combined strings.Builder
-	// 混入请求上下文区分因子，避免不同用户相同消息产生相同 hash
+	// 3. Fallback: 使用请求上下文（IP + APIKeyID）生成稳定 hash
+	// 修复：旧实现使用 system + messages 内容做 hash，导致同一用户每轮对话
+	// 生成不同的 sessionHash，虚增活跃会话数量。
+	// 新实现只用 ClientIP + APIKeyID，同一用户的所有请求始终映射到同一个会话。
 	if parsed.SessionContext != nil {
-		_, _ = combined.WriteString(parsed.SessionContext.ClientIP)
-		_, _ = combined.WriteString(":")
-		_, _ = combined.WriteString(parsed.SessionContext.UserAgent)
-		_, _ = combined.WriteString(":")
-		_, _ = combined.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
-		_, _ = combined.WriteString("|")
-	}
-	if parsed.System != nil {
-		systemText := s.extractTextFromSystem(parsed.System)
-		if systemText != "" {
-			_, _ = combined.WriteString(systemText)
-		}
-	}
-	for _, msg := range parsed.Messages {
-		if m, ok := msg.(map[string]any); ok {
-			if content, exists := m["content"]; exists {
-				// Anthropic: messages[].content
-				if msgText := s.extractTextFromContent(content); msgText != "" {
-					_, _ = combined.WriteString(msgText)
-				}
-			} else if parts, ok := m["parts"].([]any); ok {
-				// Gemini: contents[].parts[].text
-				for _, part := range parts {
-					if partMap, ok := part.(map[string]any); ok {
-						if text, ok := partMap["text"].(string); ok {
-							_, _ = combined.WriteString(text)
-						}
-					}
-				}
-			}
-		}
-	}
-	if combined.Len() > 0 {
-		return s.hashContent(combined.String())
+		contextKey := parsed.SessionContext.ClientIP + ":" + strconv.FormatInt(parsed.SessionContext.APIKeyID, 10)
+		return s.hashContent(contextKey)
 	}
 
 	return ""
@@ -1039,7 +1008,7 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
 // metadataUserID: 已废弃参数，会话限制现在统一使用 sessionHash
-func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string) (*AccountSelectionResult, error) {
+func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, userID int64, userMaxSessions int) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -1052,6 +1021,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		"excluded_ids", excludedIDsList)
 
 	cfg := s.schedulingConfig()
+
+	// 用户级活跃会话检查（在账号选择之前）
+	if !s.checkAndRegisterUserSession(ctx, userID, sessionHash, userMaxSessions) {
+		return nil, fmt.Errorf("user session limit exceeded (max %d active sessions)", userMaxSessions)
+	}
 
 	// 检查 Claude Code 客户端限制（可能会替换 groupID 为降级分组）
 	group, groupID, err := s.checkClaudeCodeRestriction(ctx, groupID)
@@ -2088,6 +2062,30 @@ func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *A
 	if err != nil {
 		// 失败开放：缓存错误时允许通过
 		return true
+	}
+	return allowed
+}
+
+// checkAndRegisterUserSession 检查并注册用户级会话
+// userID: 用户 ID
+// sessionHash: 会话标识符
+// maxSessions: 用户最大活跃会话数（0 = 不限制）
+// 返回 true 表示允许，false 表示拒绝（超出限制且是新会话）
+func (s *GatewayService) checkAndRegisterUserSession(ctx context.Context, userID int64, sessionHash string, maxSessions int) bool {
+	if maxSessions <= 0 || sessionHash == "" {
+		return true // 未启用或无会话ID
+	}
+
+	if s.sessionLimitCache == nil {
+		return true
+	}
+
+	// 用户级使用固定 5 分钟空闲超时
+	idleTimeout := 5 * time.Minute
+
+	allowed, err := s.sessionLimitCache.RegisterUserSession(ctx, userID, sessionHash, maxSessions, idleTimeout)
+	if err != nil {
+		return true // 失败开放
 	}
 	return allowed
 }

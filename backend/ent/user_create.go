@@ -126,6 +126,20 @@ func (_c *UserCreate) SetNillableConcurrency(v *int) *UserCreate {
 	return _c
 }
 
+// SetMaxSessions sets the "max_sessions" field.
+func (_c *UserCreate) SetMaxSessions(v int) *UserCreate {
+	_c.mutation.SetMaxSessions(v)
+	return _c
+}
+
+// SetNillableMaxSessions sets the "max_sessions" field if the given value is not nil.
+func (_c *UserCreate) SetNillableMaxSessions(v *int) *UserCreate {
+	if v != nil {
+		_c.SetMaxSessions(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *UserCreate) SetStatus(v string) *UserCreate {
 	_c.mutation.SetStatus(v)
@@ -408,6 +422,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
 	}
+	if _, ok := _c.mutation.MaxSessions(); !ok {
+		v := user.DefaultMaxSessions
+		_c.mutation.SetMaxSessions(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := user.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -464,6 +482,9 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "User.concurrency"`)}
+	}
+	if _, ok := _c.mutation.MaxSessions(); !ok {
+		return &ValidationError{Name: "max_sessions", err: errors.New(`ent: missing required field "User.max_sessions"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "User.status"`)}
@@ -545,6 +566,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
+	}
+	if value, ok := _c.mutation.MaxSessions(); ok {
+		_spec.SetField(user.FieldMaxSessions, field.TypeInt, value)
+		_node.MaxSessions = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
@@ -872,6 +897,24 @@ func (u *UserUpsert) AddConcurrency(v int) *UserUpsert {
 	return u
 }
 
+// SetMaxSessions sets the "max_sessions" field.
+func (u *UserUpsert) SetMaxSessions(v int) *UserUpsert {
+	u.Set(user.FieldMaxSessions, v)
+	return u
+}
+
+// UpdateMaxSessions sets the "max_sessions" field to the value that was provided on create.
+func (u *UserUpsert) UpdateMaxSessions() *UserUpsert {
+	u.SetExcluded(user.FieldMaxSessions)
+	return u
+}
+
+// AddMaxSessions adds v to the "max_sessions" field.
+func (u *UserUpsert) AddMaxSessions(v int) *UserUpsert {
+	u.Add(user.FieldMaxSessions, v)
+	return u
+}
+
 // SetStatus sets the "status" field.
 func (u *UserUpsert) SetStatus(v string) *UserUpsert {
 	u.Set(user.FieldStatus, v)
@@ -1117,6 +1160,27 @@ func (u *UserUpsertOne) AddConcurrency(v int) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateConcurrency() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetMaxSessions sets the "max_sessions" field.
+func (u *UserUpsertOne) SetMaxSessions(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetMaxSessions(v)
+	})
+}
+
+// AddMaxSessions adds v to the "max_sessions" field.
+func (u *UserUpsertOne) AddMaxSessions(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddMaxSessions(v)
+	})
+}
+
+// UpdateMaxSessions sets the "max_sessions" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateMaxSessions() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateMaxSessions()
 	})
 }
 
@@ -1545,6 +1609,27 @@ func (u *UserUpsertBulk) AddConcurrency(v int) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateConcurrency() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetMaxSessions sets the "max_sessions" field.
+func (u *UserUpsertBulk) SetMaxSessions(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetMaxSessions(v)
+	})
+}
+
+// AddMaxSessions adds v to the "max_sessions" field.
+func (u *UserUpsertBulk) AddMaxSessions(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddMaxSessions(v)
+	})
+}
+
+// UpdateMaxSessions sets the "max_sessions" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateMaxSessions() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateMaxSessions()
 	})
 }
 
