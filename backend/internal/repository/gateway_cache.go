@@ -10,6 +10,7 @@ import (
 )
 
 const stickySessionPrefix = "sticky_session:"
+const stickySessionIndexPrefix = "sticky_session_index:"
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -25,6 +26,12 @@ func buildSessionKey(groupID int64, sessionHash string) string {
 	return fmt.Sprintf("%s%d:%s", stickySessionPrefix, groupID, sessionHash)
 }
 
+// buildSessionIndexKey 构建反向索引 key，用于从 accountID 查找 sessionHash
+// 格式: sticky_session_index:{groupID}:{accountID}
+func buildSessionIndexKey(groupID int64, accountID int64) string {
+	return fmt.Sprintf("%s%d:%d", stickySessionIndexPrefix, groupID, accountID)
+}
+
 func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Get(ctx, key).Int64()
@@ -32,7 +39,14 @@ func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, s
 
 func (c *gatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
 	key := buildSessionKey(groupID, sessionHash)
-	return c.rdb.Set(ctx, key, accountID, ttl).Err()
+	indexKey := buildSessionIndexKey(groupID, accountID)
+
+	pipe := c.rdb.Pipeline()
+	pipe.Set(ctx, key, accountID, ttl)
+	pipe.SAdd(ctx, indexKey, sessionHash)
+	pipe.Expire(ctx, indexKey, ttl)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error {
@@ -49,5 +63,41 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 // or unschedulable), allowing subsequent requests to select a new available account.
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
+	// 注意：这里不清理反向索引，因为不知道对应的 accountID
+	// 反向索引会在 GetSessionAccountID 返回错误时由调用方清理，或在 DeleteStickySessionsByAccount 中批量清理
 	return c.rdb.Del(ctx, key).Err()
+}
+
+// DeleteStickySessionsByAccount 删除指定账号在指定分组中的所有粘性会话。
+// 当账号被移除分组时调用，确保该账号不会继续被 sticky session 使用。
+//
+// DeleteStickySessionsByAccount deletes all sticky sessions for the given account in the given group.
+// Called when account is removed from a group to ensure it won't be used by sticky sessions.
+func (c *gatewayCache) DeleteStickySessionsByAccount(ctx context.Context, groupID int64, accountID int64) error {
+	indexKey := buildSessionIndexKey(groupID, accountID)
+
+	// 获取该账号的所有 sessionHash
+	sessionHashes, err := c.rdb.SMembers(ctx, indexKey).Result()
+	if err != nil {
+		return fmt.Errorf("get session index failed: %w", err)
+	}
+
+	if len(sessionHashes) == 0 {
+		return nil
+	}
+
+	// 批量删除 sticky session
+	pipe := c.rdb.Pipeline()
+	for _, sessionHash := range sessionHashes {
+		sessionKey := buildSessionKey(groupID, sessionHash)
+		pipe.Del(ctx, sessionKey)
+	}
+	// 删除反向索引
+	pipe.Del(ctx, indexKey)
+
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("delete sticky sessions failed: %w", err)
+	}
+	return nil
 }

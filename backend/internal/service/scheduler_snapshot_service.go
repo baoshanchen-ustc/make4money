@@ -25,6 +25,7 @@ type SchedulerSnapshotService struct {
 	outboxRepo    SchedulerOutboxRepository
 	accountRepo   AccountRepository
 	groupRepo     GroupRepository
+	gatewayCache  GatewayCache
 	cfg           *config.Config
 	stopCh        chan struct{}
 	stopOnce      sync.Once
@@ -39,6 +40,7 @@ func NewSchedulerSnapshotService(
 	outboxRepo SchedulerOutboxRepository,
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
+	gatewayCache GatewayCache,
 	cfg *config.Config,
 ) *SchedulerSnapshotService {
 	maxQPS := 0
@@ -50,6 +52,7 @@ func NewSchedulerSnapshotService(
 		outboxRepo:    outboxRepo,
 		accountRepo:   accountRepo,
 		groupRepo:     groupRepo,
+		gatewayCache:  gatewayCache,
 		cfg:           cfg,
 		stopCh:        make(chan struct{}),
 		fallbackLimit: newFallbackLimiter(maxQPS),
@@ -263,6 +266,18 @@ func (s *SchedulerSnapshotService) handleOutboxEvent(ctx context.Context, event 
 	case SchedulerOutboxEventAccountBulkChanged:
 		return s.handleBulkAccountEvent(ctx, event.Payload)
 	case SchedulerOutboxEventAccountGroupsChanged:
+		// 账号分组变更时，清除该账号在相关分组中的 sticky session
+		// 防止账号被移除分组后仍被 sticky session 继续使用
+		if event.AccountID != nil && s.gatewayCache != nil && event.Payload != nil {
+			if groupIDs := parseInt64Slice(event.Payload["group_ids"]); len(groupIDs) > 0 {
+				for _, groupID := range groupIDs {
+					if err := s.gatewayCache.DeleteStickySessionsByAccount(ctx, groupID, *event.AccountID); err != nil {
+						logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] clear sticky sessions failed: account=%d group=%d err=%v", *event.AccountID, groupID, err)
+						// 继续处理其他分组，不中断
+					}
+				}
+			}
+		}
 		return s.handleAccountEvent(ctx, event.AccountID, event.Payload)
 	case SchedulerOutboxEventAccountChanged:
 		return s.handleAccountEvent(ctx, event.AccountID, event.Payload)

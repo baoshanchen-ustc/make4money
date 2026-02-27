@@ -221,6 +221,23 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	return nil
 }
 
+func (m *mockGatewayCacheForPlatform) DeleteStickySessionsByAccount(ctx context.Context, groupID int64, accountID int64) error {
+	if m.sessionBindings == nil {
+		return nil
+	}
+	// 删除所有绑定到该账号的会话
+	for sessionHash, boundAccountID := range m.sessionBindings {
+		if boundAccountID == accountID {
+			delete(m.sessionBindings, sessionHash)
+			if m.deletedSessions == nil {
+				m.deletedSessions = make(map[string]int)
+			}
+			m.deletedSessions[sessionHash]++
+		}
+	}
+	return nil
+}
+
 type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int

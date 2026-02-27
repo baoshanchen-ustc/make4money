@@ -585,6 +585,13 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		return nil
 	}
 
+	// 检查账号是否仍在当前分组中（防御性检查：防止账号被移除分组后继续使用）
+	// Verify account still belongs to the current group
+	if !isAccountInGroup(account, groupID) {
+		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+		return nil
+	}
+
 	// 验证账号是否可用于当前请求
 	// Verify account is usable for current request
 	if !account.IsSchedulable() || !account.IsOpenAI() {

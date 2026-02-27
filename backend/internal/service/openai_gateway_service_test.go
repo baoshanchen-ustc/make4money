@@ -211,6 +211,23 @@ func (c *stubGatewayCache) DeleteSessionAccountID(ctx context.Context, groupID i
 	return nil
 }
 
+func (c *stubGatewayCache) DeleteStickySessionsByAccount(ctx context.Context, groupID int64, accountID int64) error {
+	if c.sessionBindings == nil {
+		return nil
+	}
+	// 删除所有绑定到该账号的会话
+	for sessionHash, boundAccountID := range c.sessionBindings {
+		if boundAccountID == accountID {
+			delete(c.sessionBindings, sessionHash)
+			if c.deletedSessions == nil {
+				c.deletedSessions = make(map[string]int)
+			}
+			c.deletedSessions[sessionHash]++
+		}
+	}
+	return nil
+}
+
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
 	now := time.Now()
 	resetAt := now.Add(10 * time.Minute)
