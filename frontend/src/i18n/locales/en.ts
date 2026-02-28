@@ -877,6 +877,7 @@ export default {
         balance: 'Balance',
         usage: 'Usage',
         concurrency: 'Concurrency',
+        maxSessions: 'Max Sessions',
         status: 'Status',
         created: 'Created',
         actions: 'Actions'

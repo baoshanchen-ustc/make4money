@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -354,8 +355,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	}
 
 	for {
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, fs.FailedAccountIDs, "") // Gemini 不使用会话限制
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, fs.FailedAccountIDs, "", authSubject.UserID, authSubject.MaxSessions) // Gemini 不使用会话限制
 		if err != nil {
+			var sessionLimitErr *service.UserSessionLimitError
+			if errors.As(err, &sessionLimitErr) {
+				googleError(c, http.StatusTooManyRequests, fmt.Sprintf("You have reached the maximum number of active sessions (%d). Please close unused sessions or wait a few minutes before retrying.", sessionLimitErr.MaxSessions))
+				return
+			}
 			if len(fs.FailedAccountIDs) == 0 {
 				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
 				return

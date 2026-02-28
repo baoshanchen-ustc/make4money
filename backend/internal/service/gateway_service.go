@@ -492,6 +492,15 @@ func (e *UpstreamFailoverError) Error() string {
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 }
 
+// UserSessionLimitError 用户级会话数超限错误
+type UserSessionLimitError struct {
+	MaxSessions int
+}
+
+func (e *UserSessionLimitError) Error() string {
+	return fmt.Sprintf("user session limit exceeded (max %d active sessions)", e.MaxSessions)
+}
+
 // TempUnscheduleRetryableError 对 RetryableOnSameAccount 类型的 failover 错误触发临时封禁。
 // 由 handler 层在同账号重试全部用尽、切换账号时调用。
 func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) {
@@ -604,44 +613,13 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		return s.hashContent(cacheableContent)
 	}
 
-	// 3. 最后 fallback: 使用 session上下文 + system + 所有消息的完整摘要串
-	var combined strings.Builder
-	// 混入请求上下文区分因子，避免不同用户相同消息产生相同 hash
+	// 3. Fallback: 使用请求上下文（IP + APIKeyID）生成稳定 hash
+	// 修复：旧实现使用 system + messages 内容做 hash，导致同一用户每轮对话
+	// 生成不同的 sessionHash，虚增活跃会话数量。
+	// 新实现只用 ClientIP + APIKeyID，同一用户的所有请求始终映射到同一个会话。
 	if parsed.SessionContext != nil {
-		_, _ = combined.WriteString(parsed.SessionContext.ClientIP)
-		_, _ = combined.WriteString(":")
-		_, _ = combined.WriteString(parsed.SessionContext.UserAgent)
-		_, _ = combined.WriteString(":")
-		_, _ = combined.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
-		_, _ = combined.WriteString("|")
-	}
-	if parsed.System != nil {
-		systemText := s.extractTextFromSystem(parsed.System)
-		if systemText != "" {
-			_, _ = combined.WriteString(systemText)
-		}
-	}
-	for _, msg := range parsed.Messages {
-		if m, ok := msg.(map[string]any); ok {
-			if content, exists := m["content"]; exists {
-				// Anthropic: messages[].content
-				if msgText := s.extractTextFromContent(content); msgText != "" {
-					_, _ = combined.WriteString(msgText)
-				}
-			} else if parts, ok := m["parts"].([]any); ok {
-				// Gemini: contents[].parts[].text
-				for _, part := range parts {
-					if partMap, ok := part.(map[string]any); ok {
-						if text, ok := partMap["text"].(string); ok {
-							_, _ = combined.WriteString(text)
-						}
-					}
-				}
-			}
-		}
-	}
-	if combined.Len() > 0 {
-		return s.hashContent(combined.String())
+		contextKey := parsed.SessionContext.ClientIP + ":" + strconv.FormatInt(parsed.SessionContext.APIKeyID, 10)
+		return s.hashContent(contextKey)
 	}
 
 	return ""
@@ -1039,7 +1017,7 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
 // metadataUserID: 已废弃参数，会话限制现在统一使用 sessionHash
-func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string) (*AccountSelectionResult, error) {
+func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, userID int64, userMaxSessions int) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -1052,6 +1030,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		"excluded_ids", excludedIDsList)
 
 	cfg := s.schedulingConfig()
+
+	// 用户级活跃会话检查（在账号选择之前）
+	if !s.checkAndRegisterUserSession(ctx, userID, sessionHash, userMaxSessions) {
+		return nil, &UserSessionLimitError{MaxSessions: userMaxSessions}
+	}
 
 	// 检查 Claude Code 客户端限制（可能会替换 groupID 为降级分组）
 	group, groupID, err := s.checkClaudeCodeRestriction(ctx, groupID)
@@ -1152,7 +1135,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, errors.New("no available accounts")
+		return nil, errors.New("no available accounts: no schedulable accounts in pool")
 	}
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 
@@ -1449,35 +1432,61 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	// ============ Layer 2: 负载感知选择 ============
 	candidates := make([]*Account, 0, len(accounts))
+	var filteredExcluded, filteredNotSchedulable, filteredPlatform, filteredModel, filteredModelScope, filteredWindowCost int
 	for i := range accounts {
 		acc := &accounts[i]
 		if isExcluded(acc.ID) {
+			filteredExcluded++
 			continue
 		}
 		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
 		// re-check schedulability here so recently rate-limited/overloaded accounts
 		// are not selected again before the bucket is rebuilt.
 		if !acc.IsSchedulable() {
+			filteredNotSchedulable++
 			continue
 		}
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
+			filteredPlatform++
 			continue
 		}
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			filteredModel++
 			continue
 		}
 		if !acc.IsSchedulableForModelWithContext(ctx, requestedModel) {
+			filteredModelScope++
 			continue
 		}
 		// 窗口费用检查（非粘性会话路径）
 		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
+			filteredWindowCost++
 			continue
 		}
 		candidates = append(candidates, acc)
 	}
 
 	if len(candidates) == 0 {
-		return nil, errors.New("no available accounts")
+		var reasons []string
+		if filteredExcluded > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d excluded", filteredExcluded))
+		}
+		if filteredNotSchedulable > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d not schedulable", filteredNotSchedulable))
+		}
+		if filteredPlatform > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d platform mismatch", filteredPlatform))
+		}
+		if filteredModel > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d model unsupported", filteredModel))
+		}
+		if filteredModelScope > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d model rate-limited", filteredModelScope))
+		}
+		if filteredWindowCost > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d window cost exceeded", filteredWindowCost))
+		}
+		return nil, fmt.Errorf("no available accounts: %d accounts filtered (%s)", len(accounts), strings.Join(reasons, ", "))
 	}
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -1566,7 +1575,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			},
 		}, nil
 	}
-	return nil, errors.New("no available accounts")
+	return nil, errors.New("no available accounts: all accounts at capacity")
 }
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
@@ -2092,6 +2101,30 @@ func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *A
 	return allowed
 }
 
+// checkAndRegisterUserSession 检查并注册用户级会话
+// userID: 用户 ID
+// sessionHash: 会话标识符
+// maxSessions: 用户最大活跃会话数（0 = 不限制）
+// 返回 true 表示允许，false 表示拒绝（超出限制且是新会话）
+func (s *GatewayService) checkAndRegisterUserSession(ctx context.Context, userID int64, sessionHash string, maxSessions int) bool {
+	if maxSessions <= 0 || sessionHash == "" {
+		return true // 未启用或无会话ID
+	}
+
+	if s.sessionLimitCache == nil {
+		return true
+	}
+
+	// 用户级使用固定 5 分钟空闲超时
+	idleTimeout := 5 * time.Minute
+
+	allowed, err := s.sessionLimitCache.RegisterUserSession(ctx, userID, sessionHash, maxSessions, idleTimeout)
+	if err != nil {
+		return true // 失败开放
+	}
+	return allowed
+}
+
 func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
 	if s.schedulerSnapshot != nil {
 		return s.schedulerSnapshot.GetAccount(ctx, accountID)
@@ -2564,7 +2597,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if requestedModel != "" {
 			return nil, fmt.Errorf("no available accounts supporting model: %s", requestedModel)
 		}
-		return nil, errors.New("no available accounts")
+		return nil, errors.New("no available accounts: no matching accounts in pool")
 	}
 
 	// 4. 建立粘性绑定
@@ -2775,7 +2808,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if requestedModel != "" {
 			return nil, fmt.Errorf("no available accounts supporting model: %s", requestedModel)
 		}
-		return nil, errors.New("no available accounts")
+		return nil, errors.New("no available accounts: no matching accounts in pool")
 	}
 
 	// 4. 建立粘性绑定

@@ -247,8 +247,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			var sessionLimitErr *service.UserSessionLimitError
+			if errors.As(err, &sessionLimitErr) {
+				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
+					fmt.Sprintf("You have reached the maximum number of active sessions (%d). Please close unused sessions with /exit or wait a few minutes before retrying.", sessionLimitErr.MaxSessions), streamStarted)
+				return
+			}
 			if len(failedAccountIDs) == 0 {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 				return
 			}
 			if lastFailoverErr != nil {

@@ -34,6 +34,10 @@
           <label class="input-label">{{ t('admin.users.columns.concurrency') }}</label>
           <input v-model.number="form.concurrency" type="number" class="input" />
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.users.columns.maxSessions') }}</label>
+          <input v-model.number="form.max_sessions" type="number" min="0" class="input" placeholder="0 = unlimited" />
+        </div>
       </div>
     </form>
     <template #footer>
@@ -57,7 +61,7 @@ import Icon from '@/components/icons/Icon.vue'
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits(['close', 'success']); const { t } = useI18n()
 
-const form = reactive({ email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1 })
+const form = reactive({ email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1, max_sessions: 0 })
 
 const { loading, submit } = useForm({
   form,
@@ -68,7 +72,7 @@ const { loading, submit } = useForm({
   successMsg: t('admin.users.userCreated')
 })
 
-watch(() => props.show, (v) => { if(v) Object.assign(form, { email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1 }) })
+watch(() => props.show, (v) => { if(v) Object.assign(form, { email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1, max_sessions: 0 }) })
 
 const generateRandomPassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*'

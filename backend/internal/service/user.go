@@ -15,6 +15,7 @@ type User struct {
 	Role          string
 	Balance       float64
 	Concurrency   int
+	MaxSessions   int // 用户级最大活跃会话数，0 = 不限制
 	Status        string
 	AllowedGroups []int64
 	TokenVersion  int64 // Incremented on password change to invalidate existing tokens

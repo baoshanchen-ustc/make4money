@@ -31,6 +31,8 @@ const (
 	FieldBalance = "balance"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
+	// FieldMaxSessions holds the string denoting the max_sessions field in the database.
+	FieldMaxSessions = "max_sessions"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldUsername holds the string denoting the username field in the database.
@@ -146,6 +148,7 @@ var Columns = []string{
 	FieldRole,
 	FieldBalance,
 	FieldConcurrency,
+	FieldMaxSessions,
 	FieldStatus,
 	FieldUsername,
 	FieldNotes,
@@ -196,6 +199,8 @@ var (
 	DefaultBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
+	// DefaultMaxSessions holds the default value on creation for the "max_sessions" field.
+	DefaultMaxSessions int
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -256,6 +261,11 @@ func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 // ByConcurrency orders the results by the concurrency field.
 func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrency, opts...).ToFunc()
+}
+
+// ByMaxSessions orders the results by the max_sessions field.
+func ByMaxSessions(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaxSessions, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

@@ -40,6 +40,7 @@ type CreateUserRequest struct {
 	Notes         string  `json:"notes"`
 	Balance       float64 `json:"balance"`
 	Concurrency   int     `json:"concurrency"`
+	MaxSessions   int     `json:"max_sessions"`
 	AllowedGroups []int64 `json:"allowed_groups"`
 }
 
@@ -52,6 +53,7 @@ type UpdateUserRequest struct {
 	Notes         *string  `json:"notes"`
 	Balance       *float64 `json:"balance"`
 	Concurrency   *int     `json:"concurrency"`
+	MaxSessions   *int     `json:"max_sessions"`
 	Status        string   `json:"status" binding:"omitempty,oneof=active disabled"`
 	AllowedGroups *[]int64 `json:"allowed_groups"`
 	// GroupRates 用户专属分组倍率配置
@@ -180,6 +182,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Notes:         req.Notes,
 		Balance:       req.Balance,
 		Concurrency:   req.Concurrency,
+		MaxSessions:   req.MaxSessions,
 		AllowedGroups: req.AllowedGroups,
 	})
 	if err != nil {
@@ -213,6 +216,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		Notes:         req.Notes,
 		Balance:       req.Balance,
 		Concurrency:   req.Concurrency,
+		MaxSessions:   req.MaxSessions,
 		Status:        req.Status,
 		AllowedGroups: req.AllowedGroups,
 		GroupRates:    req.GroupRates,

@@ -95,6 +95,11 @@ func Concurrency(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldConcurrency, v))
 }
 
+// MaxSessions applies equality check predicate on the "max_sessions" field. It's identical to MaxSessionsEQ.
+func MaxSessions(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldMaxSessions, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldStatus, v))
@@ -528,6 +533,46 @@ func ConcurrencyLT(v int) predicate.User {
 // ConcurrencyLTE applies the LTE predicate on the "concurrency" field.
 func ConcurrencyLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldConcurrency, v))
+}
+
+// MaxSessionsEQ applies the EQ predicate on the "max_sessions" field.
+func MaxSessionsEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldMaxSessions, v))
+}
+
+// MaxSessionsNEQ applies the NEQ predicate on the "max_sessions" field.
+func MaxSessionsNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldMaxSessions, v))
+}
+
+// MaxSessionsIn applies the In predicate on the "max_sessions" field.
+func MaxSessionsIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldMaxSessions, vs...))
+}
+
+// MaxSessionsNotIn applies the NotIn predicate on the "max_sessions" field.
+func MaxSessionsNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldMaxSessions, vs...))
+}
+
+// MaxSessionsGT applies the GT predicate on the "max_sessions" field.
+func MaxSessionsGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldMaxSessions, v))
+}
+
+// MaxSessionsGTE applies the GTE predicate on the "max_sessions" field.
+func MaxSessionsGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldMaxSessions, v))
+}
+
+// MaxSessionsLT applies the LT predicate on the "max_sessions" field.
+func MaxSessionsLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldMaxSessions, v))
+}
+
+// MaxSessionsLTE applies the LTE predicate on the "max_sessions" field.
+func MaxSessionsLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldMaxSessions, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

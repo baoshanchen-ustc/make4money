@@ -225,8 +225,14 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 	var lastFailoverHeaders http.Header
 
 	for {
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs, "")
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs, "", subject.UserID, subject.MaxSessions)
 		if err != nil {
+			var sessionLimitErr *service.UserSessionLimitError
+			if errors.As(err, &sessionLimitErr) {
+				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
+					fmt.Sprintf("You have reached the maximum number of active sessions (%d). Please close unused sessions or wait a few minutes before retrying.", sessionLimitErr.MaxSessions), streamStarted)
+				return
+			}
 			reqLog.Warn("sora.account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),

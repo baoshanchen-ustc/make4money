@@ -266,8 +266,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 
 		for {
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "") // Gemini 不使用会话限制
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", subject.UserID, subject.MaxSessions) // Gemini 不使用会话限制
 			if err != nil {
+				var sessionLimitErr *service.UserSessionLimitError
+				if errors.As(err, &sessionLimitErr) {
+					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
+						fmt.Sprintf("You have reached the maximum number of active sessions (%d). Please close unused sessions with /exit or wait a few minutes before retrying.", sessionLimitErr.MaxSessions), streamStarted)
+					return
+				}
 				if len(fs.FailedAccountIDs) == 0 {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 					return
@@ -449,8 +455,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 		for {
 			// 选择支持该模型的账号
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID)
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID, subject.MaxSessions)
 			if err != nil {
+				var sessionLimitErr *service.UserSessionLimitError
+				if errors.As(err, &sessionLimitErr) {
+					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
+						fmt.Sprintf("You have reached the maximum number of active sessions (%d). Please close unused sessions with /exit or wait a few minutes before retrying.", sessionLimitErr.MaxSessions), streamStarted)
+					return
+				}
 				if len(fs.FailedAccountIDs) == 0 {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 					return
@@ -1086,7 +1098,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
 	if err != nil {
 		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error())
 		return
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)

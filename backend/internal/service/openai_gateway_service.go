@@ -729,7 +729,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, errors.New("no available accounts")
+		return nil, errors.New("no available accounts: no schedulable accounts in pool")
 	}
 
 	isExcluded := func(accountID int64) bool {
@@ -781,25 +781,39 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 
 	// ============ Layer 2: Load-aware selection ============
 	candidates := make([]*Account, 0, len(accounts))
+	var filteredExcluded, filteredNotSchedulable, filteredModel int
 	for i := range accounts {
 		acc := &accounts[i]
 		if isExcluded(acc.ID) {
+			filteredExcluded++
 			continue
 		}
 		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
 		// re-check schedulability here so recently rate-limited/overloaded accounts
 		// are not selected again before the bucket is rebuilt.
 		if !acc.IsSchedulable() {
+			filteredNotSchedulable++
 			continue
 		}
 		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+			filteredModel++
 			continue
 		}
 		candidates = append(candidates, acc)
 	}
 
 	if len(candidates) == 0 {
-		return nil, errors.New("no available accounts")
+		var reasons []string
+		if filteredExcluded > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d excluded", filteredExcluded))
+		}
+		if filteredNotSchedulable > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d not schedulable", filteredNotSchedulable))
+		}
+		if filteredModel > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d model unsupported", filteredModel))
+		}
+		return nil, fmt.Errorf("no available accounts: %d accounts filtered (%s)", len(accounts), strings.Join(reasons, ", "))
 	}
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -894,7 +908,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		}, nil
 	}
 
-	return nil, errors.New("no available accounts")
+	return nil, errors.New("no available accounts: all accounts at capacity")
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
