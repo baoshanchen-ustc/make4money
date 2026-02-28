@@ -1851,6 +1851,7 @@ export default {
                     codeCopied: 'Code copied to clipboard',
                     waitingForAuth: 'Waiting for authorization...',
                     waitingForAuthDesc: 'Please complete authorization in your browser. This page will update automatically.',
+                    noDeviceCode: 'No device code available. Please initiate the flow first.',
                     codeExpired: 'Authorization code expired. Please try again.',
                     authFailed: 'GitHub authorization failed',
                     authSuccess: 'GitHub Copilot authorized successfully',
