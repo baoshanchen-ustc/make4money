@@ -1085,8 +1085,6 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
 	}
-	// base_rpm 输入校验：负值归零，超过 10000 截断
-	sanitizeExtraBaseRPM(req.Extra)
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1122,6 +1120,14 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		SkipMixedChannelCheck: skipCheck,
 	})
 	if err != nil {
+		var mixedErr *service.MixedChannelError
+		if errors.As(err, &mixedErr) {
+			c.JSON(409, gin.H{
+				"error":   "mixed_channel_warning",
+				"message": mixedErr.Error(),
+			})
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}

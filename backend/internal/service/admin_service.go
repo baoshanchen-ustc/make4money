@@ -1539,30 +1539,33 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
-	// 预加载账号平台信息（混合渠道检查或 Sora 同步需要）。
+	// Pre-load account platform info for mixed channel check.
 	platformByID := map[int64]string{}
-	groupAccountsByID := map[int64][]Account{}
-	groupNameByID := map[int64]string{}
 	if needMixedChannelCheck {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
-			if needMixedChannelCheck {
-				return nil, err
-			}
-		} else {
-			for _, account := range accounts {
-				if account != nil {
-					platformByID[account.ID] = account.Platform
-				}
-			}
-		}
-
-		loadedAccounts, loadedNames, err := s.preloadMixedChannelRiskData(ctx, *input.GroupIDs)
-		if err != nil {
 			return nil, err
 		}
-		groupAccountsByID = loadedAccounts
-		groupNameByID = loadedNames
+		for _, account := range accounts {
+			if account != nil {
+				platformByID[account.ID] = account.Platform
+			}
+		}
+	}
+
+	// Pre-check mixed channel risk before any write operations.
+	// If a risk is detected, return an error immediately so the caller can
+	// prompt the user for confirmation before retrying with SkipMixedChannelCheck=true.
+	if needMixedChannelCheck {
+		for _, accountID := range input.AccountIDs {
+			platform := platformByID[accountID]
+			if platform == "" {
+				continue
+			}
+			if err := s.checkMixedChannelRisk(ctx, accountID, platform, *input.GroupIDs); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if input.RateMultiplier != nil {
@@ -1606,34 +1609,8 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// Handle group bindings per account (requires individual operations).
 	for _, accountID := range input.AccountIDs {
 		entry := BulkUpdateAccountResult{AccountID: accountID}
-		platform := ""
 
 		if input.GroupIDs != nil {
-			// 检查混合渠道风险（除非用户已确认）
-			if !input.SkipMixedChannelCheck {
-				platform = platformByID[accountID]
-				if platform == "" {
-					account, err := s.accountRepo.GetByID(ctx, accountID)
-					if err != nil {
-						entry.Success = false
-						entry.Error = err.Error()
-						result.Failed++
-						result.FailedIDs = append(result.FailedIDs, accountID)
-						result.Results = append(result.Results, entry)
-						continue
-					}
-					platform = account.Platform
-				}
-				if err := s.checkMixedChannelRiskWithPreloaded(accountID, platform, *input.GroupIDs, groupAccountsByID, groupNameByID); err != nil {
-					entry.Success = false
-					entry.Error = err.Error()
-					result.Failed++
-					result.FailedIDs = append(result.FailedIDs, accountID)
-					result.Results = append(result.Results, entry)
-					continue
-				}
-			}
-
 			if err := s.accountRepo.BindGroups(ctx, accountID, *input.GroupIDs); err != nil {
 				entry.Success = false
 				entry.Error = err.Error()
@@ -1641,9 +1618,6 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 				result.FailedIDs = append(result.FailedIDs, accountID)
 				result.Results = append(result.Results, entry)
 				continue
-			}
-			if !input.SkipMixedChannelCheck && platform != "" {
-				updateMixedChannelPreloadedAccounts(groupAccountsByID, *input.GroupIDs, accountID, platform)
 			}
 		}
 
