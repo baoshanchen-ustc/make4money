@@ -84,7 +84,7 @@ func TestGetNonceFromContext(t *testing.T) {
 func TestSecurityHeaders(t *testing.T) {
 	t.Run("sets_basic_security_headers", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: false}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -99,7 +99,7 @@ func TestSecurityHeaders(t *testing.T) {
 
 	t.Run("csp_disabled_no_csp_header", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: false}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -115,7 +115,7 @@ func TestSecurityHeaders(t *testing.T) {
 			Enabled: true,
 			Policy:  "default-src 'self'",
 		}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -136,7 +136,7 @@ func TestSecurityHeaders(t *testing.T) {
 			Enabled: true,
 			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__",
 		}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -156,7 +156,7 @@ func TestSecurityHeaders(t *testing.T) {
 			Enabled: true,
 			Policy:  "script-src 'self' __CSP_NONCE__",
 		}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -180,7 +180,7 @@ func TestSecurityHeaders(t *testing.T) {
 			Enabled: true,
 			Policy:  "",
 		}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -199,7 +199,7 @@ func TestSecurityHeaders(t *testing.T) {
 			Enabled: true,
 			Policy:  "   \t\n  ",
 		}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -217,7 +217,7 @@ func TestSecurityHeaders(t *testing.T) {
 			Enabled: true,
 			Policy:  "script-src __CSP_NONCE__; style-src __CSP_NONCE__",
 		}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -235,7 +235,7 @@ func TestSecurityHeaders(t *testing.T) {
 
 	t.Run("calls_next_handler", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: true, Policy: "default-src 'self'"}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		nextCalled := false
 		router := gin.New()
@@ -258,7 +258,7 @@ func TestSecurityHeaders(t *testing.T) {
 			Enabled: true,
 			Policy:  "script-src __CSP_NONCE__",
 		}
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		nonces := make(map[string]bool)
 		for i := 0; i < 10; i++ {
@@ -272,6 +272,60 @@ func TestSecurityHeaders(t *testing.T) {
 			assert.False(t, nonces[nonce], "nonce should be unique per request")
 			nonces[nonce] = true
 		}
+	})
+
+	t.Run("get_frame_src_injects_origin_into_csp", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'",
+		}
+		middleware := SecurityHeaders(cfg, func() string {
+			return "https://pay.example.com"
+		})
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+		middleware(c)
+
+		csp := w.Header().Get("Content-Security-Policy")
+		assert.Contains(t, csp, "frame-src")
+		assert.Contains(t, csp, "https://pay.example.com")
+	})
+
+	t.Run("get_frame_src_nil_does_not_add_frame_src", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'",
+		}
+		middleware := SecurityHeaders(cfg, nil)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+		middleware(c)
+
+		csp := w.Header().Get("Content-Security-Policy")
+		assert.NotContains(t, csp, "frame-src")
+	})
+
+	t.Run("get_frame_src_empty_does_not_add_frame_src", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'",
+		}
+		middleware := SecurityHeaders(cfg, func() string { return "" })
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+		middleware(c)
+
+		csp := w.Header().Get("Content-Security-Policy")
+		assert.NotContains(t, csp, "frame-src")
 	})
 }
 
@@ -376,7 +430,7 @@ func BenchmarkSecurityHeadersMiddleware(b *testing.B) {
 		Enabled: true,
 		Policy:  "script-src 'self' __CSP_NONCE__",
 	}
-	middleware := SecurityHeaders(cfg)
+	middleware := SecurityHeaders(cfg, nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
