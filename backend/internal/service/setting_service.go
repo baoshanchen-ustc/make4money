@@ -362,6 +362,15 @@ func (s *SettingService) GetDefaultBalance(ctx context.Context) float64 {
 	return s.cfg.Default.UserBalance
 }
 
+// GetAPIBaseURL 获取 API 端点地址
+func (s *SettingService) GetAPIBaseURL(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAPIBaseURL)
+	if err != nil || value == "" {
+		return ""
+	}
+	return value
+}
+
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	// 检查是否已有设置

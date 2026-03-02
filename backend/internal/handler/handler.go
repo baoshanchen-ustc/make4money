@@ -42,6 +42,7 @@ type Handlers struct {
 	SoraGateway   *SoraGatewayHandler
 	Setting       *SettingHandler
 	Totp          *TotpHandler
+	Provision     *ProvisionHandler
 }
 
 // BuildInfo contains build-time information
