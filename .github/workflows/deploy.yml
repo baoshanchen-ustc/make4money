@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 env:
-  IMAGE: asia-east1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/sub2api/sub2api
+  IMAGE: asia-east1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.SERVICE_NAME }}/${{ vars.SERVICE_NAME }}
 
 jobs:
   build-and-deploy:
@@ -63,7 +63,7 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy sub2api \
+          gcloud run deploy ${{ vars.SERVICE_NAME }} \
             --image=${{ env.IMAGE }}:${{ steps.meta.outputs.image_tag }} \
             --region=${{ vars.GCP_REGION }} \
             --project=${{ vars.GCP_PROJECT_ID }}
@@ -74,5 +74,5 @@ jobs:
           echo "| | |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Image** | \`${{ env.IMAGE }}:${{ steps.meta.outputs.image_tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Service** | sub2api |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Service** | ${{ vars.SERVICE_NAME }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Region** | ${{ vars.GCP_REGION }} |" >> "$GITHUB_STEP_SUMMARY"
