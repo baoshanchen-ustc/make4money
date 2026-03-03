@@ -87,5 +87,12 @@ func RegisterUserRoutes(
 			subscriptions.GET("/progress", h.Subscription.GetProgress)
 			subscriptions.GET("/summary", h.Subscription.GetSummary)
 		}
+
+		// 裂变推广
+		referral := authenticated.Group("/referral")
+		{
+			referral.GET("", h.Referral.GetMyReferralInfo)
+			referral.GET("/invitees", h.Referral.ListMyInvitees)
+		}
 	}
 }

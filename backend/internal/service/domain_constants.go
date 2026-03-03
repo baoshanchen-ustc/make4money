@@ -201,6 +201,14 @@ const (
 
 	// SettingKeyMinClaudeCodeVersion 最低 Claude Code 版本号要求 (semver, 如 "2.1.0"，空值=不检查)
 	SettingKeyMinClaudeCodeVersion = "min_claude_code_version"
+
+	// =========================
+	// 裂变推广设置
+	// =========================
+
+	SettingKeyReferralEnabled       = "referral_enabled"        // 是否启用裂变推广功能（默认 false）
+	SettingKeyReferralInviterReward = "referral_inviter_reward" // 邀请人奖励余额（默认 10.0）
+	SettingKeyReferralInviteeReward = "referral_invitee_reward" // 被邀请人奖励余额（默认 5.0）
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

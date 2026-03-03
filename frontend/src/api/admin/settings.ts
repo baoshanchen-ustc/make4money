@@ -78,6 +78,11 @@ export interface SystemSettings {
 
   // Claude Code version check
   min_claude_code_version: string
+
+  // 裂变推广配置
+  referral_enabled: boolean
+  referral_inviter_reward: number
+  referral_invitee_reward: number
 }
 
 export interface UpdateSettingsRequest {
@@ -128,6 +133,11 @@ export interface UpdateSettingsRequest {
   ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string
   ops_metrics_interval_seconds?: number
   min_claude_code_version?: string
+
+  // 裂变推广配置
+  referral_enabled?: boolean
+  referral_inviter_reward?: number
+  referral_invitee_reward?: number
 }
 
 /**

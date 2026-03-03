@@ -77,6 +77,11 @@ type SystemSettings struct {
 	OpsMetricsIntervalSeconds    int    `json:"ops_metrics_interval_seconds"`
 
 	MinClaudeCodeVersion string `json:"min_claude_code_version"`
+
+	// 裂变推广配置
+	ReferralEnabled       bool    `json:"referral_enabled"`
+	ReferralInviterReward float64 `json:"referral_inviter_reward"`
+	ReferralInviteeReward float64 `json:"referral_invitee_reward"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -107,6 +112,7 @@ type PublicSettings struct {
 	LinuxDoOAuthEnabled         bool             `json:"linuxdo_oauth_enabled"`
 	SoraClientEnabled           bool             `json:"sora_client_enabled"`
 	Version                     string           `json:"version"`
+	ReferralEnabled             bool             `json:"referral_enabled"`
 }
 
 // SoraS3Settings Sora S3 存储配置 DTO（响应用，不含敏感字段）

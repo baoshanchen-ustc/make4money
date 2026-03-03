@@ -230,6 +230,7 @@ export default {
     noOptionsFound: '无匹配选项',
     noGroupsAvailable: '无可用分组',
     unknownError: '发生未知错误',
+    retry: '重试',
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
@@ -282,7 +283,8 @@ export default {
     mySubscriptions: '我的订阅',
     buySubscription: '充值/订阅',
     docs: '文档',
-    sora: 'Sora 创作'
+    sora: 'Sora 创作',
+    referral: '邀请推广'
   },
 
   // Auth
@@ -699,6 +701,32 @@ export default {
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
     pleaseEnterCode: '请输入兑换码'
+  },
+
+  // Referral
+  referral: {
+    title: '邀请推广',
+    description: '邀请好友注册，双方均可获得余额奖励',
+    myCode: '您的邀请码',
+    myLink: '您的邀请链接',
+    copyCode: '复制邀请码',
+    copyLink: '复制邀请链接',
+    codeCopied: '邀请码已复制！',
+    linkCopied: '链接已复制！',
+    copyFailed: '复制失败',
+    stats: '邀请统计',
+    totalInvitees: '已邀请人数',
+    totalRewardEarned: '累计获得奖励',
+    invitedBy: '您的邀请人',
+    inviteeList: '已邀请用户',
+    noInvitees: '您还没有邀请任何人，分享您的邀请链接开始吧！',
+    emailMasked: '邮箱',
+    registeredAt: '注册时间',
+    rewardEarned: '获得奖励',
+    howItWorks: '如何使用',
+    step1: '分享您的邀请链接或邀请码给好友',
+    step2: '好友通过您的链接注册，或注册时填写您的邀请码',
+    step3: '双方均可获得余额奖励'
   },
 
   // Profile
@@ -3812,6 +3840,17 @@ export default {
         description: '控制是否在侧边栏展示 Sora 客户端入口',
         enabled: '启用 Sora 客户端',
         enabledHint: '开启后，侧边栏将显示 Sora 入口，用户可访问 Sora 功能'
+      },
+      referral: {
+        title: '邀请推广',
+        description: '配置邀请注册奖励机制',
+        enabled: '启用邀请推广',
+        enabledHint: '开启后，用户可通过邀请他人注册获得余额奖励',
+        inviterReward: '邀请人奖励（$）',
+        inviterRewardHint: '被邀请人成功注册后，邀请人获得的余额奖励',
+        inviteeReward: '被邀请人奖励（$）',
+        inviteeRewardHint: '通过邀请链接注册的新用户获得的余额奖励',
+        rewardPlaceholder: '0.00'
       },
       customMenu: {
         title: '自定义菜单页面',

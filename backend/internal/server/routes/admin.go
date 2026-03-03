@@ -78,6 +78,9 @@ func RegisterAdminRoutes(
 
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)
+
+		// 裂变推广管理
+		registerAdminReferralRoutes(admin, h)
 	}
 }
 
@@ -484,5 +487,12 @@ func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		rules.POST("", h.Admin.ErrorPassthrough.Create)
 		rules.PUT("/:id", h.Admin.ErrorPassthrough.Update)
 		rules.DELETE("/:id", h.Admin.ErrorPassthrough.Delete)
+	}
+}
+
+func registerAdminReferralRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	referral := admin.Group("/referral")
+	{
+		referral.GET("/stats", h.Admin.Referral.GetPlatformStats)
 	}
 }

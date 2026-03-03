@@ -65,6 +65,11 @@ type SystemSettings struct {
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
+
+	// 裂变推广配置
+	ReferralEnabled       bool
+	ReferralInviterReward float64
+	ReferralInviteeReward float64
 }
 
 type DefaultSubscriptionSetting struct {
@@ -97,6 +102,7 @@ type PublicSettings struct {
 
 	LinuxDoOAuthEnabled bool
 	Version             string
+	ReferralEnabled     bool
 }
 
 // SoraS3Settings Sora S3 存储配置

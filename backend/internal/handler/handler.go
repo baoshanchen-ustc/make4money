@@ -27,6 +27,7 @@ type AdminHandlers struct {
 	UserAttribute    *admin.UserAttributeHandler
 	ErrorPassthrough *admin.ErrorPassthroughHandler
 	APIKey           *admin.AdminAPIKeyHandler
+	Referral         *admin.ReferralHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -45,6 +46,7 @@ type Handlers struct {
 	SoraClient    *SoraClientHandler
 	Setting       *SettingHandler
 	Totp          *TotpHandler
+	Referral      *ReferralHandler
 }
 
 // BuildInfo contains build-time information

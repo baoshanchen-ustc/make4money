@@ -65,6 +65,7 @@ type AuthService struct {
 	turnstileService   *TurnstileService
 	emailQueueService  *EmailQueueService
 	promoService       *PromoService
+	referralService    *ReferralService
 	defaultSubAssigner DefaultSubscriptionAssigner
 }
 
@@ -83,6 +84,7 @@ func NewAuthService(
 	turnstileService *TurnstileService,
 	emailQueueService *EmailQueueService,
 	promoService *PromoService,
+	referralService *ReferralService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
 ) *AuthService {
 	return &AuthService{
@@ -95,17 +97,18 @@ func NewAuthService(
 		turnstileService:   turnstileService,
 		emailQueueService:  emailQueueService,
 		promoService:       promoService,
+		referralService:    referralService,
 		defaultSubAssigner: defaultSubAssigner,
 	}
 }
 
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "", "", "")
+	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")
 }
 
-// RegisterWithVerification 用户注册（支持邮件验证、优惠码和邀请码），返回token和用户
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode string) (string, *User, error) {
+// RegisterWithVerification 用户注册（支持邮件验证、优惠码、邀请码和裂变推广码），返回token和用户
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, referralCode string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -150,6 +153,19 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		// 验证邮箱验证码
 		if err := s.emailService.VerifyCode(ctx, email, verifyCode); err != nil {
 			return "", nil, fmt.Errorf("verify code: %w", err)
+		}
+	}
+
+	// 预验证裂变推广邀请码（用户 ID 尚不存在，自引用检查放到注册后）
+	var referralInviterID int64
+	if referralCode != "" && s.referralService != nil && s.settingService != nil {
+		referralCode = strings.ToUpper(strings.TrimSpace(referralCode))
+		if enabled, _ := s.settingService.IsReferralEnabled(ctx); enabled {
+			profile, err := s.referralService.referralRepo.GetProfileByCode(ctx, referralCode)
+			if err == nil && profile != nil {
+				referralInviterID = profile.UserID
+			}
+			// 邀请码无效时静默忽略（不阻断注册）
 		}
 	}
 
@@ -209,6 +225,19 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		if err := s.promoService.ApplyPromoCode(ctx, user.ID, promoCode); err != nil {
 			// 优惠码应用失败不影响注册，只记录日志
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to apply promo code for user %d: %v", user.ID, err)
+		} else {
+			// 重新获取用户信息以获取更新后的余额
+			if updatedUser, err := s.userRepo.GetByID(ctx, user.ID); err == nil {
+				user = updatedUser
+			}
+		}
+	}
+
+	// 处理裂变推广奖励（inviterID 已在注册前验证，此处仅做最终自引用防护）
+	if referralInviterID > 0 && referralInviterID != user.ID && s.referralService != nil {
+		if err := s.referralService.ProcessReferralRegistration(ctx, referralInviterID, user.ID); err != nil {
+			// 奖励发放失败不影响注册，只记录日志
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to process referral for user %d: %v", user.ID, err)
 		} else {
 			// 重新获取用户信息以获取更新后的余额
 			if updatedUser, err := s.userRepo.GetByID(ctx, user.ID); err == nil {

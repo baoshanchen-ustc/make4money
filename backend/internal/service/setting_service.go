@@ -127,6 +127,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeySoraClientEnabled,
 		SettingKeyCustomMenuItems,
 		SettingKeyLinuxDoConnectEnabled,
+		SettingKeyReferralEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -167,6 +168,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SoraClientEnabled:           settings[SettingKeySoraClientEnabled] == "true",
 		CustomMenuItems:             settings[SettingKeyCustomMenuItems],
 		LinuxDoOAuthEnabled:         linuxDoEnabled,
+		ReferralEnabled:             settings[SettingKeyReferralEnabled] == "true",
 	}, nil
 }
 
@@ -438,6 +440,11 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
 
+	// 裂变推广配置
+	updates[SettingKeyReferralEnabled] = strconv.FormatBool(settings.ReferralEnabled)
+	updates[SettingKeyReferralInviterReward] = strconv.FormatFloat(settings.ReferralInviterReward, 'f', 2, 64)
+	updates[SettingKeyReferralInviteeReward] = strconv.FormatFloat(settings.ReferralInviteeReward, 'f', 2, 64)
+
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
 		// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
@@ -661,6 +668,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PasswordResetEnabled:         emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
 		InvitationCodeEnabled:        settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                  settings[SettingKeyTotpEnabled] == "true",
+		ReferralEnabled:              settings[SettingKeyReferralEnabled] == "true",
 		SMTPHost:                     settings[SettingKeySMTPHost],
 		SMTPUsername:                 settings[SettingKeySMTPUsername],
 		SMTPFrom:                     settings[SettingKeySMTPFrom],
@@ -704,6 +712,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.DefaultBalance = s.cfg.Default.UserBalance
 	}
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
+
+	// 裂变推广奖励配置（默认 0，需管理员显式配置）
+	result.ReferralInviterReward = 0
+	if v, err := strconv.ParseFloat(settings[SettingKeyReferralInviterReward], 64); err == nil {
+		result.ReferralInviterReward = v
+	}
+	result.ReferralInviteeReward = 0
+	if v, err := strconv.ParseFloat(settings[SettingKeyReferralInviteeReward], 64); err == nil {
+		result.ReferralInviteeReward = v
+	}
 
 	// 敏感信息直接返回，方便测试连接时使用
 	result.SMTPPassword = settings[SettingKeySMTPPassword]
@@ -1779,4 +1797,38 @@ func maxInt64(value int64, min int64) int64 {
 		return min
 	}
 	return value
+}
+
+// IsReferralEnabled 检查裂变推广功能是否启用
+func (s *SettingService) IsReferralEnabled(ctx context.Context) (bool, error) {
+	val, err := s.settingRepo.GetValue(ctx, SettingKeyReferralEnabled)
+	if err != nil {
+		return false, nil // default: disabled
+	}
+	return val == "true", nil
+}
+
+// GetReferralRewards 获取邀请奖励配置，返回 (inviterReward, inviteeReward)。
+// 配置缺失时返回默认值 0（需管理员显式配置后才发放奖励）。
+func (s *SettingService) GetReferralRewards(ctx context.Context) (inviterReward, inviteeReward float64, err error) {
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyReferralInviterReward,
+		SettingKeyReferralInviteeReward,
+	})
+	inviterReward = 0
+	inviteeReward = 0
+	if err != nil {
+		return 0, 0, fmt.Errorf("get referral reward settings: %w", err)
+	}
+	if v, ok := settings[SettingKeyReferralInviterReward]; ok {
+		if f, e := strconv.ParseFloat(v, 64); e == nil {
+			inviterReward = f
+		}
+	}
+	if v, ok := settings[SettingKeyReferralInviteeReward]; ok {
+		if f, e := strconv.ParseFloat(v, 64); e == nil {
+			inviteeReward = f
+		}
+	}
+	return inviterReward, inviteeReward, nil
 }

@@ -202,6 +202,7 @@ const password = ref<string>('')
 const initialTurnstileToken = ref<string>('')
 const promoCode = ref<string>('')
 const invitationCode = ref<string>('')
+const referralCode = ref<string>('')
 const hasRegisterData = ref<boolean>(false)
 
 // Public settings
@@ -232,6 +233,7 @@ onMounted(async () => {
       initialTurnstileToken.value = registerData.turnstile_token || ''
       promoCode.value = registerData.promo_code || ''
       invitationCode.value = registerData.invitation_code || ''
+      referralCode.value = registerData.referral_code || ''
       hasRegisterData.value = !!(email.value && password.value)
     } catch {
       hasRegisterData.value = false
@@ -387,7 +389,8 @@ async function handleVerify(): Promise<void> {
       verify_code: verifyCode.value.trim(),
       turnstile_token: initialTurnstileToken.value || undefined,
       promo_code: promoCode.value || undefined,
-      invitation_code: invitationCode.value || undefined
+      invitation_code: invitationCode.value || undefined,
+      referral_code: referralCode.value || undefined
     })
 
     // Clear session data

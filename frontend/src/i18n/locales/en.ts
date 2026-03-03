@@ -230,6 +230,7 @@ export default {
     noOptionsFound: 'No options found',
     noGroupsAvailable: 'No groups available',
     unknownError: 'Unknown error occurred',
+    retry: 'Retry',
     saving: 'Saving...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
@@ -282,7 +283,8 @@ export default {
     mySubscriptions: 'My Subscriptions',
     buySubscription: 'Recharge / Subscription',
     docs: 'Docs',
-    sora: 'Sora Studio'
+    sora: 'Sora Studio',
+    referral: 'Referral'
   },
 
   // Auth
@@ -693,6 +695,32 @@ export default {
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
+  },
+
+  // Referral
+  referral: {
+    title: 'Referral Program',
+    description: 'Invite friends to join and earn balance rewards for both of you',
+    myCode: 'Your Referral Code',
+    myLink: 'Your Referral Link',
+    copyCode: 'Copy Code',
+    copyLink: 'Copy Link',
+    codeCopied: 'Code copied!',
+    linkCopied: 'Link copied!',
+    copyFailed: 'Copy failed',
+    stats: 'Your Stats',
+    totalInvitees: 'Total Invitees',
+    totalRewardEarned: 'Total Reward Earned',
+    invitedBy: 'You were invited by',
+    inviteeList: 'Your Invitees',
+    noInvitees: 'You have not invited anyone yet. Share your referral link to get started!',
+    emailMasked: 'Email',
+    registeredAt: 'Registered At',
+    rewardEarned: 'Reward Earned',
+    howItWorks: 'How It Works',
+    step1: 'Share your referral link or code with friends',
+    step2: 'Your friend registers using your link or enters your code',
+    step3: 'Both you and your friend receive a balance reward'
   },
 
   // Profile
@@ -3642,6 +3670,17 @@ export default {
         description: 'Control whether to show the Sora client entry in the sidebar',
         enabled: 'Enable Sora Client',
         enabledHint: 'When enabled, the Sora entry will be shown in the sidebar for users to access Sora features'
+      },
+      referral: {
+        title: 'Referral Program',
+        description: 'Configure the referral/invitation reward system',
+        enabled: 'Enable Referral Program',
+        enabledHint: 'When enabled, users can invite others and earn balance rewards',
+        inviterReward: 'Inviter Reward ($)',
+        inviterRewardHint: 'Balance credited to the user who sent the invitation when their invitee registers',
+        inviteeReward: 'Invitee Reward ($)',
+        inviteeRewardHint: 'Balance credited to the newly registered user who used an invitation link',
+        rewardPlaceholder: '0.00'
       },
       customMenu: {
         title: 'Custom Menu Pages',

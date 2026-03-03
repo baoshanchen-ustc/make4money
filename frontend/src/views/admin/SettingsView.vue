@@ -1110,6 +1110,68 @@
           </div>
         </div>
 
+        <!-- Referral Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.referral.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.referral.description') }}
+            </p>
+          </div>
+          <div class="space-y-6 p-6">
+            <!-- Enable Toggle -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.referral.enabled')
+                }}</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.referral.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.referral_enabled" />
+            </div>
+
+            <!-- Inviter Reward -->
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.referral.inviterReward') }}
+              </label>
+              <input
+                v-model.number="form.referral_inviter_reward"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input max-w-xs"
+                :placeholder="t('admin.settings.referral.rewardPlaceholder')"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.referral.inviterRewardHint') }}
+              </p>
+            </div>
+
+            <!-- Invitee Reward -->
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.referral.inviteeReward') }}
+              </label>
+              <input
+                v-model.number="form.referral_invitee_reward"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input max-w-xs"
+                :placeholder="t('admin.settings.referral.rewardPlaceholder')"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.referral.inviteeRewardHint') }}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- Custom Menu Items -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -1438,7 +1500,11 @@ const form = reactive<SettingsForm>({
   ops_query_mode_default: 'auto',
   ops_metrics_interval_seconds: 60,
   // Claude Code version check
-  min_claude_code_version: ''
+  min_claude_code_version: '',
+  // 裂变推广配置
+  referral_enabled: false,
+  referral_inviter_reward: 0,
+  referral_invitee_reward: 0
 })
 
 const defaultSubscriptionGroupOptions = computed<DefaultSubscriptionGroupOption[]>(() =>
@@ -1623,7 +1689,10 @@ async function saveSettings() {
       fallback_model_antigravity: form.fallback_model_antigravity,
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
-      min_claude_code_version: form.min_claude_code_version
+      min_claude_code_version: form.min_claude_code_version,
+      referral_enabled: form.referral_enabled,
+      referral_inviter_reward: form.referral_inviter_reward,
+      referral_invitee_reward: form.referral_invitee_reward
     }
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)

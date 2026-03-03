@@ -123,6 +123,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpsQueryModeDefault:                  settings.OpsQueryModeDefault,
 		OpsMetricsIntervalSeconds:            settings.OpsMetricsIntervalSeconds,
 		MinClaudeCodeVersion:                 settings.MinClaudeCodeVersion,
+		ReferralEnabled:                      settings.ReferralEnabled,
+		ReferralInviterReward:                settings.ReferralInviterReward,
+		ReferralInviteeReward:                settings.ReferralInviteeReward,
 	})
 }
 
@@ -193,6 +196,11 @@ type UpdateSettingsRequest struct {
 	OpsMetricsIntervalSeconds    *int    `json:"ops_metrics_interval_seconds"`
 
 	MinClaudeCodeVersion string `json:"min_claude_code_version"`
+
+	// 裂变推广配置
+	ReferralEnabled       bool    `json:"referral_enabled"`
+	ReferralInviterReward float64 `json:"referral_inviter_reward"`
+	ReferralInviteeReward float64 `json:"referral_invitee_reward"`
 }
 
 // UpdateSettings 更新系统设置
@@ -465,6 +473,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableIdentityPatch:         req.EnableIdentityPatch,
 		IdentityPatchPrompt:         req.IdentityPatchPrompt,
 		MinClaudeCodeVersion:        req.MinClaudeCodeVersion,
+		ReferralEnabled:             req.ReferralEnabled,
+		ReferralInviterReward:       req.ReferralInviterReward,
+		ReferralInviteeReward:       req.ReferralInviteeReward,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -561,6 +572,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpsQueryModeDefault:                  updatedSettings.OpsQueryModeDefault,
 		OpsMetricsIntervalSeconds:            updatedSettings.OpsMetricsIntervalSeconds,
 		MinClaudeCodeVersion:                 updatedSettings.MinClaudeCodeVersion,
+		ReferralEnabled:                      updatedSettings.ReferralEnabled,
+		ReferralInviterReward:                updatedSettings.ReferralInviterReward,
+		ReferralInviteeReward:                updatedSettings.ReferralInviteeReward,
 	})
 }
 

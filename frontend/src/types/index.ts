@@ -63,6 +63,33 @@ export interface RegisterRequest {
   turnstile_token?: string
   promo_code?: string
   invitation_code?: string
+  referral_code?: string
+}
+
+// ==================== Referral Types ====================
+
+export interface ReferralInviterInfo {
+  email_masked: string
+}
+
+export interface ReferralInfo {
+  referral_code: string
+  referral_link: string
+  total_invitees: number
+  total_reward_earned: number
+  inviter_info?: ReferralInviterInfo
+}
+
+export interface ReferralInvitee {
+  email_masked: string
+  registered_at: string
+  reward_earned: number
+}
+
+export interface ReferralStats {
+  total_relations: number
+  total_inviter_reward_given: number
+  total_invitee_reward_given: number
 }
 
 export interface SendVerifyCodeRequest {
@@ -105,6 +132,7 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   linuxdo_oauth_enabled: boolean
   sora_client_enabled: boolean
+  referral_enabled: boolean
   version: string
 }
 

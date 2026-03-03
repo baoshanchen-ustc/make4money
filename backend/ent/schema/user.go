@@ -93,6 +93,12 @@ func (User) Edges() []ent.Edge {
 		edge.To("usage_logs", UsageLog.Type),
 		edge.To("attribute_values", UserAttributeValue.Type),
 		edge.To("promo_code_usages", PromoCodeUsage.Type),
+		// 裂变推广：用户的专属邀请码 Profile（一对一）
+		edge.To("referral_profile", UserReferralProfile.Type),
+		// 裂变推广：该用户作为邀请人发起的邀请关系
+		edge.To("referrals_given", ReferralRelation.Type),
+		// 裂变推广：该用户被邀请的关系记录（最多一条）
+		edge.To("referral_received", ReferralRelation.Type),
 	}
 }
 
