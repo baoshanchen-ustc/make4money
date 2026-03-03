@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/referralrelation"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -32,6 +33,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userreferralprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -105,6 +107,7 @@ func checkColumn(t, c string) error {
 			promocodeusage.Table:          promocodeusage.ValidColumn,
 			proxy.Table:                   proxy.ValidColumn,
 			redeemcode.Table:              redeemcode.ValidColumn,
+			referralrelation.Table:        referralrelation.ValidColumn,
 			securitysecret.Table:          securitysecret.ValidColumn,
 			setting.Table:                 setting.ValidColumn,
 			usagecleanuptask.Table:        usagecleanuptask.ValidColumn,
@@ -113,6 +116,7 @@ func checkColumn(t, c string) error {
 			userallowedgroup.Table:        userallowedgroup.ValidColumn,
 			userattributedefinition.Table: userattributedefinition.ValidColumn,
 			userattributevalue.Table:      userattributevalue.ValidColumn,
+			userreferralprofile.Table:     userreferralprofile.ValidColumn,
 			usersubscription.Table:        usersubscription.ValidColumn,
 		})
 	})

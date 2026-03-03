@@ -27,6 +27,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/referralrelation"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -35,6 +36,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userreferralprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 
 	stdsql "database/sql"
@@ -69,6 +71,8 @@ type Client struct {
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
 	RedeemCode *RedeemCodeClient
+	// ReferralRelation is the client for interacting with the ReferralRelation builders.
+	ReferralRelation *ReferralRelationClient
 	// SecuritySecret is the client for interacting with the SecuritySecret builders.
 	SecuritySecret *SecuritySecretClient
 	// Setting is the client for interacting with the Setting builders.
@@ -85,6 +89,8 @@ type Client struct {
 	UserAttributeDefinition *UserAttributeDefinitionClient
 	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
 	UserAttributeValue *UserAttributeValueClient
+	// UserReferralProfile is the client for interacting with the UserReferralProfile builders.
+	UserReferralProfile *UserReferralProfileClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
 }
@@ -110,6 +116,7 @@ func (c *Client) init() {
 	c.PromoCodeUsage = NewPromoCodeUsageClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
+	c.ReferralRelation = NewReferralRelationClient(c.config)
 	c.SecuritySecret = NewSecuritySecretClient(c.config)
 	c.Setting = NewSettingClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
@@ -118,6 +125,7 @@ func (c *Client) init() {
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
+	c.UserReferralProfile = NewUserReferralProfileClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
 }
 
@@ -223,6 +231,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
+		ReferralRelation:        NewReferralRelationClient(cfg),
 		SecuritySecret:          NewSecuritySecretClient(cfg),
 		Setting:                 NewSettingClient(cfg),
 		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
@@ -231,6 +240,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition: NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:      NewUserAttributeValueClient(cfg),
+		UserReferralProfile:     NewUserReferralProfileClient(cfg),
 		UserSubscription:        NewUserSubscriptionClient(cfg),
 	}, nil
 }
@@ -263,6 +273,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
+		ReferralRelation:        NewReferralRelationClient(cfg),
 		SecuritySecret:          NewSecuritySecretClient(cfg),
 		Setting:                 NewSettingClient(cfg),
 		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
@@ -271,6 +282,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition: NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:      NewUserAttributeValueClient(cfg),
+		UserReferralProfile:     NewUserReferralProfileClient(cfg),
 		UserSubscription:        NewUserSubscriptionClient(cfg),
 	}, nil
 }
@@ -303,9 +315,10 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.ReferralRelation, c.SecuritySecret,
+		c.Setting, c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserReferralProfile,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -317,9 +330,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.ReferralRelation, c.SecuritySecret,
+		c.Setting, c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserReferralProfile,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -352,6 +366,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Proxy.mutate(ctx, m)
 	case *RedeemCodeMutation:
 		return c.RedeemCode.mutate(ctx, m)
+	case *ReferralRelationMutation:
+		return c.ReferralRelation.mutate(ctx, m)
 	case *SecuritySecretMutation:
 		return c.SecuritySecret.mutate(ctx, m)
 	case *SettingMutation:
@@ -368,6 +384,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserAttributeDefinition.mutate(ctx, m)
 	case *UserAttributeValueMutation:
 		return c.UserAttributeValue.mutate(ctx, m)
+	case *UserReferralProfileMutation:
+		return c.UserReferralProfile.mutate(ctx, m)
 	case *UserSubscriptionMutation:
 		return c.UserSubscription.mutate(ctx, m)
 	default:
@@ -2346,6 +2364,171 @@ func (c *RedeemCodeClient) mutate(ctx context.Context, m *RedeemCodeMutation) (V
 	}
 }
 
+// ReferralRelationClient is a client for the ReferralRelation schema.
+type ReferralRelationClient struct {
+	config
+}
+
+// NewReferralRelationClient returns a client for the ReferralRelation from the given config.
+func NewReferralRelationClient(c config) *ReferralRelationClient {
+	return &ReferralRelationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `referralrelation.Hooks(f(g(h())))`.
+func (c *ReferralRelationClient) Use(hooks ...Hook) {
+	c.hooks.ReferralRelation = append(c.hooks.ReferralRelation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `referralrelation.Intercept(f(g(h())))`.
+func (c *ReferralRelationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ReferralRelation = append(c.inters.ReferralRelation, interceptors...)
+}
+
+// Create returns a builder for creating a ReferralRelation entity.
+func (c *ReferralRelationClient) Create() *ReferralRelationCreate {
+	mutation := newReferralRelationMutation(c.config, OpCreate)
+	return &ReferralRelationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ReferralRelation entities.
+func (c *ReferralRelationClient) CreateBulk(builders ...*ReferralRelationCreate) *ReferralRelationCreateBulk {
+	return &ReferralRelationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ReferralRelationClient) MapCreateBulk(slice any, setFunc func(*ReferralRelationCreate, int)) *ReferralRelationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ReferralRelationCreateBulk{err: fmt.Errorf("calling to ReferralRelationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ReferralRelationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ReferralRelationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ReferralRelation.
+func (c *ReferralRelationClient) Update() *ReferralRelationUpdate {
+	mutation := newReferralRelationMutation(c.config, OpUpdate)
+	return &ReferralRelationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ReferralRelationClient) UpdateOne(_m *ReferralRelation) *ReferralRelationUpdateOne {
+	mutation := newReferralRelationMutation(c.config, OpUpdateOne, withReferralRelation(_m))
+	return &ReferralRelationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ReferralRelationClient) UpdateOneID(id int64) *ReferralRelationUpdateOne {
+	mutation := newReferralRelationMutation(c.config, OpUpdateOne, withReferralRelationID(id))
+	return &ReferralRelationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ReferralRelation.
+func (c *ReferralRelationClient) Delete() *ReferralRelationDelete {
+	mutation := newReferralRelationMutation(c.config, OpDelete)
+	return &ReferralRelationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ReferralRelationClient) DeleteOne(_m *ReferralRelation) *ReferralRelationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ReferralRelationClient) DeleteOneID(id int64) *ReferralRelationDeleteOne {
+	builder := c.Delete().Where(referralrelation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ReferralRelationDeleteOne{builder}
+}
+
+// Query returns a query builder for ReferralRelation.
+func (c *ReferralRelationClient) Query() *ReferralRelationQuery {
+	return &ReferralRelationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeReferralRelation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ReferralRelation entity by its id.
+func (c *ReferralRelationClient) Get(ctx context.Context, id int64) (*ReferralRelation, error) {
+	return c.Query().Where(referralrelation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ReferralRelationClient) GetX(ctx context.Context, id int64) *ReferralRelation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryInviter queries the inviter edge of a ReferralRelation.
+func (c *ReferralRelationClient) QueryInviter(_m *ReferralRelation) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(referralrelation.Table, referralrelation.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, referralrelation.InviterTable, referralrelation.InviterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryInvitee queries the invitee edge of a ReferralRelation.
+func (c *ReferralRelationClient) QueryInvitee(_m *ReferralRelation) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(referralrelation.Table, referralrelation.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, referralrelation.InviteeTable, referralrelation.InviteeColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ReferralRelationClient) Hooks() []Hook {
+	return c.hooks.ReferralRelation
+}
+
+// Interceptors returns the client interceptors.
+func (c *ReferralRelationClient) Interceptors() []Interceptor {
+	return c.inters.ReferralRelation
+}
+
+func (c *ReferralRelationClient) mutate(ctx context.Context, m *ReferralRelationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ReferralRelationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ReferralRelationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ReferralRelationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ReferralRelationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ReferralRelation mutation op: %q", m.Op())
+	}
+}
+
 // SecuritySecretClient is a client for the SecuritySecret schema.
 type SecuritySecretClient struct {
 	config
@@ -3210,6 +3393,54 @@ func (c *UserClient) QueryPromoCodeUsages(_m *User) *PromoCodeUsageQuery {
 	return query
 }
 
+// QueryReferralProfile queries the referral_profile edge of a User.
+func (c *UserClient) QueryReferralProfile(_m *User) *UserReferralProfileQuery {
+	query := (&UserReferralProfileClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(userreferralprofile.Table, userreferralprofile.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ReferralProfileTable, user.ReferralProfileColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryReferralsGiven queries the referrals_given edge of a User.
+func (c *UserClient) QueryReferralsGiven(_m *User) *ReferralRelationQuery {
+	query := (&ReferralRelationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(referralrelation.Table, referralrelation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ReferralsGivenTable, user.ReferralsGivenColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryReferralReceived queries the referral_received edge of a User.
+func (c *UserClient) QueryReferralReceived(_m *User) *ReferralRelationQuery {
+	query := (&ReferralRelationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(referralrelation.Table, referralrelation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ReferralReceivedTable, user.ReferralReceivedColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUserAllowedGroups queries the user_allowed_groups edge of a User.
 func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 	query := (&UserAllowedGroupClient{config: c.config}).Query()
@@ -3685,6 +3916,155 @@ func (c *UserAttributeValueClient) mutate(ctx context.Context, m *UserAttributeV
 	}
 }
 
+// UserReferralProfileClient is a client for the UserReferralProfile schema.
+type UserReferralProfileClient struct {
+	config
+}
+
+// NewUserReferralProfileClient returns a client for the UserReferralProfile from the given config.
+func NewUserReferralProfileClient(c config) *UserReferralProfileClient {
+	return &UserReferralProfileClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userreferralprofile.Hooks(f(g(h())))`.
+func (c *UserReferralProfileClient) Use(hooks ...Hook) {
+	c.hooks.UserReferralProfile = append(c.hooks.UserReferralProfile, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userreferralprofile.Intercept(f(g(h())))`.
+func (c *UserReferralProfileClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserReferralProfile = append(c.inters.UserReferralProfile, interceptors...)
+}
+
+// Create returns a builder for creating a UserReferralProfile entity.
+func (c *UserReferralProfileClient) Create() *UserReferralProfileCreate {
+	mutation := newUserReferralProfileMutation(c.config, OpCreate)
+	return &UserReferralProfileCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserReferralProfile entities.
+func (c *UserReferralProfileClient) CreateBulk(builders ...*UserReferralProfileCreate) *UserReferralProfileCreateBulk {
+	return &UserReferralProfileCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserReferralProfileClient) MapCreateBulk(slice any, setFunc func(*UserReferralProfileCreate, int)) *UserReferralProfileCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserReferralProfileCreateBulk{err: fmt.Errorf("calling to UserReferralProfileClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserReferralProfileCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserReferralProfileCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserReferralProfile.
+func (c *UserReferralProfileClient) Update() *UserReferralProfileUpdate {
+	mutation := newUserReferralProfileMutation(c.config, OpUpdate)
+	return &UserReferralProfileUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserReferralProfileClient) UpdateOne(_m *UserReferralProfile) *UserReferralProfileUpdateOne {
+	mutation := newUserReferralProfileMutation(c.config, OpUpdateOne, withUserReferralProfile(_m))
+	return &UserReferralProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserReferralProfileClient) UpdateOneID(id int64) *UserReferralProfileUpdateOne {
+	mutation := newUserReferralProfileMutation(c.config, OpUpdateOne, withUserReferralProfileID(id))
+	return &UserReferralProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserReferralProfile.
+func (c *UserReferralProfileClient) Delete() *UserReferralProfileDelete {
+	mutation := newUserReferralProfileMutation(c.config, OpDelete)
+	return &UserReferralProfileDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserReferralProfileClient) DeleteOne(_m *UserReferralProfile) *UserReferralProfileDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserReferralProfileClient) DeleteOneID(id int64) *UserReferralProfileDeleteOne {
+	builder := c.Delete().Where(userreferralprofile.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserReferralProfileDeleteOne{builder}
+}
+
+// Query returns a query builder for UserReferralProfile.
+func (c *UserReferralProfileClient) Query() *UserReferralProfileQuery {
+	return &UserReferralProfileQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserReferralProfile},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserReferralProfile entity by its id.
+func (c *UserReferralProfileClient) Get(ctx context.Context, id int64) (*UserReferralProfile, error) {
+	return c.Query().Where(userreferralprofile.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserReferralProfileClient) GetX(ctx context.Context, id int64) *UserReferralProfile {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a UserReferralProfile.
+func (c *UserReferralProfileClient) QueryUser(_m *UserReferralProfile) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(userreferralprofile.Table, userreferralprofile.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, userreferralprofile.UserTable, userreferralprofile.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UserReferralProfileClient) Hooks() []Hook {
+	return c.hooks.UserReferralProfile
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserReferralProfileClient) Interceptors() []Interceptor {
+	return c.inters.UserReferralProfile
+}
+
+func (c *UserReferralProfileClient) mutate(ctx context.Context, m *UserReferralProfileMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserReferralProfileCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserReferralProfileUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserReferralProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserReferralProfileDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserReferralProfile mutation op: %q", m.Op())
+	}
+}
+
 // UserSubscriptionClient is a client for the UserSubscription schema.
 type UserSubscriptionClient struct {
 	config
@@ -3889,16 +4269,16 @@ type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PromoCode, PromoCodeUsage,
-		Proxy, RedeemCode, SecuritySecret, Setting, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Hook
+		Proxy, RedeemCode, ReferralRelation, SecuritySecret, Setting, UsageCleanupTask,
+		UsageLog, User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserReferralProfile, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PromoCode, PromoCodeUsage,
-		Proxy, RedeemCode, SecuritySecret, Setting, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Interceptor
+		Proxy, RedeemCode, ReferralRelation, SecuritySecret, Setting, UsageCleanupTask,
+		UsageLog, User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserReferralProfile, UserSubscription []ent.Interceptor
 	}
 )
 

@@ -1157,6 +1157,75 @@ func HasPromoCodeUsagesWith(preds ...predicate.PromoCodeUsage) predicate.User {
 	})
 }
 
+// HasReferralProfile applies the HasEdge predicate on the "referral_profile" edge.
+func HasReferralProfile() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ReferralProfileTable, ReferralProfileColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasReferralProfileWith applies the HasEdge predicate on the "referral_profile" edge with a given conditions (other predicates).
+func HasReferralProfileWith(preds ...predicate.UserReferralProfile) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newReferralProfileStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasReferralsGiven applies the HasEdge predicate on the "referrals_given" edge.
+func HasReferralsGiven() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ReferralsGivenTable, ReferralsGivenColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasReferralsGivenWith applies the HasEdge predicate on the "referrals_given" edge with a given conditions (other predicates).
+func HasReferralsGivenWith(preds ...predicate.ReferralRelation) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newReferralsGivenStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasReferralReceived applies the HasEdge predicate on the "referral_received" edge.
+func HasReferralReceived() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ReferralReceivedTable, ReferralReceivedColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasReferralReceivedWith applies the HasEdge predicate on the "referral_received" edge with a given conditions (other predicates).
+func HasReferralReceivedWith(preds ...predicate.ReferralRelation) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newReferralReceivedStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUserAllowedGroups applies the HasEdge predicate on the "user_allowed_groups" edge.
 func HasUserAllowedGroups() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

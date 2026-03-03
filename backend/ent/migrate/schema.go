@@ -642,6 +642,48 @@ var (
 			},
 		},
 	}
+	// ReferralRelationsColumns holds the columns for the "referral_relations" table.
+	ReferralRelationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "inviter_reward", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "invitee_reward", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "reward_granted", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "inviter_id", Type: field.TypeInt64},
+		{Name: "invitee_id", Type: field.TypeInt64},
+	}
+	// ReferralRelationsTable holds the schema information for the "referral_relations" table.
+	ReferralRelationsTable = &schema.Table{
+		Name:       "referral_relations",
+		Columns:    ReferralRelationsColumns,
+		PrimaryKey: []*schema.Column{ReferralRelationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "referral_relations_users_referrals_given",
+				Columns:    []*schema.Column{ReferralRelationsColumns[5]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "referral_relations_users_referral_received",
+				Columns:    []*schema.Column{ReferralRelationsColumns[6]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "referralrelation_invitee_id",
+				Unique:  true,
+				Columns: []*schema.Column{ReferralRelationsColumns[6]},
+			},
+			{
+				Name:    "referralrelation_inviter_id",
+				Unique:  false,
+				Columns: []*schema.Column{ReferralRelationsColumns[5]},
+			},
+		},
+	}
 	// SecuritySecretsColumns holds the columns for the "security_secrets" table.
 	SecuritySecretsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -995,6 +1037,39 @@ var (
 			},
 		},
 	}
+	// UserReferralProfilesColumns holds the columns for the "user_referral_profiles" table.
+	UserReferralProfilesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "referral_code", Type: field.TypeString, Unique: true, Size: 8},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// UserReferralProfilesTable holds the schema information for the "user_referral_profiles" table.
+	UserReferralProfilesTable = &schema.Table{
+		Name:       "user_referral_profiles",
+		Columns:    UserReferralProfilesColumns,
+		PrimaryKey: []*schema.Column{UserReferralProfilesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_referral_profiles_users_referral_profile",
+				Columns:    []*schema.Column{UserReferralProfilesColumns[3]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userreferralprofile_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserReferralProfilesColumns[3]},
+			},
+			{
+				Name:    "userreferralprofile_referral_code",
+				Unique:  true,
+				Columns: []*schema.Column{UserReferralProfilesColumns[1]},
+			},
+		},
+	}
 	// UserSubscriptionsColumns holds the columns for the "user_subscriptions" table.
 	UserSubscriptionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1098,6 +1173,7 @@ var (
 		PromoCodeUsagesTable,
 		ProxiesTable,
 		RedeemCodesTable,
+		ReferralRelationsTable,
 		SecuritySecretsTable,
 		SettingsTable,
 		UsageCleanupTasksTable,
@@ -1106,6 +1182,7 @@ var (
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
+		UserReferralProfilesTable,
 		UserSubscriptionsTable,
 	}
 )
@@ -1158,6 +1235,11 @@ func init() {
 	RedeemCodesTable.Annotation = &entsql.Annotation{
 		Table: "redeem_codes",
 	}
+	ReferralRelationsTable.ForeignKeys[0].RefTable = UsersTable
+	ReferralRelationsTable.ForeignKeys[1].RefTable = UsersTable
+	ReferralRelationsTable.Annotation = &entsql.Annotation{
+		Table: "referral_relations",
+	}
 	SecuritySecretsTable.Annotation = &entsql.Annotation{
 		Table: "security_secrets",
 	}
@@ -1190,6 +1272,10 @@ func init() {
 	UserAttributeValuesTable.ForeignKeys[1].RefTable = UserAttributeDefinitionsTable
 	UserAttributeValuesTable.Annotation = &entsql.Annotation{
 		Table: "user_attribute_values",
+	}
+	UserReferralProfilesTable.ForeignKeys[0].RefTable = UsersTable
+	UserReferralProfilesTable.Annotation = &entsql.Annotation{
+		Table: "user_referral_profiles",
 	}
 	UserSubscriptionsTable.ForeignKeys[0].RefTable = GroupsTable
 	UserSubscriptionsTable.ForeignKeys[1].RefTable = UsersTable

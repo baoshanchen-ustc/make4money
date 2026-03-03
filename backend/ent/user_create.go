@@ -16,9 +16,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/referralrelation"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userreferralprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -371,6 +373,51 @@ func (_c *UserCreate) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddPromoCodeUsageIDs(ids...)
+}
+
+// AddReferralProfileIDs adds the "referral_profile" edge to the UserReferralProfile entity by IDs.
+func (_c *UserCreate) AddReferralProfileIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddReferralProfileIDs(ids...)
+	return _c
+}
+
+// AddReferralProfile adds the "referral_profile" edges to the UserReferralProfile entity.
+func (_c *UserCreate) AddReferralProfile(v ...*UserReferralProfile) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddReferralProfileIDs(ids...)
+}
+
+// AddReferralsGivenIDs adds the "referrals_given" edge to the ReferralRelation entity by IDs.
+func (_c *UserCreate) AddReferralsGivenIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddReferralsGivenIDs(ids...)
+	return _c
+}
+
+// AddReferralsGiven adds the "referrals_given" edges to the ReferralRelation entity.
+func (_c *UserCreate) AddReferralsGiven(v ...*ReferralRelation) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddReferralsGivenIDs(ids...)
+}
+
+// AddReferralReceivedIDs adds the "referral_received" edge to the ReferralRelation entity by IDs.
+func (_c *UserCreate) AddReferralReceivedIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddReferralReceivedIDs(ids...)
+	return _c
+}
+
+// AddReferralReceived adds the "referral_received" edges to the ReferralRelation entity.
+func (_c *UserCreate) AddReferralReceived(v ...*ReferralRelation) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddReferralReceivedIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -761,6 +808,54 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ReferralProfileIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReferralProfileTable,
+			Columns: []string{user.ReferralProfileColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userreferralprofile.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ReferralsGivenIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReferralsGivenTable,
+			Columns: []string{user.ReferralsGivenColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(referralrelation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ReferralReceivedIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReferralReceivedTable,
+			Columns: []string{user.ReferralReceivedColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(referralrelation.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

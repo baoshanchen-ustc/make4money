@@ -153,6 +153,18 @@ func (f RedeemCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RedeemCodeMutation", m)
 }
 
+// The ReferralRelationFunc type is an adapter to allow the use of ordinary
+// function as ReferralRelation mutator.
+type ReferralRelationFunc func(context.Context, *ent.ReferralRelationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ReferralRelationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ReferralRelationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReferralRelationMutation", m)
+}
+
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary
 // function as SecuritySecret mutator.
 type SecuritySecretFunc func(context.Context, *ent.SecuritySecretMutation) (ent.Value, error)
@@ -247,6 +259,18 @@ func (f UserAttributeValueFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserAttributeValueMutation", m)
+}
+
+// The UserReferralProfileFunc type is an adapter to allow the use of ordinary
+// function as UserReferralProfile mutator.
+type UserReferralProfileFunc func(context.Context, *ent.UserReferralProfileMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserReferralProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserReferralProfileMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserReferralProfileMutation", m)
 }
 
 // The UserSubscriptionFunc type is an adapter to allow the use of ordinary

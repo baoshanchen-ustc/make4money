@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/referralrelation"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -29,6 +30,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userreferralprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -412,6 +414,33 @@ func (f TraverseRedeemCode) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.RedeemCodeQuery", q)
 }
 
+// The ReferralRelationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ReferralRelationFunc func(context.Context, *ent.ReferralRelationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ReferralRelationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ReferralRelationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ReferralRelationQuery", q)
+}
+
+// The TraverseReferralRelation type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseReferralRelation func(context.Context, *ent.ReferralRelationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseReferralRelation) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseReferralRelation) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ReferralRelationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ReferralRelationQuery", q)
+}
+
 // The SecuritySecretFunc type is an adapter to allow the use of ordinary function as a Querier.
 type SecuritySecretFunc func(context.Context, *ent.SecuritySecretQuery) (ent.Value, error)
 
@@ -628,6 +657,33 @@ func (f TraverseUserAttributeValue) Traverse(ctx context.Context, q ent.Query) e
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserAttributeValueQuery", q)
 }
 
+// The UserReferralProfileFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserReferralProfileFunc func(context.Context, *ent.UserReferralProfileQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserReferralProfileFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserReferralProfileQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserReferralProfileQuery", q)
+}
+
+// The TraverseUserReferralProfile type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserReferralProfile func(context.Context, *ent.UserReferralProfileQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserReferralProfile) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserReferralProfile) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserReferralProfileQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserReferralProfileQuery", q)
+}
+
 // The UserSubscriptionFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserSubscriptionFunc func(context.Context, *ent.UserSubscriptionQuery) (ent.Value, error)
 
@@ -682,6 +738,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ProxyQuery, predicate.Proxy, proxy.OrderOption]{typ: ent.TypeProxy, tq: q}, nil
 	case *ent.RedeemCodeQuery:
 		return &query[*ent.RedeemCodeQuery, predicate.RedeemCode, redeemcode.OrderOption]{typ: ent.TypeRedeemCode, tq: q}, nil
+	case *ent.ReferralRelationQuery:
+		return &query[*ent.ReferralRelationQuery, predicate.ReferralRelation, referralrelation.OrderOption]{typ: ent.TypeReferralRelation, tq: q}, nil
 	case *ent.SecuritySecretQuery:
 		return &query[*ent.SecuritySecretQuery, predicate.SecuritySecret, securitysecret.OrderOption]{typ: ent.TypeSecuritySecret, tq: q}, nil
 	case *ent.SettingQuery:
@@ -698,6 +756,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserAttributeDefinitionQuery, predicate.UserAttributeDefinition, userattributedefinition.OrderOption]{typ: ent.TypeUserAttributeDefinition, tq: q}, nil
 	case *ent.UserAttributeValueQuery:
 		return &query[*ent.UserAttributeValueQuery, predicate.UserAttributeValue, userattributevalue.OrderOption]{typ: ent.TypeUserAttributeValue, tq: q}, nil
+	case *ent.UserReferralProfileQuery:
+		return &query[*ent.UserReferralProfileQuery, predicate.UserReferralProfile, userreferralprofile.OrderOption]{typ: ent.TypeUserReferralProfile, tq: q}, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: q}, nil
 	default:

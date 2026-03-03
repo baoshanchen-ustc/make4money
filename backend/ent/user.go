@@ -75,11 +75,17 @@ type UserEdges struct {
 	AttributeValues []*UserAttributeValue `json:"attribute_values,omitempty"`
 	// PromoCodeUsages holds the value of the promo_code_usages edge.
 	PromoCodeUsages []*PromoCodeUsage `json:"promo_code_usages,omitempty"`
+	// ReferralProfile holds the value of the referral_profile edge.
+	ReferralProfile []*UserReferralProfile `json:"referral_profile,omitempty"`
+	// ReferralsGiven holds the value of the referrals_given edge.
+	ReferralsGiven []*ReferralRelation `json:"referrals_given,omitempty"`
+	// ReferralReceived holds the value of the referral_received edge.
+	ReferralReceived []*ReferralRelation `json:"referral_received,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [10]bool
+	loadedTypes [13]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -163,10 +169,37 @@ func (e UserEdges) PromoCodeUsagesOrErr() ([]*PromoCodeUsage, error) {
 	return nil, &NotLoadedError{edge: "promo_code_usages"}
 }
 
+// ReferralProfileOrErr returns the ReferralProfile value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ReferralProfileOrErr() ([]*UserReferralProfile, error) {
+	if e.loadedTypes[9] {
+		return e.ReferralProfile, nil
+	}
+	return nil, &NotLoadedError{edge: "referral_profile"}
+}
+
+// ReferralsGivenOrErr returns the ReferralsGiven value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ReferralsGivenOrErr() ([]*ReferralRelation, error) {
+	if e.loadedTypes[10] {
+		return e.ReferralsGiven, nil
+	}
+	return nil, &NotLoadedError{edge: "referrals_given"}
+}
+
+// ReferralReceivedOrErr returns the ReferralReceived value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ReferralReceivedOrErr() ([]*ReferralRelation, error) {
+	if e.loadedTypes[11] {
+		return e.ReferralReceived, nil
+	}
+	return nil, &NotLoadedError{edge: "referral_received"}
+}
+
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[9] {
+	if e.loadedTypes[12] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
@@ -363,6 +396,21 @@ func (_m *User) QueryAttributeValues() *UserAttributeValueQuery {
 // QueryPromoCodeUsages queries the "promo_code_usages" edge of the User entity.
 func (_m *User) QueryPromoCodeUsages() *PromoCodeUsageQuery {
 	return NewUserClient(_m.config).QueryPromoCodeUsages(_m)
+}
+
+// QueryReferralProfile queries the "referral_profile" edge of the User entity.
+func (_m *User) QueryReferralProfile() *UserReferralProfileQuery {
+	return NewUserClient(_m.config).QueryReferralProfile(_m)
+}
+
+// QueryReferralsGiven queries the "referrals_given" edge of the User entity.
+func (_m *User) QueryReferralsGiven() *ReferralRelationQuery {
+	return NewUserClient(_m.config).QueryReferralsGiven(_m)
+}
+
+// QueryReferralReceived queries the "referral_received" edge of the User entity.
+func (_m *User) QueryReferralReceived() *ReferralRelationQuery {
+	return NewUserClient(_m.config).QueryReferralReceived(_m)
 }
 
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the User entity.

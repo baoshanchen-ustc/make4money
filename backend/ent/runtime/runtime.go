@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/referralrelation"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -26,6 +27,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userreferralprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -667,6 +669,32 @@ func init() {
 	redeemcodeDescValidityDays := redeemcodeFields[9].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
+	referralrelationFields := schema.ReferralRelation{}.Fields()
+	_ = referralrelationFields
+	// referralrelationDescInviterID is the schema descriptor for inviter_id field.
+	referralrelationDescInviterID := referralrelationFields[0].Descriptor()
+	// referralrelation.InviterIDValidator is a validator for the "inviter_id" field. It is called by the builders before save.
+	referralrelation.InviterIDValidator = referralrelationDescInviterID.Validators[0].(func(int64) error)
+	// referralrelationDescInviteeID is the schema descriptor for invitee_id field.
+	referralrelationDescInviteeID := referralrelationFields[1].Descriptor()
+	// referralrelation.InviteeIDValidator is a validator for the "invitee_id" field. It is called by the builders before save.
+	referralrelation.InviteeIDValidator = referralrelationDescInviteeID.Validators[0].(func(int64) error)
+	// referralrelationDescInviterReward is the schema descriptor for inviter_reward field.
+	referralrelationDescInviterReward := referralrelationFields[2].Descriptor()
+	// referralrelation.DefaultInviterReward holds the default value on creation for the inviter_reward field.
+	referralrelation.DefaultInviterReward = referralrelationDescInviterReward.Default.(float64)
+	// referralrelationDescInviteeReward is the schema descriptor for invitee_reward field.
+	referralrelationDescInviteeReward := referralrelationFields[3].Descriptor()
+	// referralrelation.DefaultInviteeReward holds the default value on creation for the invitee_reward field.
+	referralrelation.DefaultInviteeReward = referralrelationDescInviteeReward.Default.(float64)
+	// referralrelationDescRewardGranted is the schema descriptor for reward_granted field.
+	referralrelationDescRewardGranted := referralrelationFields[4].Descriptor()
+	// referralrelation.DefaultRewardGranted holds the default value on creation for the reward_granted field.
+	referralrelation.DefaultRewardGranted = referralrelationDescRewardGranted.Default.(bool)
+	// referralrelationDescCreatedAt is the schema descriptor for created_at field.
+	referralrelationDescCreatedAt := referralrelationFields[5].Descriptor()
+	// referralrelation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	referralrelation.DefaultCreatedAt = referralrelationDescCreatedAt.Default.(func() time.Time)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()
 	securitysecretMixinFields0 := securitysecretMixin[0].Fields()
 	_ = securitysecretMixinFields0
@@ -1118,6 +1146,34 @@ func init() {
 	userattributevalueDescValue := userattributevalueFields[2].Descriptor()
 	// userattributevalue.DefaultValue holds the default value on creation for the value field.
 	userattributevalue.DefaultValue = userattributevalueDescValue.Default.(string)
+	userreferralprofileFields := schema.UserReferralProfile{}.Fields()
+	_ = userreferralprofileFields
+	// userreferralprofileDescUserID is the schema descriptor for user_id field.
+	userreferralprofileDescUserID := userreferralprofileFields[0].Descriptor()
+	// userreferralprofile.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	userreferralprofile.UserIDValidator = userreferralprofileDescUserID.Validators[0].(func(int64) error)
+	// userreferralprofileDescReferralCode is the schema descriptor for referral_code field.
+	userreferralprofileDescReferralCode := userreferralprofileFields[1].Descriptor()
+	// userreferralprofile.ReferralCodeValidator is a validator for the "referral_code" field. It is called by the builders before save.
+	userreferralprofile.ReferralCodeValidator = func() func(string) error {
+		validators := userreferralprofileDescReferralCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(referral_code string) error {
+			for _, fn := range fns {
+				if err := fn(referral_code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// userreferralprofileDescCreatedAt is the schema descriptor for created_at field.
+	userreferralprofileDescCreatedAt := userreferralprofileFields[2].Descriptor()
+	// userreferralprofile.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userreferralprofile.DefaultCreatedAt = userreferralprofileDescCreatedAt.Default.(func() time.Time)
 	usersubscriptionMixin := schema.UserSubscription{}.Mixin()
 	usersubscriptionMixinHooks1 := usersubscriptionMixin[1].Hooks()
 	usersubscription.Hooks[0] = usersubscriptionMixinHooks1[0]

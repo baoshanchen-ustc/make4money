@@ -65,6 +65,12 @@ const (
 	EdgeAttributeValues = "attribute_values"
 	// EdgePromoCodeUsages holds the string denoting the promo_code_usages edge name in mutations.
 	EdgePromoCodeUsages = "promo_code_usages"
+	// EdgeReferralProfile holds the string denoting the referral_profile edge name in mutations.
+	EdgeReferralProfile = "referral_profile"
+	// EdgeReferralsGiven holds the string denoting the referrals_given edge name in mutations.
+	EdgeReferralsGiven = "referrals_given"
+	// EdgeReferralReceived holds the string denoting the referral_received edge name in mutations.
+	EdgeReferralReceived = "referral_received"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -130,6 +136,27 @@ const (
 	PromoCodeUsagesInverseTable = "promo_code_usages"
 	// PromoCodeUsagesColumn is the table column denoting the promo_code_usages relation/edge.
 	PromoCodeUsagesColumn = "user_id"
+	// ReferralProfileTable is the table that holds the referral_profile relation/edge.
+	ReferralProfileTable = "user_referral_profiles"
+	// ReferralProfileInverseTable is the table name for the UserReferralProfile entity.
+	// It exists in this package in order to avoid circular dependency with the "userreferralprofile" package.
+	ReferralProfileInverseTable = "user_referral_profiles"
+	// ReferralProfileColumn is the table column denoting the referral_profile relation/edge.
+	ReferralProfileColumn = "user_id"
+	// ReferralsGivenTable is the table that holds the referrals_given relation/edge.
+	ReferralsGivenTable = "referral_relations"
+	// ReferralsGivenInverseTable is the table name for the ReferralRelation entity.
+	// It exists in this package in order to avoid circular dependency with the "referralrelation" package.
+	ReferralsGivenInverseTable = "referral_relations"
+	// ReferralsGivenColumn is the table column denoting the referrals_given relation/edge.
+	ReferralsGivenColumn = "inviter_id"
+	// ReferralReceivedTable is the table that holds the referral_received relation/edge.
+	ReferralReceivedTable = "referral_relations"
+	// ReferralReceivedInverseTable is the table name for the ReferralRelation entity.
+	// It exists in this package in order to avoid circular dependency with the "referralrelation" package.
+	ReferralReceivedInverseTable = "referral_relations"
+	// ReferralReceivedColumn is the table column denoting the referral_received relation/edge.
+	ReferralReceivedColumn = "invitee_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -434,6 +461,48 @@ func ByPromoCodeUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByReferralProfileCount orders the results by referral_profile count.
+func ByReferralProfileCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newReferralProfileStep(), opts...)
+	}
+}
+
+// ByReferralProfile orders the results by referral_profile terms.
+func ByReferralProfile(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newReferralProfileStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByReferralsGivenCount orders the results by referrals_given count.
+func ByReferralsGivenCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newReferralsGivenStep(), opts...)
+	}
+}
+
+// ByReferralsGiven orders the results by referrals_given terms.
+func ByReferralsGiven(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newReferralsGivenStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByReferralReceivedCount orders the results by referral_received count.
+func ByReferralReceivedCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newReferralReceivedStep(), opts...)
+	}
+}
+
+// ByReferralReceived orders the results by referral_received terms.
+func ByReferralReceived(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newReferralReceivedStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -508,6 +577,27 @@ func newPromoCodeUsagesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PromoCodeUsagesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PromoCodeUsagesTable, PromoCodeUsagesColumn),
+	)
+}
+func newReferralProfileStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ReferralProfileInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ReferralProfileTable, ReferralProfileColumn),
+	)
+}
+func newReferralsGivenStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ReferralsGivenInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ReferralsGivenTable, ReferralsGivenColumn),
+	)
+}
+func newReferralReceivedStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ReferralReceivedInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ReferralReceivedTable, ReferralReceivedColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {
