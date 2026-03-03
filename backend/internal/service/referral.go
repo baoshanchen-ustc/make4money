@@ -36,7 +36,7 @@ type ReferralRelation struct {
 
 // ReferralStats 全平台邀请统计（管理员视图）
 type ReferralStats struct {
-	TotalRelations         int64   `json:"total_relations"`
+	TotalRelations          int64   `json:"total_relations"`
 	TotalInviterRewardGiven float64 `json:"total_inviter_reward_granted"`
 	TotalInviteeRewardGiven float64 `json:"total_invitee_reward_granted"`
 }
@@ -94,10 +94,10 @@ type ReferralRepository interface {
 // =====================
 
 var (
-	ErrReferralCodeNotFound    = newBadRequestError("REFERRAL_CODE_NOT_FOUND", "referral code not found or invalid")
-	ErrReferralCodeInvalid     = newBadRequestError("REFERRAL_CODE_INVALID", "referral code is invalid")
-	ErrSelfReferralNotAllowed  = newBadRequestError("SELF_REFERRAL_NOT_ALLOWED", "cannot use your own referral code")
-	ErrAlreadyReferred         = newBadRequestError("ALREADY_REFERRED", "this user has already been referred")
+	ErrReferralCodeNotFound   = newBadRequestError("REFERRAL_CODE_NOT_FOUND", "referral code not found or invalid")
+	ErrReferralCodeInvalid    = newBadRequestError("REFERRAL_CODE_INVALID", "referral code is invalid")
+	ErrSelfReferralNotAllowed = newBadRequestError("SELF_REFERRAL_NOT_ALLOWED", "cannot use your own referral code")
+	ErrAlreadyReferred        = newBadRequestError("ALREADY_REFERRED", "this user has already been referred")
 )
 
 func newBadRequestError(code, msg string) error {

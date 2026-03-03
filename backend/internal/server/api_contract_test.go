@@ -88,7 +88,16 @@ func TestAPIContracts(t *testing.T) {
 					"quota_used": 0,
 					"expires_at": null,
 					"created_at": "2025-01-02T03:04:05Z",
-					"updated_at": "2025-01-02T03:04:05Z"
+					"updated_at": "2025-01-02T03:04:05Z",
+					"rate_limit_5h": 0,
+					"rate_limit_1d": 0,
+					"rate_limit_7d": 0,
+					"usage_5h": 0,
+					"usage_1d": 0,
+					"usage_7d": 0,
+					"window_5h_start": null,
+					"window_1d_start": null,
+					"window_7d_start": null
 				}
 			}`,
 		},
@@ -128,7 +137,16 @@ func TestAPIContracts(t *testing.T) {
 							"quota_used": 0,
 							"expires_at": null,
 							"created_at": "2025-01-02T03:04:05Z",
-							"updated_at": "2025-01-02T03:04:05Z"
+							"updated_at": "2025-01-02T03:04:05Z",
+							"rate_limit_5h": 0,
+							"rate_limit_1d": 0,
+							"rate_limit_7d": 0,
+							"usage_5h": 0,
+							"usage_1d": 0,
+							"usage_7d": 0,
+							"window_5h_start": null,
+							"window_1d_start": null,
+							"window_7d_start": null
 						}
 					],
 					"total": 1,
@@ -513,6 +531,9 @@ func TestAPIContracts(t *testing.T) {
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
+					"referral_enabled": false,
+					"referral_inviter_reward": 0,
+					"referral_invitee_reward": 0,
 					"min_claude_code_version": "",
 					"custom_menu_items": []
 				}
@@ -1504,6 +1525,16 @@ func (r *stubApiKeyRepo) UpdateLastUsed(ctx context.Context, id int64, usedAt ti
 	r.byID[id] = &clone
 	r.byKey[clone.Key] = &clone
 	return nil
+}
+
+func (r *stubApiKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*service.APIKeyRateLimitData, error) {
+	return nil, errors.New("not implemented")
+}
+func (r *stubApiKeyRepo) IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error {
+	return errors.New("not implemented")
+}
+func (r *stubApiKeyRepo) ResetRateLimitWindows(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
 }
 
 type stubUsageLogRepo struct {
