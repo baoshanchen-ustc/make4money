@@ -175,6 +175,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	require.Equal(t, "claude-3-7-sonnet-20250219", gjson.GetBytes(upstream.lastBody, "model").String())
 
 	require.Equal(t, "upstream-anthropic-key", upstream.lastReq.Header.Get("x-api-key"))
+	require.Equal(t, "/v1/messages?beta=true", upstream.lastReq.URL.RequestURI())
 	require.Empty(t, upstream.lastReq.Header.Get("authorization"))
 	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
 	require.Empty(t, upstream.lastReq.Header.Get("cookie"))
@@ -256,6 +257,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBo
 	require.Equal(t, body, upstream.lastBody, "count_tokens 透传模式不应改写请求体")
 	require.Equal(t, "claude-3-5-sonnet-latest", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "upstream-anthropic-key", upstream.lastReq.Header.Get("x-api-key"))
+	require.Equal(t, "/v1/messages/count_tokens?beta=true", upstream.lastReq.URL.RequestURI())
 	require.Empty(t, upstream.lastReq.Header.Get("authorization"))
 	require.Empty(t, upstream.lastReq.Header.Get("cookie"))
 	require.Equal(t, http.StatusOK, rec.Code)
