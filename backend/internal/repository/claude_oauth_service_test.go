@@ -278,7 +278,7 @@ func (s *ClaudeOAuthServiceSuite) TestExchangeCodeForToken() {
 			s.client.tokenURL = "http://in-process/token"
 			s.client.clientFactory = func(string) (*req.Client, error) { return newTestReqClient(rt), nil }
 
-			resp, err := s.client.ExchangeCodeForToken(context.Background(), tt.code, "ver", "", "", tt.isSetupToken)
+			resp, err := s.client.ExchangeCodeForToken(context.Background(), tt.code, "ver", "", "", tt.isSetupToken, "")
 
 			if tt.wantErr {
 				require.Error(s.T(), err)
@@ -374,7 +374,7 @@ func (s *ClaudeOAuthServiceSuite) TestRefreshToken() {
 			s.client.tokenURL = "http://in-process/token"
 			s.client.clientFactory = func(string) (*req.Client, error) { return newTestReqClient(rt), nil }
 
-			resp, err := s.client.RefreshToken(context.Background(), "rt", "")
+			resp, err := s.client.RefreshToken(context.Background(), "rt", "", "")
 
 			if tt.wantErr {
 				require.Error(s.T(), err)

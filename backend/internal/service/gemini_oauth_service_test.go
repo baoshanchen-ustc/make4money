@@ -745,20 +745,20 @@ func (m *mockGeminiOAuthClient) RefreshToken(ctx context.Context, oauthType, ref
 // =====================
 
 type mockGeminiCodeAssistClient struct {
-	loadCodeAssistFunc func(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest) (*geminicli.LoadCodeAssistResponse, error)
-	onboardUserFunc    func(ctx context.Context, accessToken, proxyURL string, req *geminicli.OnboardUserRequest) (*geminicli.OnboardUserResponse, error)
+	loadCodeAssistFunc func(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest, userAgent string) (*geminicli.LoadCodeAssistResponse, error)
+	onboardUserFunc    func(ctx context.Context, accessToken, proxyURL string, req *geminicli.OnboardUserRequest, userAgent string) (*geminicli.OnboardUserResponse, error)
 }
 
-func (m *mockGeminiCodeAssistClient) LoadCodeAssist(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest) (*geminicli.LoadCodeAssistResponse, error) {
+func (m *mockGeminiCodeAssistClient) LoadCodeAssist(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest, userAgent string) (*geminicli.LoadCodeAssistResponse, error) {
 	if m.loadCodeAssistFunc != nil {
-		return m.loadCodeAssistFunc(ctx, accessToken, proxyURL, req)
+		return m.loadCodeAssistFunc(ctx, accessToken, proxyURL, req, userAgent)
 	}
 	panic("LoadCodeAssist not implemented")
 }
 
-func (m *mockGeminiCodeAssistClient) OnboardUser(ctx context.Context, accessToken, proxyURL string, req *geminicli.OnboardUserRequest) (*geminicli.OnboardUserResponse, error) {
+func (m *mockGeminiCodeAssistClient) OnboardUser(ctx context.Context, accessToken, proxyURL string, req *geminicli.OnboardUserRequest, userAgent string) (*geminicli.OnboardUserResponse, error) {
 	if m.onboardUserFunc != nil {
-		return m.onboardUserFunc(ctx, accessToken, proxyURL, req)
+		return m.onboardUserFunc(ctx, accessToken, proxyURL, req, userAgent)
 	}
 	panic("OnboardUser not implemented")
 }
@@ -1136,7 +1136,7 @@ func TestGeminiOAuthService_RefreshAccountToken_CodeAssist_NoProjectID_AutoDetec
 	}
 
 	codeAssist := &mockGeminiCodeAssistClient{
-		loadCodeAssistFunc: func(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest) (*geminicli.LoadCodeAssistResponse, error) {
+		loadCodeAssistFunc: func(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest, userAgent string) (*geminicli.LoadCodeAssistResponse, error) {
 			return &geminicli.LoadCodeAssistResponse{
 				CloudAICompanionProject: "auto-project-123",
 				CurrentTier:             &geminicli.TierInfo{ID: "STANDARD"},
@@ -1185,7 +1185,7 @@ func TestGeminiOAuthService_RefreshAccountToken_CodeAssist_NoProjectID_FailsEmpt
 	// 使 fetchProjectID 走"已注册用户"路径（尝试 Cloud Resource Manager -> 失败 -> 返回错误），
 	// 避免走 onboardUser 路径（5 次重试 x 2 秒 = 10 秒超时）
 	codeAssist := &mockGeminiCodeAssistClient{
-		loadCodeAssistFunc: func(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest) (*geminicli.LoadCodeAssistResponse, error) {
+		loadCodeAssistFunc: func(ctx context.Context, accessToken, proxyURL string, req *geminicli.LoadCodeAssistRequest, userAgent string) (*geminicli.LoadCodeAssistResponse, error) {
 			return &geminicli.LoadCodeAssistResponse{
 				CurrentTier: &geminicli.TierInfo{ID: "STANDARD"},
 				// 无 CloudAICompanionProject

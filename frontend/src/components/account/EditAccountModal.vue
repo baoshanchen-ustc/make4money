@@ -26,6 +26,18 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <div>
+        <label class="input-label">User-Agent ({{ t('common.optional') }})</label>
+        <input
+          v-model="form.user_agent"
+          type="text"
+          class="input"
+          placeholder="留空使用默认值"
+          maxlength="200"
+        />
+        <p class="input-hint">自定义请求上游 API 时的 User-Agent</p>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div>
@@ -1458,6 +1470,7 @@ const mixedChannelWarningMessageText = computed(() => {
 const form = reactive({
   name: '',
   notes: '',
+  user_agent: '',
   proxy_id: null as number | null,
   concurrency: 1,
   priority: 1,
@@ -1491,6 +1504,7 @@ watch(
       mixedChannelWarningAction.value = null
       form.name = newAccount.name
       form.notes = newAccount.notes || ''
+      form.user_agent = (newAccount as any).user_agent || ''
       form.proxy_id = newAccount.proxy_id
       form.concurrency = newAccount.concurrency
       form.priority = newAccount.priority

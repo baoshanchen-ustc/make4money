@@ -16,8 +16,8 @@ import (
 type mockClaudeOAuthClient struct {
 	getOrgUUIDFunc   func(ctx context.Context, sessionKey, proxyURL string) (string, error)
 	getAuthCodeFunc  func(ctx context.Context, sessionKey, orgUUID, scope, codeChallenge, state, proxyURL string) (string, error)
-	exchangeCodeFunc func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error)
-	refreshTokenFunc func(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error)
+	exchangeCodeFunc func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool, userAgent string) (*oauth.TokenResponse, error)
+	refreshTokenFunc func(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*oauth.TokenResponse, error)
 }
 
 func (m *mockClaudeOAuthClient) GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error) {
@@ -34,16 +34,16 @@ func (m *mockClaudeOAuthClient) GetAuthorizationCode(ctx context.Context, sessio
 	panic("GetAuthorizationCode not implemented")
 }
 
-func (m *mockClaudeOAuthClient) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
+func (m *mockClaudeOAuthClient) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool, userAgent string) (*oauth.TokenResponse, error) {
 	if m.exchangeCodeFunc != nil {
-		return m.exchangeCodeFunc(ctx, code, codeVerifier, state, proxyURL, isSetupToken)
+		return m.exchangeCodeFunc(ctx, code, codeVerifier, state, proxyURL, isSetupToken, userAgent)
 	}
 	panic("ExchangeCodeForToken not implemented")
 }
 
-func (m *mockClaudeOAuthClient) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
+func (m *mockClaudeOAuthClient) RefreshToken(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*oauth.TokenResponse, error) {
 	if m.refreshTokenFunc != nil {
-		return m.refreshTokenFunc(ctx, refreshToken, proxyURL)
+		return m.refreshTokenFunc(ctx, refreshToken, proxyURL, userAgent)
 	}
 	panic("RefreshToken not implemented")
 }
@@ -233,7 +233,7 @@ func TestOAuthService_ExchangeCode_Success(t *testing.T) {
 
 	exchangeCalled := false
 	client := &mockClaudeOAuthClient{
-		exchangeCodeFunc: func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
+		exchangeCodeFunc: func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool, userAgent string) (*oauth.TokenResponse, error) {
 			exchangeCalled = true
 			if code != "auth-code-123" {
 				t.Errorf("code 不匹配: got=%q", code)
@@ -310,7 +310,7 @@ func TestOAuthService_ExchangeCode_SetupToken(t *testing.T) {
 	t.Parallel()
 
 	client := &mockClaudeOAuthClient{
-		exchangeCodeFunc: func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
+		exchangeCodeFunc: func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool, userAgent string) (*oauth.TokenResponse, error) {
 			if !isSetupToken {
 				t.Error("isSetupToken 应为 true（ScopeInference）")
 			}
@@ -348,7 +348,7 @@ func TestOAuthService_ExchangeCode_ClientError(t *testing.T) {
 	t.Parallel()
 
 	client := &mockClaudeOAuthClient{
-		exchangeCodeFunc: func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
+		exchangeCodeFunc: func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool, userAgent string) (*oauth.TokenResponse, error) {
 			return nil, fmt.Errorf("upstream error: invalid code")
 		},
 	}
@@ -373,7 +373,7 @@ func TestOAuthService_RefreshToken(t *testing.T) {
 	t.Parallel()
 
 	client := &mockClaudeOAuthClient{
-		refreshTokenFunc: func(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
+		refreshTokenFunc: func(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*oauth.TokenResponse, error) {
 			if refreshToken != "my-refresh-token" {
 				t.Errorf("refreshToken 不匹配: got=%q", refreshToken)
 			}
@@ -415,7 +415,7 @@ func TestOAuthService_RefreshToken_Error(t *testing.T) {
 	t.Parallel()
 
 	client := &mockClaudeOAuthClient{
-		refreshTokenFunc: func(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
+		refreshTokenFunc: func(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*oauth.TokenResponse, error) {
 			return nil, fmt.Errorf("invalid_grant: token expired")
 		},
 	}
@@ -478,7 +478,7 @@ func TestOAuthService_RefreshAccountToken_Success(t *testing.T) {
 	t.Parallel()
 
 	client := &mockClaudeOAuthClient{
-		refreshTokenFunc: func(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
+		refreshTokenFunc: func(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*oauth.TokenResponse, error) {
 			if refreshToken != "account-refresh-token" {
 				t.Errorf("refreshToken 不匹配: got=%q", refreshToken)
 			}
@@ -529,7 +529,7 @@ func TestOAuthService_RefreshAccountToken_WithProxy(t *testing.T) {
 	}
 
 	client := &mockClaudeOAuthClient{
-		refreshTokenFunc: func(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
+		refreshTokenFunc: func(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*oauth.TokenResponse, error) {
 			if proxyURL != "socks5://user:pass@socks.example.com:1080" {
 				t.Errorf("proxyURL 不匹配: got=%q", proxyURL)
 			}
@@ -564,7 +564,7 @@ func TestOAuthService_ExchangeCode_NilOrg(t *testing.T) {
 	t.Parallel()
 
 	client := &mockClaudeOAuthClient{
-		exchangeCodeFunc: func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
+		exchangeCodeFunc: func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool, userAgent string) (*oauth.TokenResponse, error) {
 			return &oauth.TokenResponse{
 				AccessToken:  "token-no-org",
 				TokenType:    "Bearer",

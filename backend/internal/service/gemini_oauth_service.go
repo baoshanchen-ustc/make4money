@@ -924,7 +924,7 @@ func (s *GeminiOAuthService) fetchProjectID(ctx context.Context, accessToken, pr
 		return "", "", errors.New("code assist client not configured")
 	}
 
-	loadResp, loadErr := s.codeAssist.LoadCodeAssist(ctx, accessToken, proxyURL, nil)
+	loadResp, loadErr := s.codeAssist.LoadCodeAssist(ctx, accessToken, proxyURL, nil, "")
 
 	// Extract tierID from response (works whether CloudAICompanionProject is set or not)
 	tierID := "LEGACY"
@@ -980,7 +980,7 @@ func (s *GeminiOAuthService) fetchProjectID(ctx context.Context, accessToken, pr
 
 	maxAttempts := 5
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		resp, err := s.codeAssist.OnboardUser(ctx, accessToken, proxyURL, req)
+		resp, err := s.codeAssist.OnboardUser(ctx, accessToken, proxyURL, req, "")
 		if err != nil {
 			// If Code Assist onboarding fails (e.g. INVALID_ARGUMENT), fallback to Cloud Resource Manager projects.
 			fallback, fbErr := fetchProjectIDFromResourceManager(ctx, accessToken, proxyURL)

@@ -20,7 +20,7 @@ func NewGeminiCliCodeAssistClient() service.GeminiCliCodeAssistClient {
 	return &geminiCliCodeAssistClient{baseURL: geminicli.GeminiCliBaseURL}
 }
 
-func (c *geminiCliCodeAssistClient) LoadCodeAssist(ctx context.Context, accessToken, proxyURL string, reqBody *geminicli.LoadCodeAssistRequest) (*geminicli.LoadCodeAssistResponse, error) {
+func (c *geminiCliCodeAssistClient) LoadCodeAssist(ctx context.Context, accessToken, proxyURL string, reqBody *geminicli.LoadCodeAssistRequest, userAgent string) (*geminicli.LoadCodeAssistResponse, error) {
 	if reqBody == nil {
 		reqBody = defaultLoadCodeAssistRequest()
 	}
@@ -30,11 +30,15 @@ func (c *geminiCliCodeAssistClient) LoadCodeAssist(ctx context.Context, accessTo
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
+	ua := geminicli.GeminiCLIUserAgent
+	if userAgent != "" {
+		ua = userAgent
+	}
 	resp, err := client.R().
 		SetContext(ctx).
 		SetHeader("Authorization", "Bearer "+accessToken).
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", geminicli.GeminiCLIUserAgent).
+		SetHeader("User-Agent", ua).
 		SetBody(reqBody).
 		SetSuccessResult(&out).
 		Post(c.baseURL + "/v1internal:loadCodeAssist")
@@ -62,7 +66,7 @@ func (c *geminiCliCodeAssistClient) LoadCodeAssist(ctx context.Context, accessTo
 	return &out, nil
 }
 
-func (c *geminiCliCodeAssistClient) OnboardUser(ctx context.Context, accessToken, proxyURL string, reqBody *geminicli.OnboardUserRequest) (*geminicli.OnboardUserResponse, error) {
+func (c *geminiCliCodeAssistClient) OnboardUser(ctx context.Context, accessToken, proxyURL string, reqBody *geminicli.OnboardUserRequest, userAgent string) (*geminicli.OnboardUserResponse, error) {
 	if reqBody == nil {
 		reqBody = defaultOnboardUserRequest()
 	}
@@ -74,11 +78,15 @@ func (c *geminiCliCodeAssistClient) OnboardUser(ctx context.Context, accessToken
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
+	ua := geminicli.GeminiCLIUserAgent
+	if userAgent != "" {
+		ua = userAgent
+	}
 	resp, err := client.R().
 		SetContext(ctx).
 		SetHeader("Authorization", "Bearer "+accessToken).
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", geminicli.GeminiCLIUserAgent).
+		SetHeader("User-Agent", ua).
 		SetBody(reqBody).
 		SetSuccessResult(&out).
 		Post(c.baseURL + "/v1internal:onboardUser")

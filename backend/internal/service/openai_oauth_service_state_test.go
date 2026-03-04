@@ -16,7 +16,7 @@ type openaiOAuthClientStateStub struct {
 	lastClientID   string
 }
 
-func (s *openaiOAuthClientStateStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthClientStateStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string, userAgent string) (*openai.TokenResponse, error) {
 	atomic.AddInt32(&s.exchangeCalled, 1)
 	s.lastClientID = clientID
 	return &openai.TokenResponse{
@@ -26,12 +26,12 @@ func (s *openaiOAuthClientStateStub) ExchangeCode(ctx context.Context, code, cod
 	}, nil
 }
 
-func (s *openaiOAuthClientStateStub) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthClientStateStub) RefreshToken(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*openai.TokenResponse, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *openaiOAuthClientStateStub) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error) {
-	return s.RefreshToken(ctx, refreshToken, proxyURL)
+func (s *openaiOAuthClientStateStub) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string, userAgent string) (*openai.TokenResponse, error) {
+	return s.RefreshToken(ctx, refreshToken, proxyURL, userAgent)
 }
 
 func TestOpenAIOAuthService_ExchangeCode_StateRequired(t *testing.T) {

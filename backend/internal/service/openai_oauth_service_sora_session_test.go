@@ -14,15 +14,15 @@ import (
 
 type openaiOAuthClientNoopStub struct{}
 
-func (s *openaiOAuthClientNoopStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthClientNoopStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string, userAgent string) (*openai.TokenResponse, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *openaiOAuthClientNoopStub) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthClientNoopStub) RefreshToken(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*openai.TokenResponse, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *openaiOAuthClientNoopStub) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthClientNoopStub) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string, userAgent string) (*openai.TokenResponse, error) {
 	return nil, errors.New("not implemented")
 }
 

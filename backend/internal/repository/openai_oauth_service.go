@@ -22,7 +22,7 @@ type openaiOAuthService struct {
 	tokenURL string
 }
 
-func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string, userAgent string) (*openai.TokenResponse, error) {
 	client, err := createOpenAIReqClient(proxyURL)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
@@ -45,9 +45,14 @@ func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifie
 
 	var tokenResp openai.TokenResponse
 
+	ua := "codex-cli/0.91.0"
+	if userAgent != "" {
+		ua = userAgent
+	}
+
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", "codex-cli/0.91.0").
+		SetHeader("User-Agent", ua).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -63,20 +68,20 @@ func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifie
 	return &tokenResp, nil
 }
 
-func (s *openaiOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error) {
-	return s.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, "")
+func (s *openaiOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*openai.TokenResponse, error) {
+	return s.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, "", userAgent)
 }
 
-func (s *openaiOAuthService) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthService) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string, userAgent string) (*openai.TokenResponse, error) {
 	// 调用方应始终传入正确的 client_id；为兼容旧数据，未指定时默认使用 OpenAI ClientID
 	clientID = strings.TrimSpace(clientID)
 	if clientID == "" {
 		clientID = openai.ClientID
 	}
-	return s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
+	return s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID, userAgent)
 }
 
-func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL, clientID string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL, clientID string, userAgent string) (*openai.TokenResponse, error) {
 	client, err := createOpenAIReqClient(proxyURL)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
@@ -90,9 +95,14 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 
 	var tokenResp openai.TokenResponse
 
+	ua := "codex-cli/0.91.0"
+	if userAgent != "" {
+		ua = userAgent
+	}
+
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", "codex-cli/0.91.0").
+		SetHeader("User-Agent", ua).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)

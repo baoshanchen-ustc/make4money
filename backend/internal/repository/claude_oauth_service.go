@@ -171,7 +171,7 @@ func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKe
 	return fullCode, nil
 }
 
-func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
+func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool, userAgent string) (*oauth.TokenResponse, error) {
 	client, err := s.clientFactory(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
@@ -208,11 +208,16 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 
 	var tokenResp oauth.TokenResponse
 
+	ua := "axios/1.8.4"
+	if userAgent != "" {
+		ua = userAgent
+	}
+
 	resp, err := client.R().
 		SetContext(ctx).
 		SetHeader("Accept", "application/json, text/plain, */*").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", "axios/1.8.4").
+		SetHeader("User-Agent", ua).
 		SetBody(reqBody).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -232,7 +237,7 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 	return &tokenResp, nil
 }
 
-func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
+func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string, userAgent string) (*oauth.TokenResponse, error) {
 	client, err := s.clientFactory(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
@@ -246,11 +251,16 @@ func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 
 	var tokenResp oauth.TokenResponse
 
+	ua := "axios/1.8.4"
+	if userAgent != "" {
+		ua = userAgent
+	}
+
 	resp, err := client.R().
 		SetContext(ctx).
 		SetHeader("Accept", "application/json, text/plain, */*").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", "axios/1.8.4").
+		SetHeader("User-Agent", ua).
 		SetBody(reqBody).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
