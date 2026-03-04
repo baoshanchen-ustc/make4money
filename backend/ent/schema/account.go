@@ -135,6 +135,13 @@ func (Account) Fields() []ent.Field {
 			Default(true).
 			Comment("Auto pause scheduling when account expires."),
 
+		// user_agent: 自定义 User-Agent（可选）
+		field.String("user_agent").
+			Optional().
+			Nillable().
+			MaxLen(200).
+			Comment("Custom User-Agent for upstream requests"),
+
 		// ========== 调度和速率限制相关字段 ==========
 		// 这些字段在 migrations/005_schema_parity.sql 中添加
 

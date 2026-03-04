@@ -704,6 +704,9 @@ export interface Account {
   cache_ttl_override_enabled?: boolean | null
   cache_ttl_override_target?: string | null
 
+  // 自定义 User-Agent（可选）
+  user_agent?: string | null
+
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
