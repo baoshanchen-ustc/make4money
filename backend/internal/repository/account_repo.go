@@ -1718,8 +1718,8 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 				'{quota_period_start}',
 				to_jsonb(
 					CASE WHEN (SELECT needs_reset FROM reset_check)
-					THEN to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-					ELSE COALESCE(extra->>'quota_period_start', to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) END
+					THEN to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+					ELSE COALESCE(extra->>'quota_period_start', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) END
 				)
 			), updated_at = NOW()
 			WHERE id = $2 AND deleted_at IS NULL
@@ -1764,14 +1764,13 @@ func periodToInterval(period string) string {
 	}
 }
 
-// ResetQuotaUsed 重置账号的 extra.quota_used 为 0
+// ResetQuotaUsed 重置账号的 extra.quota_used 为 0，同时清除 quota_period_start 以开始新周期
 func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {
 	_, err := r.sql.ExecContext(ctx,
-		`UPDATE accounts SET extra = jsonb_set(
-			COALESCE(extra, '{}'::jsonb),
-			'{quota_used}',
-			'0'::jsonb
-		), updated_at = NOW()
+		`UPDATE accounts SET extra = (
+			COALESCE(extra, '{}'::jsonb)
+			|| '{"quota_used": 0}'::jsonb
+		) - 'quota_period_start', updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id)
 	if err != nil {
