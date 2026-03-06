@@ -330,3 +330,22 @@ func (s *SoraGenerationService) ResolveMediaURLs(ctx context.Context, gen *SoraG
 
 	return nil
 }
+
+// StorageVideoStats 各存储类型的视频统计。
+type StorageVideoStats struct {
+	Completed  int64 `json:"completed"`
+	InProgress int64 `json:"in_progress"`
+}
+
+// CountByStorageType 按存储类型统计视频数量（completed 和 in_progress）。
+func (s *SoraGenerationService) CountByStorageType(ctx context.Context, storageType string) (completed, inProgress int64, err error) {
+	completed, err = s.genRepo.CountByStorageType(ctx, storageType, []string{SoraGenStatusCompleted})
+	if err != nil {
+		return 0, 0, fmt.Errorf("count completed: %w", err)
+	}
+	inProgress, err = s.genRepo.CountByStorageType(ctx, storageType, []string{SoraGenStatusPending, SoraGenStatusGenerating})
+	if err != nil {
+		return 0, 0, fmt.Errorf("count in_progress: %w", err)
+	}
+	return completed, inProgress, nil
+}

@@ -37,21 +37,25 @@ func generateMenuItemID() (string, error) {
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
-	settingService   *service.SettingService
-	emailService     *service.EmailService
-	turnstileService *service.TurnstileService
-	opsService       *service.OpsService
-	soraS3Storage    *service.SoraS3Storage
+	settingService        *service.SettingService
+	emailService          *service.EmailService
+	turnstileService      *service.TurnstileService
+	opsService            *service.OpsService
+	soraS3Storage         *service.SoraS3Storage
+	soraGDriveStorage     *service.SoraGDriveStorage
+	soraGenerationService *service.SoraGenerationService
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, soraS3Storage *service.SoraS3Storage) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, soraS3Storage *service.SoraS3Storage, soraGDriveStorage *service.SoraGDriveStorage, soraGenerationService *service.SoraGenerationService) *SettingHandler {
 	return &SettingHandler{
-		settingService:   settingService,
-		emailService:     emailService,
-		turnstileService: turnstileService,
-		opsService:       opsService,
-		soraS3Storage:    soraS3Storage,
+		settingService:        settingService,
+		emailService:          emailService,
+		turnstileService:      turnstileService,
+		opsService:            opsService,
+		soraS3Storage:         soraS3Storage,
+		soraGDriveStorage:     soraGDriveStorage,
+		soraGenerationService: soraGenerationService,
 	}
 }
 
@@ -1455,4 +1459,45 @@ func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 		ThresholdCount:         updatedSettings.ThresholdCount,
 		ThresholdWindowMinutes: updatedSettings.ThresholdWindowMinutes,
 	})
+}
+
+// GetGDriveQuota 获取 Google Drive 配额信息。
+// GET /api/v1/admin/settings/sora-storage/gdrive-quota
+func (h *SettingHandler) GetGDriveQuota(c *gin.Context) {
+	if h.soraGDriveStorage == nil {
+		response.Error(c, http.StatusServiceUnavailable, "GDrive storage not configured")
+		return
+	}
+	quota, err := h.soraGDriveStorage.GetQuotaInfo(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, fmt.Sprintf("failed to get GDrive quota: %v", err))
+		return
+	}
+	response.Success(c, quota)
+}
+
+// GetStorageVideoStats 获取各存储类型的视频统计信息。
+// GET /api/v1/admin/settings/sora-storage/video-stats
+func (h *SettingHandler) GetStorageVideoStats(c *gin.Context) {
+	if h.soraGenerationService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "generation service not configured")
+		return
+	}
+
+	storageTypes := []string{service.SoraStorageTypeS3, service.SoraStorageTypeGDrive}
+	result := make(map[string]*service.StorageVideoStats, len(storageTypes))
+
+	for _, st := range storageTypes {
+		completed, inProgress, err := h.soraGenerationService.CountByStorageType(c.Request.Context(), st)
+		if err != nil {
+			log.Printf("[SettingHandler] CountByStorageType(%s) error: %v", st, err)
+			continue
+		}
+		result[st] = &service.StorageVideoStats{
+			Completed:  completed,
+			InProgress: inProgress,
+		}
+	}
+
+	response.Success(c, result)
 }

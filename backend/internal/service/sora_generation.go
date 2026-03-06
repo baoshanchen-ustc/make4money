@@ -61,4 +61,5 @@ type SoraGenerationRepository interface {
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, params SoraGenerationListParams) ([]*SoraGeneration, int64, error)
 	CountByUserAndStatus(ctx context.Context, userID int64, statuses []string) (int64, error)
+	CountByStorageType(ctx context.Context, storageType string, statuses []string) (int64, error)
 }

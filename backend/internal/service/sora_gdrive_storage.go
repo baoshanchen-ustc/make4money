@@ -175,6 +175,12 @@ func (s *SoraGDriveStorage) RefreshClient() {
 	logger.LegacyPrintf("service.sora_gdrive", "[SoraGDrive] 客户端缓存已清除")
 }
 
+// GDriveQuotaInfo 包含 Google Drive 配额信息。
+type GDriveQuotaInfo struct {
+	LimitBytes int64 `json:"limit_bytes"`
+	UsedBytes  int64 `json:"used_bytes"`
+}
+
 // TestConnection 测试 Google Drive 连接。
 func (s *SoraGDriveStorage) TestConnection(ctx context.Context) error {
 	srv, _, err := s.getService(ctx)
@@ -186,6 +192,25 @@ func (s *SoraGDriveStorage) TestConnection(ctx context.Context) error {
 		return fmt.Errorf("gdrive About.Get failed: %w", err)
 	}
 	return nil
+}
+
+// GetQuotaInfo 获取 Google Drive 配额信息（总量和已用量）。
+func (s *SoraGDriveStorage) GetQuotaInfo(ctx context.Context) (*GDriveQuotaInfo, error) {
+	srv, _, err := s.getService(ctx)
+	if err != nil {
+		return nil, err
+	}
+	about, err := srv.About.Get().Fields("storageQuota").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("gdrive About.Get failed: %w", err)
+	}
+	if about.StorageQuota == nil {
+		return nil, fmt.Errorf("storageQuota not available")
+	}
+	return &GDriveQuotaInfo{
+		LimitBytes: about.StorageQuota.Limit,
+		UsedBytes:  about.StorageQuota.Usage,
+	}, nil
 }
 
 // TestFullCycle 执行完整的上传→获取链接→删除测试。

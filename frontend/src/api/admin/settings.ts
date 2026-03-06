@@ -487,6 +487,25 @@ export async function testGDriveStorage(): Promise<TestGDriveStorageResponse> {
   return data
 }
 
+export interface GDriveQuotaInfo {
+  limit_bytes: number
+  used_bytes: number
+}
+
+export interface StorageVideoStats {
+  [type: string]: { completed: number; in_progress: number }
+}
+
+export async function getGDriveQuota(): Promise<GDriveQuotaInfo> {
+  const { data } = await apiClient.get<GDriveQuotaInfo>('/admin/settings/sora-storage/gdrive-quota')
+  return data
+}
+
+export async function getStorageVideoStats(): Promise<StorageVideoStats> {
+  const { data } = await apiClient.get<StorageVideoStats>('/admin/settings/sora-storage/video-stats')
+  return data
+}
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -507,7 +526,9 @@ export const settingsAPI = {
   setActiveSoraS3Profile,
   startGDriveOAuth,
   exchangeGDriveOAuthCode,
-  testGDriveStorage
+  testGDriveStorage,
+  getGDriveQuota,
+  getStorageVideoStats
 }
 
 export default settingsAPI

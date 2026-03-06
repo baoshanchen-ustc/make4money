@@ -175,7 +175,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	soraGenerationRepository := repository.NewSoraGenerationRepository(db)
 	soraQuotaService := service.NewSoraQuotaService(userRepository, groupRepository, settingService)
 	soraGenerationService := service.NewSoraGenerationService(soraGenerationRepository, soraStorageRouter, soraQuotaService)
-	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, soraS3Storage)
+	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, soraS3Storage, soraGDriveStorage, soraGenerationService)
 	soraGDriveOAuthService := service.NewSoraGDriveOAuthService(settingService)
 	gdriveOAuthHandler := admin.NewGDriveOAuthHandler(settingService, soraGDriveOAuthService, soraGDriveStorage)
 	opsHandler := admin.NewOpsHandler(opsService)

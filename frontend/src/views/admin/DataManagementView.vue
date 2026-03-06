@@ -22,13 +22,16 @@
         </div>
 
         <div class="overflow-x-auto">
-          <table class="w-full min-w-[1000px] text-sm">
+          <table class="w-full min-w-[1400px] text-sm">
             <thead>
               <tr class="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:text-gray-400">
-                <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.profile') }}</th>
+                <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.profileId') }}</th>
+                <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.name') }}</th>
                 <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.provider') }}</th>
                 <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.active') }}</th>
-                <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.endpoint') }}</th>
+                <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.storagePath') }}</th>
+                <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.capacityUsage') }}</th>
+                <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.videoCount') }}</th>
                 <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.quota') }}</th>
                 <th class="py-2 pr-4">{{ t('admin.settings.soraS3.columns.updatedAt') }}</th>
                 <th class="py-2">{{ t('admin.settings.soraS3.columns.actions') }}</th>
@@ -38,8 +41,8 @@
               <tr v-for="profile in soraS3Profiles" :key="profile.profile_id" class="border-b border-gray-100 align-top dark:border-dark-800">
                 <td class="py-3 pr-4">
                   <div class="font-mono text-xs">{{ profile.profile_id }}</div>
-                  <div class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ profile.name }}</div>
                 </td>
+                <td class="py-3 pr-4 text-xs">{{ profile.name }}</td>
                 <td class="py-3 pr-4">
                   <span
                     class="rounded px-2 py-0.5 text-xs"
@@ -59,17 +62,55 @@
                 <td class="py-3 pr-4 text-xs">
                   <template v-if="(profile.provider || 's3') === 's3'">
                     <div>{{ profile.endpoint || '-' }}</div>
-                    <div class="mt-1 text-gray-500 dark:text-gray-400">{{ profile.region || '-' }}</div>
+                    <div class="mt-1 text-gray-500 dark:text-gray-400">{{ [profile.bucket, profile.prefix].filter(Boolean).join('/') || '-' }}</div>
                   </template>
                   <template v-else>
-                    <div>Google Drive</div>
-                    <div class="mt-1 text-gray-500 dark:text-gray-400">{{ profile.auth_type === 'service_account' ? t('admin.settings.soraS3.gdrive.serviceAccount') : 'OAuth2' }}</div>
+                    <div>{{ profile.folder_id ? `folder: ${profile.folder_id}` : t('admin.settings.soraS3.columns.rootFolder') }}</div>
+                  </template>
+                </td>
+                <td class="py-3 pr-4 text-xs">
+                  <template v-if="(profile.provider || 's3') === 'gdrive'">
+                    <template v-if="gdriveQuota">
+                      <div>{{ formatBytes(gdriveQuota.used_bytes) }} / {{ formatBytes(gdriveQuota.limit_bytes) }}</div>
+                    </template>
+                    <template v-else-if="loadingGDriveQuota">
+                      <div class="text-gray-400">{{ t('common.loading') }}</div>
+                    </template>
+                    <template v-else>
+                      <div class="text-gray-400">-</div>
+                    </template>
+                  </template>
+                  <template v-else>
+                    <div class="text-gray-400">{{ t('admin.settings.soraS3.columns.capacityUnlimited') }}</div>
+                  </template>
+                </td>
+                <td class="py-3 pr-4 text-xs">
+                  <template v-if="videoStats && videoStats[profile.provider || 's3']">
+                    <div>{{ videoStats[profile.provider || 's3'].completed }} {{ t('admin.settings.soraS3.columns.videoCompleted') }}</div>
+                    <div v-if="videoStats[profile.provider || 's3'].in_progress > 0" class="mt-0.5 text-gray-500 dark:text-gray-400">
+                      {{ videoStats[profile.provider || 's3'].in_progress }} {{ t('admin.settings.soraS3.columns.videoInProgress') }}
+                    </div>
+                  </template>
+                  <template v-else-if="loadingVideoStats">
+                    <div class="text-gray-400">{{ t('common.loading') }}</div>
+                  </template>
+                  <template v-else>
+                    <div class="text-gray-400">-</div>
                   </template>
                 </td>
                 <td class="py-3 pr-4 text-xs">{{ formatStorageQuotaGB(profile.default_storage_quota_bytes) }}</td>
                 <td class="py-3 pr-4 text-xs">{{ formatDate(profile.updated_at) }}</td>
                 <td class="py-3 text-xs">
                   <div class="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-xs"
+                      :disabled="testingProfiles[profile.profile_id]
+                        || ((profile.provider || 's3') === 'gdrive' && !profile.is_active)"
+                      @click="testProfileInTable(profile)"
+                    >
+                      {{ testingProfiles[profile.profile_id] ? t('admin.settings.soraS3.columns.testingInTable') : t('admin.settings.soraS3.columns.testInTable') }}
+                    </button>
                     <button type="button" class="btn btn-secondary btn-xs" @click="editSoraProfile(profile.profile_id)">
                       {{ t('common.edit') }}
                     </button>
@@ -94,7 +135,7 @@
                 </td>
               </tr>
               <tr v-if="soraS3Profiles.length === 0">
-                <td colspan="7" class="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                <td colspan="10" class="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
                   {{ t('admin.settings.soraS3.empty') }}
                 </td>
               </tr>
@@ -327,10 +368,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import type { SoraS3Profile } from '@/api/admin/settings'
+import type { SoraS3Profile, GDriveQuotaInfo, StorageVideoStats } from '@/api/admin/settings'
 import { adminAPI } from '@/api'
 import { useAppStore } from '@/stores'
 
@@ -346,6 +387,11 @@ const creatingSoraProfile = ref(false)
 const soraProfileDrawerOpen = ref(false)
 const providerSelectOpen = ref(false)
 const startingOAuth = ref(false)
+const loadingGDriveQuota = ref(false)
+const loadingVideoStats = ref(false)
+const testingProfiles: Record<string, boolean> = reactive({})
+const gdriveQuota = ref<GDriveQuotaInfo | null>(null)
+const videoStats = ref<StorageVideoStats | null>(null)
 
 const soraS3Profiles = ref<SoraS3Profile[]>([])
 const selectedSoraProfileID = ref('')
@@ -406,10 +452,86 @@ async function loadSoraS3Profiles() {
       }
       syncSoraProfileFormWithSelection()
     }
+    // Async load quota and video stats (non-blocking)
+    loadGDriveQuotaIfNeeded()
+    loadVideoStats()
   } catch (error) {
     appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
   } finally {
     loadingSoraProfiles.value = false
+  }
+}
+
+const testProfileTimeoutMs = 15000
+
+async function testProfileInTable(profile: SoraS3Profile) {
+  const pid = profile.profile_id
+  if (testingProfiles[pid]) return
+
+  testingProfiles[pid] = true
+  const provider = profile.provider || 's3'
+
+  try {
+    if (provider === 'gdrive') {
+      const result = await Promise.race([
+        adminAPI.settings.testGDriveStorage(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(t('admin.settings.soraS3.columns.testTimeout'))), testProfileTimeoutMs))
+      ])
+      const msg = result.status === 'ok'
+        ? t('admin.settings.soraS3.gdrive.testSuccess')
+        : t('admin.settings.soraS3.gdrive.testFailed')
+      appStore.showSuccess(msg)
+    } else {
+      await Promise.race([
+        adminAPI.settings.testSoraS3Connection({
+          profile_id: pid,
+          enabled: profile.enabled,
+          endpoint: profile.endpoint || '',
+          region: profile.region || '',
+          bucket: profile.bucket || '',
+          access_key_id: profile.access_key_id || '',
+          prefix: profile.prefix || '',
+          force_path_style: Boolean(profile.force_path_style),
+          cdn_url: profile.cdn_url || '',
+          default_storage_quota_bytes: profile.default_storage_quota_bytes || 0
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(t('admin.settings.soraS3.columns.testTimeout'))), testProfileTimeoutMs))
+      ])
+      appStore.showSuccess(t('admin.settings.soraS3.testSuccess'))
+    }
+  } catch (error) {
+    appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
+  } finally {
+    testingProfiles[pid] = false
+  }
+}
+
+async function loadGDriveQuotaIfNeeded() {
+  const hasGDrive = soraS3Profiles.value.some(
+    (p) => (p.provider || 's3') === 'gdrive' && p.is_active
+  )
+  if (!hasGDrive) {
+    gdriveQuota.value = null
+    return
+  }
+  loadingGDriveQuota.value = true
+  try {
+    gdriveQuota.value = await adminAPI.settings.getGDriveQuota()
+  } catch {
+    gdriveQuota.value = null
+  } finally {
+    loadingGDriveQuota.value = false
+  }
+}
+
+async function loadVideoStats() {
+  loadingVideoStats.value = true
+  try {
+    videoStats.value = await adminAPI.settings.getStorageVideoStats()
+  } catch {
+    videoStats.value = null
+  } finally {
+    loadingVideoStats.value = false
   }
 }
 
@@ -691,6 +813,18 @@ function formatStorageQuotaGB(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 GB'
   const gb = bytes / (1024 * 1024 * 1024)
   return `${gb.toFixed(gb >= 10 ? 0 : 1)} GB`
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  let idx = 0
+  let val = bytes
+  while (val >= 1024 && idx < units.length - 1) {
+    val /= 1024
+    idx++
+  }
+  return `${val.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`
 }
 
 function pickPreferredSoraProfileID(): string {
