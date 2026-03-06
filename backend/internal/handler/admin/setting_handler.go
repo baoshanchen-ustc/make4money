@@ -993,6 +993,8 @@ func toSoraS3ProfileDTO(profile service.SoraS3Profile) dto.SoraS3Profile {
 		ProfileID:                 profile.ProfileID,
 		Name:                      profile.Name,
 		IsActive:                  profile.IsActive,
+		Provider:                  profile.GetProvider(),
+		AccessMode:                profile.AccessMode,
 		Enabled:                   profile.Enabled,
 		Endpoint:                  profile.Endpoint,
 		Region:                    profile.Region,
@@ -1004,6 +1006,13 @@ func toSoraS3ProfileDTO(profile service.SoraS3Profile) dto.SoraS3Profile {
 		CDNURL:                    profile.CDNURL,
 		DefaultStorageQuotaBytes:  profile.DefaultStorageQuotaBytes,
 		UpdatedAt:                 profile.UpdatedAt,
+		// Google Drive 专属
+		AuthType:                 profile.AuthType,
+		ClientID:                 profile.ClientID,
+		ClientSecretConfigured:   profile.ClientSecretConfigured,
+		RefreshTokenConfigured:   profile.RefreshTokenConfigured,
+		ServiceAccountConfigured: profile.ServiceAccountConfigured,
+		FolderID:                 profile.FolderID,
 	}
 }
 
@@ -1083,6 +1092,8 @@ type CreateSoraS3ProfileRequest struct {
 	ProfileID                string `json:"profile_id"`
 	Name                     string `json:"name"`
 	SetActive                bool   `json:"set_active"`
+	Provider                 string `json:"provider"`    // "s3" / "gdrive"
+	AccessMode               string `json:"access_mode"` // "direct" / "proxy"
 	Enabled                  bool   `json:"enabled"`
 	Endpoint                 string `json:"endpoint"`
 	Region                   string `json:"region"`
@@ -1093,10 +1104,19 @@ type CreateSoraS3ProfileRequest struct {
 	ForcePathStyle           bool   `json:"force_path_style"`
 	CDNURL                   string `json:"cdn_url"`
 	DefaultStorageQuotaBytes int64  `json:"default_storage_quota_bytes"`
+	// Google Drive 专属
+	AuthType           string `json:"auth_type,omitempty"`
+	ClientID           string `json:"client_id,omitempty"`
+	ClientSecret       string `json:"client_secret,omitempty"`
+	RefreshToken       string `json:"refresh_token,omitempty"`
+	ServiceAccountJSON string `json:"service_account_json,omitempty"`
+	FolderID           string `json:"folder_id,omitempty"`
 }
 
 type UpdateSoraS3ProfileRequest struct {
 	Name                     string `json:"name"`
+	Provider                 string `json:"provider"`
+	AccessMode               string `json:"access_mode"`
 	Enabled                  bool   `json:"enabled"`
 	Endpoint                 string `json:"endpoint"`
 	Region                   string `json:"region"`
@@ -1107,6 +1127,13 @@ type UpdateSoraS3ProfileRequest struct {
 	ForcePathStyle           bool   `json:"force_path_style"`
 	CDNURL                   string `json:"cdn_url"`
 	DefaultStorageQuotaBytes int64  `json:"default_storage_quota_bytes"`
+	// Google Drive 专属
+	AuthType           string `json:"auth_type,omitempty"`
+	ClientID           string `json:"client_id,omitempty"`
+	ClientSecret       string `json:"client_secret,omitempty"`
+	RefreshToken       string `json:"refresh_token,omitempty"`
+	ServiceAccountJSON string `json:"service_account_json,omitempty"`
+	FolderID           string `json:"folder_id,omitempty"`
 }
 
 // CreateSoraS3Profile 创建 Sora S3 配置
@@ -1129,14 +1156,23 @@ func (h *SettingHandler) CreateSoraS3Profile(c *gin.Context) {
 		response.BadRequest(c, "Profile ID is required")
 		return
 	}
-	if err := validateSoraS3RequiredWhenEnabled(req.Enabled, req.Endpoint, req.Bucket, req.AccessKeyID, req.SecretAccessKey, false); err != nil {
-		response.BadRequest(c, err.Error())
-		return
+	// S3 专属字段验证：仅当 provider 为 s3（或未指定）时校验
+	provider := req.Provider
+	if provider == "" {
+		provider = "s3"
+	}
+	if provider == "s3" {
+		if err := validateSoraS3RequiredWhenEnabled(req.Enabled, req.Endpoint, req.Bucket, req.AccessKeyID, req.SecretAccessKey, false); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
 	}
 
 	created, err := h.settingService.CreateSoraS3Profile(c.Request.Context(), &service.SoraS3Profile{
 		ProfileID:                req.ProfileID,
 		Name:                     req.Name,
+		Provider:                 req.Provider,
+		AccessMode:               req.AccessMode,
 		Enabled:                  req.Enabled,
 		Endpoint:                 req.Endpoint,
 		Region:                   req.Region,
@@ -1147,6 +1183,13 @@ func (h *SettingHandler) CreateSoraS3Profile(c *gin.Context) {
 		ForcePathStyle:           req.ForcePathStyle,
 		CDNURL:                   req.CDNURL,
 		DefaultStorageQuotaBytes: req.DefaultStorageQuotaBytes,
+		// Google Drive 专属
+		AuthType:           req.AuthType,
+		ClientID:           req.ClientID,
+		ClientSecret:       req.ClientSecret,
+		RefreshToken:       req.RefreshToken,
+		ServiceAccountJSON: req.ServiceAccountJSON,
+		FolderID:           req.FolderID,
 	}, req.SetActive)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -1189,13 +1232,25 @@ func (h *SettingHandler) UpdateSoraS3Profile(c *gin.Context) {
 		response.ErrorFrom(c, service.ErrSoraS3ProfileNotFound)
 		return
 	}
-	if err := validateSoraS3RequiredWhenEnabled(req.Enabled, req.Endpoint, req.Bucket, req.AccessKeyID, req.SecretAccessKey, existing.SecretAccessKeyConfigured); err != nil {
-		response.BadRequest(c, err.Error())
-		return
+	// S3 专属字段验证
+	provider := req.Provider
+	if provider == "" && existing != nil {
+		provider = existing.GetProvider()
+	}
+	if provider == "" {
+		provider = "s3"
+	}
+	if provider == "s3" {
+		if err := validateSoraS3RequiredWhenEnabled(req.Enabled, req.Endpoint, req.Bucket, req.AccessKeyID, req.SecretAccessKey, existing.SecretAccessKeyConfigured); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
 	}
 
 	updated, updateErr := h.settingService.UpdateSoraS3Profile(c.Request.Context(), profileID, &service.SoraS3Profile{
 		Name:                     req.Name,
+		Provider:                 req.Provider,
+		AccessMode:               req.AccessMode,
 		Enabled:                  req.Enabled,
 		Endpoint:                 req.Endpoint,
 		Region:                   req.Region,
@@ -1206,6 +1261,13 @@ func (h *SettingHandler) UpdateSoraS3Profile(c *gin.Context) {
 		ForcePathStyle:           req.ForcePathStyle,
 		CDNURL:                   req.CDNURL,
 		DefaultStorageQuotaBytes: req.DefaultStorageQuotaBytes,
+		// Google Drive 专属
+		AuthType:           req.AuthType,
+		ClientID:           req.ClientID,
+		ClientSecret:       req.ClientSecret,
+		RefreshToken:       req.RefreshToken,
+		ServiceAccountJSON: req.ServiceAccountJSON,
+		FolderID:           req.FolderID,
 	})
 	if updateErr != nil {
 		response.ErrorFrom(c, updateErr)

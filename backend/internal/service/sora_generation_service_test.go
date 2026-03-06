@@ -519,7 +519,7 @@ func TestDelete_S3Cleanup_NilS3(t *testing.T) {
 	svc := NewSoraGenerationService(repo, nil, nil)
 
 	err := svc.Delete(context.Background(), 1, 1)
-	require.NoError(t, err) // s3Storage 为 nil，跳过清理
+	require.NoError(t, err) // objectStorage 为 nil，跳过清理
 }
 
 func TestDelete_QuotaRelease_NilQuota(t *testing.T) {

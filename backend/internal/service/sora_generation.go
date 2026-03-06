@@ -37,6 +37,7 @@ const (
 // Sora 存储类型常量
 const (
 	SoraStorageTypeS3       = "s3"
+	SoraStorageTypeGDrive   = "gdrive"
 	SoraStorageTypeLocal    = "local"
 	SoraStorageTypeUpstream = "upstream"
 	SoraStorageTypeNone     = "none"
