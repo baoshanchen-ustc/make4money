@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -80,6 +81,13 @@ func (h *GDriveOAuthHandler) OAuthCallback(c *gin.Context) {
 
 	refreshToken, err := h.gdriveOAuth.ExchangeCode(c.Request.Context(), req.ClientID, req.ClientSecret, req.RedirectURI, req.Code)
 	if err != nil {
+		slog.Error("[GDriveOAuth] exchange failed",
+			"client_id_len", len(req.ClientID),
+			"client_secret_len", len(req.ClientSecret),
+			"redirect_uri", req.RedirectURI,
+			"code_len", len(req.Code),
+			"error", err,
+		)
 		response.Error(c, http.StatusBadRequest, "换取 refresh_token 失败: "+err.Error())
 		return
 	}
