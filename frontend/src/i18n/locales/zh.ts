@@ -2139,6 +2139,10 @@ export default {
           hint: '将所有缓存创建 token 强制按指定的 TTL 类型（5分钟或1小时）计费',
           target: '目标 TTL',
           targetHint: '选择计费使用的 TTL 类型'
+        },
+        clientAffinity: {
+          label: '客户端亲和调度',
+          hint: '启用后，新会话会优先调度到该客户端之前使用过的账号，避免频繁切换账号'
         }
       },
       expired: '已过期',

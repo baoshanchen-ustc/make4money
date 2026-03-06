@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +28,15 @@ type deleteSessionCall struct {
 
 func (c *stubSmartRetryCache) DeleteSessionAccountID(_ context.Context, groupID int64, sessionHash string) error {
 	c.deleteCalls = append(c.deleteCalls, deleteSessionCall{groupID: groupID, sessionHash: sessionHash})
+	return nil
+}
+func (c *stubSmartRetryCache) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+	return nil, nil
+}
+func (c *stubSmartRetryCache) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (c *stubSmartRetryCache) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
 

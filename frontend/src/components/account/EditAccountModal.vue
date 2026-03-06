@@ -1165,6 +1165,38 @@
         </div>
       </div>
 
+      <!-- Client Affinity (Anthropic/Antigravity platform) -->
+      <div
+        v-if="(account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')) || account?.platform === 'antigravity'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.clientAffinity.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.clientAffinity.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="clientAffinityEnabled = !clientAffinityEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                clientAffinityEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  clientAffinityEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div>
           <label class="input-label">{{ t('common.status') }}</label>
@@ -1391,6 +1423,7 @@ const tlsFingerprintEnabled = ref(false)
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
+const clientAffinityEnabled = ref(false)
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
@@ -1872,6 +1905,12 @@ function loadQuotaControlSettings(account: Account) {
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
+  clientAffinityEnabled.value = false
+
+  // Client affinity applies to both Anthropic and Antigravity platforms
+  if (account.client_affinity_enabled === true) {
+    clientAffinityEnabled.value = true
+  }
 
   // Only applies to Anthropic OAuth/SetupToken accounts
   if (account.platform !== 'anthropic' || (account.type !== 'oauth' && account.type !== 'setup-token')) {
@@ -2196,6 +2235,12 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.mixed_scheduling
       }
+      // Client affinity setting
+      if (clientAffinityEnabled.value) {
+        newExtra.client_affinity_enabled = true
+      } else {
+        delete newExtra.client_affinity_enabled
+      }
       updatePayload.extra = newExtra
     }
 
@@ -2269,6 +2314,13 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.cache_ttl_override_enabled
         delete newExtra.cache_ttl_override_target
+      }
+
+      // Client affinity setting
+      if (clientAffinityEnabled.value) {
+        newExtra.client_affinity_enabled = true
+      } else {
+        delete newExtra.client_affinity_enabled
       }
 
       updatePayload.extra = newExtra

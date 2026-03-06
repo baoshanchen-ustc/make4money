@@ -265,6 +265,16 @@ func (c *stubGatewayCache) DeleteSessionAccountID(ctx context.Context, groupID i
 	return nil
 }
 
+func (c *stubGatewayCache) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+	return nil, nil
+}
+func (c *stubGatewayCache) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (c *stubGatewayCache) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
+
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
 	now := time.Now()
 	resetAt := now.Add(10 * time.Minute)

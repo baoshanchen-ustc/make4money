@@ -1099,6 +1099,24 @@ func (a *Account) IsSessionIDMaskingEnabled() bool {
 	return false
 }
 
+// IsClientAffinityEnabled 检查是否启用客户端亲和调度
+// 仅适用于 Anthropic 平台账号（包括 anthropic 和 antigravity 平台）
+// 启用后，新会话会优先调度到之前使用过的账号
+func (a *Account) IsClientAffinityEnabled() bool {
+	if a.Platform != PlatformAnthropic && a.Platform != PlatformAntigravity {
+		return false
+	}
+	if a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra["client_affinity_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+		}
+	}
+	return false
+}
+
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 // 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）

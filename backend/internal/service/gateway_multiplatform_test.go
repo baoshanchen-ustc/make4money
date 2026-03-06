@@ -235,6 +235,16 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	return nil
 }
 
+func (m *mockGatewayCacheForPlatform) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockGatewayCacheForPlatform) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForPlatform) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
+
 type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int

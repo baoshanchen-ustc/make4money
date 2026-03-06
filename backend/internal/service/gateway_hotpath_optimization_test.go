@@ -143,6 +143,15 @@ func (s *stickyGatewayCacheHotpathStub) RefreshSessionTTL(ctx context.Context, g
 func (s *stickyGatewayCacheHotpathStub) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	return nil
 }
+func (s *stickyGatewayCacheHotpathStub) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+	return nil, nil
+}
+func (s *stickyGatewayCacheHotpathStub) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (s *stickyGatewayCacheHotpathStub) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
 
 func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
 	s.listByGroupCalls.Add(1)

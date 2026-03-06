@@ -193,6 +193,16 @@ func (c *openAIWSStateStoreTimeoutProbeCache) DeleteSessionAccountID(ctx context
 	return nil
 }
 
+func (c *openAIWSStateStoreTimeoutProbeCache) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+	return nil, nil
+}
+func (c *openAIWSStateStoreTimeoutProbeCache) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (c *openAIWSStateStoreTimeoutProbeCache) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
+
 func TestOpenAIWSStateStore_RedisOpsUseShortTimeout(t *testing.T) {
 	probe := &openAIWSStateStoreTimeoutProbeCache{}
 	store := NewOpenAIWSStateStore(probe)

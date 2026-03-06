@@ -2005,6 +2005,10 @@ export default {
           hint: 'Force all cache creation tokens to be billed as the selected TTL tier (5m or 1h)',
           target: 'Target TTL',
           targetHint: 'Select the TTL tier for billing'
+        },
+        clientAffinity: {
+          label: 'Client Affinity Scheduling',
+          hint: 'When enabled, new sessions prefer accounts previously used by this client to reduce account switching'
         }
       },
       expired: 'Expired',

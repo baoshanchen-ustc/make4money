@@ -288,6 +288,16 @@ func (m *mockGatewayCacheForGemini) DeleteSessionAccountID(ctx context.Context, 
 	return nil
 }
 
+func (m *mockGatewayCacheForGemini) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockGatewayCacheForGemini) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForGemini) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
+
 // TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform 测试 Gemini 单平台选择
 func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform(t *testing.T) {
 	ctx := context.Background()

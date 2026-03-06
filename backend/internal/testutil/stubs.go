@@ -97,6 +97,15 @@ func (c StubGatewayCache) RefreshSessionTTL(_ context.Context, _ int64, _ string
 func (c StubGatewayCache) DeleteSessionAccountID(_ context.Context, _ int64, _ string) error {
 	return nil
 }
+func (c StubGatewayCache) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+	return nil, nil
+}
+func (c StubGatewayCache) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (c StubGatewayCache) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
 
 // ============================================================
 // StubSessionLimitCache — service.SessionLimitCache 的空实现

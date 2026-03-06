@@ -188,6 +188,10 @@ type Account struct {
 	CacheTTLOverrideEnabled *bool   `json:"cache_ttl_override_enabled,omitempty"`
 	CacheTTLOverrideTarget  *string `json:"cache_ttl_override_target,omitempty"`
 
+	// 客户端亲和调度（仅 Anthropic/Antigravity 平台有效）
+	// 启用后新会话会优先调度到客户端之前使用过的账号
+	ClientAffinityEnabled *bool `json:"client_affinity_enabled,omitempty"`
+
 	// API Key 账号配额限制
 	QuotaLimit *float64 `json:"quota_limit,omitempty"`
 	QuotaUsed  *float64 `json:"quota_used,omitempty"`
