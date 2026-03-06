@@ -153,7 +153,7 @@ func (s *SoraGDriveStorage) buildOAuth2Service(ctx context.Context, profile *Sor
 }
 
 func (s *SoraGDriveStorage) buildServiceAccountService(ctx context.Context, profile *SoraS3Profile) (*drive.Service, error) {
-	srv, err := drive.NewService(ctx, option.WithCredentialsJSON([]byte(profile.ServiceAccountJSON)))
+	srv, err := drive.NewService(ctx, option.WithCredentialsJSON([]byte(profile.ServiceAccountJSON))) //nolint:staticcheck // SA1019: admin-controlled service account JSON, safe to use
 	if err != nil {
 		return nil, fmt.Errorf("create gdrive service account service: %w", err)
 	}

@@ -124,6 +124,9 @@ func (r *stubSoraGenRepo) CountByUserAndStatus(_ context.Context, _ int64, _ []s
 	}
 	return r.countValue, nil
 }
+func (r *stubSoraGenRepo) CountByStorageType(_ context.Context, _ string, _ []string) (int64, error) {
+	return 0, nil
+}
 
 // ==================== 辅助函数 ====================
 
