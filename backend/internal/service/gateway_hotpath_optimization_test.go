@@ -152,15 +152,6 @@ func (s *stickyGatewayCacheHotpathStub) UpdateClientAffinity(_ context.Context, 
 func (s *stickyGatewayCacheHotpathStub) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
-func (s *stickyGatewayCacheHotpathStub) GetAccountAffinityCount(_ context.Context, _ int64, _ time.Duration) (int, error) {
-	return 0, nil
-}
-func (s *stickyGatewayCacheHotpathStub) GetAccountAffinityCountBatch(_ context.Context, _ []int64, _ time.Duration) (map[int64]int, error) {
-	return nil, nil
-}
-func (s *stickyGatewayCacheHotpathStub) GetAccountAffinityClients(_ context.Context, _ int64, _ time.Duration) ([]AffinityClientInfo, error) {
-	return nil, nil
-}
 
 func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
 	s.listByGroupCalls.Add(1)

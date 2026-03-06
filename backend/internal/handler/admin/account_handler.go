@@ -55,7 +55,6 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
-	gatewayCache            service.GatewayCache
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -73,7 +72,6 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
-	gatewayCache service.GatewayCache,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -89,7 +87,6 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
-		gatewayCache:            gatewayCache,
 	}
 }
 
@@ -161,10 +158,9 @@ type AccountWithConcurrency struct {
 	*dto.Account
 	CurrentConcurrency int `json:"current_concurrency"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
-	CurrentWindowCost    *float64 `json:"current_window_cost,omitempty"`    // 当前窗口费用
-	ActiveSessions       *int     `json:"active_sessions,omitempty"`       // 当前活跃会话数
-	CurrentRPM           *int     `json:"current_rpm,omitempty"`           // 当前分钟 RPM 计数
-	AffinityClientCount  *int     `json:"affinity_client_count,omitempty"` // 亲和客户端数量
+	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
+	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
+	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
 }
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
@@ -247,7 +243,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
-	var affinityCounts map[int64]int
 
 	// 始终获取并发数（Redis ZCARD，极低开销）
 	if h.concurrencyService != nil {
@@ -256,11 +251,10 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	// 识别需要查询窗口费用、会话数、RPM 和亲和客户端的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
+	// 识别需要查询窗口费用、会话数和 RPM 的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
 	windowCostAccountIDs := make([]int64, 0)
 	sessionLimitAccountIDs := make([]int64, 0)
 	rpmAccountIDs := make([]int64, 0)
-	affinityAccountIDs := make([]int64, 0)
 	sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
 	for i := range accounts {
 		acc := &accounts[i]
@@ -274,9 +268,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 			}
 			if acc.GetBaseRPM() > 0 {
 				rpmAccountIDs = append(rpmAccountIDs, acc.ID)
-			}
-			if acc.IsClientAffinityEnabled() {
-				affinityAccountIDs = append(affinityAccountIDs, acc.ID)
 			}
 		}
 	}
@@ -295,11 +286,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 		if activeSessions == nil {
 			activeSessions = make(map[int64]int)
 		}
-	}
-
-	// 获取亲和客户端数量（Redis pipeline，低开销）
-	if len(affinityAccountIDs) > 0 && h.gatewayCache != nil {
-		affinityCounts, _ = h.gatewayCache.GetAccountAffinityCountBatch(c.Request.Context(), affinityAccountIDs, service.ClientAffinityTTL())
 	}
 
 	// 窗口费用获取：lite 模式从快照缓存读取，非 lite 模式执行 PostgreSQL 查询后写入缓存
@@ -373,13 +359,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 		if rpmCounts != nil {
 			if rpm, ok := rpmCounts[acc.ID]; ok {
 				item.CurrentRPM = &rpm
-			}
-		}
-
-		// 添加亲和客户端数量（仅当启用时）
-		if affinityCounts != nil {
-			if count, ok := affinityCounts[acc.ID]; ok {
-				item.AffinityClientCount = &count
 			}
 		}
 
@@ -1872,29 +1851,4 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
-}
-
-// GetAffinityClients 返回指定账号的亲和客户端列表
-// GET /api/v1/admin/accounts/:id/affinity-clients
-func (h *AccountHandler) GetAffinityClients(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid id")
-		return
-	}
-
-	if h.gatewayCache == nil {
-		response.Success(c, []service.AffinityClientInfo{})
-		return
-	}
-
-	clients, err := h.gatewayCache.GetAccountAffinityClients(c.Request.Context(), id, service.ClientAffinityTTL())
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if clients == nil {
-		clients = []service.AffinityClientInfo{}
-	}
-	response.Success(c, clients)
 }

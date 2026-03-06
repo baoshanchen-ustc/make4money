@@ -202,15 +202,6 @@ func (c *openAIWSStateStoreTimeoutProbeCache) UpdateClientAffinity(_ context.Con
 func (c *openAIWSStateStoreTimeoutProbeCache) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
-func (c *openAIWSStateStoreTimeoutProbeCache) GetAccountAffinityCount(_ context.Context, _ int64, _ time.Duration) (int, error) {
-	return 0, nil
-}
-func (c *openAIWSStateStoreTimeoutProbeCache) GetAccountAffinityCountBatch(_ context.Context, _ []int64, _ time.Duration) (map[int64]int, error) {
-	return nil, nil
-}
-func (c *openAIWSStateStoreTimeoutProbeCache) GetAccountAffinityClients(_ context.Context, _ int64, _ time.Duration) ([]AffinityClientInfo, error) {
-	return nil, nil
-}
 
 func TestOpenAIWSStateStore_RedisOpsUseShortTimeout(t *testing.T) {
 	probe := &openAIWSStateStoreTimeoutProbeCache{}

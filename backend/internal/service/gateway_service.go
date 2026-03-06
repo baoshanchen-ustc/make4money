@@ -375,25 +375,6 @@ type GatewayCache interface {
 	UpdateClientAffinity(ctx context.Context, groupID int64, clientID string, accountID int64, ttl time.Duration) error
 	// RemoveClientAffinity 删除单个客户端亲和关系
 	RemoveClientAffinity(ctx context.Context, groupID int64, clientID string, accountID int64) error
-
-	// GetAccountAffinityCount 获取账号的亲和客户端数量（清理过期后）
-	GetAccountAffinityCount(ctx context.Context, accountID int64, ttl time.Duration) (int, error)
-	// GetAccountAffinityCountBatch 批量获取多个账号的亲和客户端数量
-	GetAccountAffinityCountBatch(ctx context.Context, accountIDs []int64, ttl time.Duration) (map[int64]int, error)
-	// GetAccountAffinityClients 获取账号的亲和客户端详情列表
-	GetAccountAffinityClients(ctx context.Context, accountID int64, ttl time.Duration) ([]AffinityClientInfo, error)
-}
-
-// AffinityClientInfo 表示一个亲和客户端的详情
-type AffinityClientInfo struct {
-	GroupID  int64  `json:"group_id"`
-	ClientID string `json:"client_id"`
-	TTL      int64  `json:"ttl"` // 剩余秒数
-}
-
-// ClientAffinityTTL 返回客户端亲和 TTL（与粘性会话 TTL 相同）
-func ClientAffinityTTL() time.Duration {
-	return stickySessionTTL
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil

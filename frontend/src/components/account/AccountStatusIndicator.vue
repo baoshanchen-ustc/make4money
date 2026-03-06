@@ -1,29 +1,5 @@
 <template>
   <div class="flex items-center gap-2">
-    <!-- Affinity Client Count Badge -->
-    <div
-      v-if="account.client_affinity_enabled"
-      class="group/affinity relative"
-      @mouseenter="loadAffinityClients"
-    >
-      <span class="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-        {{ affinityClientCount }}
-      </span>
-      <!-- Tooltip: lazy-loaded client list -->
-      <div
-        class="invisible absolute left-0 top-full z-[100] mt-1.5 min-w-[200px] max-w-[350px] rounded-lg bg-gray-800 px-3 py-2 text-xs text-white opacity-0 shadow-xl transition-all duration-200 group-hover/affinity:visible group-hover/affinity:opacity-100 dark:bg-gray-900"
-      >
-        <div v-if="affinityLoading" class="text-gray-400">Loading...</div>
-        <div v-else-if="affinityClients.length">
-          <div v-for="client in affinityClients" :key="client.client_id" class="py-0.5">
-            <span class="font-mono text-blue-300">{{ client.group_id }}:{{ client.client_id }}</span>
-            <span class="ml-1 text-gray-400">{{ formatAffinityTTL(client.ttl) }}</span>
-          </div>
-        </div>
-        <div class="absolute bottom-full left-3 border-[6px] border-transparent border-b-gray-800 dark:border-b-gray-900"></div>
-      </div>
-    </div>
-
     <!-- Rate Limit Display (429) - Two-line layout -->
     <div v-if="isRateLimited" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') }}</span>
@@ -153,11 +129,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import { formatCountdownWithSuffix, formatTime } from '@/utils/format'
-import { apiClient } from '@/api/client'
 
 const { t } = useI18n()
 
@@ -168,45 +143,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'show-temp-unsched', account: Account): void
 }>()
-
-// Affinity client count
-interface AffinityClient {
-  group_id: number
-  client_id: string
-  ttl: number
-}
-
-const affinityClientCount = computed(() => {
-  return props.account.affinity_client_count ?? 0
-})
-
-const affinityClients = ref<AffinityClient[]>([])
-const affinityLoading = ref(false)
-let affinityLoaded = false
-
-const loadAffinityClients = async () => {
-  if (affinityLoaded || affinityLoading.value) return
-  affinityLoading.value = true
-  try {
-    const { data } = await apiClient.get(`/admin/accounts/${props.account.id}/affinity-clients`)
-    affinityClients.value = data?.data ?? []
-  } catch {
-    affinityClients.value = []
-  } finally {
-    affinityLoading.value = false
-    affinityLoaded = true
-  }
-}
-
-const formatAffinityTTL = (seconds: number): string => {
-  if (seconds <= 0) return '0s'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}h${m}m`
-  if (m > 0) return `${m}m${s}s`
-  return `${s}s`
-}
 
 // Computed: is rate limited (429)
 const isRateLimited = computed(() => {

@@ -274,15 +274,6 @@ func (c *stubGatewayCache) UpdateClientAffinity(_ context.Context, _ int64, _ st
 func (c *stubGatewayCache) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
-func (c *stubGatewayCache) GetAccountAffinityCount(_ context.Context, _ int64, _ time.Duration) (int, error) {
-	return 0, nil
-}
-func (c *stubGatewayCache) GetAccountAffinityCountBatch(_ context.Context, _ []int64, _ time.Duration) (map[int64]int, error) {
-	return nil, nil
-}
-func (c *stubGatewayCache) GetAccountAffinityClients(_ context.Context, _ int64, _ time.Duration) ([]AffinityClientInfo, error) {
-	return nil, nil
-}
 
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
 	now := time.Now()
