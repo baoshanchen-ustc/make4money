@@ -392,7 +392,7 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 流超时处理配置
 		adminSettings.GET("/stream-timeout", h.Admin.Setting.GetStreamTimeoutSettings)
 		adminSettings.PUT("/stream-timeout", h.Admin.Setting.UpdateStreamTimeoutSettings)
-		// Sora S3 存储配置
+		// Sora S3 存储配置（旧路由，保留兼容）
 		adminSettings.GET("/sora-s3", h.Admin.Setting.GetSoraS3Settings)
 		adminSettings.PUT("/sora-s3", h.Admin.Setting.UpdateSoraS3Settings)
 		adminSettings.POST("/sora-s3/test", h.Admin.Setting.TestSoraS3Connection)
@@ -401,6 +401,22 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.PUT("/sora-s3/profiles/:profile_id", h.Admin.Setting.UpdateSoraS3Profile)
 		adminSettings.DELETE("/sora-s3/profiles/:profile_id", h.Admin.Setting.DeleteSoraS3Profile)
 		adminSettings.POST("/sora-s3/profiles/:profile_id/activate", h.Admin.Setting.SetActiveSoraS3Profile)
+		// Sora 统一存储配置（新路由，指向相同 handler）
+		adminSettings.GET("/sora-storage", h.Admin.Setting.GetSoraS3Settings)
+		adminSettings.PUT("/sora-storage", h.Admin.Setting.UpdateSoraS3Settings)
+		adminSettings.POST("/sora-storage/test", h.Admin.Setting.TestSoraS3Connection)
+		adminSettings.GET("/sora-storage/profiles", h.Admin.Setting.ListSoraS3Profiles)
+		adminSettings.POST("/sora-storage/profiles", h.Admin.Setting.CreateSoraS3Profile)
+		adminSettings.PUT("/sora-storage/profiles/:profile_id", h.Admin.Setting.UpdateSoraS3Profile)
+		adminSettings.DELETE("/sora-storage/profiles/:profile_id", h.Admin.Setting.DeleteSoraS3Profile)
+		adminSettings.POST("/sora-storage/profiles/:profile_id/activate", h.Admin.Setting.SetActiveSoraS3Profile)
+		// Google Drive OAuth
+		adminSettings.POST("/sora-storage/gdrive-oauth/start", h.Admin.GDriveOAuth.StartOAuth)
+		adminSettings.POST("/sora-storage/gdrive-oauth/callback", h.Admin.GDriveOAuth.OAuthCallback)
+		adminSettings.POST("/sora-storage/gdrive-test", h.Admin.GDriveOAuth.TestGDriveStorage)
+		// Sora 存储统计
+		adminSettings.GET("/sora-storage/gdrive-quota", h.Admin.Setting.GetGDriveQuota)
+		adminSettings.GET("/sora-storage/video-stats", h.Admin.Setting.GetStorageVideoStats)
 	}
 }
 

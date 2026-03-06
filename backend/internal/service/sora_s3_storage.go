@@ -380,6 +380,11 @@ func (s *SoraS3Storage) GeneratePresignedURL(ctx context.Context, objectKey stri
 	return result.URL, nil
 }
 
+// StorageType 返回存储类型标识。
+func (s *SoraS3Storage) StorageType() string {
+	return SoraStorageTypeS3
+}
+
 // GetMediaType 从 object key 推断媒体类型（image/video）。
 func GetMediaTypeFromKey(objectKey string) string {
 	ext := strings.ToLower(path.Ext(objectKey))
