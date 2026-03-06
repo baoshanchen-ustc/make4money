@@ -2132,7 +2132,7 @@ func (r *stubAccountRepoForHandler) BulkUpdate(context.Context, []int64, service
 	return 0, nil
 }
 
-func (r *stubAccountRepoForHandler) IncrementQuotaUsed(context.Context, int64, float64, string) error {
+func (r *stubAccountRepoForHandler) IncrementQuotaUsed(context.Context, int64, float64) error {
 	return nil
 }
 

@@ -216,7 +216,7 @@ func (r *stubAccountRepo) BulkUpdate(ctx context.Context, ids []int64, updates s
 	return 0, nil
 }
 
-func (r *stubAccountRepo) IncrementQuotaUsed(ctx context.Context, id int64, amount float64, _ string) error {
+func (r *stubAccountRepo) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
 	return nil
 }
 

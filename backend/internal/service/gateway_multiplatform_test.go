@@ -187,7 +187,7 @@ func (m *mockAccountRepoForPlatform) BulkUpdate(ctx context.Context, ids []int64
 	return 0, nil
 }
 
-func (m *mockAccountRepoForPlatform) IncrementQuotaUsed(ctx context.Context, id int64, amount float64, _ string) error {
+func (m *mockAccountRepoForPlatform) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
 	return nil
 }
 

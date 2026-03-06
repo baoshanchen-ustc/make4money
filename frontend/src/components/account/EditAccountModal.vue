@@ -798,7 +798,7 @@
       </div>
 
       <!-- API Key 账号配额限制 -->
-      <QuotaLimitCard v-if="account?.type === 'apikey'" v-model="editQuotaLimit" :period="editQuotaPeriod" @update:period="editQuotaPeriod = $event" />
+      <QuotaLimitCard v-if="account?.type === 'apikey'" :totalLimit="editQuotaLimit" :dailyLimit="editQuotaDailyLimit" :weeklyLimit="editQuotaWeeklyLimit" @update:totalLimit="editQuotaLimit = $event" @update:dailyLimit="editQuotaDailyLimit = $event" @update:weeklyLimit="editQuotaWeeklyLimit = $event" />
 
       <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
       <div
@@ -1430,7 +1430,8 @@ const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OF
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const editQuotaLimit = ref<number | null>(null)
-const editQuotaPeriod = ref<string>('')
+const editQuotaDailyLimit = ref<number | null>(null)
+const editQuotaWeeklyLimit = ref<number | null>(null)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
@@ -1594,10 +1595,14 @@ watch(
       if (newAccount.type === 'apikey') {
         const quotaVal = extra?.quota_limit as number | undefined
         editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
-        editQuotaPeriod.value = (extra?.quota_period as string) || ''
+        const dailyVal = extra?.quota_daily_limit as number | undefined
+        editQuotaDailyLimit.value = (dailyVal && dailyVal > 0) ? dailyVal : null
+        const weeklyVal = extra?.quota_weekly_limit as number | undefined
+        editQuotaWeeklyLimit.value = (weeklyVal && weeklyVal > 0) ? weeklyVal : null
       } else {
         editQuotaLimit.value = null
-        editQuotaPeriod.value = ''
+        editQuotaDailyLimit.value = null
+        editQuotaWeeklyLimit.value = null
       }
 
       // Load antigravity model mapping (Antigravity 只支持映射模式)
@@ -2390,22 +2395,32 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // For apikey accounts, handle quota_limit in extra
+    // For apikey accounts, handle quota limits in extra
     if (props.account.type === 'apikey') {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
+      // Total quota
       if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
         newExtra.quota_limit = editQuotaLimit.value
-        if (editQuotaPeriod.value) {
-          newExtra.quota_period = editQuotaPeriod.value
-        } else {
-          delete newExtra.quota_period
-        }
       } else {
         delete newExtra.quota_limit
-        delete newExtra.quota_period
-        delete newExtra.quota_period_start
+      }
+      // Daily quota
+      if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {
+        newExtra.quota_daily_limit = editQuotaDailyLimit.value
+      } else {
+        delete newExtra.quota_daily_limit
+        delete newExtra.quota_daily_used
+        delete newExtra.quota_daily_start
+      }
+      // Weekly quota
+      if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
+        newExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
+      } else {
+        delete newExtra.quota_weekly_limit
+        delete newExtra.quota_weekly_used
+        delete newExtra.quota_weekly_start
       }
       updatePayload.extra = newExtra
     }

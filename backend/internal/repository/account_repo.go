@@ -1676,54 +1676,53 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 	return r.accountsToService(ctx, accounts)
 }
 
-// IncrementQuotaUsed 原子递增账号的 extra.quota_used 字段
-// period 为 "daily"/"weekly" 时，使用 CTE 原子重置+递增；为空时保持累计制。
-func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64, period string) error {
-	var rows *sql.Rows
-	var err error
+// nowUTC is a SQL expression to generate a UTC RFC3339 timestamp string.
+const nowUTC = `to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
 
-	interval := periodToInterval(period)
-	if interval == "" {
-		// 累计制：保持原有逻辑
-		rows, err = r.sql.QueryContext(ctx,
-			`UPDATE accounts SET extra = jsonb_set(
-				COALESCE(extra, '{}'::jsonb),
-				'{quota_used}',
-				to_jsonb(COALESCE((extra->>'quota_used')::numeric, 0) + $1)
-			), updated_at = NOW()
-			WHERE id = $2 AND deleted_at IS NULL
-			RETURNING
-				COALESCE((extra->>'quota_used')::numeric, 0),
-				COALESCE((extra->>'quota_limit')::numeric, 0)`,
-			amount, id)
-	} else {
-		// 周期制：单条 UPDATE 内联过期判断，避免 CTE snapshot 在 READ COMMITTED 下的 lost update
-		rows, err = r.sql.QueryContext(ctx,
-			`UPDATE accounts SET extra = jsonb_set(
-				jsonb_set(
-					COALESCE(extra, '{}'::jsonb),
-					'{quota_used}',
-					to_jsonb(
-						CASE WHEN COALESCE((extra->>'quota_period_start')::timestamptz, '1970-01-01'::timestamptz)
-							+ $3::interval <= NOW()
-						THEN $1
-						ELSE COALESCE((extra->>'quota_used')::numeric, 0) + $1 END
-					)
-				),
-				'{quota_period_start}',
-				to_jsonb(
-					CASE WHEN COALESCE((extra->>'quota_period_start')::timestamptz, '1970-01-01'::timestamptz)
-						+ $3::interval <= NOW()
-					THEN to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-					ELSE COALESCE(extra->>'quota_period_start', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) END
+// IncrementQuotaUsed 原子递增账号的配额用量（总/日/周三个维度）
+// 日/周额度在周期过期时自动重置为 0 再递增。
+func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
+	rows, err := r.sql.QueryContext(ctx,
+		`UPDATE accounts SET extra = (
+			COALESCE(extra, '{}'::jsonb)
+			-- 总额度：始终递增
+			|| jsonb_build_object('quota_used', COALESCE((extra->>'quota_used')::numeric, 0) + $1)
+			-- 日额度：仅在 quota_daily_limit > 0 时处理
+			|| CASE WHEN COALESCE((extra->>'quota_daily_limit')::numeric, 0) > 0 THEN
+				jsonb_build_object(
+					'quota_daily_used',
+					CASE WHEN COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
+						+ '24 hours'::interval <= NOW()
+					THEN $1
+					ELSE COALESCE((extra->>'quota_daily_used')::numeric, 0) + $1 END,
+					'quota_daily_start',
+					CASE WHEN COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
+						+ '24 hours'::interval <= NOW()
+					THEN `+nowUTC+`
+					ELSE COALESCE(extra->>'quota_daily_start', `+nowUTC+`) END
 				)
-			), updated_at = NOW()
-			WHERE id = $2 AND deleted_at IS NULL
-			RETURNING
-				COALESCE((extra->>'quota_used')::numeric, 0),
-				COALESCE((extra->>'quota_limit')::numeric, 0)`,
-			amount, id, interval)
-	}
+			ELSE '{}'::jsonb END
+			-- 周额度：仅在 quota_weekly_limit > 0 时处理
+			|| CASE WHEN COALESCE((extra->>'quota_weekly_limit')::numeric, 0) > 0 THEN
+				jsonb_build_object(
+					'quota_weekly_used',
+					CASE WHEN COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
+						+ '168 hours'::interval <= NOW()
+					THEN $1
+					ELSE COALESCE((extra->>'quota_weekly_used')::numeric, 0) + $1 END,
+					'quota_weekly_start',
+					CASE WHEN COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
+						+ '168 hours'::interval <= NOW()
+					THEN `+nowUTC+`
+					ELSE COALESCE(extra->>'quota_weekly_start', `+nowUTC+`) END
+				)
+			ELSE '{}'::jsonb END
+		), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+		RETURNING
+			COALESCE((extra->>'quota_used')::numeric, 0),
+			COALESCE((extra->>'quota_limit')::numeric, 0)`,
+		amount, id)
 	if err != nil {
 		return err
 	}
@@ -1739,7 +1738,7 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 		return err
 	}
 
-	// 配额刚超限时触发调度快照刷新，使账号及时从调度候选中移除
+	// 任一维度配额刚超限时触发调度快照刷新
 	if limit > 0 && newUsed >= limit && (newUsed-amount) < limit {
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota exceeded failed: account=%d err=%v", id, err)
@@ -1748,25 +1747,13 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 	return nil
 }
 
-// periodToInterval 将周期类型转为 PostgreSQL interval 字符串
-func periodToInterval(period string) string {
-	switch period {
-	case "daily":
-		return "24 hours"
-	case "weekly":
-		return "168 hours"
-	default:
-		return ""
-	}
-}
-
-// ResetQuotaUsed 重置账号的 extra.quota_used 为 0，同时清除 quota_period_start 以开始新周期
+// ResetQuotaUsed 重置账号所有维度的配额用量为 0
 func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {
 	_, err := r.sql.ExecContext(ctx,
 		`UPDATE accounts SET extra = (
 			COALESCE(extra, '{}'::jsonb)
-			|| '{"quota_used": 0}'::jsonb
-		) - 'quota_period_start', updated_at = NOW()
+			|| '{"quota_used": 0, "quota_daily_used": 0, "quota_weekly_used": 0}'::jsonb
+		) - 'quota_daily_start' - 'quota_weekly_start', updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id)
 	if err != nil {

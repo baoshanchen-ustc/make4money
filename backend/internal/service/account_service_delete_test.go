@@ -199,7 +199,7 @@ func (s *accountRepoStub) BulkUpdate(ctx context.Context, ids []int64, updates A
 	panic("unexpected BulkUpdate call")
 }
 
-func (s *accountRepoStub) IncrementQuotaUsed(ctx context.Context, id int64, amount float64, _ string) error {
+func (s *accountRepoStub) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
 	return nil
 }
 
