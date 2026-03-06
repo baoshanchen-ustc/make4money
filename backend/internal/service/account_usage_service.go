@@ -88,7 +88,7 @@ type antigravityUsageCache struct {
 }
 
 const (
-	apiCacheTTL         = 3 * time.Minute
+	apiCacheTTL         = 10 * time.Minute
 	windowStatsCacheTTL = 1 * time.Minute
 )
 
