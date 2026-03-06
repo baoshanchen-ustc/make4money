@@ -22,14 +22,11 @@ var (
 	getAffinityLua string
 	//go:embed lua/update_affinity.lua
 	updateAffinityLua string
-	//go:embed lua/remove_affinity.lua
-	removeAffinityLua string
 	//go:embed lua/get_affinity_count.lua
 	getAffinityCountLua string
 
 	getAffinityScript      = redis.NewScript(getAffinityLua)
 	updateAffinityScript   = redis.NewScript(updateAffinityLua)
-	removeAffinityScript   = redis.NewScript(removeAffinityLua)
 	getAffinityCountScript = redis.NewScript(getAffinityCountLua)
 )
 
@@ -113,15 +110,6 @@ func (c *gatewayCache) UpdateClientAffinity(ctx context.Context, groupID int64, 
 
 	return updateAffinityScript.Run(ctx, c.rdb, []string{fwdKey, revKey},
 		now, ttlSeconds, accountID, expireThreshold, clientID,
-	).Err()
-}
-
-func (c *gatewayCache) RemoveClientAffinity(ctx context.Context, groupID int64, clientID string, accountID int64) error {
-	fwdKey := buildAffinityKey(groupID, clientID)
-	revKey := buildAffinityReverseKey(groupID, accountID)
-
-	return removeAffinityScript.Run(ctx, c.rdb, []string{fwdKey, revKey},
-		accountID, clientID,
 	).Err()
 }
 

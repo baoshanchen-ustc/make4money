@@ -375,8 +375,6 @@ type GatewayCache interface {
 	GetClientAffinityAccounts(ctx context.Context, groupID int64, clientID string, ttl time.Duration) ([]int64, error)
 	// UpdateClientAffinity 添加/更新客户端亲和关系（更新 score 为当前时间戳，刷新 key TTL）
 	UpdateClientAffinity(ctx context.Context, groupID int64, clientID string, accountID int64, ttl time.Duration) error
-	// RemoveClientAffinity 删除单个客户端亲和关系（原子双删正向+反向索引）
-	RemoveClientAffinity(ctx context.Context, groupID int64, clientID string, accountID int64) error
 	// GetAccountAffinityCountBatch 批量获取账号的亲和客户端数量（惰性清理过期成员）
 	GetAccountAffinityCountBatch(ctx context.Context, groupID int64, accountIDs []int64, ttl time.Duration) (map[int64]int64, error)
 }

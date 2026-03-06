@@ -149,9 +149,6 @@ func (s *stickyGatewayCacheHotpathStub) GetClientAffinityAccounts(_ context.Cont
 func (s *stickyGatewayCacheHotpathStub) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
 	return nil
 }
-func (s *stickyGatewayCacheHotpathStub) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
-	return nil
-}
 func (s *stickyGatewayCacheHotpathStub) GetAccountAffinityCountBatch(_ context.Context, _ int64, _ []int64, _ time.Duration) (map[int64]int64, error) {
 	return map[int64]int64{}, nil
 }
