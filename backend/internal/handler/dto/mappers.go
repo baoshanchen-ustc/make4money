@@ -250,7 +250,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
-	// 客户端亲和调度（适用于 Anthropic/Antigravity 平台）
+	// 客户端亲和调度（仅 Anthropic OAuth/SetupToken 账号）
 	if a.IsClientAffinityEnabled() {
 		enabled := true
 		out.ClientAffinityEnabled = &enabled
