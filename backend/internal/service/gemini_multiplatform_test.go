@@ -297,6 +297,15 @@ func (m *mockGatewayCacheForGemini) UpdateClientAffinity(_ context.Context, _ in
 func (m *mockGatewayCacheForGemini) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
+func (m *mockGatewayCacheForGemini) GetAccountAffinityCount(_ context.Context, _ int64, _ time.Duration) (int, error) {
+	return 0, nil
+}
+func (m *mockGatewayCacheForGemini) GetAccountAffinityCountBatch(_ context.Context, _ []int64, _ time.Duration) (map[int64]int, error) {
+	return nil, nil
+}
+func (m *mockGatewayCacheForGemini) GetAccountAffinityClients(_ context.Context, _ int64, _ time.Duration) ([]AffinityClientInfo, error) {
+	return nil, nil
+}
 
 // TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform 测试 Gemini 单平台选择
 func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform(t *testing.T) {

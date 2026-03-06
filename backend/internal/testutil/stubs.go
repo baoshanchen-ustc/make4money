@@ -106,6 +106,15 @@ func (c StubGatewayCache) UpdateClientAffinity(_ context.Context, _ int64, _ str
 func (c StubGatewayCache) RemoveClientAffinity(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
+func (c StubGatewayCache) GetAccountAffinityCount(_ context.Context, _ int64, _ time.Duration) (int, error) {
+	return 0, nil
+}
+func (c StubGatewayCache) GetAccountAffinityCountBatch(_ context.Context, _ []int64, _ time.Duration) (map[int64]int, error) {
+	return nil, nil
+}
+func (c StubGatewayCache) GetAccountAffinityClients(_ context.Context, _ int64, _ time.Duration) ([]service.AffinityClientInfo, error) {
+	return nil, nil
+}
 
 // ============================================================
 // StubSessionLimitCache — service.SessionLimitCache 的空实现
