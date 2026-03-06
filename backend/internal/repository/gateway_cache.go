@@ -86,7 +86,7 @@ redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[4])
 redis.call('ZADD', KEYS[1], ARGV[1], ARGV[3])
 redis.call('EXPIRE', KEYS[1], ARGV[2])
 redis.call('ZADD', KEYS[2], ARGV[1], ARGV[5])
-redis.call('EXPIRE', KEYS[2], ARGV[2])
+redis.call('EXPIRE', KEYS[2], 86400)
 return 1
 `)
 
@@ -144,12 +144,16 @@ func buildAccountAffinityKey(accountID int64) string {
 	return fmt.Sprintf("%s%d", accountAffinityPrefix, accountID)
 }
 
-// getAccountAffinityScript: 清理过期成员后返回 ZCARD
+// getAccountAffinityScript: 清理过期成员后返回 ZCARD，空 key 自动删除
 // KEYS[1] = account_affinity:{accountID}
 // ARGV[1] = 过期阈值时间戳 (now - ttl)
 var getAccountAffinityScript = redis.NewScript(`
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
-return redis.call('ZCARD', KEYS[1])
+local count = redis.call('ZCARD', KEYS[1])
+if count == 0 then
+  redis.call('DEL', KEYS[1])
+end
+return count
 `)
 
 func (c *gatewayCache) GetAccountAffinityCount(ctx context.Context, accountID int64, ttl time.Duration) (int, error) {
