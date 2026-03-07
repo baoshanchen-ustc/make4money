@@ -26,11 +26,14 @@ var (
 	getAffinityCountLua string
 	//go:embed lua/get_affinity_clients.lua
 	getAffinityClientsLua string
+	//go:embed lua/get_affinity_clients_with_scores.lua
+	getAffinityClientsWithScoresLua string
 
-	getAffinityScript        = redis.NewScript(getAffinityLua)
-	updateAffinityScript     = redis.NewScript(updateAffinityLua)
-	getAffinityCountScript   = redis.NewScript(getAffinityCountLua)
-	getAffinityClientsScript = redis.NewScript(getAffinityClientsLua)
+	getAffinityScript               = redis.NewScript(getAffinityLua)
+	updateAffinityScript            = redis.NewScript(updateAffinityLua)
+	getAffinityCountScript          = redis.NewScript(getAffinityCountLua)
+	getAffinityClientsScript        = redis.NewScript(getAffinityClientsLua)
+	getAffinityClientsWithScoresScript = redis.NewScript(getAffinityClientsWithScoresLua)
 )
 
 type gatewayCache struct {
@@ -209,5 +212,60 @@ func (c *gatewayCache) GetAccountAffinityClientsBatch(ctx context.Context, accou
 			}
 		}
 	}
+	return result, nil
+}
+
+// GetAccountAffinityClientsWithScores 获取单个账号跨所有分组的亲和客户端列表（含最后活跃时间戳，去重取最近）。
+func (c *gatewayCache) GetAccountAffinityClientsWithScores(
+	ctx context.Context,
+	accountID int64,
+	groupIDs []int64,
+	ttl time.Duration,
+) ([]service.AffinityClient, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+
+	now := time.Now().Unix()
+	expireThreshold := now - int64(ttl.Seconds())
+
+	ensureScriptLoaded(ctx, c.rdb, getAffinityClientsWithScoresScript)
+
+	pipe := c.rdb.Pipeline()
+	cmds := make([]*redis.Cmd, len(groupIDs))
+	for i, gID := range groupIDs {
+		key := buildAffinityReverseKey(gID, accountID)
+		cmds[i] = getAffinityClientsWithScoresScript.Run(ctx, pipe, []string{key}, expireThreshold)
+	}
+	_, err := pipe.Exec(ctx)
+	if err != nil && err != redis.Nil {
+		return nil, err
+	}
+
+	// 合并跨组结果，同一 clientID 取最近的 lastActive
+	seen := make(map[string]int64) // clientID → max timestamp
+	for _, cmd := range cmds {
+		vals, _ := cmd.StringSlice()
+		// vals 格式: [clientID1, score1, clientID2, score2, ...]
+		for j := 0; j+1 < len(vals); j += 2 {
+			clientID := vals[j]
+			ts, _ := strconv.ParseInt(vals[j+1], 10, 64)
+			if existing, ok := seen[clientID]; !ok || ts > existing {
+				seen[clientID] = ts
+			}
+		}
+	}
+
+	result := make([]service.AffinityClient, 0, len(seen))
+	for clientID, ts := range seen {
+		result = append(result, service.AffinityClient{
+			ClientID:   clientID,
+			LastActive: time.Unix(ts, 0),
+		})
+	}
+
+	// 按最后活跃时间降序排序
+	service.SortAffinityClients(result)
+
 	return result, nil
 }

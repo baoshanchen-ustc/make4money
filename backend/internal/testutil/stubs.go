@@ -109,6 +109,9 @@ func (c StubGatewayCache) GetAccountAffinityCountBatch(_ context.Context, _ int6
 func (c StubGatewayCache) GetAccountAffinityClientsBatch(_ context.Context, _ map[int64][]int64, _ time.Duration) (map[int64][]string, error) {
 	return map[int64][]string{}, nil
 }
+func (c StubGatewayCache) GetAccountAffinityClientsWithScores(_ context.Context, _ int64, _ []int64, _ time.Duration) ([]service.AffinityClient, error) {
+	return nil, nil
+}
 
 // ============================================================
 // StubSessionLimitCache — service.SessionLimitCache 的空实现

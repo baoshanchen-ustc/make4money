@@ -244,6 +244,7 @@ export default {
   // Common
   common: {
     loading: 'Loading...',
+    justNow: 'just now',
     save: 'Save',
     cancel: 'Cancel',
     delete: 'Delete',

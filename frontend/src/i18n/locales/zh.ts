@@ -244,6 +244,7 @@ export default {
   // Common
   common: {
     loading: '加载中...',
+    justNow: '刚刚',
     save: '保存',
     cancel: '取消',
     delete: '删除',

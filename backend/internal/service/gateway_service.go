@@ -380,6 +380,21 @@ type GatewayCache interface {
 	// GetAccountAffinityClientsBatch 批量获取每个账号跨所有分组的亲和客户端列表（去重）
 	// accountGroups: map[accountID][]groupID
 	GetAccountAffinityClientsBatch(ctx context.Context, accountGroups map[int64][]int64, ttl time.Duration) (map[int64][]string, error)
+	// GetAccountAffinityClientsWithScores 获取单个账号跨所有分组的亲和客户端列表（含最后活跃时间）
+	GetAccountAffinityClientsWithScores(ctx context.Context, accountID int64, groupIDs []int64, ttl time.Duration) ([]AffinityClient, error)
+}
+
+// AffinityClient 亲和客户端信息（含最后活跃时间）
+type AffinityClient struct {
+	ClientID   string    `json:"client_id"`
+	LastActive time.Time `json:"last_active"`
+}
+
+// SortAffinityClients 按最后活跃时间降序排序
+func SortAffinityClients(clients []AffinityClient) {
+	sort.Slice(clients, func(i, j int) bool {
+		return clients[i].LastActive.After(clients[j].LastActive)
+	})
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil

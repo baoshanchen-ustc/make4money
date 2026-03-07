@@ -177,12 +177,11 @@
           </template>
           <template #cell-status="{ row }">
             <div class="flex items-center gap-1.5">
-              <span v-if="row.client_affinity_enabled && row.affinity_client_count != null"
-                    :class="affinityBadgeClass(row.affinity_client_count)"
-                    :title="affinityTooltip(row)"
-                    class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0">
-                {{ row.affinity_client_count }}
-              </span>
+              <AffinityBadge
+                v-if="row.client_affinity_enabled && row.affinity_client_count != null"
+                :account-id="row.id"
+                :count="row.affinity_client_count"
+              />
               <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
             </div>
           </template>
@@ -310,6 +309,7 @@ import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
+import AffinityBadge from '@/components/account/AffinityBadge.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
@@ -405,19 +405,6 @@ const buildDefaultTodayStats = (): WindowStats => ({
   standard_cost: 0,
   user_cost: 0
 })
-
-function affinityBadgeClass(count: number): string {
-  if (count >= 16) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-  if (count >= 6) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-  if (count > 0) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-  return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-}
-
-function affinityTooltip(row: Account): string {
-  const clients = row.affinity_clients
-  if (!clients || clients.length === 0) return t('admin.accounts.affinityNoClients')
-  return t('admin.accounts.affinityClients', { count: clients.length }) + '\n' + clients.join('\n')
-}
 
 const refreshTodayStatsBatch = async () => {
   if (hiddenColumns.has('today_stats')) {

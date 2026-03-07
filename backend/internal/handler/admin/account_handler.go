@@ -1417,6 +1417,42 @@ func (h *AccountHandler) ResetQuota(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+// GetAffinityClients returns the list of affinity clients for an account with last active timestamps.
+// GET /api/v1/admin/accounts/:id/affinity-clients
+func (h *AccountHandler) GetAffinityClients(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if !account.IsClientAffinityEnabled() {
+		response.Success(c, []service.AffinityClient{})
+		return
+	}
+
+	if h.gatewayCache == nil || len(account.GroupIDs) == 0 {
+		response.Success(c, []service.AffinityClient{})
+		return
+	}
+
+	clients, err := h.gatewayCache.GetAccountAffinityClientsWithScores(
+		c.Request.Context(), accountID, account.GroupIDs, service.ClientAffinityTTL,
+	)
+	if err != nil {
+		response.Success(c, []service.AffinityClient{})
+		return
+	}
+
+	response.Success(c, clients)
+}
+
 // GetTempUnschedulable handles getting temporary unschedulable status
 // GET /api/v1/admin/accounts/:id/temp-unschedulable
 func (h *AccountHandler) GetTempUnschedulable(c *gin.Context) {
