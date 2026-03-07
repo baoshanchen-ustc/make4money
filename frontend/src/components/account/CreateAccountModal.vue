@@ -1227,13 +1227,13 @@
 
       </div>
 
-      <!-- 配额限制 (Anthropic 平台: 配额 + 亲和) -->
+      <!-- 配额控制 (Anthropic 平台: 配额 + 亲和) -->
       <div
         v-if="form.platform === 'anthropic'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') }}</h3>
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>
@@ -1249,13 +1249,13 @@
         />
       </div>
 
-      <!-- 配额限制 (非 Anthropic apikey) -->
+      <!-- 配额控制 (非 Anthropic apikey) -->
       <div
         v-else-if="form.type === 'apikey'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') }}</h3>
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>

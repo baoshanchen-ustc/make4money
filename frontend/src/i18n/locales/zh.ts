@@ -2099,7 +2099,7 @@ export default {
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',
-        hint: '仅适用于 Anthropic OAuth/Setup Token 账号',
+        hint: '配置费用窗口、会话限制、客户端亲和等调度控制。',
         windowCost: {
           label: '5h窗口费用控制',
           hint: '限制账号在5小时窗口内的费用使用',

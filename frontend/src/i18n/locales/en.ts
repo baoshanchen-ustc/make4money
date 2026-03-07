@@ -1965,7 +1965,7 @@ export default {
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
-        hint: 'Only applies to Anthropic OAuth/Setup Token accounts',
+        hint: 'Configure cost window, session limits, client affinity and other scheduling controls.',
         windowCost: {
           label: '5h Window Cost Limit',
           hint: 'Limit account cost usage within the 5-hour window',
