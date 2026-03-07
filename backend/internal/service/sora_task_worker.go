@@ -13,7 +13,7 @@ import (
 type SoraTaskWorker struct {
 	taskService  *SoraTaskService
 	accountRepo  AccountRepository
-	s3Storage    *SoraS3Storage
+	objectStorage SoraObjectStorage
 	mediaStorage *SoraMediaStorage
 	interval     time.Duration
 	pollTimeout  time.Duration
@@ -25,7 +25,7 @@ type SoraTaskWorker struct {
 func NewSoraTaskWorker(
 	taskService *SoraTaskService,
 	accountRepo AccountRepository,
-	s3Storage *SoraS3Storage,
+	objectStorage SoraObjectStorage,
 	mediaStorage *SoraMediaStorage,
 	interval time.Duration,
 ) *SoraTaskWorker {
@@ -35,7 +35,7 @@ func NewSoraTaskWorker(
 	return &SoraTaskWorker{
 		taskService:  taskService,
 		accountRepo:  accountRepo,
-		s3Storage:    s3Storage,
+		objectStorage: objectStorage,
 		mediaStorage: mediaStorage,
 		interval:     interval,
 		pollTimeout:  30 * time.Second,
@@ -136,14 +136,14 @@ func (w *SoraTaskWorker) tryStoreMedia(ctx context.Context, task *SoraTask) {
 		mediaType = "image"
 	}
 
-	if w.s3Storage != nil && w.s3Storage.Enabled(ctx) {
-		key, _, err := w.s3Storage.UploadFromURL(ctx, 0, task.VideoURL)
+	if w.objectStorage != nil && w.objectStorage.Enabled(ctx) {
+		key, _, err := w.objectStorage.UploadFromURL(ctx, 0, task.VideoURL)
 		if err != nil {
 			logger.LegacyPrintf("service.sora_task_worker",
-				"[StoreMedia] task=%s S3 upload error: %v", task.ID, err)
+				"[StoreMedia] task=%s object storage upload error: %v", task.ID, err)
 		} else {
 			task.StoredKey = key
-			task.StorageType = "s3"
+			task.StorageType = w.objectStorage.StorageType()
 			if updateErr := w.taskService.repo.Update(ctx, task); updateErr != nil {
 				logger.LegacyPrintf("service.sora_task_worker",
 					"[StoreMedia] task=%s update stored_key error: %v", task.ID, updateErr)

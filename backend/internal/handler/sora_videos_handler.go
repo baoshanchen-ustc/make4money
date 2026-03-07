@@ -15,7 +15,7 @@ import (
 type SoraVideosHandler struct {
 	taskService        *service.SoraTaskService
 	gatewayService     *service.GatewayService
-	objectStorage      *service.SoraS3Storage
+	objectStorage      service.SoraObjectStorage
 	mediaStorage       *service.SoraMediaStorage
 	soraGatewayService *service.SoraGatewayService
 }
@@ -23,7 +23,7 @@ type SoraVideosHandler struct {
 func NewSoraVideosHandler(
 	taskService *service.SoraTaskService,
 	gatewayService *service.GatewayService,
-	objectStorage *service.SoraS3Storage,
+	objectStorage service.SoraObjectStorage,
 	mediaStorage *service.SoraMediaStorage,
 	soraGatewayService *service.SoraGatewayService,
 ) *SoraVideosHandler {
