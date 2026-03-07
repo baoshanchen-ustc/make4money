@@ -45,6 +45,7 @@ type Handlers struct {
 	OpenAIGateway *OpenAIGatewayHandler
 	SoraGateway   *SoraGatewayHandler
 	SoraClient    *SoraClientHandler
+	SoraVideos    *SoraVideosHandler
 	Setting       *SettingHandler
 	Totp          *TotpHandler
 }
