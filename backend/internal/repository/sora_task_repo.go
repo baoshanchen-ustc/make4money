@@ -85,7 +85,7 @@ func (r *SoraTaskRepository) Update(ctx context.Context, task *service.SoraTask)
 
 func (r *SoraTaskRepository) ListPending(ctx context.Context) ([]*service.SoraTask, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+soraTaskColumns+` FROM sora_tasks WHERE status IN ('queued', 'in_progress') ORDER BY created_at ASC`,
+		`SELECT `+soraTaskColumns+` FROM sora_tasks WHERE status IN ('queued', 'in_progress') ORDER BY created_at ASC LIMIT 200`,
 	)
 	if err != nil {
 		return nil, err

@@ -4655,6 +4655,7 @@ export default {
     downloadLocal: '本地下载',
     canDownload: '可下载',
     regenrate: '重新生成',
+    regenerate: '重新生成',
     creatorPlaceholder: '描述你想要生成的视频或图片...',
     videoModels: '视频模型',
     imageModels: '图片模型',
@@ -4671,6 +4672,13 @@ export default {
     galleryEmptyTitle: '还没有任何作品',
     galleryEmptyDesc: '你的创作成果将会展示在这里。前往生成页，开始你的第一次创作吧。',
     startCreating: '开始创作',
-    yesterday: '昨天'
+    yesterday: '昨天',
+    landscape: '横屏',
+    portrait: '竖屏',
+    square: '方形',
+    examplePrompt1: '一只金色的柴犬在东京涩谷街头散步，镜头跟随，电影感画面，4K 高清',
+    examplePrompt2: '无人机航拍视角，冰岛极光下的冰川湖面反射绿色光芒，慢速推进',
+    examplePrompt3: '赛博朋克风格的未来城市，霓虹灯倒映在雨后积水中，夜景，电影级色彩',
+    examplePrompt4: '水墨画风格，一叶扁舟在山水间漂泊，薄雾缭绕，中国古典意境'
   }
 }

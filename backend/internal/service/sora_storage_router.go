@@ -75,10 +75,10 @@ func (r *SoraStorageRouter) TestConnection(ctx context.Context) error {
 	return backend.TestConnection(ctx)
 }
 
-func (r *SoraStorageRouter) UploadFromURL(ctx context.Context, userID int64, sourceURL string) (string, int64, error) {
+func (r *SoraStorageRouter) UploadFromURL(ctx context.Context, userID int64, sourceURL string) (string, int64, string, error) {
 	backend := r.activeBackend(ctx)
 	if backend == nil {
-		return "", 0, fmt.Errorf("no storage backend available")
+		return "", 0, "", fmt.Errorf("no storage backend available")
 	}
 	return backend.UploadFromURL(ctx, userID, sourceURL)
 }

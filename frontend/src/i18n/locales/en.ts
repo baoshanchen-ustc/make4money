@@ -4464,6 +4464,7 @@ export default {
     downloadLocal: 'Download',
     canDownload: 'to download',
     regenrate: 'Regenerate',
+    regenerate: 'Regenerate',
     creatorPlaceholder: 'Describe the video or image you want to create...',
     videoModels: 'Video Models',
     imageModels: 'Image Models',
@@ -4480,6 +4481,13 @@ export default {
     galleryEmptyTitle: 'No works yet',
     galleryEmptyDesc: 'Your creations will be displayed here. Go to the generate page to start your first creation.',
     startCreating: 'Start Creating',
-    yesterday: 'Yesterday'
+    yesterday: 'Yesterday',
+    landscape: 'Landscape',
+    portrait: 'Portrait',
+    square: 'Square',
+    examplePrompt1: 'A golden Shiba Inu walking through the streets of Shibuya, Tokyo, camera following, cinematic shot, 4K',
+    examplePrompt2: 'Drone aerial view, green aurora reflecting on a glacial lake in Iceland, slow push-in',
+    examplePrompt3: 'Cyberpunk futuristic city, neon lights reflected in rain puddles, nightscape, cinematic colors',
+    examplePrompt4: 'Chinese ink painting style, a small boat drifting among misty mountains and rivers, classical atmosphere'
   }
 }

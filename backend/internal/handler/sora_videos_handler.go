@@ -43,10 +43,11 @@ func NewSoraVideosHandler(
 }
 
 func (h *SoraVideosHandler) CreateVideo(c *gin.Context) {
-	apiKey, account, ok := h.selectAccount(c, "")
+	apiKey, account, release, ok := h.selectAccount(c, "")
 	if !ok {
 		return
 	}
+	defer release()
 
 	body, err := readBody(c)
 	if err != nil {
@@ -224,10 +225,11 @@ func (h *SoraVideosHandler) resolveContentURL(c *gin.Context, task *service.Sora
 }
 
 func (h *SoraVideosHandler) CreateImage(c *gin.Context) {
-	apiKey, account, ok := h.selectAccount(c, "")
+	apiKey, account, release, ok := h.selectAccount(c, "")
 	if !ok {
 		return
 	}
+	defer release()
 
 	body, err := readBody(c)
 	if err != nil {
@@ -257,10 +259,11 @@ func (h *SoraVideosHandler) CreateImage(c *gin.Context) {
 }
 
 func (h *SoraVideosHandler) EditImage(c *gin.Context) {
-	apiKey, account, ok := h.selectAccount(c, "")
+	apiKey, account, release, ok := h.selectAccount(c, "")
 	if !ok {
 		return
 	}
+	defer release()
 
 	body, err := readBody(c)
 	if err != nil {
@@ -287,6 +290,7 @@ func (h *SoraVideosHandler) EditImage(c *gin.Context) {
 	imageReq := &service.CreateImageRequest{
 		Model:          req.Model,
 		Prompt:         req.Prompt,
+		Image:          req.Image,
 		Size:           req.Size,
 		ResponseFormat: req.ResponseFormat,
 		N:              1,
@@ -312,10 +316,10 @@ func (h *SoraVideosHandler) getAPIKey(c *gin.Context) (*service.APIKey, bool) {
 	return apiKey, true
 }
 
-func (h *SoraVideosHandler) selectAccount(c *gin.Context, model string) (*service.APIKey, *service.Account, bool) {
+func (h *SoraVideosHandler) selectAccount(c *gin.Context, model string) (*service.APIKey, *service.Account, func(), bool) {
 	apiKey, ok := h.getAPIKey(c)
 	if !ok {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 
 	selection, err := h.gatewayService.SelectAccountWithLoadAwareness(
@@ -323,12 +327,14 @@ func (h *SoraVideosHandler) selectAccount(c *gin.Context, model string) (*servic
 	)
 	if err != nil {
 		soraErrorResponse(c, http.StatusServiceUnavailable, "server_error", "No available accounts")
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
+
+	releaseFunc := func() {}
 	if selection.ReleaseFunc != nil {
-		defer selection.ReleaseFunc()
+		releaseFunc = selection.ReleaseFunc
 	}
-	return apiKey, selection.Account, true
+	return apiKey, selection.Account, releaseFunc, true
 }
 
 func (h *SoraVideosHandler) selectAccountByID(c *gin.Context, accountID int64) (*service.Account, error) {

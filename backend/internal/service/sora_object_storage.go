@@ -15,8 +15,8 @@ type SoraObjectStorage interface {
 	TestConnection(ctx context.Context) error
 
 	// UploadFromURL 从上游 URL 下载并上传到存储。
-	// 返回 object key（S3 key 或 GDrive file ID）、文件大小。
-	UploadFromURL(ctx context.Context, userID int64, sourceURL string) (objectKey string, sizeBytes int64, err error)
+	// 返回 object key（S3 key 或 GDrive file ID）、文件大小、实际使用的存储类型。
+	UploadFromURL(ctx context.Context, userID int64, sourceURL string) (objectKey string, sizeBytes int64, storageType string, err error)
 
 	// DeleteObjects 删除一组存储对象。
 	DeleteObjects(ctx context.Context, objectKeys []string) error

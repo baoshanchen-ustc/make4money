@@ -53,6 +53,7 @@ type CreateVideoRequest struct {
 type CreateImageRequest struct {
 	Model          string `json:"model,omitempty"`
 	Prompt         string `json:"prompt"`
+	Image          string `json:"image,omitempty"`
 	Size           string `json:"size,omitempty"`
 	ResponseFormat string `json:"response_format,omitempty"`
 	N              int    `json:"n,omitempty"`
@@ -260,6 +261,16 @@ func (s *SoraTaskService) GetTask(ctx context.Context, taskID string, apiKeyID i
 
 func (s *SoraTaskService) GetTaskByID(ctx context.Context, taskID string) (*SoraTask, error) {
 	return s.repo.GetByID(ctx, taskID)
+}
+
+// ListPendingTasks returns tasks in queued or in_progress status.
+func (s *SoraTaskService) ListPendingTasks(ctx context.Context) ([]*SoraTask, error) {
+	return s.repo.ListPending(ctx)
+}
+
+// UpdateTask persists task state changes.
+func (s *SoraTaskService) UpdateTask(ctx context.Context, task *SoraTask) error {
+	return s.repo.Update(ctx, task)
 }
 
 func (s *SoraTaskService) GetAccountByID(ctx context.Context, accountID int64) (*Account, error) {

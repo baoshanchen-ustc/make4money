@@ -350,9 +350,10 @@ func (h *SoraClientHandler) storeMediaWithDegradation(
 	if h.objectStorage != nil && h.objectStorage.Enabled(ctx) {
 		keys := make([]string, 0, len(urls))
 		var totalSize int64
+		var actualStorageType string
 		allOK := true
 		for _, u := range urls {
-			key, size, err := h.objectStorage.UploadFromURL(ctx, userID, u)
+			key, size, st, err := h.objectStorage.UploadFromURL(ctx, userID, u)
 			if err != nil {
 				logger.LegacyPrintf("handler.sora_client", "[SoraClient] 对象存储上传失败 type=%s err=%v", h.objectStorage.StorageType(), err)
 				allOK = false
@@ -364,6 +365,7 @@ func (h *SoraClientHandler) storeMediaWithDegradation(
 			}
 			keys = append(keys, key)
 			totalSize += size
+			actualStorageType = st
 		}
 		if allOK && len(keys) > 0 {
 			accessURLs := make([]string, 0, len(keys))
@@ -378,7 +380,7 @@ func (h *SoraClientHandler) storeMediaWithDegradation(
 				accessURLs = append(accessURLs, accessURL)
 			}
 			if allOK && len(accessURLs) > 0 {
-				return accessURLs[0], accessURLs, h.objectStorage.StorageType(), keys, totalSize
+				return accessURLs[0], accessURLs, actualStorageType, keys, totalSize
 			}
 		}
 	}
@@ -697,7 +699,7 @@ func (h *SoraClientHandler) SaveToStorage(c *gin.Context) {
 	var totalSize int64
 
 	for _, sourceURL := range sourceURLs {
-		objectKey, fileSize, uploadErr := h.objectStorage.UploadFromURL(c.Request.Context(), userID, sourceURL)
+		objectKey, fileSize, _, uploadErr := h.objectStorage.UploadFromURL(c.Request.Context(), userID, sourceURL)
 		if uploadErr != nil {
 			if len(uploadedKeys) > 0 {
 				_ = h.objectStorage.DeleteObjects(c.Request.Context(), uploadedKeys)

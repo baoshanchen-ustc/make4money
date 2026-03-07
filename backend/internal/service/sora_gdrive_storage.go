@@ -297,29 +297,29 @@ func (s *SoraGDriveStorage) IsHealthy(ctx context.Context) bool {
 }
 
 // UploadFromURL 从上游 URL 下载并上传到 Google Drive。
-// 返回 Google Drive 文件 ID 作为 objectKey。
-func (s *SoraGDriveStorage) UploadFromURL(ctx context.Context, userID int64, sourceURL string) (string, int64, error) {
+// 返回 Google Drive 文件 ID 作为 objectKey、文件大小、存储类型。
+func (s *SoraGDriveStorage) UploadFromURL(ctx context.Context, userID int64, sourceURL string) (string, int64, string, error) {
 	srv, cfg, err := s.getService(ctx)
 	if err != nil {
-		return "", 0, err
+		return "", 0, "", err
 	}
 
 	// 下载源文件
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
-		return "", 0, fmt.Errorf("create download request: %w", err)
+		return "", 0, "", fmt.Errorf("create download request: %w", err)
 	}
 	httpClient := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", 0, fmt.Errorf("download from upstream: %w", err)
+		return "", 0, "", fmt.Errorf("download from upstream: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", 0, &UpstreamDownloadError{StatusCode: resp.StatusCode}
+		return "", 0, "", &UpstreamDownloadError{StatusCode: resp.StatusCode}
 	}
 
 	// 推断文件扩展名和 MIME
@@ -358,7 +358,7 @@ func (s *SoraGDriveStorage) UploadFromURL(ctx context.Context, userID int64, sou
 		Context(ctx).
 		Do()
 	if err != nil {
-		return "", 0, fmt.Errorf("gdrive upload: %w", err)
+		return "", 0, "", fmt.Errorf("gdrive upload: %w", err)
 	}
 
 	fileSize := cr.BytesRead
@@ -379,7 +379,7 @@ func (s *SoraGDriveStorage) UploadFromURL(ctx context.Context, userID int64, sou
 	}
 
 	logger.LegacyPrintf("service.sora_gdrive", "[SoraGDrive] 上传完成 fileID=%s size=%d", created.Id, fileSize)
-	return created.Id, fileSize, nil
+	return created.Id, fileSize, SoraStorageTypeGDrive, nil
 }
 
 // DeleteObjects 删除一组 Google Drive 文件。

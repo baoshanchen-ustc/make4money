@@ -81,7 +81,7 @@ func (w *SoraTaskWorker) pollAll() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	tasks, err := w.taskService.repo.ListPending(ctx)
+	tasks, err := w.taskService.ListPendingTasks(ctx)
 	if err != nil {
 		logger.LegacyPrintf("service.sora_task_worker", "[PollAll] list pending tasks error: %v", err)
 		return
@@ -137,14 +137,14 @@ func (w *SoraTaskWorker) tryStoreMedia(ctx context.Context, task *SoraTask) {
 	}
 
 	if w.objectStorage != nil && w.objectStorage.Enabled(ctx) {
-		key, _, err := w.objectStorage.UploadFromURL(ctx, 0, task.VideoURL)
+		key, _, storageType, err := w.objectStorage.UploadFromURL(ctx, 0, task.VideoURL)
 		if err != nil {
 			logger.LegacyPrintf("service.sora_task_worker",
 				"[StoreMedia] task=%s object storage upload error: %v", task.ID, err)
 		} else {
 			task.StoredKey = key
-			task.StorageType = w.objectStorage.StorageType()
-			if updateErr := w.taskService.repo.Update(ctx, task); updateErr != nil {
+			task.StorageType = storageType
+			if updateErr := w.taskService.UpdateTask(ctx, task); updateErr != nil {
 				logger.LegacyPrintf("service.sora_task_worker",
 					"[StoreMedia] task=%s update stored_key error: %v", task.ID, updateErr)
 			}
@@ -162,7 +162,7 @@ func (w *SoraTaskWorker) tryStoreMedia(ctx context.Context, task *SoraTask) {
 		if len(stored) > 0 && stored[0] != task.VideoURL {
 			task.StoredKey = stored[0]
 			task.StorageType = "local"
-			if updateErr := w.taskService.repo.Update(ctx, task); updateErr != nil {
+			if updateErr := w.taskService.UpdateTask(ctx, task); updateErr != nil {
 				logger.LegacyPrintf("service.sora_task_worker",
 					"[StoreMedia] task=%s update stored_key error: %v", task.ID, updateErr)
 			}
@@ -176,7 +176,7 @@ func (w *SoraTaskWorker) markTaskFailed(ctx context.Context, task *SoraTask, mes
 	task.ErrorMessage = message
 	task.ErrorType = "server_error"
 	task.CompletedAt = &now
-	if updateErr := w.taskService.repo.Update(ctx, task); updateErr != nil {
+	if updateErr := w.taskService.UpdateTask(ctx, task); updateErr != nil {
 		logger.LegacyPrintf("service.sora_task_worker",
 			"[PollOne] task=%s update failed: %v", task.ID, updateErr)
 	}
