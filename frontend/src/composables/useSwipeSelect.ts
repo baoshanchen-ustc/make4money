@@ -181,6 +181,20 @@ export function useSwipeSelect(
     return false
   }
 
+  /**
+   * If the mousedown starts on inner cell content rather than cell padding,
+   * prefer the browser's native text selection so users can copy text normally.
+   */
+  function shouldPreferNativeTextSelection(target: HTMLElement): boolean {
+    const row = target.closest('tbody tr[data-row-id]')
+    if (!row) return false
+
+    const cell = target.closest('td, th')
+    if (!cell) return false
+
+    return target !== cell && !target.closest('[data-swipe-select-handle]')
+  }
+
   // =============================================
   // Phase 1: detect drag threshold (5px movement)
   // =============================================
@@ -193,6 +207,7 @@ export function useSwipeSelect(
 
     const target = e.target as HTMLElement
     if (target.closest('button, a, input, select, textarea, [role="button"], [role="menuitem"], [role="combobox"], [role="dialog"]')) return
+    if (shouldPreferNativeTextSelection(target)) return
 
     cachedRows = getDataRows()
     if (cachedRows.length === 0) return
