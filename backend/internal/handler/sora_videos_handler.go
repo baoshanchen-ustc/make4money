@@ -2,7 +2,9 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -353,7 +355,11 @@ func readBody(c *gin.Context) ([]byte, error) {
 	}
 	if len(body) == 0 {
 		soraErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
-		return nil, err
+		return nil, fmt.Errorf("empty body")
+	}
+	if !utf8.Valid(body) {
+		soraErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body must be valid UTF-8")
+		return nil, fmt.Errorf("invalid utf-8")
 	}
 	return body, nil
 }
