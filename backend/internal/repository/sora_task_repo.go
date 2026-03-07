@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -23,7 +24,7 @@ func (r *SoraTaskRepository) Create(ctx context.Context, task *service.SoraTask)
 		s := string(b)
 		charStr = &s
 	}
-	if len(task.RequestBody) > 0 {
+	if len(task.RequestBody) > 0 && utf8.Valid(task.RequestBody) {
 		s := string(task.RequestBody)
 		reqStr = &s
 	}
