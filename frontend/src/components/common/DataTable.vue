@@ -153,11 +153,7 @@
           v-for="(row, index) in sortedData"
           :key="resolveRowKey(row, index)"
           :data-row-id="resolveRowKey(row, index)"
-          :class="[
-            isRowSelected(row, index)
-              ? 'row-selected bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/30'
-              : 'hover:bg-gray-50 dark:hover:bg-dark-800'
-          ]"
+          class="hover:bg-gray-50 dark:hover:bg-dark-800"
         >
           <td
             v-for="(column, colIndex) in columns"
@@ -303,10 +299,6 @@ interface Props {
    * will emit 'sort' events instead of performing client-side sorting.
    */
   serverSideSort?: boolean
-  /**
-   * Array of selected row IDs. When provided, selected rows get a highlight background.
-   */
-  selectedRowIds?: (number | string)[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -515,17 +507,6 @@ const hasSelectColumn = computed(() => {
   return props.columns.length > 0 && props.columns[0].key === 'select'
 })
 
-const selectedRowIdSet = computed(() => {
-  if (!props.selectedRowIds || props.selectedRowIds.length === 0) return null
-  return new Set(props.selectedRowIds)
-})
-
-const isRowSelected = (row: any, index: number) => {
-  const set = selectedRowIdSet.value
-  if (!set) return false
-  return set.has(resolveRowKey(row, index))
-}
-
 // 生成固定列的 CSS 类
 const getStickyColumnClass = (column: Column, index: number) => {
   const classes: string[] = []
@@ -702,23 +683,6 @@ tbody tr:hover .sticky-col {
 
 .dark tbody tr:hover .sticky-col {
   background-color: rgb(31 41 55);
-}
-
-/* 选中行 sticky 列背景 */
-tbody tr.row-selected .sticky-col {
-  background-color: rgb(239 246 255); /* primary-50 */
-}
-
-.dark tbody tr.row-selected .sticky-col {
-  background-color: rgba(59, 130, 246, 0.2); /* primary-900/20 */
-}
-
-tbody tr.row-selected:hover .sticky-col {
-  background-color: rgb(219 234 254); /* primary-100 */
-}
-
-.dark tbody tr.row-selected:hover .sticky-col {
-  background-color: rgba(59, 130, 246, 0.3); /* primary-900/30 */
 }
 
 /* 阴影只在可滚动时显示 */

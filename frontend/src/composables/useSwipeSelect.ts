@@ -1,7 +1,8 @@
 import { ref, onMounted, onUnmounted, type Ref } from 'vue'
 
 /**
- * WeChat-style swipe/drag to select rows in a DataTable.
+ * WeChat-style swipe/drag to select rows in a DataTable,
+ * with a semi-transparent marquee overlay showing the selection area.
  *
  * Usage:
  *   const containerRef = ref<HTMLElement | null>(null)
@@ -29,10 +30,13 @@ export function useSwipeSelect(
   let dragMode: 'select' | 'deselect' = 'select'
   let startRowIndex = -1
   let lastEndIndex = -1
+  let startY = 0
   // Snapshot of which row IDs were selected when drag started
   let initialSelectedSnapshot = new Map<number, boolean>()
   // Cache of row elements for the current drag operation
   let cachedRows: HTMLElement[] = []
+  // Marquee overlay element
+  let marqueeEl: HTMLDivElement | null = null
 
   function getDataRows(): HTMLElement[] {
     const container = containerRef.value
@@ -47,6 +51,41 @@ export function useSwipeSelect(
     return Number.isFinite(id) ? id : null
   }
 
+  // --- Marquee overlay ---
+  function createMarquee() {
+    marqueeEl = document.createElement('div')
+    const isDark = document.documentElement.classList.contains('dark')
+    Object.assign(marqueeEl.style, {
+      position: 'fixed',
+      background: isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(59, 130, 246, 0.12)',
+      border: isDark ? '1.5px solid rgba(96, 165, 250, 0.5)' : '1.5px solid rgba(59, 130, 246, 0.4)',
+      borderRadius: '4px',
+      pointerEvents: 'none',
+      zIndex: '9999',
+      transition: 'none',
+    })
+    document.body.appendChild(marqueeEl)
+  }
+
+  function updateMarquee(currentY: number) {
+    if (!marqueeEl || !containerRef.value) return
+    const containerRect = containerRef.value.getBoundingClientRect()
+    const top = Math.min(startY, currentY)
+    const bottom = Math.max(startY, currentY)
+    marqueeEl.style.left = containerRect.left + 'px'
+    marqueeEl.style.width = containerRect.width + 'px'
+    marqueeEl.style.top = top + 'px'
+    marqueeEl.style.height = (bottom - top) + 'px'
+  }
+
+  function removeMarquee() {
+    if (marqueeEl) {
+      marqueeEl.remove()
+      marqueeEl = null
+    }
+  }
+
+  // --- Row selection logic ---
   function applyRange(endIndex: number) {
     const rangeMin = Math.min(startRowIndex, endIndex)
     const rangeMax = Math.max(startRowIndex, endIndex)
@@ -62,14 +101,14 @@ export function useSwipeSelect(
       if (id === null) continue
 
       if (i >= rangeMin && i <= rangeMax) {
-        // In current range → apply drag mode
+        // In current range -> apply drag mode
         if (dragMode === 'select') {
           adapter.select(id)
         } else {
           adapter.deselect(id)
         }
       } else {
-        // Outside current range → restore to initial state
+        // Outside current range -> restore to initial state
         const wasSelected = initialSelectedSnapshot.get(id) ?? false
         if (wasSelected) {
           adapter.select(id)
@@ -113,9 +152,12 @@ export function useSwipeSelect(
     isDragging.value = true
     startRowIndex = rowIndex
     lastEndIndex = -1
+    startY = e.clientY
     dragMode = adapter.isSelected(rowId) ? 'deselect' : 'select'
 
     applyRange(rowIndex)
+    createMarquee()
+    updateMarquee(e.clientY)
 
     e.preventDefault()
     document.body.style.userSelect = 'none'
@@ -125,6 +167,8 @@ export function useSwipeSelect(
 
   function onMouseMove(e: MouseEvent) {
     if (!isDragging.value) return
+
+    updateMarquee(e.clientY)
 
     const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
     if (!el) return
@@ -147,6 +191,7 @@ export function useSwipeSelect(
     cachedRows = []
     initialSelectedSnapshot.clear()
     stopAutoScroll()
+    removeMarquee()
     document.body.style.userSelect = ''
 
     document.removeEventListener('mousemove', onMouseMove)
@@ -193,6 +238,7 @@ export function useSwipeSelect(
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
     stopAutoScroll()
+    removeMarquee()
   })
 
   return { isDragging }

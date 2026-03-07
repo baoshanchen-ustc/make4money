@@ -89,7 +89,7 @@
 
       <template #table>
         <div ref="proxyTableRef">
-        <DataTable :columns="columns" :data="proxies" :loading="loading" :selected-row-ids="selectedRowIdsArray">
+        <DataTable :columns="columns" :data="proxies" :loading="loading">
           <template #header-select>
             <input
               type="checkbox"
@@ -978,7 +978,6 @@ const qualityReportProxy = ref<Proxy | null>(null)
 const qualityReport = ref<ProxyQualityCheckResult | null>(null)
 
 const selectedCount = computed(() => selectedProxyIds.value.size)
-const selectedRowIdsArray = computed(() => Array.from(selectedProxyIds.value))
 const allVisibleSelected = computed(() => {
   if (proxies.value.length === 0) return false
   return proxies.value.every((proxy) => selectedProxyIds.value.has(proxy.id))
