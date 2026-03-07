@@ -1227,9 +1227,9 @@
 
       </div>
 
-      <!-- 配额控制 (Anthropic 平台: 配额 + 亲和) -->
+      <!-- 配额控制 (Anthropic apikey: 配额限制 + 亲和) -->
       <div
-        v-if="form.platform === 'anthropic'"
+        v-if="form.platform === 'anthropic' && form.type === 'apikey'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
@@ -1238,7 +1238,7 @@
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>
         </div>
-        <QuotaLimitCard v-if="form.type === 'apikey'" :totalLimit="editQuotaLimit" :dailyLimit="editQuotaDailyLimit" :weeklyLimit="editQuotaWeeklyLimit" @update:totalLimit="editQuotaLimit = $event" @update:dailyLimit="editQuotaDailyLimit = $event" @update:weeklyLimit="editQuotaWeeklyLimit = $event" />
+        <QuotaLimitCard :totalLimit="editQuotaLimit" :dailyLimit="editQuotaDailyLimit" :weeklyLimit="editQuotaWeeklyLimit" @update:totalLimit="editQuotaLimit = $event" @update:dailyLimit="editQuotaDailyLimit = $event" @update:weeklyLimit="editQuotaWeeklyLimit = $event" />
         <AffinityConfigCard
           :enabled="clientAffinityEnabled"
           :base="affinityBase"
@@ -1579,7 +1579,7 @@
         </div>
       </div>
 
-      <!-- Quota Control Section (Anthropic OAuth/SetupToken only) -->
+      <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="form.platform === 'anthropic' && accountCategory === 'oauth-based'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
@@ -1590,6 +1590,15 @@
             {{ t('admin.accounts.quotaControl.hint') }}
           </p>
         </div>
+
+        <AffinityConfigCard
+          :enabled="clientAffinityEnabled"
+          :base="affinityBase"
+          :buffer="affinityBuffer"
+          @update:enabled="clientAffinityEnabled = $event"
+          @update:base="affinityBase = $event"
+          @update:buffer="affinityBuffer = $event"
+        />
 
         <!-- Window Cost Limit -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">

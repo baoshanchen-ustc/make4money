@@ -78,11 +78,11 @@ const onWeeklyInput = (e: Event) => {
         </button>
       </div>
 
-      <div v-if="localEnabled" class="space-y-3">
-        <!-- 日配额 -->
-        <div>
-          <label class="input-label">{{ t('admin.accounts.quotaDailyLimit') }}</label>
-          <div class="relative">
+      <div v-if="localEnabled" class="space-y-2">
+        <!-- 日限额 -->
+        <div class="flex items-center gap-3">
+          <label class="input-label mb-0 w-16 flex-shrink-0">{{ t('admin.accounts.quotaDailyLimit') }}</label>
+          <div class="relative flex-1">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
             <input
               :value="dailyLimit"
@@ -94,13 +94,12 @@ const onWeeklyInput = (e: Event) => {
               :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
             />
           </div>
-          <p class="input-hint">{{ t('admin.accounts.quotaDailyLimitHint') }}</p>
         </div>
 
-        <!-- 周配额 -->
-        <div>
-          <label class="input-label">{{ t('admin.accounts.quotaWeeklyLimit') }}</label>
-          <div class="relative">
+        <!-- 周限额 -->
+        <div class="flex items-center gap-3">
+          <label class="input-label mb-0 w-16 flex-shrink-0">{{ t('admin.accounts.quotaWeeklyLimit') }}</label>
+          <div class="relative flex-1">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
             <input
               :value="weeklyLimit"
@@ -112,13 +111,12 @@ const onWeeklyInput = (e: Event) => {
               :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
             />
           </div>
-          <p class="input-hint">{{ t('admin.accounts.quotaWeeklyLimitHint') }}</p>
         </div>
 
-        <!-- 总配额 -->
-        <div>
-          <label class="input-label">{{ t('admin.accounts.quotaTotalLimit') }}</label>
-          <div class="relative">
+        <!-- 总限额 -->
+        <div class="flex items-center gap-3">
+          <label class="input-label mb-0 w-16 flex-shrink-0">{{ t('admin.accounts.quotaTotalLimit') }}</label>
+          <div class="relative flex-1">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
             <input
               :value="totalLimit"
@@ -130,7 +128,6 @@ const onWeeklyInput = (e: Event) => {
               :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
             />
           </div>
-          <p class="input-hint">{{ t('admin.accounts.quotaTotalLimitHint') }}</p>
         </div>
       </div>
   </div>
