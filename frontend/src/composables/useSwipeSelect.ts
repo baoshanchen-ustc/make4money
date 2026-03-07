@@ -5,7 +5,7 @@ import { ref, onMounted, onUnmounted, type Ref } from 'vue'
  * with a semi-transparent marquee overlay showing the selection area.
  *
  * Features:
- *  - Start dragging from anywhere on the page (not just inside the table)
+ *  - Start dragging only inside the table container
  *  - Mouse wheel scrolling continues selecting new rows
  *  - Auto-scroll when dragging near viewport edges
  *  - 5px drag threshold to avoid accidental selection on click
@@ -202,10 +202,12 @@ export function useSwipeSelect(
     if (e.button !== 0) return
     if (!containerRef.value) return
 
+    const target = e.target as HTMLElement
+    if (!containerRef.value.contains(target)) return
+
     // Skip clicks on any scrollbar (inner containers + document)
     if (isOnScrollbar(e)) return
 
-    const target = e.target as HTMLElement
     if (target.closest('button, a, input, select, textarea, [role="button"], [role="menuitem"], [role="combobox"], [role="dialog"]')) return
     if (shouldPreferNativeTextSelection(target)) return
 
@@ -367,7 +369,6 @@ export function useSwipeSelect(
 
   // --- Lifecycle ---
   onMounted(() => {
-    // Listen on document so drag can start from anywhere on the page
     document.addEventListener('mousedown', onMouseDown)
     window.addEventListener('blur', onWindowBlur)
   })
