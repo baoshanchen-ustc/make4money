@@ -41,6 +41,16 @@ func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
 }
 
+// ensureScriptLoaded 确保 Lua 脚本已加载到 Redis 服务器的脚本缓存中。
+// Pipeline 中的 Script.Run 只发送 EVALSHA，如果 Redis 重启过导致脚本缓存丢失，
+// EVALSHA 会返回 NOSCRIPT 错误。此方法提前加载脚本以避免该问题。
+func ensureScriptLoaded(ctx context.Context, rdb *redis.Client, script *redis.Script) {
+	exists, err := script.Exists(ctx, rdb).Result()
+	if err != nil || len(exists) == 0 || !exists[0] {
+		_ = script.Load(ctx, rdb).Err()
+	}
+}
+
 // buildSessionKey 构建 session key，包含 groupID 实现分组隔离
 // 格式: sticky_session:{groupID}:{sessionHash}
 func buildSessionKey(groupID int64, sessionHash string) string {
@@ -125,6 +135,8 @@ func (c *gatewayCache) GetAccountAffinityCountBatch(ctx context.Context, groupID
 	now := time.Now().Unix()
 	expireThreshold := now - int64(ttl.Seconds())
 
+	ensureScriptLoaded(ctx, c.rdb, getAffinityCountScript)
+
 	pipe := c.rdb.Pipeline()
 	cmds := make([]*redis.Cmd, len(accountIDs))
 	for i, accID := range accountIDs {
@@ -165,6 +177,8 @@ func (c *gatewayCache) GetAccountAffinityClientsBatch(ctx context.Context, accou
 			queries = append(queries, queryItem{accountID: accID, groupID: gID})
 		}
 	}
+
+	ensureScriptLoaded(ctx, c.rdb, getAffinityClientsScript)
 
 	pipe := c.rdb.Pipeline()
 	cmds := make([]*redis.Cmd, len(queries))

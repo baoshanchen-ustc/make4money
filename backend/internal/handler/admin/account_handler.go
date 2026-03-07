@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -370,19 +369,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 			}
 		}
 		if len(accountGroups) > 0 {
-			var affinityErr error
-			affinityClients, affinityErr = h.gatewayCache.GetAccountAffinityClientsBatch(c.Request.Context(), accountGroups, service.ClientAffinityTTL)
-			if affinityErr != nil {
-				slog.Error("GetAccountAffinityClientsBatch failed",
-					"error", affinityErr,
-					"account_count", len(accountGroups),
-				)
-			} else {
-				slog.Info("GetAccountAffinityClientsBatch success",
-					"account_count", len(accountGroups),
-					"result_count", len(affinityClients),
-				)
-			}
+			affinityClients, _ = h.gatewayCache.GetAccountAffinityClientsBatch(c.Request.Context(), accountGroups, service.ClientAffinityTTL)
 		}
 	}
 
