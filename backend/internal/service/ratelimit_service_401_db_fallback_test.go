@@ -28,6 +28,7 @@ func (r *dbFallbackRepoStub) GetByID(ctx context.Context, id int64) (*Account, e
 func TestCheckErrorPolicy_401_DBFallback_Escalates(t *testing.T) {
 	// Scenario: cache account has empty TempUnschedulableReason (cache miss),
 	// but DB account has a previous 401 record → should escalate to ErrorPolicyNone.
+	// 注意：Antigravity 跳过 401 升级，此测试使用 Gemini 平台验证升级逻辑。
 	repo := &dbFallbackRepoStub{
 		dbAccount: &Account{
 			ID:                      20,
@@ -39,7 +40,7 @@ func TestCheckErrorPolicy_401_DBFallback_Escalates(t *testing.T) {
 	account := &Account{
 		ID:                      20,
 		Type:                    AccountTypeOAuth,
-		Platform:                PlatformAntigravity,
+		Platform:                PlatformGemini,
 		TempUnschedulableReason: "", // cache miss — reason is empty
 		Credentials: map[string]any{
 			"temp_unschedulable_enabled": true,

@@ -122,14 +122,15 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		return nil
 	}
 	out := &AdminGroup{
-		Group:                groupFromServiceBase(g),
-		ModelRouting:         g.ModelRouting,
-		ModelRoutingEnabled:  g.ModelRoutingEnabled,
-		MCPXMLInject:       g.MCPXMLInject,
-		DefaultMappedModel: g.DefaultMappedModel,
-		SupportedModelScopes:  g.SupportedModelScopes,
-		AccountCount:         g.AccountCount,
-		SortOrder:            g.SortOrder,
+		Group:                    groupFromServiceBase(g),
+		ModelRouting:             g.ModelRouting,
+		ModelRoutingEnabled:      g.ModelRoutingEnabled,
+		MCPXMLInject:             g.MCPXMLInject,
+		DefaultMappedModel:       g.DefaultMappedModel,
+		SimulateClaudeMaxEnabled: g.SimulateClaudeMaxEnabled,
+		SupportedModelScopes:     g.SupportedModelScopes,
+		AccountCount:             g.AccountCount,
+		SortOrder:                g.SortOrder,
 	}
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
@@ -251,14 +252,28 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
+	// 客户端亲和调度（Anthropic 和 Antigravity 账号）
+	if a.IsClientAffinityEnabled() {
+		enabled := true
+		out.ClientAffinityEnabled = &enabled
+	}
+
 	// 提取 API Key 账号配额限制（仅 apikey 类型有效）
 	if a.Type == service.AccountTypeAPIKey {
 		if limit := a.GetQuotaLimit(); limit > 0 {
 			out.QuotaLimit = &limit
-		}
-		used := a.GetQuotaUsed()
-		if out.QuotaLimit != nil {
+			used := a.GetQuotaUsed()
 			out.QuotaUsed = &used
+		}
+		if limit := a.GetQuotaDailyLimit(); limit > 0 {
+			out.QuotaDailyLimit = &limit
+			used := a.GetQuotaDailyUsed()
+			out.QuotaDailyUsed = &used
+		}
+		if limit := a.GetQuotaWeeklyLimit(); limit > 0 {
+			out.QuotaWeeklyLimit = &limit
+			used := a.GetQuotaWeeklyUsed()
+			out.QuotaWeeklyUsed = &used
 		}
 	}
 

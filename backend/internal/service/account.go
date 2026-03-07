@@ -1099,6 +1099,90 @@ func (a *Account) IsSessionIDMaskingEnabled() bool {
 	return false
 }
 
+// IsClientAffinityEnabled 检查是否启用客户端亲和调度
+// 仅适用于 Anthropic 账号（OAuth/SetupToken/APIKey）
+// 启用后，新会话会优先调度到之前使用过的账号
+func (a *Account) IsClientAffinityEnabled() bool {
+	if a.Platform != PlatformAnthropic {
+		return false
+	}
+	if a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra["client_affinity_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+		}
+	}
+	return false
+}
+
+// AffinityZone 表示账号的客户端亲和分区
+type AffinityZone int
+
+const (
+	AffinityZoneGreen  AffinityZone = iota // 绿区：允许绑定新客户端，优先调度
+	AffinityZoneYellow                     // 黄区：允许绑定，仅在无绿区账号时降级调度
+	AffinityZoneRed                        // 红区：禁止调度
+)
+
+// GetAffinityBase 获取亲和基础限制（绿区上限），0 表示未配置
+func (a *Account) GetAffinityBase() int {
+	if a.Extra == nil {
+		return 0
+	}
+	if v, ok := a.Extra["affinity_base"]; ok {
+		return parseExtraInt(v)
+	}
+	return 0
+}
+
+// GetAffinityBuffer 获取亲和缓冲区大小（黄区范围）
+// 返回 (value, configured)：
+//   - (0, false): 未配置 → 无限黄区（超过 base 永远黄区，永不红区）
+//   - (0, true):  显式设为 0 → 无黄区，超过 base 直接红区
+//   - (n, true):  n > 0 → 黄区范围为 base+1 到 base+n
+func (a *Account) GetAffinityBuffer() (int, bool) {
+	if a.Extra == nil {
+		return 0, false
+	}
+	v, ok := a.Extra["affinity_buffer"]
+	if !ok {
+		return 0, false
+	}
+	// 显式设为 null/nil → 视为未配置
+	if v == nil {
+		return 0, false
+	}
+	return parseExtraInt(v), true
+}
+
+// GetAffinityZone 根据当前绑定的客户端数量计算账号的亲和分区。
+// 未开启亲和或未配置 base 的账号永远返回绿区。
+func (a *Account) GetAffinityZone(clientCount int64) AffinityZone {
+	if !a.IsClientAffinityEnabled() {
+		return AffinityZoneGreen
+	}
+	base := a.GetAffinityBase()
+	if base <= 0 {
+		return AffinityZoneGreen
+	}
+	if clientCount <= int64(base) {
+		return AffinityZoneGreen
+	}
+	buffer, configured := a.GetAffinityBuffer()
+	if !configured {
+		return AffinityZoneYellow // 未配置 buffer → 无限黄区
+	}
+	if buffer == 0 {
+		return AffinityZoneRed // buffer=0 → 无黄区，直接红区
+	}
+	if clientCount <= int64(base+buffer) {
+		return AffinityZoneYellow
+	}
+	return AffinityZoneRed
+}
+
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 // 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）
@@ -1134,33 +1218,97 @@ func (a *Account) GetCacheTTLOverrideTarget() string {
 // GetQuotaLimit 获取 API Key 账号的配额限制（美元）
 // 返回 0 表示未启用
 func (a *Account) GetQuotaLimit() float64 {
-	if a.Extra == nil {
-		return 0
-	}
-	if v, ok := a.Extra["quota_limit"]; ok {
-		return parseExtraFloat64(v)
-	}
-	return 0
+	return a.getExtraFloat64("quota_limit")
 }
 
 // GetQuotaUsed 获取 API Key 账号的已用配额（美元）
 func (a *Account) GetQuotaUsed() float64 {
+	return a.getExtraFloat64("quota_used")
+}
+
+// GetQuotaDailyLimit 获取日额度限制（美元），0 表示未启用
+func (a *Account) GetQuotaDailyLimit() float64 {
+	return a.getExtraFloat64("quota_daily_limit")
+}
+
+// GetQuotaDailyUsed 获取当日已用额度（美元）
+func (a *Account) GetQuotaDailyUsed() float64 {
+	return a.getExtraFloat64("quota_daily_used")
+}
+
+// GetQuotaWeeklyLimit 获取周额度限制（美元），0 表示未启用
+func (a *Account) GetQuotaWeeklyLimit() float64 {
+	return a.getExtraFloat64("quota_weekly_limit")
+}
+
+// GetQuotaWeeklyUsed 获取本周已用额度（美元）
+func (a *Account) GetQuotaWeeklyUsed() float64 {
+	return a.getExtraFloat64("quota_weekly_used")
+}
+
+// getExtraFloat64 从 Extra 中读取指定 key 的 float64 值
+func (a *Account) getExtraFloat64(key string) float64 {
 	if a.Extra == nil {
 		return 0
 	}
-	if v, ok := a.Extra["quota_used"]; ok {
+	if v, ok := a.Extra[key]; ok {
 		return parseExtraFloat64(v)
 	}
 	return 0
 }
 
-// IsQuotaExceeded 检查 API Key 账号配额是否已超限
-func (a *Account) IsQuotaExceeded() bool {
-	limit := a.GetQuotaLimit()
-	if limit <= 0 {
-		return false
+// getExtraTime 从 Extra 中读取 RFC3339 时间戳
+func (a *Account) getExtraTime(key string) time.Time {
+	if a.Extra == nil {
+		return time.Time{}
 	}
-	return a.GetQuotaUsed() >= limit
+	if v, ok := a.Extra[key]; ok {
+		if s, ok := v.(string); ok {
+			if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+				return t
+			}
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				return t
+			}
+		}
+	}
+	return time.Time{}
+}
+
+// HasAnyQuotaLimit 检查是否配置了任一维度的配额限制
+func (a *Account) HasAnyQuotaLimit() bool {
+	return a.GetQuotaLimit() > 0 || a.GetQuotaDailyLimit() > 0 || a.GetQuotaWeeklyLimit() > 0
+}
+
+// isPeriodExpired 检查指定周期（自 periodStart 起经过 dur）是否已过期
+func isPeriodExpired(periodStart time.Time, dur time.Duration) bool {
+	if periodStart.IsZero() {
+		return true // 从未使用过，视为过期（下次 increment 会初始化）
+	}
+	return time.Since(periodStart) >= dur
+}
+
+// IsQuotaExceeded 检查 API Key 账号配额是否已超限（任一维度超限即返回 true）
+func (a *Account) IsQuotaExceeded() bool {
+	// 总额度
+	if limit := a.GetQuotaLimit(); limit > 0 && a.GetQuotaUsed() >= limit {
+		return true
+	}
+	// 日额度（周期过期视为未超限，下次 increment 会重置）
+	if limit := a.GetQuotaDailyLimit(); limit > 0 {
+		start := a.getExtraTime("quota_daily_start")
+		if !isPeriodExpired(start, 24*time.Hour) && a.GetQuotaDailyUsed() >= limit {
+			return true
+		}
+	}
+	// 周额度
+	if limit := a.GetQuotaWeeklyLimit(); limit > 0 {
+		start := a.getExtraTime("quota_weekly_start")
+		if !isPeriodExpired(start, 7*24*time.Hour) && a.GetQuotaWeeklyUsed() >= limit {
+			return true
+		}
+	}
+	return false
 }
 
 // GetWindowCostLimit 获取 5h 窗口费用阈值（美元）

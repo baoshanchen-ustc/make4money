@@ -8250,6 +8250,7 @@ type GroupMutation struct {
 	appendsupported_model_scopes            []string
 	sort_order                              *int
 	addsort_order                           *int
+	simulate_claude_max_enabled             *bool
 	allow_messages_dispatch                 *bool
 	default_mapped_model                    *string
 	clearedFields                           map[string]struct{}
@@ -9996,6 +9997,42 @@ func (m *GroupMutation) ResetSortOrder() {
 	m.addsort_order = nil
 }
 
+// SetSimulateClaudeMaxEnabled sets the "simulate_claude_max_enabled" field.
+func (m *GroupMutation) SetSimulateClaudeMaxEnabled(b bool) {
+	m.simulate_claude_max_enabled = &b
+}
+
+// SimulateClaudeMaxEnabled returns the value of the "simulate_claude_max_enabled" field in the mutation.
+func (m *GroupMutation) SimulateClaudeMaxEnabled() (r bool, exists bool) {
+	v := m.simulate_claude_max_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSimulateClaudeMaxEnabled returns the old "simulate_claude_max_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSimulateClaudeMaxEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSimulateClaudeMaxEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSimulateClaudeMaxEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSimulateClaudeMaxEnabled: %w", err)
+	}
+	return oldValue.SimulateClaudeMaxEnabled, nil
+}
+
+// ResetSimulateClaudeMaxEnabled resets all changes to the "simulate_claude_max_enabled" field.
+func (m *GroupMutation) ResetSimulateClaudeMaxEnabled() {
+	m.simulate_claude_max_enabled = nil
+}
+
 // SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
 func (m *GroupMutation) SetAllowMessagesDispatch(b bool) {
 	m.allow_messages_dispatch = &b
@@ -10426,7 +10463,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 32)
+	fields := make([]string, 0, 33)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -10517,6 +10554,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.sort_order != nil {
 		fields = append(fields, group.FieldSortOrder)
 	}
+	if m.simulate_claude_max_enabled != nil {
+		fields = append(fields, group.FieldSimulateClaudeMaxEnabled)
+	}
 	if m.allow_messages_dispatch != nil {
 		fields = append(fields, group.FieldAllowMessagesDispatch)
 	}
@@ -10591,6 +10631,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.SupportedModelScopes()
 	case group.FieldSortOrder:
 		return m.SortOrder()
+	case group.FieldSimulateClaudeMaxEnabled:
+		return m.SimulateClaudeMaxEnabled()
 	case group.FieldAllowMessagesDispatch:
 		return m.AllowMessagesDispatch()
 	case group.FieldDefaultMappedModel:
@@ -10664,6 +10706,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSupportedModelScopes(ctx)
 	case group.FieldSortOrder:
 		return m.OldSortOrder(ctx)
+	case group.FieldSimulateClaudeMaxEnabled:
+		return m.OldSimulateClaudeMaxEnabled(ctx)
 	case group.FieldAllowMessagesDispatch:
 		return m.OldAllowMessagesDispatch(ctx)
 	case group.FieldDefaultMappedModel:
@@ -10886,6 +10930,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSortOrder(v)
+		return nil
+	case group.FieldSimulateClaudeMaxEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSimulateClaudeMaxEnabled(v)
 		return nil
 	case group.FieldAllowMessagesDispatch:
 		v, ok := value.(bool)
@@ -11327,6 +11378,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldSortOrder:
 		m.ResetSortOrder()
+		return nil
+	case group.FieldSimulateClaudeMaxEnabled:
+		m.ResetSimulateClaudeMaxEnabled()
 		return nil
 	case group.FieldAllowMessagesDispatch:
 		m.ResetAllowMessagesDispatch()

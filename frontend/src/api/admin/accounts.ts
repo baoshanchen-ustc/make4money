@@ -571,6 +571,18 @@ export async function validateSoraSessionToken(
   return data
 }
 
+/**
+ * Get affinity clients for an account with last active timestamps
+ * @param id - Account ID
+ * @returns List of affinity clients
+ */
+export async function getAffinityClients(id: number): Promise<{ client_id: string; last_active: string }[]> {
+  const { data } = await apiClient.get<{ client_id: string; last_active: string }[]>(
+    `/admin/accounts/${id}/affinity-clients`
+  )
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -604,7 +616,8 @@ export const accountsAPI = {
   syncFromCrs,
   exportData,
   importData,
-  getAntigravityDefaultModelMapping
+  getAntigravityDefaultModelMapping,
+  getAffinityClients
 }
 
 export default accountsAPI

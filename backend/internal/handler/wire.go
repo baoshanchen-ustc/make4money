@@ -19,6 +19,7 @@ func ProvideAdminHandlers(
 	openaiOAuthHandler *admin.OpenAIOAuthHandler,
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
 	antigravityOAuthHandler *admin.AntigravityOAuthHandler,
+	gdriveOAuthHandler *admin.GDriveOAuthHandler,
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
 	promoHandler *admin.PromoHandler,
@@ -55,6 +56,7 @@ func ProvideAdminHandlers(
 		ErrorPassthrough: errorPassthroughHandler,
 		APIKey:           apiKeyHandler,
 		ScheduledTest:    scheduledTestHandler,
+		GDriveOAuth:      gdriveOAuthHandler,
 	}
 }
 
@@ -144,6 +146,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewErrorPassthroughHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
+	admin.NewGDriveOAuthHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

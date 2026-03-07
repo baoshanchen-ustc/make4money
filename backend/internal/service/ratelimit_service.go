@@ -128,8 +128,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
-		// 对所有 OAuth 账号在 401 错误时调用缓存失效并强制下次刷新
-		if account.Type == AccountTypeOAuth {
+		// OpenAI OAuth 账号在 401 错误时临时不可调度（保持 active 让刷新服务恢复）；
+		// 其他平台 OAuth 账号保持原有 SetError 行为（Antigravity 主流程不走此路径）。
+		if account.Type == AccountTypeOAuth && account.Platform == PlatformOpenAI {
 			// 1. 失效缓存
 			if s.tokenCacheInvalidator != nil {
 				if err := s.tokenCacheInvalidator.InvalidateToken(ctx, account); err != nil {
@@ -1108,7 +1109,8 @@ func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Ac
 	}
 	// 401 首次命中可临时不可调度（给 token 刷新窗口）；
 	// 若历史上已因 401 进入过临时不可调度，则本次应升级为 error（返回 false 交由默认错误逻辑处理）。
-	if statusCode == http.StatusUnauthorized {
+	// Antigravity 跳过：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制，无需升级逻辑。
+	if statusCode == http.StatusUnauthorized && account.Platform != PlatformAntigravity {
 		reason := account.TempUnschedulableReason
 		// 缓存可能没有 reason，从 DB 回退读取
 		if reason == "" {

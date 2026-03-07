@@ -75,6 +75,8 @@ const (
 	FieldSupportedModelScopes = "supported_model_scopes"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
 	FieldSortOrder = "sort_order"
+	// FieldSimulateClaudeMaxEnabled holds the string denoting the simulate_claude_max_enabled field in the database.
+	FieldSimulateClaudeMaxEnabled = "simulate_claude_max_enabled"
 	// FieldAllowMessagesDispatch holds the string denoting the allow_messages_dispatch field in the database.
 	FieldAllowMessagesDispatch = "allow_messages_dispatch"
 	// FieldDefaultMappedModel holds the string denoting the default_mapped_model field in the database.
@@ -184,6 +186,7 @@ var Columns = []string{
 	FieldMcpXMLInject,
 	FieldSupportedModelScopes,
 	FieldSortOrder,
+	FieldSimulateClaudeMaxEnabled,
 	FieldAllowMessagesDispatch,
 	FieldDefaultMappedModel,
 }
@@ -253,6 +256,8 @@ var (
 	DefaultSupportedModelScopes []string
 	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
 	DefaultSortOrder int
+	// DefaultSimulateClaudeMaxEnabled holds the default value on creation for the "simulate_claude_max_enabled" field.
+	DefaultSimulateClaudeMaxEnabled bool
 	// DefaultAllowMessagesDispatch holds the default value on creation for the "allow_messages_dispatch" field.
 	DefaultAllowMessagesDispatch bool
 	// DefaultDefaultMappedModel holds the default value on creation for the "default_mapped_model" field.
@@ -407,6 +412,11 @@ func ByMcpXMLInject(opts ...sql.OrderTermOption) OrderOption {
 // BySortOrder orders the results by the sort_order field.
 func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSortOrder, opts...).ToFunc()
+}
+
+// BySimulateClaudeMaxEnabled orders the results by the simulate_claude_max_enabled field.
+func BySimulateClaudeMaxEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSimulateClaudeMaxEnabled, opts...).ToFunc()
 }
 
 // ByAllowMessagesDispatch orders the results by the allow_messages_dispatch field.

@@ -55,6 +55,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	gatewayCache            service.GatewayCache
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -72,6 +73,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	gatewayCache service.GatewayCache,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -87,6 +89,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		gatewayCache:            gatewayCache,
 	}
 }
 
@@ -204,6 +207,29 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		}
 	}
 
+	// 亲和客户端数据（启用亲和的账号始终返回 count，即使为 0）
+	if account.IsClientAffinityEnabled() {
+		if h.gatewayCache != nil && len(account.GroupIDs) > 0 {
+			accountGroups := map[int64][]int64{account.ID: account.GroupIDs}
+			if clients, err := h.gatewayCache.GetAccountAffinityClientsBatch(ctx, accountGroups, service.ClientAffinityTTL); err == nil {
+				if cl, ok := clients[account.ID]; ok && len(cl) > 0 {
+					count := int64(len(cl))
+					item.AffinityClientCount = &count
+					item.AffinityClients = cl
+				} else {
+					zero := int64(0)
+					item.AffinityClientCount = &zero
+				}
+			} else {
+				zero := int64(0)
+				item.AffinityClientCount = &zero
+			}
+		} else {
+			zero := int64(0)
+			item.AffinityClientCount = &zero
+		}
+	}
+
 	return item
 }
 
@@ -316,6 +342,21 @@ func (h *AccountHandler) List(c *gin.Context) {
 		_ = g.Wait()
 	}
 
+	// 获取亲和客户端数据（Redis Pipeline，低开销）
+	var affinityClients map[int64][]string
+	if h.gatewayCache != nil {
+		accountGroups := make(map[int64][]int64)
+		for i := range accounts {
+			acc := &accounts[i]
+			if acc.IsClientAffinityEnabled() && len(acc.GroupIDs) > 0 {
+				accountGroups[acc.ID] = acc.GroupIDs
+			}
+		}
+		if len(accountGroups) > 0 {
+			affinityClients, _ = h.gatewayCache.GetAccountAffinityClientsBatch(c.Request.Context(), accountGroups, service.ClientAffinityTTL)
+		}
+	}
+
 	// Build response with concurrency info
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
@@ -343,6 +384,18 @@ func (h *AccountHandler) List(c *gin.Context) {
 		if rpmCounts != nil {
 			if rpm, ok := rpmCounts[acc.ID]; ok {
 				item.CurrentRPM = &rpm
+			}
+		}
+
+		// 注入亲和客户端数据到 DTO（启用亲和的账号始终返回 count，即使为 0）
+		if acc.IsClientAffinityEnabled() {
+			if clients, ok := affinityClients[acc.ID]; ok && len(clients) > 0 {
+				count := int64(len(clients))
+				item.AffinityClientCount = &count
+				item.AffinityClients = clients
+			} else {
+				zero := int64(0)
+				item.AffinityClientCount = &zero
 			}
 		}
 
@@ -1139,6 +1192,12 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 			c.JSON(409, gin.H{
 				"error":   "mixed_channel_warning",
 				"message": mixedErr.Error(),
+				"details": gin.H{
+					"group_id":         mixedErr.GroupID,
+					"group_name":       mixedErr.GroupName,
+					"current_platform": mixedErr.CurrentPlatform,
+					"other_platform":   mixedErr.OtherPlatform,
+				},
 			})
 			return
 		}
@@ -1356,6 +1415,42 @@ func (h *AccountHandler) ResetQuota(c *gin.Context) {
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+// GetAffinityClients returns the list of affinity clients for an account with last active timestamps.
+// GET /api/v1/admin/accounts/:id/affinity-clients
+func (h *AccountHandler) GetAffinityClients(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if !account.IsClientAffinityEnabled() {
+		response.Success(c, []service.AffinityClient{})
+		return
+	}
+
+	if h.gatewayCache == nil || len(account.GroupIDs) == 0 {
+		response.Success(c, []service.AffinityClient{})
+		return
+	}
+
+	clients, err := h.gatewayCache.GetAccountAffinityClientsWithScores(
+		c.Request.Context(), accountID, account.GroupIDs, service.ClientAffinityTTL,
+	)
+	if err != nil {
+		response.Success(c, []service.AffinityClient{})
+		return
+	}
+
+	response.Success(c, clients)
 }
 
 // GetTempUnschedulable handles getting temporary unschedulable status

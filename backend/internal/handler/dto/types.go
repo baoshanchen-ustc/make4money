@@ -114,6 +114,8 @@ type AdminGroup struct {
 
 	// MCP XML 协议注入（仅 antigravity 平台使用）
 	MCPXMLInject bool `json:"mcp_xml_inject"`
+	// Claude usage 模拟开关（仅管理员可见）
+	SimulateClaudeMaxEnabled bool `json:"simulate_claude_max_enabled"`
 
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	DefaultMappedModel string `json:"default_mapped_model"`
@@ -192,9 +194,21 @@ type Account struct {
 	CacheTTLOverrideEnabled *bool   `json:"cache_ttl_override_enabled,omitempty"`
 	CacheTTLOverrideTarget  *string `json:"cache_ttl_override_target,omitempty"`
 
+	// 客户端亲和调度（Anthropic 和 Antigravity 账号有效）
+	// 启用后新会话会优先调度到客户端之前使用过的账号
+	ClientAffinityEnabled *bool `json:"client_affinity_enabled,omitempty"`
+
+	// 亲和客户端数据（仅 admin 列表端点注入，不由 mapper 填充）
+	AffinityClientCount *int64   `json:"affinity_client_count,omitempty"`
+	AffinityClients     []string `json:"affinity_clients,omitempty"`
+
 	// API Key 账号配额限制
-	QuotaLimit *float64 `json:"quota_limit,omitempty"`
-	QuotaUsed  *float64 `json:"quota_used,omitempty"`
+	QuotaLimit       *float64 `json:"quota_limit,omitempty"`
+	QuotaUsed        *float64 `json:"quota_used,omitempty"`
+	QuotaDailyLimit  *float64 `json:"quota_daily_limit,omitempty"`
+	QuotaDailyUsed   *float64 `json:"quota_daily_used,omitempty"`
+	QuotaWeeklyLimit *float64 `json:"quota_weekly_limit,omitempty"`
+	QuotaWeeklyUsed  *float64 `json:"quota_weekly_used,omitempty"`
 
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
