@@ -85,6 +85,9 @@ export function useSwipeSelect(
     return bestIdx
   }
 
+  // --- Prevent text selection via selectstart (no body style mutation) ---
+  function onSelectStart(e: Event) { e.preventDefault() }
+
   // --- Marquee overlay ---
   function createMarquee() {
     marqueeEl = document.createElement('div')
@@ -158,6 +161,11 @@ export function useSwipeSelect(
   function onMouseDown(e: MouseEvent) {
     if (e.button !== 0) return
     if (!containerRef.value) return
+
+    // Skip clicks on scrollbar area (clientWidth excludes scrollbar)
+    const docEl = document.documentElement
+    if (e.clientX >= docEl.clientWidth || e.clientY >= docEl.clientHeight) return
+
     const target = e.target as HTMLElement
     if (target.closest('button, a, input, select, textarea, [role="button"], [role="menuitem"], [role="combobox"], [role="dialog"]')) return
 
@@ -217,7 +225,8 @@ export function useSwipeSelect(
     createMarquee()
     updateMarquee(clientY)
     applyRange(startRowIndex)
-    document.body.style.userSelect = 'none'
+    // Prevent text selection during drag (no body style mutation)
+    document.addEventListener('selectstart', onSelectStart)
   }
 
   function onMouseMove(e: MouseEvent) {
@@ -238,7 +247,7 @@ export function useSwipeSelect(
     })
   }
 
-  function onMouseUp() {
+  function cleanupDrag() {
     isDragging.value = false
     startRowIndex = -1
     lastEndIndex = -1
@@ -246,10 +255,14 @@ export function useSwipeSelect(
     initialSelectedSnapshot.clear()
     stopAutoScroll()
     removeMarquee()
-    document.body.style.userSelect = ''
+    document.removeEventListener('selectstart', onSelectStart)
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
     document.removeEventListener('wheel', onWheel)
+  }
+
+  function onMouseUp() {
+    cleanupDrag()
   }
 
   // --- Auto-scroll logic ---
@@ -295,13 +308,10 @@ export function useSwipeSelect(
 
   onUnmounted(() => {
     document.removeEventListener('mousedown', onMouseDown)
+    // Clean up any in-progress drag state
     document.removeEventListener('mousemove', onThresholdMove)
     document.removeEventListener('mouseup', onThresholdUp)
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-    document.removeEventListener('wheel', onWheel)
-    stopAutoScroll()
-    removeMarquee()
+    cleanupDrag()
   })
 
   return { isDragging }
