@@ -784,31 +784,22 @@
       <!-- Client Affinity (Anthropic accounts only) -->
       <div
         v-if="account?.platform === 'anthropic'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
-        <div class="flex items-center justify-between">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.clientAffinity.label') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.quotaControl.clientAffinity.hint') }}
-            </p>
-          </div>
-          <button
-            type="button"
-            @click="clientAffinityEnabled = !clientAffinityEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              clientAffinityEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                clientAffinityEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.affinitySection') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.affinitySectionHint') }}
+          </p>
         </div>
+        <AffinityConfigCard
+          :enabled="clientAffinityEnabled"
+          :base="affinityBase"
+          :buffer="affinityBuffer"
+          @update:enabled="clientAffinityEnabled = $event"
+          @update:base="affinityBase = $event"
+          @update:buffer="affinityBuffer = $event"
+        />
       </div>
 
       <div>
@@ -1447,6 +1438,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import AffinityConfigCard from '@/components/account/AffinityConfigCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
@@ -1558,6 +1550,8 @@ const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
 const clientAffinityEnabled = ref(false)
+const affinityBase = ref<number | null>(null)
+const affinityBuffer = ref<number | null>(null)
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
@@ -2072,6 +2066,8 @@ function loadQuotaControlSettings(account: Account) {
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
   clientAffinityEnabled.value = false
+  affinityBase.value = null
+  affinityBuffer.value = null
 
   // Remaining quota control settings only apply to Anthropic accounts
   if (account.platform !== 'anthropic') {
@@ -2081,6 +2077,15 @@ function loadQuotaControlSettings(account: Account) {
   // Client affinity (all Anthropic accounts)
   if (account.client_affinity_enabled === true) {
     clientAffinityEnabled.value = true
+  }
+  // Affinity base/buffer from extra
+  const extra = account.extra as Record<string, unknown> | undefined
+  if (extra) {
+    const base = extra.affinity_base
+    affinityBase.value = (typeof base === 'number' && base > 0) ? base : null
+    // buffer: null = infinite yellow, 0 = no yellow, >0 = yellow range
+    const buf = extra.affinity_buffer
+    affinityBuffer.value = (typeof buf === 'number') ? buf : null
   }
 
   // Window cost / session limit only apply to Anthropic OAuth/SetupToken accounts
@@ -2443,8 +2448,21 @@ const handleSubmit = async () => {
       const newExtra: Record<string, unknown> = { ...currentExtra }
       if (clientAffinityEnabled.value) {
         newExtra.client_affinity_enabled = true
+        if (affinityBase.value != null && affinityBase.value > 0) {
+          newExtra.affinity_base = affinityBase.value
+        } else {
+          delete newExtra.affinity_base
+        }
+        // buffer: null = infinite yellow, 0 = no yellow, >0 = yellow range
+        if (affinityBase.value != null && affinityBase.value > 0 && affinityBuffer.value != null) {
+          newExtra.affinity_buffer = affinityBuffer.value
+        } else {
+          delete newExtra.affinity_buffer
+        }
       } else {
         delete newExtra.client_affinity_enabled
+        delete newExtra.affinity_base
+        delete newExtra.affinity_buffer
       }
       updatePayload.extra = newExtra
     }
@@ -2524,8 +2542,20 @@ const handleSubmit = async () => {
       // Client affinity setting
       if (clientAffinityEnabled.value) {
         newExtra.client_affinity_enabled = true
+        if (affinityBase.value != null && affinityBase.value > 0) {
+          newExtra.affinity_base = affinityBase.value
+        } else {
+          delete newExtra.affinity_base
+        }
+        if (affinityBase.value != null && affinityBase.value > 0 && affinityBuffer.value != null) {
+          newExtra.affinity_buffer = affinityBuffer.value
+        } else {
+          delete newExtra.affinity_buffer
+        }
       } else {
         delete newExtra.client_affinity_enabled
+        delete newExtra.affinity_base
+        delete newExtra.affinity_buffer
       }
 
       updatePayload.extra = newExtra
@@ -2542,8 +2572,20 @@ const handleSubmit = async () => {
       }
       if (clientAffinityEnabled.value) {
         newExtra.client_affinity_enabled = true
+        if (affinityBase.value != null && affinityBase.value > 0) {
+          newExtra.affinity_base = affinityBase.value
+        } else {
+          delete newExtra.affinity_base
+        }
+        if (affinityBase.value != null && affinityBase.value > 0 && affinityBuffer.value != null) {
+          newExtra.affinity_buffer = affinityBuffer.value
+        } else {
+          delete newExtra.affinity_buffer
+        }
       } else {
         delete newExtra.client_affinity_enabled
+        delete newExtra.affinity_base
+        delete newExtra.affinity_buffer
       }
       updatePayload.extra = newExtra
     }

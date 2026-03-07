@@ -1568,6 +1568,16 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if !s.isAccountSchedulableForRPM(ctx, account, false) {
 					continue
 				}
+				// 亲和三区检查：红区账号不可通过亲和命中调度
+				if account.GetAffinityBase() > 0 && s.cache != nil {
+					countMap, err := s.cache.GetAccountAffinityCountBatch(ctx, derefGroupID(groupID), []int64{affinityAccID}, ClientAffinityTTL)
+					if err == nil {
+						zone := account.GetAffinityZone(countMap[affinityAccID])
+						if zone == AffinityZoneRed {
+							continue
+						}
+					}
+				}
 
 				result, err := s.tryAcquireAccountSlot(ctx, affinityAccID, account.Concurrency)
 				if err == nil && result.Acquired {
@@ -1669,6 +1679,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 		// 批量获取亲和客户端数量（用于均衡分配新客户端）
 		s.populateAffinityCounts(ctx, available, derefGroupID(groupID))
+
+		// 按亲和三区过滤：绿区优先 → 黄区降级 → 红区移除
+		available = classifyByAffinityZone(available)
 
 		// 分层过滤选择：优先级 → 负载率 → 亲和客户端数 → LRU
 		for len(available) > 0 {
@@ -2542,6 +2555,44 @@ func filterByMinAffinityCount(accounts []accountWithLoad) []accountWithLoad {
 		}
 	}
 	return result
+}
+
+// classifyByAffinityZone 按亲和分区对候选账号进行分类。
+// 返回值：仅绿区账号（有绿区时），否则返回黄区账号。红区账号被移除。
+// 如果没有任何账号开启了亲和三区配置（即 affinity_base <= 0），则原样返回所有账号。
+func classifyByAffinityZone(accounts []accountWithLoad) []accountWithLoad {
+	if len(accounts) == 0 {
+		return accounts
+	}
+	// 快速检查：是否有任何账号配置了 affinity_base
+	hasZoneConfig := false
+	for _, acc := range accounts {
+		if acc.account.IsClientAffinityEnabled() && acc.account.GetAffinityBase() > 0 {
+			hasZoneConfig = true
+			break
+		}
+	}
+	if !hasZoneConfig {
+		return accounts
+	}
+
+	greens := make([]accountWithLoad, 0, len(accounts))
+	yellows := make([]accountWithLoad, 0, len(accounts))
+	for _, acc := range accounts {
+		zone := acc.account.GetAffinityZone(acc.affinityCount)
+		switch zone {
+		case AffinityZoneGreen:
+			greens = append(greens, acc)
+		case AffinityZoneYellow:
+			yellows = append(yellows, acc)
+		case AffinityZoneRed:
+			// 红区：移除，不参与调度
+		}
+	}
+	if len(greens) > 0 {
+		return greens
+	}
+	return yellows
 }
 
 // selectByLRU 从集合中选择最久未用的账号

@@ -1,12 +1,19 @@
 <template>
   <div class="relative" ref="containerRef">
     <span
-      :class="badgeClass"
-      class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0 cursor-pointer"
+      :class="[
+        'inline-flex items-center gap-1 rounded-md px-1.5 py-px text-[10px] font-medium leading-tight cursor-pointer',
+        badgeClass
+      ]"
       @mouseenter="handleMouseEnter"
       @mouseleave="handleMouseLeave"
     >
-      {{ count }}
+      <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+      </svg>
+      <span class="font-mono">{{ count }}</span>
+      <span class="text-gray-400 dark:text-gray-500">/</span>
+      <span class="font-mono">{{ limitDisplay }}</span>
     </span>
 
     <!-- Popover -->
@@ -76,6 +83,8 @@ import { getAffinityClients } from '@/api/admin/accounts'
 interface Props {
   accountId: number
   count: number
+  base: number    // 0 = not configured
+  buffer: number | null // null = infinite yellow
 }
 
 const props = defineProps<Props>()
@@ -89,12 +98,46 @@ let loaded = false
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 let showTimer: ReturnType<typeof setTimeout> | null = null
 
+// 显示的上限文本
+const limitDisplay = computed(() => {
+  if (props.base <= 0) return '\u221E' // ∞
+  if (props.buffer === null) return `${props.base}+` // base + infinite yellow
+  if (props.buffer === 0) return `${props.base}`
+  return `${props.base + props.buffer}`
+})
+
+// 根据三区模型着色
 const badgeClass = computed(() => {
   const c = props.count
-  if (c >= 16) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-  if (c >= 6) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-  if (c > 0) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-  return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  const base = props.base
+
+  // 未配置 base → 总是 emerald
+  if (base <= 0) {
+    if (c > 0) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  }
+
+  // 绿区
+  if (c <= base) {
+    if (c > 0) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  }
+
+  // 黄区
+  if (props.buffer === null) {
+    // 无限黄区
+    return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+  }
+  if (props.buffer === 0) {
+    // 无黄区，直接红区
+    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+  }
+  if (c <= base + props.buffer) {
+    return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+  }
+
+  // 红区
+  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
 })
 
 const popoverStyle = computed(() => {

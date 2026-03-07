@@ -611,3 +611,187 @@ func TestAffinityIsClientAffinityEnabled(t *testing.T) {
 		assert.False(t, acc.IsClientAffinityEnabled(), "string 'true' should not enable affinity")
 	})
 }
+
+// ===========================================================================
+// GetAffinityZone 测试
+// ===========================================================================
+
+func TestGetAffinityZone(t *testing.T) {
+	makeAccount := func(enabled bool, base int, buffer any) *Account {
+		extra := map[string]any{"client_affinity_enabled": enabled}
+		if base > 0 {
+			extra["affinity_base"] = base
+		}
+		if buffer != nil {
+			extra["affinity_buffer"] = buffer
+		}
+		return &Account{
+			Platform: PlatformAnthropic,
+			Extra:    extra,
+		}
+	}
+
+	t.Run("affinity disabled always green", func(t *testing.T) {
+		acc := makeAccount(false, 5, 3)
+		assert.Equal(t, AffinityZoneGreen, acc.GetAffinityZone(100))
+	})
+
+	t.Run("no base configured always green", func(t *testing.T) {
+		acc := makeAccount(true, 0, nil)
+		assert.Equal(t, AffinityZoneGreen, acc.GetAffinityZone(100))
+	})
+
+	t.Run("within base limit is green", func(t *testing.T) {
+		acc := makeAccount(true, 5, 3)
+		assert.Equal(t, AffinityZoneGreen, acc.GetAffinityZone(0))
+		assert.Equal(t, AffinityZoneGreen, acc.GetAffinityZone(3))
+		assert.Equal(t, AffinityZoneGreen, acc.GetAffinityZone(5))
+	})
+
+	t.Run("no buffer configured infinite yellow", func(t *testing.T) {
+		acc := makeAccount(true, 5, nil) // buffer not set → infinite yellow
+		assert.Equal(t, AffinityZoneYellow, acc.GetAffinityZone(6))
+		assert.Equal(t, AffinityZoneYellow, acc.GetAffinityZone(100))
+		assert.Equal(t, AffinityZoneYellow, acc.GetAffinityZone(9999))
+	})
+
+	t.Run("buffer zero no yellow zone", func(t *testing.T) {
+		acc := makeAccount(true, 5, 0) // buffer=0 → no yellow, direct red
+		assert.Equal(t, AffinityZoneGreen, acc.GetAffinityZone(5))
+		assert.Equal(t, AffinityZoneRed, acc.GetAffinityZone(6))
+		assert.Equal(t, AffinityZoneRed, acc.GetAffinityZone(100))
+	})
+
+	t.Run("within buffer is yellow", func(t *testing.T) {
+		acc := makeAccount(true, 5, 3)
+		assert.Equal(t, AffinityZoneYellow, acc.GetAffinityZone(6))
+		assert.Equal(t, AffinityZoneYellow, acc.GetAffinityZone(7))
+		assert.Equal(t, AffinityZoneYellow, acc.GetAffinityZone(8)) // base(5)+buffer(3)=8
+	})
+
+	t.Run("beyond buffer is red", func(t *testing.T) {
+		acc := makeAccount(true, 5, 3)
+		assert.Equal(t, AffinityZoneRed, acc.GetAffinityZone(9))
+		assert.Equal(t, AffinityZoneRed, acc.GetAffinityZone(100))
+	})
+
+	t.Run("boundary exactly at base", func(t *testing.T) {
+		acc := makeAccount(true, 10, 5)
+		assert.Equal(t, AffinityZoneGreen, acc.GetAffinityZone(10))
+		assert.Equal(t, AffinityZoneYellow, acc.GetAffinityZone(11))
+	})
+
+	t.Run("boundary exactly at base plus buffer", func(t *testing.T) {
+		acc := makeAccount(true, 10, 5)
+		assert.Equal(t, AffinityZoneYellow, acc.GetAffinityZone(15))
+		assert.Equal(t, AffinityZoneRed, acc.GetAffinityZone(16))
+	})
+}
+
+// ===========================================================================
+// classifyByAffinityZone 测试
+// ===========================================================================
+
+func TestClassifyByAffinityZone(t *testing.T) {
+	makeAWL := func(id int64, base int, buffer any, count int64) accountWithLoad {
+		extra := map[string]any{"client_affinity_enabled": true}
+		if base > 0 {
+			extra["affinity_base"] = base
+		}
+		if buffer != nil {
+			extra["affinity_buffer"] = buffer
+		}
+		return accountWithLoad{
+			account:       &Account{ID: id, Platform: PlatformAnthropic, Extra: extra},
+			loadInfo:      &AccountLoadInfo{AccountID: id},
+			affinityCount: count,
+		}
+	}
+
+	t.Run("empty input returns empty", func(t *testing.T) {
+		result := classifyByAffinityZone(nil)
+		require.Empty(t, result)
+	})
+
+	t.Run("no zone config returns all", func(t *testing.T) {
+		// 没有账号配置 affinity_base → 原样返回
+		accs := []accountWithLoad{
+			{account: newAffinityAccount(1, 50, true), loadInfo: &AccountLoadInfo{AccountID: 1}},
+			{account: newAffinityAccount(2, 50, true), loadInfo: &AccountLoadInfo{AccountID: 2}},
+		}
+		result := classifyByAffinityZone(accs)
+		require.Len(t, result, 2)
+	})
+
+	t.Run("greens preferred over yellows", func(t *testing.T) {
+		accs := []accountWithLoad{
+			makeAWL(1, 5, 3, 3),  // green (3 ≤ 5)
+			makeAWL(2, 5, 3, 7),  // yellow (5 < 7 ≤ 8)
+			makeAWL(3, 5, 3, 2),  // green (2 ≤ 5)
+		}
+		result := classifyByAffinityZone(accs)
+		require.Len(t, result, 2)
+
+		ids := []int64{result[0].account.ID, result[1].account.ID}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		assert.Equal(t, []int64{1, 3}, ids)
+	})
+
+	t.Run("reds excluded", func(t *testing.T) {
+		accs := []accountWithLoad{
+			makeAWL(1, 5, 3, 10), // red (10 > 8)
+			makeAWL(2, 5, 3, 6),  // yellow (5 < 6 ≤ 8)
+			makeAWL(3, 5, 3, 9),  // red (9 > 8)
+		}
+		result := classifyByAffinityZone(accs)
+		require.Len(t, result, 1)
+		assert.Equal(t, int64(2), result[0].account.ID)
+	})
+
+	t.Run("all red returns empty", func(t *testing.T) {
+		accs := []accountWithLoad{
+			makeAWL(1, 5, 0, 6),  // buffer=0 → red (6 > 5)
+			makeAWL(2, 5, 0, 10), // buffer=0 → red (10 > 5)
+		}
+		result := classifyByAffinityZone(accs)
+		require.Empty(t, result)
+	})
+
+	t.Run("mixed with unconfigured accounts", func(t *testing.T) {
+		// 账号 1: 配置了 base=5,buffer=3 → green(3≤5)
+		// 账号 2: 未配置 base → 视为 green
+		// 账号 3: 配置了 base=5,buffer=3 → red(10>8)
+		accs := []accountWithLoad{
+			makeAWL(1, 5, 3, 3),
+			{account: newAffinityAccount(2, 50, true), loadInfo: &AccountLoadInfo{AccountID: 2}, affinityCount: 20},
+			makeAWL(3, 5, 3, 10),
+		}
+		result := classifyByAffinityZone(accs)
+		require.Len(t, result, 2)
+
+		ids := []int64{result[0].account.ID, result[1].account.ID}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		assert.Equal(t, []int64{1, 2}, ids)
+	})
+
+	t.Run("infinite yellow never reds", func(t *testing.T) {
+		// buffer 未配置 → 无限黄区，永不红区
+		accs := []accountWithLoad{
+			makeAWL(1, 5, nil, 100), // yellow (100 > 5, no buffer → infinite yellow)
+			makeAWL(2, 5, nil, 3),   // green (3 ≤ 5)
+		}
+		result := classifyByAffinityZone(accs)
+		// green 优先
+		require.Len(t, result, 1)
+		assert.Equal(t, int64(2), result[0].account.ID)
+	})
+
+	t.Run("only yellows when no greens", func(t *testing.T) {
+		accs := []accountWithLoad{
+			makeAWL(1, 5, nil, 10), // yellow
+			makeAWL(2, 5, nil, 20), // yellow
+		}
+		result := classifyByAffinityZone(accs)
+		require.Len(t, result, 2)
+	})
+}
