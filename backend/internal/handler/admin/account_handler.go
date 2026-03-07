@@ -207,15 +207,26 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		}
 	}
 
-	// 亲和客户端数据
-	if h.gatewayCache != nil && account.IsClientAffinityEnabled() && len(account.GroupIDs) > 0 {
-		accountGroups := map[int64][]int64{account.ID: account.GroupIDs}
-		if clients, err := h.gatewayCache.GetAccountAffinityClientsBatch(ctx, accountGroups, service.ClientAffinityTTL); err == nil {
-			if cl, ok := clients[account.ID]; ok {
-				count := int64(len(cl))
-				item.AffinityClientCount = &count
-				item.AffinityClients = cl
+	// 亲和客户端数据（启用亲和的账号始终返回 count，即使为 0）
+	if account.IsClientAffinityEnabled() {
+		if h.gatewayCache != nil && len(account.GroupIDs) > 0 {
+			accountGroups := map[int64][]int64{account.ID: account.GroupIDs}
+			if clients, err := h.gatewayCache.GetAccountAffinityClientsBatch(ctx, accountGroups, service.ClientAffinityTTL); err == nil {
+				if cl, ok := clients[account.ID]; ok && len(cl) > 0 {
+					count := int64(len(cl))
+					item.AffinityClientCount = &count
+					item.AffinityClients = cl
+				} else {
+					zero := int64(0)
+					item.AffinityClientCount = &zero
+				}
+			} else {
+				zero := int64(0)
+				item.AffinityClientCount = &zero
 			}
+		} else {
+			zero := int64(0)
+			item.AffinityClientCount = &zero
 		}
 	}
 
@@ -392,12 +403,15 @@ func (h *AccountHandler) List(c *gin.Context) {
 			}
 		}
 
-		// 注入亲和客户端数据到 DTO
-		if affinityClients != nil {
-			if clients, ok := affinityClients[acc.ID]; ok {
+		// 注入亲和客户端数据到 DTO（启用亲和的账号始终返回 count，即使为 0）
+		if acc.IsClientAffinityEnabled() {
+			if clients, ok := affinityClients[acc.ID]; ok && len(clients) > 0 {
 				count := int64(len(clients))
 				item.AffinityClientCount = &count
 				item.AffinityClients = clients
+			} else {
+				zero := int64(0)
+				item.AffinityClientCount = &zero
 			}
 		}
 
