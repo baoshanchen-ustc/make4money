@@ -253,7 +253,9 @@ export function useSwipeSelect(
     startY = clientY
     lastMouseY = clientY
     lastEndIndex = -1
-    cachedScrollParent = containerRef.value ? getScrollParent(containerRef.value) : null
+    cachedScrollParent = cachedRows.length > 0
+      ? getScrollParent(cachedRows[0])
+      : (containerRef.value ? getScrollParent(containerRef.value) : null)
 
     createMarquee()
     updateMarquee(clientY)
