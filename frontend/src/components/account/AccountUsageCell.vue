@@ -744,21 +744,7 @@ const loadUsage = async () => {
 
   try {
     const fetchFn = () => adminAPI.accounts.getUsage(props.account.id)
-    let result: AccountUsageInfo
-    // Only throttle Anthropic OAuth/setup-token accounts to avoid upstream 429
-    if (
-      props.account.platform === 'anthropic' &&
-      (props.account.type === 'oauth' || props.account.type === 'setup-token')
-    ) {
-      result = await enqueueUsageRequest(
-        props.account.platform,
-        'claude_code',
-        props.account.proxy_id,
-        fetchFn
-      )
-    } else {
-      result = await fetchFn()
-    }
+    const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) usageInfo.value = result
   } catch (e: any) {
     if (!unmounted.value) {

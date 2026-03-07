@@ -15,7 +15,7 @@ vi.mock('@/api/admin', () => ({
 }))
 
 vi.mock('@/utils/usageLoadQueue', () => ({
-  enqueueUsageRequest: (_p: string, _t: string, _id: unknown, fn: () => Promise<unknown>) => fn()
+  enqueueUsageRequest: (_account: unknown, fn: () => Promise<unknown>) => fn()
 }))
 
 vi.mock('vue-i18n', async () => {
