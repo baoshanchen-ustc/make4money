@@ -28,12 +28,15 @@ var (
 	getAffinityClientsLua string
 	//go:embed lua/get_affinity_clients_with_scores.lua
 	getAffinityClientsWithScoresLua string
+	//go:embed lua/clear_account_affinity.lua
+	clearAccountAffinityLua string
 
 	getAffinityScript               = redis.NewScript(getAffinityLua)
 	updateAffinityScript            = redis.NewScript(updateAffinityLua)
 	getAffinityCountScript          = redis.NewScript(getAffinityCountLua)
 	getAffinityClientsScript        = redis.NewScript(getAffinityClientsLua)
 	getAffinityClientsWithScoresScript = redis.NewScript(getAffinityClientsWithScoresLua)
+	clearAccountAffinityScript       = redis.NewScript(clearAccountAffinityLua)
 )
 
 type gatewayCache struct {
@@ -268,4 +271,26 @@ func (c *gatewayCache) GetAccountAffinityClientsWithScores(
 	service.SortAffinityClients(result)
 
 	return result, nil
+}
+
+// ClearAccountAffinity 清除指定账号在所有分组的亲和记录（正向+反向索引）。
+// 对每个 groupID 执行 Lua 脚本：读取反向索引获取所有客户端，
+// 从每个客户端的正向索引中移除该账号，然后删除反向索引。
+func (c *gatewayCache) ClearAccountAffinity(ctx context.Context, accountID int64, groupIDs []int64) error {
+	if len(groupIDs) == 0 {
+		return nil
+	}
+
+	ensureScriptLoaded(ctx, c.rdb, clearAccountAffinityScript)
+
+	pipe := c.rdb.Pipeline()
+	for _, gID := range groupIDs {
+		revKey := buildAffinityReverseKey(gID, accountID)
+		clearAccountAffinityScript.Run(ctx, pipe, []string{revKey}, gID, accountID)
+	}
+	_, err := pipe.Exec(ctx)
+	if err != nil && err != redis.Nil {
+		return err
+	}
+	return nil
 }

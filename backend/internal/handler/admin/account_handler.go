@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -619,6 +620,16 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
+	// 记录更新前的亲和状态，用于检测亲和关闭时清理 Redis 记录
+	oldAffinityEnabled := false
+	var oldGroupIDs []int64
+	if len(req.Extra) > 0 && h.gatewayCache != nil {
+		if oldAccount, err := h.adminService.GetAccount(c.Request.Context(), accountID); err == nil {
+			oldAffinityEnabled = oldAccount.IsClientAffinityEnabled()
+			oldGroupIDs = oldAccount.GroupIDs
+		}
+	}
+
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
@@ -653,6 +664,15 @@ func (h *AccountHandler) Update(c *gin.Context) {
 
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// 亲和关闭时清理 Redis 中的亲和记录
+	if oldAffinityEnabled && !account.IsClientAffinityEnabled() {
+		groupIDs := oldGroupIDs
+		if len(account.GroupIDs) > 0 {
+			groupIDs = mergeGroupIDs(oldGroupIDs, account.GroupIDs)
+		}
+		h.clearAccountAffinity(c.Request.Context(), accountID, groupIDs)
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
@@ -1451,6 +1471,39 @@ func (h *AccountHandler) GetAffinityClients(c *gin.Context) {
 	}
 
 	response.Success(c, clients)
+}
+
+// clearAccountAffinity 清除指定账号在所有分组的亲和记录。
+func (h *AccountHandler) clearAccountAffinity(ctx context.Context, accountID int64, groupIDs []int64) {
+	if h.gatewayCache == nil || len(groupIDs) == 0 {
+		return
+	}
+	if err := h.gatewayCache.ClearAccountAffinity(ctx, accountID, groupIDs); err != nil {
+		// 清理失败不影响主流程，记录日志即可
+		slog.Warn("clear account affinity failed",
+			"account_id", accountID,
+			"error", err,
+		)
+	}
+}
+
+// mergeGroupIDs 合并两个 groupID 切片并去重。
+func mergeGroupIDs(a, b []int64) []int64 {
+	seen := make(map[int64]struct{}, len(a)+len(b))
+	result := make([]int64, 0, len(a)+len(b))
+	for _, id := range a {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			result = append(result, id)
+		}
+	}
+	for _, id := range b {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			result = append(result, id)
+		}
+	}
+	return result
 }
 
 // GetTempUnschedulable handles getting temporary unschedulable status

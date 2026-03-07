@@ -382,6 +382,9 @@ type GatewayCache interface {
 	GetAccountAffinityClientsBatch(ctx context.Context, accountGroups map[int64][]int64, ttl time.Duration) (map[int64][]string, error)
 	// GetAccountAffinityClientsWithScores 获取单个账号跨所有分组的亲和客户端列表（含最后活跃时间）
 	GetAccountAffinityClientsWithScores(ctx context.Context, accountID int64, groupIDs []int64, ttl time.Duration) ([]AffinityClient, error)
+	// ClearAccountAffinity 清除指定账号在所有分组的亲和记录（正向+反向索引）
+	// 用于账号关闭客户端亲和时立即清理旧绑定
+	ClearAccountAffinity(ctx context.Context, accountID int64, groupIDs []int64) error
 }
 
 // AffinityClient 亲和客户端信息（含最后活跃时间）

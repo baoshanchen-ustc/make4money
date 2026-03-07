@@ -45,6 +45,9 @@ func (c *stubSmartRetryCache) GetAccountAffinityClientsBatch(_ context.Context, 
 func (c *stubSmartRetryCache) GetAccountAffinityClientsWithScores(_ context.Context, _ int64, _ []int64, _ time.Duration) ([]AffinityClient, error) {
 	return nil, nil
 }
+func (c *stubSmartRetryCache) ClearAccountAffinity(_ context.Context, _ int64, _ []int64) error {
+	return nil
+}
 
 // mockSmartRetryUpstream 用于 handleSmartRetry 测试的 mock upstream
 type mockSmartRetryUpstream struct {

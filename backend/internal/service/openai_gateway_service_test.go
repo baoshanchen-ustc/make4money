@@ -297,6 +297,9 @@ func (c *stubGatewayCache) GetAccountAffinityClientsBatch(_ context.Context, _ m
 func (c *stubGatewayCache) GetAccountAffinityClientsWithScores(_ context.Context, _ int64, _ []int64, _ time.Duration) ([]AffinityClient, error) {
 	return nil, nil
 }
+func (c *stubGatewayCache) ClearAccountAffinity(_ context.Context, _ int64, _ []int64) error {
+	return nil
+}
 
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
 	now := time.Now()

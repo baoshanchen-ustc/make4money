@@ -55,6 +55,9 @@ func (m *mockAffinityCache) GetAccountAffinityClientsBatch(_ context.Context, _ 
 func (m *mockAffinityCache) GetAccountAffinityClientsWithScores(_ context.Context, _ int64, _ []int64, _ time.Duration) ([]AffinityClient, error) {
 	return nil, nil
 }
+func (m *mockAffinityCache) ClearAccountAffinity(_ context.Context, _ int64, _ []int64) error {
+	return nil
+}
 
 // ---------------------------------------------------------------------------
 // Helper: 构造启用了客户端亲和的 Anthropic 账号

@@ -17,13 +17,15 @@ func NewSoraTaskRepository(sqlDB *sql.DB) service.SoraTaskRepository {
 }
 
 func (r *SoraTaskRepository) Create(ctx context.Context, task *service.SoraTask) error {
-	charJSON, _ := json.Marshal(task.CharacterInfo)
-	if task.CharacterInfo == nil {
-		charJSON = nil
+	var charStr, reqStr *string
+	if task.CharacterInfo != nil {
+		b, _ := json.Marshal(task.CharacterInfo)
+		s := string(b)
+		charStr = &s
 	}
-	var reqBody []byte
 	if len(task.RequestBody) > 0 {
-		reqBody = task.RequestBody
+		s := string(task.RequestBody)
+		reqStr = &s
 	}
 
 	_, err := r.db.ExecContext(ctx, `
@@ -36,8 +38,8 @@ func (r *SoraTaskRepository) Create(ctx context.Context, task *service.SoraTask)
 		task.ID, task.AccountID, task.APIKeyID, task.UpstreamTaskID, task.ObjectType,
 		task.Model, task.Prompt, task.Status, task.Progress, task.VideoURL,
 		task.StoredKey, task.StorageType,
-		task.ShareID, charJSON, task.ErrorMessage, task.ErrorType,
-		reqBody, task.Seconds, task.Size, task.CreatedAt, task.CompletedAt,
+		task.ShareID, charStr, task.ErrorMessage, task.ErrorType,
+		reqStr, task.Seconds, task.Size, task.CreatedAt, task.CompletedAt,
 	)
 	return err
 }
@@ -56,9 +58,11 @@ func (r *SoraTaskRepository) GetByIDAndAPIKey(ctx context.Context, id string, ap
 }
 
 func (r *SoraTaskRepository) Update(ctx context.Context, task *service.SoraTask) error {
-	charJSON, _ := json.Marshal(task.CharacterInfo)
-	if task.CharacterInfo == nil {
-		charJSON = nil
+	var charStr *string
+	if task.CharacterInfo != nil {
+		b, _ := json.Marshal(task.CharacterInfo)
+		s := string(b)
+		charStr = &s
 	}
 
 	_, err := r.db.ExecContext(ctx, `
@@ -71,7 +75,7 @@ func (r *SoraTaskRepository) Update(ctx context.Context, task *service.SoraTask)
 		WHERE id = $1`,
 		task.ID, task.UpstreamTaskID, task.Status, task.Progress,
 		task.VideoURL, task.StoredKey, task.StorageType,
-		task.ShareID, charJSON,
+		task.ShareID, charStr,
 		task.ErrorMessage, task.ErrorType,
 		task.CompletedAt, task.Seconds, task.Size, task.ObjectType,
 	)
