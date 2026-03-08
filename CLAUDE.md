@@ -1,3 +1,19 @@
+# PR 默认语义（最高优先级）
+
+- 未特别说明时，文档或对话中的“PR”一律指**提交到上游仓库** `Wei-Shaw/sub2api:main`
+- 如果只是合并回我们自己的仓库，必须明确表述为：
+  - “内部同步 PR”
+  - “合并回我们的 main”
+  - “fork 内部 PR”
+- 禁止将“上游 PR”和“我们自己仓库内的同步 PR”混用为同一个概念
+
+## 本地依赖联调
+
+- 本地 `go-sora2api` 仓库固定路径：`C:\Users\16790\GolandProjects\go-sora2api`
+- 需要联调 `go-sora2api` 时，优先使用 `backend/go.mod` 的 `replace` 指向该本地路径，而不是使用 `git submodule`
+- 联调完成后，如需提交或部署，再切换为 fork 仓库的明确 tag 或 commit
+
+---
 # Sub2API 开发说明
 
 ## 版本管理策略
@@ -1226,14 +1242,14 @@ PR 目标是上游官方仓库，**只包含通用功能改动**（bug fix、新
 - 部署配置（`deploy/` 目录下的定制修改）
 
 **PR 流程**：
-1. 从 `develop` 创建功能分支，只包含要提交给上游的改动
+1. 从我们的当前开发分支（如 `release/custom-0.1.93`）或对应功能分支创建 PR 分支，只包含要提交给上游的通用改动
 2. 推送分支后，**等待 4 个 CI job 全部通过**
 3. 确认通过后再创建 PR
 4. 使用 `gh run list --repo touwaeriol/sub2api --branch <branch>` 检查状态
 
-### 自有分支推送（develop / main）
+### 自有分支推送（release/custom-X.Y.Z / 功能分支 / main）
 
-推送到我们自己的 `develop` 或 `main` 分支时，包含所有改动（定制化 + 通用功能）。
+推送到我们自己的 `release/custom-X.Y.Z`、其他开发功能分支或 `main` 分支时，包含所有改动（定制化 + 通用功能）。
 
 **推送前必须在本地执行全部 CI 检查**（不要等 GitHub Actions）：
 
