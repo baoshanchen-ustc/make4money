@@ -2476,7 +2476,13 @@ export default {
         unlimited: 'Unlimited'
       },
       ineligibleWarning:
-        'This account is not eligible for Antigravity, but API forwarding still works. Use at your own risk.'
+        'This account is not eligible for Antigravity, but API forwarding still works. Use at your own risk.',
+      forbidden: 'Forbidden',
+      forbiddenValidation: 'Verification Required',
+      forbiddenViolation: 'Violation Ban',
+      openVerification: 'Open Verification Link',
+      copyLink: 'Copy Link',
+      linkCopied: 'Link Copied'
     },
 
     // Scheduled Tests

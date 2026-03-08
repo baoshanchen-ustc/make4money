@@ -776,6 +776,11 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  // Antigravity 403 forbidden 状态
+  is_forbidden?: boolean
+  forbidden_reason?: string
+  forbidden_type?: string   // "validation" | "violation" | "forbidden"
+  validation_url?: string   // 验证/申诉链接
 }
 
 // OpenAI Codex usage snapshot (from response headers)

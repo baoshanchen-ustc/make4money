@@ -768,7 +768,7 @@ func (c *SoraSDKClient) getSDKClient(account *Account) (*sora.Client, error) {
 			return cli, nil
 		}
 	}
-	client, err := sora.New(proxyURL)
+	client, err := sora.NewWebClient(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("创建 Sora SDK 客户端失败: %w", err)
 	}

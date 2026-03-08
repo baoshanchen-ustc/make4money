@@ -148,6 +148,18 @@ type AntigravityModelQuota struct {
 	ResetTime   string `json:"reset_time"`  // 重置时间 ISO8601
 }
 
+// AntigravityModelDetail Antigravity 单个模型的详细能力信息
+type AntigravityModelDetail struct {
+	DisplayName        string          `json:"display_name,omitempty"`
+	SupportsImages     *bool           `json:"supports_images,omitempty"`
+	SupportsThinking   *bool           `json:"supports_thinking,omitempty"`
+	ThinkingBudget     *int            `json:"thinking_budget,omitempty"`
+	Recommended        *bool           `json:"recommended,omitempty"`
+	MaxTokens          *int            `json:"max_tokens,omitempty"`
+	MaxOutputTokens    *int            `json:"max_output_tokens,omitempty"`
+	SupportedMimeTypes map[string]bool `json:"supported_mime_types,omitempty"`
+}
+
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
@@ -163,6 +175,22 @@ type UsageInfo struct {
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
+
+	// Antigravity 账号级信息
+	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
+	SubscriptionTierRaw string `json:"subscription_tier_raw,omitempty"` // 上游原始订阅等级名称
+
+	// Antigravity 模型详细能力信息（与 antigravity_quota 同 key）
+	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
+
+	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
+	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
+
+	// Antigravity 账号是否被上游禁止 (HTTP 403)
+	IsForbidden     bool   `json:"is_forbidden,omitempty"`
+	ForbiddenReason string `json:"forbidden_reason,omitempty"`
+	ForbiddenType   string `json:"forbidden_type,omitempty"` // "validation" / "violation" / "forbidden"
+	ValidationURL   string `json:"validation_url,omitempty"` // 验证/申诉链接
 }
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
