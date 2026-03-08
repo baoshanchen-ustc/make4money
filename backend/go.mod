@@ -198,5 +198,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/DouDOU-start/go-sora2api => C:\Users\16790\GolandProjects\go-sora2api
