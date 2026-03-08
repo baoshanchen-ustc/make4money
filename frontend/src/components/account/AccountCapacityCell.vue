@@ -30,11 +30,6 @@
 
     <!-- 客户端亲和 -->
     <AffinityBadge v-if="showAffinity" :account-id="account.id" :count="affinityClientCount" :base="affinityBase" :buffer="affinityBuffer" />
-
-    <!-- 配额限制 -->
-    <QuotaBadge v-if="showDailyQuota" label="D" :used="account.quota_daily_used ?? 0" :limit="account.quota_daily_limit!" />
-    <QuotaBadge v-if="showWeeklyQuota" label="W" :used="account.quota_weekly_used ?? 0" :limit="account.quota_weekly_limit!" />
-    <QuotaBadge v-if="showTotalQuota" :used="account.quota_used ?? 0" :limit="account.quota_limit!" />
   </div>
 </template>
 
@@ -44,7 +39,6 @@ import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import CapacityBadge from '@/components/account/CapacityBadge.vue'
 import AffinityBadge from '@/components/account/AffinityBadge.vue'
-import QuotaBadge from '@/components/account/QuotaBadge.vue'
 
 const props = defineProps<{
   account: Account
@@ -196,17 +190,6 @@ const affinityBuffer = computed((): number | null => {
   if (typeof v === 'number') return v
   return null
 })
-
-// ====== 配额 ======
-const showDailyQuota = computed(() =>
-  props.account.type === 'apikey' && props.account.quota_daily_limit != null && props.account.quota_daily_limit > 0
-)
-const showWeeklyQuota = computed(() =>
-  props.account.type === 'apikey' && props.account.quota_weekly_limit != null && props.account.quota_weekly_limit > 0
-)
-const showTotalQuota = computed(() =>
-  props.account.type === 'apikey' && props.account.quota_limit != null && props.account.quota_limit > 0
-)
 
 const formatCost = (value: number | null | undefined) => {
   if (value === null || value === undefined) return '0'
