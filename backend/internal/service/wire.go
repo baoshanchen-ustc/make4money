@@ -400,6 +400,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUsageCleanupService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,
+	NewScriptEngine,
 	NewUserAttributeService,
 	NewUsageCache,
 	NewTotpService,

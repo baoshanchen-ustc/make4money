@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -164,6 +166,9 @@ type UsageInfo struct {
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
+
+	// 脚本引擎采集的通用用量窗口
+	ScriptWindows []ScriptUsageWindow `json:"script_windows,omitempty"`
 }
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
@@ -207,6 +212,8 @@ type AccountUsageService struct {
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
 	cache                   *UsageCache
 	identityCache           IdentityCache
+	scriptEngine            *ScriptEngine
+	usageScriptRepo         UsageScriptRepository
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -218,6 +225,8 @@ func NewAccountUsageService(
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
 	cache *UsageCache,
 	identityCache IdentityCache,
+	scriptEngine *ScriptEngine,
+	usageScriptRepo UsageScriptRepository,
 ) *AccountUsageService {
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
@@ -227,6 +236,8 @@ func NewAccountUsageService(
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
 		cache:                   cache,
 		identityCache:           identityCache,
+		scriptEngine:            scriptEngine,
+		usageScriptRepo:         usageScriptRepo,
 	}
 }
 
@@ -254,6 +265,17 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
 		return usage, err
+	}
+
+	// 非官方上游（中转站）：通过 Starlark 脚本采集用量
+	if baseURL := account.GetBaseURL(); baseURL != "" {
+		if usage, err := s.getScriptUsage(ctx, account, baseURL); usage != nil || err != nil {
+			return usage, err
+		}
+		// 无匹配脚本：自定义 base_url 的账号不走平台原生逻辑，返回空用量
+		if account.GetCredential("base_url") != "" {
+			return &UsageInfo{}, nil
+		}
 	}
 
 	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度
@@ -1100,4 +1122,103 @@ func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64
 // 用于账号列表页面显示当前窗口费用
 func (s *AccountUsageService) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
 	return s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
+}
+
+// UsageScriptRepository 用量脚本仓储接口
+type UsageScriptRepository interface {
+	FindByHostAndType(ctx context.Context, baseURLHost string, accountType string) (*UsageScript, error)
+	List(ctx context.Context) ([]*UsageScript, error)
+	Create(ctx context.Context, script *UsageScript) (*UsageScript, error)
+	Update(ctx context.Context, id int64, script *UsageScript) (*UsageScript, error)
+	Delete(ctx context.Context, id int64) error
+}
+
+// extractBaseURLHost 从 base_url 提取域名级标识（scheme://host）
+func extractBaseURLHost(baseURL string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Host == "" {
+		return baseURL
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// getScriptUsage 尝试通过脚本引擎获取非官方上游的用量
+// 返回 (nil, nil) 表示无匹配脚本，调用方应继续走平台原生逻辑
+func (s *AccountUsageService) getScriptUsage(ctx context.Context, account *Account, baseURL string) (*UsageInfo, error) {
+	if s.usageScriptRepo == nil || s.scriptEngine == nil {
+		return nil, nil
+	}
+
+	host := extractBaseURLHost(baseURL)
+	script, err := s.usageScriptRepo.FindByHostAndType(ctx, host, account.Type)
+	if err != nil {
+		slog.Warn("usage_script_lookup_failed", "account_id", account.ID, "host", host, "error", err)
+		return nil, nil // 查找失败不阻塞，降级到平台原生逻辑
+	}
+	if script == nil {
+		return nil, nil // 无匹配脚本
+	}
+
+	// 使用 singleflight 防止并发执行同一账号的脚本
+	cacheKey := fmt.Sprintf("script:%d", account.ID)
+	result, flightErr, _ := s.cache.apiFlight.Do(cacheKey, func() (any, error) {
+		return s.scriptEngine.Execute(ctx, script.Script, account)
+	})
+	if flightErr != nil {
+		slog.Warn("usage_script_exec_failed", "account_id", account.ID, "host", host, "error", flightErr)
+		return nil, nil // 执行失败不阻塞
+	}
+
+	scriptResult, ok := result.(*ScriptUsageResult)
+	if !ok || scriptResult == nil {
+		return nil, nil
+	}
+
+	if scriptResult.Error != "" {
+		slog.Warn("usage_script_returned_error", "account_id", account.ID, "host", host, "error", scriptResult.Error)
+	}
+
+	now := time.Now()
+	return &UsageInfo{
+		UpdatedAt:     &now,
+		ScriptWindows: scriptResult.Windows,
+	}, nil
+}
+
+// CheckScriptUsageForScheduling 检查脚本用量并在超限时标记账号为临时不可调度
+func (s *AccountUsageService) CheckScriptUsageForScheduling(ctx context.Context, account *Account) {
+	baseURL := account.GetBaseURL()
+	if baseURL == "" {
+		return
+	}
+	if s.usageScriptRepo == nil || s.scriptEngine == nil {
+		return
+	}
+
+	host := extractBaseURLHost(baseURL)
+	script, err := s.usageScriptRepo.FindByHostAndType(ctx, host, account.Type)
+	if err != nil || script == nil {
+		return
+	}
+
+	result, err := s.scriptEngine.Execute(ctx, script.Script, account)
+	if err != nil || result == nil || result.Error != "" {
+		return
+	}
+
+	for _, w := range result.Windows {
+		if w.Utilization >= 1.0 {
+			var until time.Time
+			if w.ResetsAt != nil {
+				until = time.Unix(*w.ResetsAt, 0)
+			} else {
+				until = time.Now().Add(5 * time.Minute) // 无重置时间则默认 5 分钟
+			}
+			reason := fmt.Sprintf("usage_script: %s/%s %.0f%%", host, w.Name, w.Utilization*100)
+			if setErr := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); setErr != nil {
+				slog.Warn("script_usage_set_temp_unsched_failed", "account_id", account.ID, "error", setErr)
+			}
+			return // 一个窗口超限即标记，不重复
+		}
+	}
 }
