@@ -354,7 +354,7 @@
       />
       <UsageProgressBar
         v-if="quotaTotalBar"
-        label="$"
+        label="total"
         :utilization="quotaTotalBar.utilization"
         :display-value="quotaTotalBar.displayValue"
         color="purple"
