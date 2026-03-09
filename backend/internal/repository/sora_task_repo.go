@@ -90,7 +90,7 @@ func (r *SoraTaskRepository) ListPending(ctx context.Context) ([]*service.SoraTa
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tasks []*service.SoraTask
 	for rows.Next() {
