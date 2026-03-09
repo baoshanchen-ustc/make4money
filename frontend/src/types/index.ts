@@ -784,6 +784,7 @@ export interface AccountUsageInfo {
   forbidden_reason?: string
   forbidden_type?: string   // "validation" | "violation" | "forbidden"
   validation_url?: string   // 验证/申诉链接
+  error?: string            // usage 获取失败时的错误信息
 }
 
 // OpenAI Codex usage snapshot (from response headers)

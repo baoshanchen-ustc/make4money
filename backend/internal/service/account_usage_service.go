@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -191,6 +192,9 @@ type UsageInfo struct {
 	ForbiddenReason string `json:"forbidden_reason,omitempty"`
 	ForbiddenType   string `json:"forbidden_type,omitempty"` // "validation" / "violation" / "forbidden"
 	ValidationURL   string `json:"validation_url,omitempty"` // 验证/申诉链接
+
+	// 获取 usage 时的错误信息（降级返回，而非 500）
+	Error string `json:"error,omitempty"`
 }
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
@@ -666,7 +670,20 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 	// 3. 调用 API 获取额度
 	result, err := s.antigravityQuotaFetcher.FetchQuota(ctx, account, proxyURL)
 	if err != nil {
-		return nil, fmt.Errorf("fetch antigravity quota failed: %w", err)
+		// 降级返回带 error 字段的 UsageInfo，而非 500
+		now := time.Now()
+		errMsg := fmt.Sprintf("usage API error: %v", err)
+		slog.Warn("antigravity usage fetch failed, returning degraded response",
+			"account_id", account.ID, "error", err)
+		degraded := &UsageInfo{
+			UpdatedAt: &now,
+			Error:     errMsg,
+		}
+		s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
+			usageInfo: degraded,
+			timestamp: time.Now(),
+		})
+		return degraded, nil
 	}
 
 	// 4. 缓存结果

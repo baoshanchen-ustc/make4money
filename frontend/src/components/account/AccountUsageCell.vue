@@ -36,6 +36,10 @@
 
       <!-- Usage data -->
       <div v-else-if="usageInfo" class="space-y-1">
+        <!-- API error (degraded response) -->
+        <div v-if="usageInfo.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
+          {{ usageInfo.error }}
+        </div>
         <!-- 5h Window -->
         <UsageProgressBar
           v-if="usageInfo.five_hour"
