@@ -11,11 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// APIKeyAuthGoogle is a Google-style error wrapper for API key auth.
-func APIKeyAuthGoogle(apiKeyService *service.APIKeyService, cfg *config.Config) gin.HandlerFunc {
-	return APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg)
-}
-
 // APIKeyAuthWithSubscriptionGoogle behaves like ApiKeyAuthWithSubscription but returns Google-style errors:
 // {"error":{"code":401,"message":"...","status":"UNAUTHENTICATED"}}
 //
