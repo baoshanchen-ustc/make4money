@@ -784,6 +784,15 @@ export interface AccountUsageInfo {
   forbidden_reason?: string
   forbidden_type?: string   // "validation" | "violation" | "forbidden"
   validation_url?: string   // 验证/申诉链接
+
+  // 状态标记（后端自动推导）
+  needs_verify?: boolean    // 需要人工验证（forbidden_type=validation）
+  is_banned?: boolean       // 账号被封（forbidden_type=violation）
+  needs_reauth?: boolean    // token 失效需重新授权（401）
+
+  // 机器可读错误码：forbidden / unauthenticated / rate_limited / network_error
+  error_code?: string
+
   error?: string            // usage 获取失败时的错误信息
 }
 

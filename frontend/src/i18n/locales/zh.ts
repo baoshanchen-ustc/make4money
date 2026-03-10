@@ -1948,6 +1948,9 @@ export default {
       openVerification: '打开验证链接',
       copyLink: '复制链接',
       linkCopied: '链接已复制',
+      needsReauth: '需要重新授权',
+      rateLimited: '限流中',
+      usageError: '获取失败',
       form: {
         nameLabel: '账号名称',
         namePlaceholder: '请输入账号名称',

@@ -224,6 +224,20 @@
         </div>
       </div>
 
+      <!-- Needs reauth (401) -->
+      <div v-else-if="needsReauth" class="space-y-1">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+          {{ t('admin.accounts.needsReauth') }}
+        </span>
+      </div>
+
+      <!-- Degraded error (non-403, non-401) -->
+      <div v-else-if="usageInfo?.error" class="space-y-1">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+          {{ usageErrorLabel }}
+        </span>
+      </div>
+
       <!-- Loading state -->
       <div v-else-if="loading" class="space-y-1.5">
         <div class="flex items-center gap-1">
@@ -862,6 +876,16 @@ const hasIneligibleTiers = computed(() => {
 const isForbidden = computed(() => !!usageInfo.value?.is_forbidden)
 const forbiddenType = computed(() => usageInfo.value?.forbidden_type || 'forbidden')
 const validationURL = computed(() => usageInfo.value?.validation_url || '')
+
+// 需要重新授权（401）
+const needsReauth = computed(() => !!usageInfo.value?.needs_reauth)
+
+// 降级错误标签（rate_limited / network_error）
+const usageErrorLabel = computed(() => {
+  const code = usageInfo.value?.error_code
+  if (code === 'rate_limited') return t('admin.accounts.rateLimited')
+  return t('admin.accounts.usageError')
+})
 
 const forbiddenLabel = computed(() => {
   switch (forbiddenType.value) {

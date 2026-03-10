@@ -2505,7 +2505,10 @@ export default {
       forbiddenViolation: 'Violation Ban',
       openVerification: 'Open Verification Link',
       copyLink: 'Copy Link',
-      linkCopied: 'Link Copied'
+      linkCopied: 'Link Copied',
+      needsReauth: 'Re-auth Required',
+      rateLimited: 'Rate Limited',
+      usageError: 'Fetch Error'
     },
 
     // Scheduled Tests

@@ -17,6 +17,12 @@ const (
 	forbiddenTypeValidation = "validation"
 	forbiddenTypeViolation  = "violation"
 	forbiddenTypeForbidden  = "forbidden"
+
+	// 机器可读的错误码
+	errorCodeForbidden       = "forbidden"
+	errorCodeUnauthenticated = "unauthenticated"
+	errorCodeRateLimited     = "rate_limited"
+	errorCodeNetworkError    = "network_error"
 )
 
 // AntigravityQuotaFetcher 从 Antigravity API 获取额度
@@ -55,13 +61,17 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		var forbiddenErr *antigravity.ForbiddenError
 		if errors.As(err, &forbiddenErr) {
 			now := time.Now()
+			fbType := classifyForbiddenType(forbiddenErr.Body)
 			return &QuotaResult{
 				UsageInfo: &UsageInfo{
 					UpdatedAt:       &now,
 					IsForbidden:     true,
 					ForbiddenReason: forbiddenErr.Body,
-					ForbiddenType:   classifyForbiddenType(forbiddenErr.Body),
+					ForbiddenType:   fbType,
 					ValidationURL:   extractValidationURL(forbiddenErr.Body),
+					NeedsVerify:     fbType == forbiddenTypeValidation,
+					IsBanned:        fbType == forbiddenTypeViolation,
+					ErrorCode:       errorCodeForbidden,
 				},
 			}, nil
 		}

@@ -200,11 +200,6 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		s.handleAuthError(ctx, account, msg)
 		shouldDisable = true
 	case 403:
-		// 禁止访问：停止调度，记录错误
-		msg := "Access forbidden (403): account may be suspended or lack permissions"
-		if upstreamMsg != "" {
-			msg = "Access forbidden (403): " + upstreamMsg
-		}
 		logger.LegacyPrintf(
 			"service.ratelimit",
 			"[HandleUpstreamErrorRaw] account_id=%d platform=%s type=%s status=403 request_id=%s cf_ray=%s upstream_msg=%s raw_body=%s",
@@ -216,8 +211,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			upstreamMsg,
 			truncateForLog(responseBody, 1024),
 		)
-		s.handleAuthError(ctx, account, msg)
-		shouldDisable = true
+		shouldDisable = s.handle403(ctx, account, upstreamMsg, responseBody)
 	case 429:
 		s.handle429(ctx, account, headers, responseBody)
 		shouldDisable = false
@@ -620,6 +614,72 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 		return
 	}
 	slog.Warn("account_disabled_auth_error", "account_id", account.ID, "error", errorMsg)
+}
+
+// antigravityValidationBlockDuration Antigravity validation 类型 403 的临时封禁时长
+// 与 Antigravity-Manager 一致（10 分钟）
+const antigravityValidationBlockDuration = 10 * time.Minute
+
+// handle403 处理 403 Forbidden 错误
+// Antigravity 平台区分 validation（临时不可调度）和 violation（永久 SetError）；
+// 其他平台保持原有 SetError 行为。
+func (s *RateLimitService) handle403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	if account.Platform == PlatformAntigravity {
+		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
+	}
+	// 非 Antigravity 平台：保持原有行为
+	msg := "Access forbidden (403): account may be suspended or lack permissions"
+	if upstreamMsg != "" {
+		msg = "Access forbidden (403): " + upstreamMsg
+	}
+	s.handleAuthError(ctx, account, msg)
+	return true
+}
+
+// handleAntigravity403 处理 Antigravity 平台的 403 错误
+// validation（需要验证）→ 临时不可调度（到期自动恢复）
+// violation（违规封号）→ 永久 SetError（需人工处理）
+// generic（通用禁止）→ 永久 SetError
+func (s *RateLimitService) handleAntigravity403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	fbType := classifyForbiddenType(string(responseBody))
+
+	switch fbType {
+	case forbiddenTypeValidation:
+		// VALIDATION_REQUIRED: 临时不可调度，到期自动恢复
+		until := time.Now().Add(antigravityValidationBlockDuration)
+		reason := "Validation required (403)"
+		if upstreamMsg != "" {
+			reason = "Validation required (403): " + upstreamMsg
+		}
+		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+			slog.Warn("antigravity_validation_block_failed", "account_id", account.ID, "error", err)
+		} else {
+			slog.Info("antigravity_validation_block_set",
+				"account_id", account.ID,
+				"until", until,
+				"forbidden_type", fbType,
+			)
+		}
+		return true
+
+	case forbiddenTypeViolation:
+		// 违规封号: 永久禁用，需人工处理
+		msg := "Account violation (403): terms of service violation"
+		if upstreamMsg != "" {
+			msg = "Account violation (403): " + upstreamMsg
+		}
+		s.handleAuthError(ctx, account, msg)
+		return true
+
+	default:
+		// 通用 403: 保持原有行为
+		msg := "Access forbidden (403): account may be suspended or lack permissions"
+		if upstreamMsg != "" {
+			msg = "Access forbidden (403): " + upstreamMsg
+		}
+		s.handleAuthError(ctx, account, msg)
+		return true
+	}
 }
 
 // handleCustomErrorCode 处理自定义错误码，停止账号调度
