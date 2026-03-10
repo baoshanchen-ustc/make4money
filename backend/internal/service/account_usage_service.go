@@ -700,7 +700,7 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 		fetchResult, err := s.antigravityQuotaFetcher.FetchQuota(fetchCtx, account, proxyURL)
 		if err != nil {
 			degraded := buildAntigravityDegradedUsage(err)
-			enrichDegradedWithAccountError(degraded, account)
+			enrichUsageWithAccountError(degraded, account)
 			s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
 				usageInfo: degraded,
 				timestamp: time.Now(),
@@ -708,6 +708,7 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 			return degraded, nil
 		}
 
+		enrichUsageWithAccountError(fetchResult.UsageInfo, account)
 		s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
 			usageInfo: fetchResult.UsageInfo,
 			timestamp: time.Now(),
@@ -786,11 +787,12 @@ func buildAntigravityDegradedUsage(err error) *UsageInfo {
 	return info
 }
 
-// enrichDegradedWithAccountError 结合账号错误状态修正降级 UsageInfo
-// 场景：被封号的账号 OAuth token 失效，FetchAvailableModels 返回 401，
-// 降级逻辑设置了 needs_reauth，但账号实际是 403 封号/需验证。
-// 此函数用账号的 error_message 覆盖降级信息，显示正确的 forbidden 状态。
-func enrichDegradedWithAccountError(info *UsageInfo, account *Account) {
+// enrichUsageWithAccountError 结合账号错误状态修正 UsageInfo
+// 场景 1（成功路径）：FetchAvailableModels 正常返回，但账号已因 403 被标记为 error，
+//   需要在正常 usage 数据上附加 forbidden/validation 信息。
+// 场景 2（降级路径）：被封号的账号 OAuth token 失效，FetchAvailableModels 返回 401，
+//   降级逻辑设置了 needs_reauth，但账号实际是 403 封号/需验证，需覆盖为正确状态。
+func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
 	if info == nil || account == nil || account.Status != StatusError {
 		return
 	}

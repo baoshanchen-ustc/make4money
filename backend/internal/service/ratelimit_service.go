@@ -646,6 +646,9 @@ func (s *RateLimitService) handleAntigravity403(ctx context.Context, account *Ac
 		if upstreamMsg != "" {
 			msg = "Validation required (403): " + upstreamMsg
 		}
+		if validationURL := extractValidationURL(string(responseBody)); validationURL != "" {
+			msg += " | validation_url: " + validationURL
+		}
 		s.handleAuthError(ctx, account, msg)
 		return true
 
