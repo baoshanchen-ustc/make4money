@@ -3,6 +3,7 @@
     <div v-if="group" class="space-y-4">
       <!-- 分组信息 -->
       <div class="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm dark:bg-dark-700">
+        <PlatformIcon :platform="group.platform" size="md" class="text-gray-500 dark:text-gray-400" />
         <span class="font-medium text-gray-900 dark:text-white">{{ group.name }}</span>
         <span class="text-gray-400">|</span>
         <span class="text-gray-600 dark:text-gray-400">{{ t('admin.groups.platforms.' + group.platform) }}</span>
@@ -243,6 +244,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 
 interface LocalEntry extends GroupRateMultiplierEntry {}
 
