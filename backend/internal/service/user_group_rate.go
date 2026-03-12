@@ -5,6 +5,7 @@ import "context"
 // UserGroupRateEntry 分组下用户专属倍率条目
 type UserGroupRateEntry struct {
 	UserID         int64   `json:"user_id"`
+	UserName       string  `json:"user_name"`
 	UserEmail      string  `json:"user_email"`
 	RateMultiplier float64 `json:"rate_multiplier"`
 }

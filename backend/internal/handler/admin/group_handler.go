@@ -360,6 +360,23 @@ func (h *GroupHandler) GetGroupRateMultipliers(c *gin.Context) {
 	response.Success(c, entries)
 }
 
+// ClearGroupRateMultipliers handles clearing all rate multipliers for a group
+// DELETE /api/v1/admin/groups/:id/rate-multipliers
+func (h *GroupHandler) ClearGroupRateMultipliers(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+
+	if err := h.adminService.ClearGroupRateMultipliers(c.Request.Context(), groupID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"message": "Rate multipliers cleared successfully"})
+}
+
 // UpdateSortOrderRequest represents the request to update group sort orders
 type UpdateSortOrderRequest struct {
 	Updates []struct {

@@ -1419,6 +1419,10 @@ export default {
       rateUpdated: 'Rate multiplier updated',
       rateDeleted: 'Rate multiplier removed',
       rateAdded: 'Rate multiplier added',
+      clearAll: 'Clear All',
+      confirmClearAll: 'Are you sure you want to clear all rate multiplier settings for this group? This cannot be undone.',
+      rateCleared: 'All rate multipliers cleared',
+      userInfo: 'User Info',
       platforms: {
         all: 'All Platforms',
         anthropic: 'Anthropic',

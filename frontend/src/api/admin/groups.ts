@@ -158,6 +158,7 @@ export async function getGroupApiKeys(
  */
 export interface GroupRateMultiplierEntry {
   user_id: number
+  user_name: string
   user_email: string
   rate_multiplier: number
 }
@@ -188,6 +189,16 @@ export async function updateSortOrder(
   return data
 }
 
+/**
+ * Clear all rate multipliers for a group
+ * @param id - Group ID
+ * @returns Success confirmation
+ */
+export async function clearGroupRateMultipliers(id: number): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(`/admin/groups/${id}/rate-multipliers`)
+  return data
+}
+
 export const groupsAPI = {
   list,
   getAll,
@@ -200,6 +211,7 @@ export const groupsAPI = {
   getStats,
   getGroupApiKeys,
   getGroupRateMultipliers,
+  clearGroupRateMultipliers,
   updateSortOrder
 }
 

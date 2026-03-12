@@ -1518,6 +1518,10 @@ export default {
       rateUpdated: '专属倍率已更新',
       rateDeleted: '专属倍率已删除',
       rateAdded: '专属倍率已添加',
+      clearAll: '全部清空',
+      confirmClearAll: '确定要清空该分组所有用户的专属倍率设置吗？此操作不可撤销。',
+      rateCleared: '已清空所有专属倍率',
+      userInfo: '用户信息',
       subscription: {
         title: '订阅设置',
         type: '计费类型',

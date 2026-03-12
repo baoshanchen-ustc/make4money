@@ -1,8 +1,8 @@
 <template>
   <BaseDialog :show="show" :title="t('admin.groups.rateMultipliersTitle')" width="normal" @close="$emit('close')">
-    <div v-if="group" class="space-y-5">
+    <div v-if="group" class="space-y-4">
       <!-- 分组信息 -->
-      <div class="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-4 py-3 text-sm dark:bg-dark-700">
+      <div class="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm dark:bg-dark-700">
         <span class="font-medium text-gray-900 dark:text-white">{{ group.name }}</span>
         <span class="text-gray-400">|</span>
         <span class="text-gray-600 dark:text-gray-400">{{ t('admin.groups.platforms.' + group.platform) }}</span>
@@ -13,11 +13,11 @@
       </div>
 
       <!-- 添加用户 -->
-      <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
-        <h4 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+      <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+        <h4 class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.groups.addUserRate') }}
         </h4>
-        <div class="flex items-end gap-3">
+        <div class="flex items-end gap-2">
           <div class="relative flex-1">
             <input
               v-model="searchQuery"
@@ -27,7 +27,6 @@
               @input="handleSearchUsers"
               @focus="showDropdown = true"
             />
-            <!-- 搜索结果下拉 -->
             <div
               v-if="showDropdown && searchResults.length > 0"
               class="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-500 dark:bg-dark-700"
@@ -36,14 +35,16 @@
                 v-for="user in searchResults"
                 :key="user.id"
                 type="button"
-                class="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-dark-600"
+                class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-50 dark:hover:bg-dark-600"
                 @click="selectUser(user)"
               >
-                <span class="text-gray-900 dark:text-white">{{ user.email }}</span>
+                <span class="text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
+                <span class="text-gray-900 dark:text-white">{{ user.username || user.email }}</span>
+                <span v-if="user.username" class="text-xs text-gray-400">{{ user.email }}</span>
               </button>
             </div>
           </div>
-          <div class="w-28">
+          <div class="w-24">
             <input
               v-model.number="newRate"
               type="number"
@@ -66,8 +67,8 @@
       </div>
 
       <!-- 加载状态 -->
-      <div v-if="loading" class="flex justify-center py-8">
-        <svg class="h-8 w-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
+      <div v-if="loading" class="flex justify-center py-6">
+        <svg class="h-6 w-6 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
@@ -75,37 +76,87 @@
 
       <!-- 已设置的用户列表 -->
       <div v-else>
-        <h4 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-          {{ t('admin.groups.rateMultipliers') }} ({{ entries.length }})
-        </h4>
+        <div class="mb-2 flex items-center justify-between">
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.groups.rateMultipliers') }} ({{ entries.length }})
+          </h4>
+          <button
+            v-if="entries.length > 0"
+            type="button"
+            class="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            :disabled="clearing"
+            @click="handleClearAll"
+          >
+            <Icon v-if="clearing" name="refresh" size="xs" class="mr-0.5 inline animate-spin" />
+            {{ t('admin.groups.clearAll') }}
+          </button>
+        </div>
 
-        <div v-if="entries.length === 0" class="py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+        <div v-if="entries.length === 0" class="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
           {{ t('admin.groups.noRateMultipliers') }}
         </div>
 
-        <div v-else class="space-y-2">
-          <div
-            v-for="entry in entries"
-            :key="entry.user_id"
-            class="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600"
-          >
-            <span class="flex-1 text-sm text-gray-900 dark:text-white">{{ entry.user_email }}</span>
-            <input
-              type="number"
-              step="0.001"
-              min="0"
-              :value="entry.rate_multiplier"
-              class="hide-spinner w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
-              @blur="handleUpdateRate(entry, ($event.target as HTMLInputElement).value)"
-              @keydown.enter="($event.target as HTMLInputElement).blur()"
-            />
-            <button
-              type="button"
-              class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-              @click="handleDeleteRate(entry)"
+        <div v-else>
+          <!-- 表头 -->
+          <div class="mb-1 flex items-center gap-2 px-2 text-xs font-medium text-gray-400 dark:text-gray-500">
+            <span class="w-10">ID</span>
+            <span class="flex-1">{{ t('admin.groups.userInfo') }}</span>
+            <span class="w-20 text-center">{{ t('admin.groups.columns.rateMultiplier') }}</span>
+            <span class="w-8"></span>
+          </div>
+
+          <!-- 列表 -->
+          <div class="max-h-[320px] space-y-1 overflow-y-auto">
+            <div
+              v-for="entry in paginatedEntries"
+              :key="entry.user_id"
+              class="flex items-center gap-2 rounded-md border border-gray-100 px-2 py-1.5 dark:border-dark-600"
             >
-              <Icon name="trash" size="sm" />
-            </button>
+              <span class="w-10 shrink-0 text-xs text-gray-400 dark:text-gray-500">#{{ entry.user_id }}</span>
+              <div class="flex-1 min-w-0">
+                <div class="truncate text-sm text-gray-900 dark:text-white">{{ entry.user_name || entry.user_email }}</div>
+                <div v-if="entry.user_name" class="truncate text-xs text-gray-400">{{ entry.user_email }}</div>
+              </div>
+              <input
+                type="number"
+                step="0.001"
+                min="0"
+                :value="entry.rate_multiplier"
+                class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                @blur="handleUpdateRate(entry, ($event.target as HTMLInputElement).value)"
+                @keydown.enter="($event.target as HTMLInputElement).blur()"
+              />
+              <button
+                type="button"
+                class="w-8 shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                @click="handleDeleteRate(entry)"
+              >
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 分页 -->
+          <div v-if="totalPages > 1" class="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 dark:border-dark-600">
+            <span class="text-xs text-gray-400">{{ currentPage }} / {{ totalPages }}</span>
+            <div class="flex gap-1">
+              <button
+                type="button"
+                class="rounded px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 dark:hover:bg-dark-600"
+                :disabled="currentPage <= 1"
+                @click="currentPage--"
+              >
+                &lt;
+              </button>
+              <button
+                type="button"
+                class="rounded px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 dark:hover:bg-dark-600"
+                :disabled="currentPage >= totalPages"
+                @click="currentPage++"
+              >
+                &gt;
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -114,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -144,14 +195,24 @@ const showDropdown = ref(false)
 const selectedUser = ref<AdminUser | null>(null)
 const newRate = ref<number | null>(null)
 const addingRate = ref(false)
+const clearing = ref(false)
+const currentPage = ref(1)
+const pageSize = 15
 
 let searchTimeout: ReturnType<typeof setTimeout>
+
+const totalPages = computed(() => Math.max(1, Math.ceil(entries.value.length / pageSize)))
+const paginatedEntries = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return entries.value.slice(start, start + pageSize)
+})
 
 const loadEntries = async () => {
   if (!props.group) return
   loading.value = true
   try {
     entries.value = await adminAPI.groups.getGroupRateMultipliers(props.group.id)
+    currentPage.value = 1
   } catch (error) {
     appStore.showError(t('admin.groups.failedToLoad'))
     console.error('Error loading group rate multipliers:', error)
@@ -246,6 +307,23 @@ const handleDeleteRate = async (entry: GroupRateMultiplierEntry) => {
   } catch (error) {
     appStore.showError(t('admin.groups.failedToSave'))
     console.error('Error deleting rate multiplier:', error)
+  }
+}
+
+const handleClearAll = async () => {
+  if (!props.group || entries.value.length === 0) return
+  if (!confirm(t('admin.groups.confirmClearAll'))) return
+  clearing.value = true
+  try {
+    await adminAPI.groups.clearGroupRateMultipliers(props.group.id)
+    appStore.showSuccess(t('admin.groups.rateCleared'))
+    await loadEntries()
+    emit('success')
+  } catch (error) {
+    appStore.showError(t('admin.groups.failedToSave'))
+    console.error('Error clearing rate multipliers:', error)
+  } finally {
+    clearing.value = false
   }
 }
 

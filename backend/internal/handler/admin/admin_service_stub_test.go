@@ -179,6 +179,10 @@ func (s *stubAdminService) GetGroupRateMultipliers(_ context.Context, _ int64) (
 	return nil, nil
 }
 
+func (s *stubAdminService) ClearGroupRateMultipliers(_ context.Context, _ int64) error {
+	return nil
+}
+
 func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64) ([]service.Account, int64, error) {
 	return s.accounts, int64(len(s.accounts)), nil
 }
