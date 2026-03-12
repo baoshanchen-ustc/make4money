@@ -377,6 +377,34 @@ func (h *GroupHandler) ClearGroupRateMultipliers(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Rate multipliers cleared successfully"})
 }
 
+// BatchSetGroupRateMultipliersRequest represents batch set rate multipliers request
+type BatchSetGroupRateMultipliersRequest struct {
+	Entries []service.GroupRateMultiplierInput `json:"entries" binding:"required"`
+}
+
+// BatchSetGroupRateMultipliers handles batch setting rate multipliers for a group
+// PUT /api/v1/admin/groups/:id/rate-multipliers
+func (h *GroupHandler) BatchSetGroupRateMultipliers(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+
+	var req BatchSetGroupRateMultipliersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	if err := h.adminService.BatchSetGroupRateMultipliers(c.Request.Context(), groupID, req.Entries); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"message": "Rate multipliers updated successfully"})
+}
+
 // UpdateSortOrderRequest represents the request to update group sort orders
 type UpdateSortOrderRequest struct {
 	Updates []struct {

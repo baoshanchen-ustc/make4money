@@ -193,6 +193,31 @@ func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID
 	return nil
 }
 
+// SyncGroupRateMultipliers 批量同步分组的用户专属倍率（先删后插）
+func (r *userGroupRateRepository) SyncGroupRateMultipliers(ctx context.Context, groupID int64, entries []service.GroupRateMultiplierInput) error {
+	if _, err := r.sql.ExecContext(ctx, `DELETE FROM user_group_rate_multipliers WHERE group_id = $1`, groupID); err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	userIDs := make([]int64, len(entries))
+	rates := make([]float64, len(entries))
+	for i, e := range entries {
+		userIDs[i] = e.UserID
+		rates[i] = e.RateMultiplier
+	}
+	now := time.Now()
+	_, err := r.sql.ExecContext(ctx, `
+		INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+		SELECT data.user_id, $1::bigint, data.rate_multiplier, $2::timestamptz, $2::timestamptz
+		FROM unnest($3::bigint[], $4::double precision[]) AS data(user_id, rate_multiplier)
+		ON CONFLICT (user_id, group_id)
+		DO UPDATE SET rate_multiplier = EXCLUDED.rate_multiplier, updated_at = EXCLUDED.updated_at
+	`, groupID, now, pq.Array(userIDs), pq.Array(rates))
+	return err
+}
+
 // DeleteByGroupID 删除指定分组的所有用户专属倍率
 func (r *userGroupRateRepository) DeleteByGroupID(ctx context.Context, groupID int64) error {
 	_, err := r.sql.ExecContext(ctx, `DELETE FROM user_group_rate_multipliers WHERE group_id = $1`, groupID)

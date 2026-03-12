@@ -12,7 +12,7 @@
         </span>
       </div>
 
-      <!-- 添加用户 -->
+      <!-- 操作区：添加用户 + 批量调整 + 全部清空 -->
       <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
         <h4 class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.groups.addUserRate') }}
@@ -65,16 +65,43 @@
             <Icon v-if="addingRate" name="refresh" size="sm" class="mr-1 animate-spin" />
             {{ t('common.add') }}
           </button>
-          <button
-            v-if="entries.length > 0"
-            type="button"
-            class="btn shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40"
-            :disabled="clearing"
-            @click="showClearConfirm = true"
-          >
-            <Icon v-if="clearing" name="refresh" size="sm" class="mr-1 inline animate-spin" />
-            {{ t('admin.groups.clearAll') }}
-          </button>
+        </div>
+
+        <!-- 批量调整 + 全部清空 -->
+        <div v-if="entries.length > 0" class="mt-3 flex items-center gap-3 border-t border-gray-100 pt-3 dark:border-dark-600">
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.batchAdjust') }}</span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs text-gray-400">×</span>
+            <input
+              v-model.number="batchFactor"
+              type="number"
+              step="0.1"
+              min="0"
+              autocomplete="off"
+              class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+              placeholder="0.5"
+            />
+            <button
+              type="button"
+              class="btn btn-primary btn-sm shrink-0 px-2.5 py-1 text-xs"
+              :disabled="!batchFactor || batchFactor <= 0 || adjusting"
+              @click="handleBatchAdjust"
+            >
+              <Icon v-if="adjusting" name="refresh" size="sm" class="mr-1 animate-spin" />
+              {{ t('admin.groups.applyMultiplier') }}
+            </button>
+          </div>
+          <div class="ml-auto">
+            <button
+              type="button"
+              class="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40"
+              :disabled="clearing"
+              @click="showClearConfirm = true"
+            >
+              <Icon v-if="clearing" name="refresh" size="sm" class="mr-1 inline animate-spin" />
+              {{ t('admin.groups.clearAll') }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -134,17 +161,8 @@
                         {{ entry.user_status }}
                       </span>
                     </td>
-                    <td class="whitespace-nowrap px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        autocomplete="off"
-                        :value="entry.rate_multiplier"
-                        class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
-                        @blur="handleUpdateRate(entry, ($event.target as HTMLInputElement).value)"
-                        @keydown.enter="($event.target as HTMLInputElement).blur()"
-                      />
+                    <td class="whitespace-nowrap px-3 py-2 font-medium text-gray-900 dark:text-white">
+                      {{ entry.rate_multiplier }}
                     </td>
                     <td class="px-2 py-2">
                       <button
@@ -225,6 +243,8 @@ const clearing = ref(false)
 const showClearConfirm = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(10)
+const batchFactor = ref<number | null>(null)
+const adjusting = ref(false)
 
 let searchTimeout: ReturnType<typeof setTimeout>
 
@@ -258,6 +278,7 @@ watch(() => props.show, (val) => {
     searchResults.value = []
     selectedUser.value = null
     newRate.value = null
+    batchFactor.value = null
   }
 })
 
@@ -313,20 +334,24 @@ const handleAddRate = async () => {
   }
 }
 
-const handleUpdateRate = async (entry: GroupRateMultiplierEntry, value: string) => {
-  if (!props.group) return
-  const numValue = parseFloat(value)
-  if (isNaN(numValue) || numValue === entry.rate_multiplier) return
+const handleBatchAdjust = async () => {
+  if (!props.group || !batchFactor.value || entries.value.length === 0) return
+  adjusting.value = true
   try {
-    await adminAPI.users.update(entry.user_id, {
-      group_rates: { [props.group.id]: numValue }
-    })
-    appStore.showSuccess(t('admin.groups.rateUpdated'))
+    const newEntries = entries.value.map(e => ({
+      user_id: e.user_id,
+      rate_multiplier: parseFloat((e.rate_multiplier * batchFactor.value!).toFixed(6))
+    }))
+    await adminAPI.groups.batchSetGroupRateMultipliers(props.group.id, newEntries)
+    appStore.showSuccess(t('admin.groups.rateAdjusted'))
+    batchFactor.value = null
     await loadEntries()
     emit('success')
   } catch (error) {
     appStore.showError(t('admin.groups.failedToSave'))
-    console.error('Error updating rate multiplier:', error)
+    console.error('Error batch adjusting rate multipliers:', error)
+  } finally {
+    adjusting.value = false
   }
 }
 

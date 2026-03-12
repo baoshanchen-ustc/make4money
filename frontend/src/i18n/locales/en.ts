@@ -1426,6 +1426,10 @@ export default {
       clearAll: 'Clear All',
       confirmClearAll: 'Are you sure you want to clear all rate multiplier settings for this group? This cannot be undone.',
       rateCleared: 'All rate multipliers cleared',
+      batchAdjust: 'Batch Adjust Rates',
+      multiplierFactor: 'Factor',
+      applyMultiplier: 'Apply',
+      rateAdjusted: 'Rates adjusted successfully',
       userInfo: 'User Info',
       platforms: {
         all: 'All Platforms',

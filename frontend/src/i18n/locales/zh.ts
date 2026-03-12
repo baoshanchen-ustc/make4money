@@ -1525,6 +1525,10 @@ export default {
       clearAll: '全部清空',
       confirmClearAll: '确定要清空该分组所有用户的专属倍率设置吗？此操作不可撤销。',
       rateCleared: '已清空所有专属倍率',
+      batchAdjust: '批量调整倍率',
+      multiplierFactor: '乘数',
+      applyMultiplier: '应用',
+      rateAdjusted: '倍率已批量调整',
       userInfo: '用户信息',
       subscription: {
         title: '订阅设置',

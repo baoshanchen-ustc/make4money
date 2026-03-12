@@ -201,6 +201,23 @@ export async function clearGroupRateMultipliers(id: number): Promise<{ message: 
   return data
 }
 
+/**
+ * Batch set rate multipliers for users in a group
+ * @param id - Group ID
+ * @param entries - Array of { user_id, rate_multiplier }
+ * @returns Success confirmation
+ */
+export async function batchSetGroupRateMultipliers(
+  id: number,
+  entries: Array<{ user_id: number; rate_multiplier: number }>
+): Promise<{ message: string }> {
+  const { data } = await apiClient.put<{ message: string }>(
+    `/admin/groups/${id}/rate-multipliers`,
+    { entries }
+  )
+  return data
+}
+
 export const groupsAPI = {
   list,
   getAll,
@@ -214,6 +231,7 @@ export const groupsAPI = {
   getGroupApiKeys,
   getGroupRateMultipliers,
   clearGroupRateMultipliers,
+  batchSetGroupRateMultipliers,
   updateSortOrder
 }
 
