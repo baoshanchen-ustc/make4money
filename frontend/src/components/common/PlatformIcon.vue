@@ -25,6 +25,10 @@
       d="M12 2.5l2.1 4.7 5.1.5-3.9 3.4 1.2 5-4.5-2.6-4.5 2.6 1.2-5-3.9-3.4 5.1-.5L12 2.5z"
     />
   </svg>
+  <!-- MiniMax logo (M letter) -->
+  <svg v-else-if="platform === 'minimax'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M3 18V6l4.5 6L12 6l4.5 6L21 6v12h-2.5V11l-2 2.667L12 8l-4.5 5.667-2-2.667V18H3z" />
+  </svg>
   <!-- Fallback: generic platform icon -->
   <svg v-else :class="sizeClass" fill="currentColor" viewBox="0 0 24 24">
     <path

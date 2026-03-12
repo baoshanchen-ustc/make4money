@@ -494,6 +494,27 @@ In Claude Code, Plan Mode cannot exit automatically. (Normally when using the na
 
 ---
 
+## MiniMax Support
+
+Sub2API supports [MiniMax](https://www.minimax.io/) accounts via API Key. MiniMax uses an Anthropic-compatible API interface, supporting MiniMax-M2.5 and MiniMax-M2.5-highspeed models.
+
+### Configuration
+
+1. Create a MiniMax account in the admin panel with your MiniMax API Key
+2. The default base URL is `https://api.minimax.io/anthropic`
+3. Add `api.minimax.io` to the `upstream_hosts` allowlist in your `config.yaml` if URL allowlist is enabled
+
+### Claude Code Configuration
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:8080"
+export ANTHROPIC_AUTH_TOKEN="sk-xxx"
+```
+
+Requests with MiniMax models (e.g., `MiniMax-M2.5`) will be automatically routed to MiniMax accounts.
+
+---
+
 ## Project Structure
 
 ```
