@@ -1428,7 +1428,11 @@ export default {
         accounts: '账号数',
         status: '状态',
         actions: '操作',
-        billingType: '计费类型'
+        billingType: '计费类型',
+        userName: '用户名',
+        userEmail: '邮箱',
+        userNotes: '备注',
+        userStatus: '状态'
       },
       form: {
         name: '名称',

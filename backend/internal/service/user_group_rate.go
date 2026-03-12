@@ -7,6 +7,8 @@ type UserGroupRateEntry struct {
 	UserID         int64   `json:"user_id"`
 	UserName       string  `json:"user_name"`
 	UserEmail      string  `json:"user_email"`
+	UserNotes      string  `json:"user_notes"`
+	UserStatus     string  `json:"user_status"`
 	RateMultiplier float64 `json:"rate_multiplier"`
 }
 

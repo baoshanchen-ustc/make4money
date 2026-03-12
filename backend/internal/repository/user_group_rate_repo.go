@@ -98,7 +98,7 @@ func (r *userGroupRateRepository) GetByUserIDs(ctx context.Context, userIDs []in
 // GetByGroupID 获取指定分组下所有用户的专属倍率
 func (r *userGroupRateRepository) GetByGroupID(ctx context.Context, groupID int64) ([]service.UserGroupRateEntry, error) {
 	query := `
-		SELECT ugr.user_id, u.username, u.email, ugr.rate_multiplier
+		SELECT ugr.user_id, u.username, u.email, COALESCE(u.notes, ''), u.status, ugr.rate_multiplier
 		FROM user_group_rate_multipliers ugr
 		JOIN users u ON u.id = ugr.user_id
 		WHERE ugr.group_id = $1
@@ -113,7 +113,7 @@ func (r *userGroupRateRepository) GetByGroupID(ctx context.Context, groupID int6
 	var result []service.UserGroupRateEntry
 	for rows.Next() {
 		var entry service.UserGroupRateEntry
-		if err := rows.Scan(&entry.UserID, &entry.UserName, &entry.UserEmail, &entry.RateMultiplier); err != nil {
+		if err := rows.Scan(&entry.UserID, &entry.UserName, &entry.UserEmail, &entry.UserNotes, &entry.UserStatus, &entry.RateMultiplier); err != nil {
 			return nil, err
 		}
 		result = append(result, entry)

@@ -1372,7 +1372,11 @@ export default {
         accounts: 'Accounts',
         status: 'Status',
         actions: 'Actions',
-        billingType: 'Billing Type'
+        billingType: 'Billing Type',
+        userName: 'Username',
+        userEmail: 'Email',
+        userNotes: 'Notes',
+        userStatus: 'Status'
       },
       rateAndAccounts: '{rate}x rate · {count} accounts',
       accountsCount: '{count} accounts',

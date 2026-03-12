@@ -1,5 +1,5 @@
 <template>
-  <BaseDialog :show="show" :title="t('admin.groups.rateMultipliersTitle')" width="normal" @close="$emit('close')">
+  <BaseDialog :show="show" :title="t('admin.groups.rateMultipliersTitle')" width="wide" @close="$emit('close')">
     <div v-if="group" class="space-y-4">
       <!-- 分组信息 -->
       <div class="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm dark:bg-dark-700">
@@ -38,7 +38,7 @@
                 class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-50 dark:hover:bg-dark-600"
                 @click="selectUser(user)"
               >
-                <span class="text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
+                <span class="text-gray-400">#{{ user.id }}</span>
                 <span class="text-gray-900 dark:text-white">{{ user.username || user.email }}</span>
                 <span v-if="user.username" class="text-xs text-gray-400">{{ user.email }}</span>
               </button>
@@ -97,67 +97,76 @@
         </div>
 
         <div v-else>
-          <!-- 表头 -->
-          <div class="mb-1 flex items-center gap-2 px-2 text-xs font-medium text-gray-400 dark:text-gray-500">
-            <span class="w-10">ID</span>
-            <span class="flex-1">{{ t('admin.groups.userInfo') }}</span>
-            <span class="w-20 text-center">{{ t('admin.groups.columns.rateMultiplier') }}</span>
-            <span class="w-8"></span>
-          </div>
-
-          <!-- 列表 -->
-          <div class="max-h-[320px] space-y-1 overflow-y-auto">
-            <div
-              v-for="entry in paginatedEntries"
-              :key="entry.user_id"
-              class="flex items-center gap-2 rounded-md border border-gray-100 px-2 py-1.5 dark:border-dark-600"
-            >
-              <span class="w-10 shrink-0 text-xs text-gray-400 dark:text-gray-500">#{{ entry.user_id }}</span>
-              <div class="flex-1 min-w-0">
-                <div class="truncate text-sm text-gray-900 dark:text-white">{{ entry.user_name || entry.user_email }}</div>
-                <div v-if="entry.user_name" class="truncate text-xs text-gray-400">{{ entry.user_email }}</div>
-              </div>
-              <input
-                type="number"
-                step="0.001"
-                min="0"
-                :value="entry.rate_multiplier"
-                class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
-                @blur="handleUpdateRate(entry, ($event.target as HTMLInputElement).value)"
-                @keydown.enter="($event.target as HTMLInputElement).blur()"
-              />
-              <button
-                type="button"
-                class="w-8 shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                @click="handleDeleteRate(entry)"
-              >
-                <Icon name="trash" size="sm" />
-              </button>
-            </div>
+          <!-- 表格 -->
+          <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-600">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-700">
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">ID</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userName') }}</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userEmail') }}</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userNotes') }}</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userStatus') }}</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.rateMultiplier') }}</th>
+                  <th class="w-10 px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-dark-600">
+                <tr
+                  v-for="entry in paginatedEntries"
+                  :key="entry.user_id"
+                  class="hover:bg-gray-50 dark:hover:bg-dark-700/50"
+                >
+                  <td class="whitespace-nowrap px-3 py-2 text-gray-400 dark:text-gray-500">{{ entry.user_id }}</td>
+                  <td class="whitespace-nowrap px-3 py-2 text-gray-900 dark:text-white">{{ entry.user_name || '-' }}</td>
+                  <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ entry.user_email }}</td>
+                  <td class="max-w-[160px] truncate px-3 py-2 text-gray-500 dark:text-gray-400" :title="entry.user_notes">{{ entry.user_notes || '-' }}</td>
+                  <td class="whitespace-nowrap px-3 py-2">
+                    <span
+                      :class="[
+                        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+                        entry.user_status === 'active'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-400'
+                      ]"
+                    >
+                      {{ entry.user_status }}
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-2">
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      :value="entry.rate_multiplier"
+                      class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                      @blur="handleUpdateRate(entry, ($event.target as HTMLInputElement).value)"
+                      @keydown.enter="($event.target as HTMLInputElement).blur()"
+                    />
+                  </td>
+                  <td class="px-2 py-2">
+                    <button
+                      type="button"
+                      class="rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                      @click="handleDeleteRate(entry)"
+                    >
+                      <Icon name="trash" size="sm" />
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
           <!-- 分页 -->
-          <div v-if="totalPages > 1" class="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 dark:border-dark-600">
-            <span class="text-xs text-gray-400">{{ currentPage }} / {{ totalPages }}</span>
-            <div class="flex gap-1">
-              <button
-                type="button"
-                class="rounded px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 dark:hover:bg-dark-600"
-                :disabled="currentPage <= 1"
-                @click="currentPage--"
-              >
-                &lt;
-              </button>
-              <button
-                type="button"
-                class="rounded px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 dark:hover:bg-dark-600"
-                :disabled="currentPage >= totalPages"
-                @click="currentPage++"
-              >
-                &gt;
-              </button>
-            </div>
-          </div>
+          <Pagination
+            v-if="entries.length > pageSize"
+            :total="entries.length"
+            :page="currentPage"
+            :page-size="pageSize"
+            :show-page-size-selector="false"
+            @update:page="currentPage = $event"
+          />
         </div>
       </div>
     </div>
@@ -172,6 +181,7 @@ import { adminAPI } from '@/api/admin'
 import type { GroupRateMultiplierEntry } from '@/api/admin/groups'
 import type { AdminGroup, AdminUser } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{
@@ -201,7 +211,6 @@ const pageSize = 15
 
 let searchTimeout: ReturnType<typeof setTimeout>
 
-const totalPages = computed(() => Math.max(1, Math.ceil(entries.value.length / pageSize)))
 const paginatedEntries = computed(() => {
   const start = (currentPage.value - 1) * pageSize
   return entries.value.slice(start, start + pageSize)
@@ -212,7 +221,11 @@ const loadEntries = async () => {
   loading.value = true
   try {
     entries.value = await adminAPI.groups.getGroupRateMultipliers(props.group.id)
-    currentPage.value = 1
+    // 确保当前页不超出范围
+    const totalPages = Math.max(1, Math.ceil(entries.value.length / pageSize))
+    if (currentPage.value > totalPages) {
+      currentPage.value = totalPages
+    }
   } catch (error) {
     appStore.showError(t('admin.groups.failedToLoad'))
     console.error('Error loading group rate multipliers:', error)
@@ -223,6 +236,7 @@ const loadEntries = async () => {
 
 watch(() => props.show, (val) => {
   if (val && props.group) {
+    currentPage.value = 1
     loadEntries()
     searchQuery.value = ''
     searchResults.value = []
