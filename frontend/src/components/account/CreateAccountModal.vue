@@ -1279,22 +1279,40 @@
 
       </div>
 
-      <!-- API Key 账号配额限制 -->
-      <div v-if="form.type === 'apikey'" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+      <!-- 配额控制 (Anthropic apikey: 配额限制 + 亲和) -->
+      <div
+        v-if="form.platform === 'anthropic' && form.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
         <div class="mb-3">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') }}</h3>
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>
         </div>
-        <QuotaLimitCard
-          :totalLimit="editQuotaLimit"
-          :dailyLimit="editQuotaDailyLimit"
-          :weeklyLimit="editQuotaWeeklyLimit"
-          @update:totalLimit="editQuotaLimit = $event"
-          @update:dailyLimit="editQuotaDailyLimit = $event"
-          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+        <QuotaLimitCard :totalLimit="editQuotaLimit" :dailyLimit="editQuotaDailyLimit" :weeklyLimit="editQuotaWeeklyLimit" @update:totalLimit="editQuotaLimit = $event" @update:dailyLimit="editQuotaDailyLimit = $event" @update:weeklyLimit="editQuotaWeeklyLimit = $event" />
+        <AffinityConfigCard
+          :enabled="clientAffinityEnabled"
+          :base="affinityBase"
+          :buffer="affinityBuffer"
+          @update:enabled="clientAffinityEnabled = $event"
+          @update:base="affinityBase = $event"
+          @update:buffer="affinityBuffer = $event"
         />
+      </div>
+
+      <!-- 配额控制 (非 Anthropic apikey) -->
+      <div
+        v-else-if="form.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaLimitHint') }}
+          </p>
+        </div>
+        <QuotaLimitCard :totalLimit="editQuotaLimit" :dailyLimit="editQuotaDailyLimit" :weeklyLimit="editQuotaWeeklyLimit" @update:totalLimit="editQuotaLimit = $event" @update:dailyLimit="editQuotaDailyLimit = $event" @update:weeklyLimit="editQuotaWeeklyLimit = $event" />
       </div>
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
@@ -1613,7 +1631,7 @@
         </div>
       </div>
 
-      <!-- Quota Control Section (Anthropic OAuth/SetupToken only) -->
+      <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="form.platform === 'anthropic' && accountCategory === 'oauth-based'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
@@ -1624,6 +1642,15 @@
             {{ t('admin.accounts.quotaControl.hint') }}
           </p>
         </div>
+
+        <AffinityConfigCard
+          :enabled="clientAffinityEnabled"
+          :base="affinityBase"
+          :buffer="affinityBuffer"
+          @update:enabled="clientAffinityEnabled = $event"
+          @update:base="affinityBase = $event"
+          @update:buffer="affinityBuffer = $event"
+        />
 
         <!-- Window Cost Limit -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
@@ -1966,12 +1993,6 @@
           <input v-model.number="form.load_factor" type="number" min="1"
             class="input" :placeholder="String(form.concurrency || 1)"
             @input="form.load_factor = (form.load_factor &amp;&amp; form.load_factor >= 1) ? form.load_factor : null" />
-          <p class="input-hint">{{ t('admin.accounts.loadFactorHint') }}</p>
-        </div>
-        <div>
-          <label class="input-label">{{ t('admin.accounts.loadFactor') }}</label>
-          <input v-model.number="form.load_factor" type="number" min="1"
-            class="input" :placeholder="String(form.concurrency || 1)" />
           <p class="input-hint">{{ t('admin.accounts.loadFactorHint') }}</p>
         </div>
         <div>
@@ -2558,6 +2579,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import AffinityConfigCard from '@/components/account/AffinityConfigCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
@@ -2727,6 +2749,11 @@ const mixedChannelWarningAction = ref<(() => Promise<void>) | null>(null)
 const antigravityMixedChannelConfirmed = ref(false)
 const showAdvancedOAuth = ref(false)
 const showGeminiHelpDialog = ref(false)
+
+// Client affinity (all Anthropic accounts)
+const clientAffinityEnabled = ref(false)
+const affinityBase = ref<number | null>(null)
+const affinityBuffer = ref<number | null>(null)
 
 // Quota control state (Anthropic OAuth/SetupToken only)
 const windowCostEnabled = ref(false)
@@ -3353,6 +3380,9 @@ const resetForm = () => {
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
+  clientAffinityEnabled.value = false
+  affinityBase.value = null
+  affinityBuffer.value = null
   modelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -3458,8 +3488,30 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   } else {
     delete extra.anthropic_passthrough
   }
+  applyClientAffinity(extra)
 
   return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+/** 将客户端亲和设置写入 extra（Anthropic 全类型通用） */
+const applyClientAffinity = (extra: Record<string, unknown>) => {
+  if (clientAffinityEnabled.value) {
+    extra.client_affinity_enabled = true
+    if (affinityBase.value != null && affinityBase.value > 0) {
+      extra.affinity_base = affinityBase.value
+    } else {
+      delete extra.affinity_base
+    }
+    if (affinityBase.value != null && affinityBase.value > 0 && affinityBuffer.value != null) {
+      extra.affinity_buffer = affinityBuffer.value
+    } else {
+      delete extra.affinity_buffer
+    }
+  } else {
+    delete extra.client_affinity_enabled
+    delete extra.affinity_base
+    delete extra.affinity_buffer
+  }
 }
 
 const buildSoraExtra = (
@@ -3792,18 +3844,20 @@ const createAccountAndFinish = async (
   // Inject quota limits for apikey accounts
   let finalExtra = extra
   if (type === 'apikey') {
-    const quotaExtra: Record<string, unknown> = { ...(extra || {}) }
-    if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
-      quotaExtra.quota_limit = editQuotaLimit.value
-    }
-    if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {
-      quotaExtra.quota_daily_limit = editQuotaDailyLimit.value
-    }
-    if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
-      quotaExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
-    }
-    if (Object.keys(quotaExtra).length > 0) {
-      finalExtra = quotaExtra
+    const hasAnyQuota = (editQuotaLimit.value != null && editQuotaLimit.value > 0) ||
+      (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) ||
+      (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0)
+    if (hasAnyQuota) {
+      finalExtra = { ...(extra || {}) }
+      if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
+        finalExtra.quota_limit = editQuotaLimit.value
+      }
+      if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {
+        finalExtra.quota_daily_limit = editQuotaDailyLimit.value
+      }
+      if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
+        finalExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
+      }
     }
   }
   await doCreateAccount({
@@ -4391,6 +4445,9 @@ const handleAnthropicExchange = async (authCode: string) => {
       extra.cache_ttl_override_enabled = true
       extra.cache_ttl_override_target = cacheTTLOverrideTarget.value
     }
+
+    // Add client affinity setting
+    applyClientAffinity(extra)
 
     const credentials: Record<string, unknown> = { ...tokenInfo }
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')

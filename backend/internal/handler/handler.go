@@ -28,6 +28,7 @@ type AdminHandlers struct {
 	ErrorPassthrough *admin.ErrorPassthroughHandler
 	APIKey           *admin.AdminAPIKeyHandler
 	ScheduledTest    *admin.ScheduledTestHandler
+	GDriveOAuth      *admin.GDriveOAuthHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -44,6 +45,7 @@ type Handlers struct {
 	OpenAIGateway *OpenAIGatewayHandler
 	SoraGateway   *SoraGatewayHandler
 	SoraClient    *SoraClientHandler
+	SoraVideos    *SoraVideosHandler
 	Setting       *SettingHandler
 	Totp          *TotpHandler
 }

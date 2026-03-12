@@ -265,6 +265,12 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
+	// 客户端亲和调度（Anthropic 和 Antigravity 账号）
+	if a.IsClientAffinityEnabled() {
+		enabled := true
+		out.ClientAffinityEnabled = &enabled
+	}
+
 	// 提取 API Key 账号配额限制（仅 apikey 类型有效）
 	if a.Type == service.AccountTypeAPIKey {
 		if limit := a.GetQuotaLimit(); limit > 0 {
