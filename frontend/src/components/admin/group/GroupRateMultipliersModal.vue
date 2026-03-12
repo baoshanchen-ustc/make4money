@@ -22,6 +22,7 @@
             <input
               v-model="searchQuery"
               type="text"
+              autocomplete="off"
               class="input w-full"
               :placeholder="t('admin.groups.searchUserPlaceholder')"
               @input="handleSearchUsers"
@@ -50,6 +51,7 @@
               type="number"
               step="0.001"
               min="0"
+              autocomplete="off"
               class="hide-spinner input w-full"
               placeholder="1.0"
             />
@@ -83,11 +85,11 @@
           <button
             v-if="entries.length > 0"
             type="button"
-            class="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            class="btn btn-sm rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40"
             :disabled="clearing"
-            @click="handleClearAll"
+            @click="showClearConfirm = true"
           >
-            <Icon v-if="clearing" name="refresh" size="xs" class="mr-0.5 inline animate-spin" />
+            <Icon v-if="clearing" name="refresh" size="sm" class="mr-1 inline animate-spin" />
             {{ t('admin.groups.clearAll') }}
           </button>
         </div>
@@ -97,65 +99,68 @@
         </div>
 
         <div v-else>
-          <!-- 表格 -->
-          <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-600">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-700">
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">ID</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userName') }}</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userEmail') }}</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userNotes') }}</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userStatus') }}</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.rateMultiplier') }}</th>
-                  <th class="w-10 px-2 py-2"></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-100 dark:divide-dark-600">
-                <tr
-                  v-for="entry in paginatedEntries"
-                  :key="entry.user_id"
-                  class="hover:bg-gray-50 dark:hover:bg-dark-700/50"
-                >
-                  <td class="whitespace-nowrap px-3 py-2 text-gray-400 dark:text-gray-500">{{ entry.user_id }}</td>
-                  <td class="whitespace-nowrap px-3 py-2 text-gray-900 dark:text-white">{{ entry.user_name || '-' }}</td>
-                  <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ entry.user_email }}</td>
-                  <td class="max-w-[160px] truncate px-3 py-2 text-gray-500 dark:text-gray-400" :title="entry.user_notes">{{ entry.user_notes || '-' }}</td>
-                  <td class="whitespace-nowrap px-3 py-2">
-                    <span
-                      :class="[
-                        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-                        entry.user_status === 'active'
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                          : 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-400'
-                      ]"
-                    >
-                      {{ entry.user_status }}
-                    </span>
-                  </td>
-                  <td class="whitespace-nowrap px-3 py-2">
-                    <input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      :value="entry.rate_multiplier"
-                      class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
-                      @blur="handleUpdateRate(entry, ($event.target as HTMLInputElement).value)"
-                      @keydown.enter="($event.target as HTMLInputElement).blur()"
-                    />
-                  </td>
-                  <td class="px-2 py-2">
-                    <button
-                      type="button"
-                      class="rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                      @click="handleDeleteRate(entry)"
-                    >
-                      <Icon name="trash" size="sm" />
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- 表格：固定表头 + 可滚动内容 -->
+          <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600">
+            <div class="max-h-[420px] overflow-y-auto">
+              <table class="w-full text-sm">
+                <thead class="sticky top-0 z-[1]">
+                  <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-700">
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userEmail') }}</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">ID</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userName') }}</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userNotes') }}</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userStatus') }}</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.rateMultiplier') }}</th>
+                    <th class="w-10 px-2 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-dark-600">
+                  <tr
+                    v-for="entry in paginatedEntries"
+                    :key="entry.user_id"
+                    class="hover:bg-gray-50 dark:hover:bg-dark-700/50"
+                  >
+                    <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ entry.user_email }}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-gray-400 dark:text-gray-500">{{ entry.user_id }}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-gray-900 dark:text-white">{{ entry.user_name || '-' }}</td>
+                    <td class="max-w-[160px] truncate px-3 py-2 text-gray-500 dark:text-gray-400" :title="entry.user_notes">{{ entry.user_notes || '-' }}</td>
+                    <td class="whitespace-nowrap px-3 py-2">
+                      <span
+                        :class="[
+                          'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+                          entry.user_status === 'active'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-400'
+                        ]"
+                      >
+                        {{ entry.user_status }}
+                      </span>
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-2">
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        autocomplete="off"
+                        :value="entry.rate_multiplier"
+                        class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                        @blur="handleUpdateRate(entry, ($event.target as HTMLInputElement).value)"
+                        @keydown.enter="($event.target as HTMLInputElement).blur()"
+                      />
+                    </td>
+                    <td class="px-2 py-2">
+                      <button
+                        type="button"
+                        class="rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                        @click="handleDeleteRate(entry)"
+                      >
+                        <Icon name="trash" size="sm" />
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <!-- 分页 -->
@@ -164,13 +169,26 @@
             :total="entries.length"
             :page="currentPage"
             :page-size="pageSize"
-            :show-page-size-selector="false"
+            :page-size-options="[20, 50, 100]"
             @update:page="currentPage = $event"
+            @update:pageSize="handlePageSizeChange"
           />
         </div>
       </div>
     </div>
   </BaseDialog>
+
+  <!-- 全部清空确认弹框 -->
+  <ConfirmDialog
+    :show="showClearConfirm"
+    :title="t('admin.groups.clearAll')"
+    :message="t('admin.groups.confirmClearAll')"
+    :confirm-text="t('admin.groups.clearAll')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    @confirm="handleClearAll"
+    @cancel="showClearConfirm = false"
+  />
 </template>
 
 <script setup lang="ts">
@@ -181,6 +199,7 @@ import { adminAPI } from '@/api/admin'
 import type { GroupRateMultiplierEntry } from '@/api/admin/groups'
 import type { AdminGroup, AdminUser } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -206,14 +225,15 @@ const selectedUser = ref<AdminUser | null>(null)
 const newRate = ref<number | null>(null)
 const addingRate = ref(false)
 const clearing = ref(false)
+const showClearConfirm = ref(false)
 const currentPage = ref(1)
-const pageSize = 15
+const pageSize = ref(20)
 
 let searchTimeout: ReturnType<typeof setTimeout>
 
 const paginatedEntries = computed(() => {
-  const start = (currentPage.value - 1) * pageSize
-  return entries.value.slice(start, start + pageSize)
+  const start = (currentPage.value - 1) * pageSize.value
+  return entries.value.slice(start, start + pageSize.value)
 })
 
 const loadEntries = async () => {
@@ -221,8 +241,7 @@ const loadEntries = async () => {
   loading.value = true
   try {
     entries.value = await adminAPI.groups.getGroupRateMultipliers(props.group.id)
-    // 确保当前页不超出范围
-    const totalPages = Math.max(1, Math.ceil(entries.value.length / pageSize))
+    const totalPages = Math.max(1, Math.ceil(entries.value.length / pageSize.value))
     if (currentPage.value > totalPages) {
       currentPage.value = totalPages
     }
@@ -244,6 +263,11 @@ watch(() => props.show, (val) => {
     newRate.value = null
   }
 })
+
+const handlePageSizeChange = (newSize: number) => {
+  pageSize.value = newSize
+  currentPage.value = 1
+}
 
 const handleSearchUsers = () => {
   clearTimeout(searchTimeout)
@@ -326,7 +350,7 @@ const handleDeleteRate = async (entry: GroupRateMultiplierEntry) => {
 
 const handleClearAll = async () => {
   if (!props.group || entries.value.length === 0) return
-  if (!confirm(t('admin.groups.confirmClearAll'))) return
+  showClearConfirm.value = false
   clearing.value = true
   try {
     await adminAPI.groups.clearGroupRateMultipliers(props.group.id)
