@@ -3742,18 +3742,18 @@ func (s *OpenAIGatewayService) validateUpstreamBaseURL(raw string) (string, erro
 }
 
 // buildOpenAIResponsesURL 组装 OpenAI Responses 端点。
-// - base 以 /v1 结尾：追加 /responses
-// - base 已是 /responses：原样返回
-// - 其他情况：追加 /v1/responses
+// 直接拼接 /responses，不自动添加 /v1。
+// 用户应在 base URL 中明确指定完整路径（如 https://api.openai.com/v1）
 func buildOpenAIResponsesURL(base string) string {
 	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
+	
+	// 已经包含 /responses，直接返回
 	if strings.HasSuffix(normalized, "/responses") {
 		return normalized
 	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/responses"
-	}
-	return normalized + "/v1/responses"
+	
+	// 直接追加 /responses，不自动添加 /v1
+	return normalized + "/responses"
 }
 
 func IsOpenAIResponsesCompactPathForTest(c *gin.Context) bool {
