@@ -50,6 +50,7 @@ func (UsageScript) Fields() []ent.Field {
 
 func (UsageScript) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("base_url_host", "account_type").Unique(),
+		// Uniqueness enforced by partial index in SQL migration (WHERE deleted_at IS NULL)
+		index.Fields("base_url_host", "account_type"),
 	}
 }

@@ -861,7 +861,7 @@ var (
 		Indexes: []*schema.Index{
 			{
 				Name:    "usagescript_base_url_host_account_type",
-				Unique:  true,
+				Unique:  false,
 				Columns: []*schema.Column{UsageScriptsColumns[4], UsageScriptsColumns[5]},
 			},
 		},

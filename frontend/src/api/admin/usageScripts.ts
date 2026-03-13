@@ -49,8 +49,13 @@ export async function deleteScript(id: number): Promise<{ message: string }> {
   return data
 }
 
-export async function toggleEnabled(id: number, enabled: boolean): Promise<UsageScript> {
-  return update(id, { enabled } as UpdateUsageScriptRequest)
+export async function toggleEnabled(id: number, script: UsageScript): Promise<UsageScript> {
+  return update(id, {
+    base_url_host: script.base_url_host,
+    account_type: script.account_type,
+    script: script.script,
+    enabled: !script.enabled
+  })
 }
 
 export const usageScriptsAPI = {

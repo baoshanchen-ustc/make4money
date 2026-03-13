@@ -28,9 +28,9 @@ type CreateUsageScriptRequest struct {
 
 // UpdateUsageScriptRequest 更新用量脚本请求
 type UpdateUsageScriptRequest struct {
-	BaseURLHost string `json:"base_url_host"`
-	AccountType string `json:"account_type"`
-	Script      string `json:"script"`
+	BaseURLHost string `json:"base_url_host" binding:"required"`
+	AccountType string `json:"account_type" binding:"required"`
+	Script      string `json:"script" binding:"required"`
 	Enabled     *bool  `json:"enabled"`
 }
 
@@ -91,11 +91,10 @@ func (h *UsageScriptHandler) Update(c *gin.Context) {
 		BaseURLHost: req.BaseURLHost,
 		AccountType: req.AccountType,
 		Script:      req.Script,
+		Enabled:     true,
 	}
 	if req.Enabled != nil {
 		script.Enabled = *req.Enabled
-	} else {
-		script.Enabled = true
 	}
 
 	updated, err := h.repo.Update(c.Request.Context(), id, script)
