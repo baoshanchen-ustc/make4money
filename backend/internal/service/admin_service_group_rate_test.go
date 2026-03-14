@@ -15,7 +15,7 @@ type userGroupRateRepoStubForGroupRate struct {
 	getByGroupIDData map[int64][]UserGroupRateEntry
 	getByGroupIDErr  error
 
-	deletedGroupIDs  []int64
+	deletedGroupIDs []int64
 	deleteByGroupErr error
 
 	syncedGroupID int64
