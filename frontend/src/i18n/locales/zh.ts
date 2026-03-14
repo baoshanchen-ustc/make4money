@@ -3377,6 +3377,7 @@ export default {
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
+      upstreamModel: '上游模型',
       cleanup: {
         button: '清理',
         title: '清理使用记录',

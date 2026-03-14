@@ -3218,6 +3218,7 @@ export default {
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
+      upstreamModel: 'Upstream Model',
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',

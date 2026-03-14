@@ -218,7 +218,8 @@ type OpenAIForwardResult struct {
 	BillingModel string
 	// ServiceTier records the OpenAI Responses API service tier, e.g. "priority" / "flex".
 	// Nil means the request did not specify a recognized tier.
-	ServiceTier *string
+	ServiceTier   *string
+	UpstreamModel string // 实际发往上游的模型名（空字符串表示与 Model 相同）
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
 	ReasoningEffort *string
@@ -2259,7 +2260,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
 		serviceTier := extractOpenAIServiceTier(reqBody)
 
-		return &OpenAIForwardResult{
+		fr := &OpenAIForwardResult{
 			RequestID:       resp.Header.Get("x-request-id"),
 			Usage:           *usage,
 			Model:           originalModel,
@@ -2269,7 +2270,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:    false,
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
-		}, nil
+		}
+		if mappedModel != originalModel {
+			fr.UpstreamModel = mappedModel
+		}
+		return fr, nil
 	}
 }
 
@@ -4108,6 +4113,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	billingModel := result.Model
 	if result.BillingModel != "" {
 		billingModel = result.BillingModel
+	} else if result.UpstreamModel != "" {
+		billingModel = result.UpstreamModel
 	}
 	serviceTier := ""
 	if result.ServiceTier != nil {
@@ -4129,6 +4136,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	durationMs := int(result.Duration.Milliseconds())
 	accountRateMultiplier := account.BillingRateMultiplier()
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
+	var upstreamModel *string
+	if result.UpstreamModel != "" {
+		upstreamModel = &result.UpstreamModel
+	}
 	usageLog := &UsageLog{
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
@@ -4136,6 +4147,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		RequestID:             requestID,
 		Model:                 billingModel,
 		ServiceTier:           result.ServiceTier,
+		UpstreamModel:         upstreamModel,
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
