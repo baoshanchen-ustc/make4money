@@ -116,7 +116,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 			account: &Account{
 				ID:                      15,
 				Type:                    AccountTypeOAuth,
-				Platform:                PlatformAntigravity,
+				Platform:                PlatformGemini, // 非 Antigravity 平台才有 401 升级逻辑
 				TempUnschedulableReason: `{"status_code":401,"until_unix":1735689600}`,
 				Credentials: map[string]any{
 					"temp_unschedulable_enabled": true,
@@ -132,6 +132,28 @@ func TestCheckErrorPolicy(t *testing.T) {
 			statusCode: 401,
 			body:       []byte(`unauthorized`),
 			expected:   ErrorPolicyTempUnscheduled,
+		},
+		{
+			name: "temp_unschedulable_401_antigravity_no_escalation",
+			account: &Account{
+				ID:                      16,
+				Type:                    AccountTypeOAuth,
+				Platform:                PlatformAntigravity, // Antigravity 跳过 401 升级，由 rules 正常处理
+				TempUnschedulableReason: `{"status_code":401,"until_unix":1735689600}`,
+				Credentials: map[string]any{
+					"temp_unschedulable_enabled": true,
+					"temp_unschedulable_rules": []any{
+						map[string]any{
+							"error_code":       float64(401),
+							"keywords":         []any{"unauthorized"},
+							"duration_minutes": float64(10),
+						},
+					},
+				},
+			},
+			statusCode: 401,
+			body:       []byte(`unauthorized`),
+			expected:   ErrorPolicyTempUnscheduled, // Antigravity 不升级，继续走规则匹配
 		},
 		{
 			name: "temp_unschedulable_body_miss_returns_none",
