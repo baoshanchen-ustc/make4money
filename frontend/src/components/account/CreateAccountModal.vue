@@ -1608,7 +1608,26 @@
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>
         </div>
-        <QuotaLimitCard :totalLimit="editQuotaLimit" :dailyLimit="editQuotaDailyLimit" :weeklyLimit="editQuotaWeeklyLimit" @update:totalLimit="editQuotaLimit = $event" @update:dailyLimit="editQuotaDailyLimit = $event" @update:weeklyLimit="editQuotaWeeklyLimit = $event" />
+        <QuotaLimitCard
+          :totalLimit="editQuotaLimit"
+          :dailyLimit="editQuotaDailyLimit"
+          :weeklyLimit="editQuotaWeeklyLimit"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
+          @update:totalLimit="editQuotaLimit = $event"
+          @update:dailyLimit="editQuotaDailyLimit = $event"
+          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
+        />
       </div>
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->

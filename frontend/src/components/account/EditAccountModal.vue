@@ -1202,7 +1202,26 @@
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>
         </div>
-        <QuotaLimitCard :totalLimit="editQuotaLimit" :dailyLimit="editQuotaDailyLimit" :weeklyLimit="editQuotaWeeklyLimit" @update:totalLimit="editQuotaLimit = $event" @update:dailyLimit="editQuotaDailyLimit = $event" @update:weeklyLimit="editQuotaWeeklyLimit = $event" />
+        <QuotaLimitCard
+          :totalLimit="editQuotaLimit"
+          :dailyLimit="editQuotaDailyLimit"
+          :weeklyLimit="editQuotaWeeklyLimit"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
+          @update:totalLimit="editQuotaLimit = $event"
+          @update:dailyLimit="editQuotaDailyLimit = $event"
+          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
+        />
       </div>
 
       <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
