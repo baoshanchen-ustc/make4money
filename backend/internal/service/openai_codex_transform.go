@@ -172,6 +172,12 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 		result.PromptCacheKey = strings.TrimSpace(v)
 	}
 
+	// 某些上游（包括当前 Zed 走到的 Responses 链路）不接受 input 中的 system message。
+	// 将可安全提取的 system 文本折叠到顶层 instructions，避免上游 400。
+	if liftSystemMessagesToInstructions(reqBody) {
+		result.Modified = true
+	}
+
 	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
 	if applyInstructions(reqBody, isCodexCLI) {
 		result.Modified = true
@@ -325,6 +331,112 @@ func isInstructionsEmpty(reqBody map[string]any) bool {
 		return true
 	}
 	return strings.TrimSpace(str) == ""
+}
+
+func liftSystemMessagesToInstructions(reqBody map[string]any) bool {
+	systemTexts := make([]string, 0, 3)
+	modified := false
+
+	input, ok := reqBody["input"].([]any)
+	if ok && len(input) > 0 {
+		filtered := make([]any, 0, len(input))
+		for _, item := range input {
+			msg, ok := item.(map[string]any)
+			if !ok {
+				filtered = append(filtered, item)
+				continue
+			}
+			if !isSystemInstructionMessage(msg) {
+				filtered = append(filtered, item)
+				continue
+			}
+
+			text, ok := extractSystemMessageText(msg["content"])
+			if !ok {
+				filtered = append(filtered, item)
+				continue
+			}
+
+			modified = true
+			if strings.TrimSpace(text) != "" {
+				systemTexts = append(systemTexts, text)
+			}
+		}
+
+		reqBody["input"] = filtered
+	}
+
+	if topLevelSystem, exists := reqBody["system"]; exists {
+		text, ok := extractSystemMessageText(topLevelSystem)
+		if ok {
+			delete(reqBody, "system")
+			modified = true
+			if strings.TrimSpace(text) != "" {
+				systemTexts = append(systemTexts, text)
+			}
+		}
+	}
+
+	if !modified {
+		return false
+	}
+
+	if len(systemTexts) == 0 {
+		return true
+	}
+
+	systemInstructions := strings.Join(systemTexts, "\n\n")
+	if existing, ok := reqBody["instructions"].(string); ok && strings.TrimSpace(existing) != "" {
+		reqBody["instructions"] = strings.TrimSpace(existing) + "\n\n" + systemInstructions
+		return true
+	}
+
+	reqBody["instructions"] = systemInstructions
+	return true
+}
+
+func isSystemInstructionMessage(msg map[string]any) bool {
+	if msg == nil {
+		return false
+	}
+	role, _ := msg["role"].(string)
+	if !strings.EqualFold(strings.TrimSpace(role), "system") {
+		return false
+	}
+	typ, _ := msg["type"].(string)
+	typ = strings.TrimSpace(typ)
+	return typ == "" || typ == "message"
+}
+
+func extractSystemMessageText(content any) (string, bool) {
+	switch v := content.(type) {
+	case string:
+		return strings.TrimSpace(v), true
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, raw := range v {
+			block, ok := raw.(map[string]any)
+			if !ok {
+				return "", false
+			}
+			typ, _ := block["type"].(string)
+			switch typ {
+			case "input_text", "text", "output_text":
+				text, ok := block["text"].(string)
+				if !ok {
+					return "", false
+				}
+				if trimmed := strings.TrimSpace(text); trimmed != "" {
+					parts = append(parts, trimmed)
+				}
+			default:
+				return "", false
+			}
+		}
+		return strings.Join(parts, "\n\n"), true
+	default:
+		return "", false
+	}
 }
 
 // filterCodexInput 按需过滤 item_reference 与 id。
