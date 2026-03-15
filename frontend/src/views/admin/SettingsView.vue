@@ -9,7 +9,7 @@
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6">
         <!-- Tab Navigation -->
-        <div class="sticky top-0 z-10 overflow-x-auto scrollbar-hide">
+        <div class="sticky top-0 z-10 overflow-x-auto settings-tabs-scroll">
           <nav class="settings-tabs">
             <button
               v-for="tab in settingsTabs"
@@ -652,6 +652,24 @@
                 </p>
               </div>
               <Toggle v-model="form.password_reset_enabled" />
+            </div>
+            <!-- Frontend URL - Only show when password reset is enabled -->
+            <div
+              v-if="form.email_verify_enabled && form.password_reset_enabled"
+              class="border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.registration.frontendUrl') }}
+              </label>
+              <input
+                v-model="form.frontend_url"
+                type="url"
+                class="input"
+                :placeholder="t('admin.settings.registration.frontendUrlPlaceholder')"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.registration.frontendUrlHint') }}
+              </p>
             </div>
 
             <!-- TOTP 2FA -->
@@ -1586,6 +1604,7 @@
               </div>
               <Toggle v-model="form.smtp_use_tls" />
             </div>
+
           </div>
         </div>
 
@@ -1649,8 +1668,18 @@
         </div>
         </div><!-- /Tab: Email -->
 
+        <!-- Tab: Backup -->
+        <div v-show="activeTab === 'backup'">
+          <BackupSettings />
+        </div>
+
+        <!-- Tab: Data Management -->
+        <div v-show="activeTab === 'data'">
+          <DataManagementSettings />
+        </div>
+
         <!-- Save Button -->
-        <div class="flex justify-end">
+        <div v-show="activeTab !== 'backup' && activeTab !== 'data'" class="flex justify-end">
           <button type="submit" :disabled="saving" class="btn btn-primary">
             <svg v-if="saving" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle
@@ -1692,6 +1721,8 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
+import BackupSettings from '@/views/admin/BackupView.vue'
+import DataManagementSettings from '@/views/admin/DataManagementView.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
@@ -1706,7 +1737,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email' | 'backup' | 'data'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const },
@@ -1714,6 +1745,8 @@ const settingsTabs = [
   { key: 'users'    as SettingsTab, icon: 'user'   as const },
   { key: 'gateway'  as SettingsTab, icon: 'server' as const },
   { key: 'email'    as SettingsTab, icon: 'mail'   as const },
+  { key: 'backup'   as SettingsTab, icon: 'database' as const },
+  { key: 'data'     as SettingsTab, icon: 'cube'     as const },
 ]
 const { copyToClipboard } = useClipboard()
 
@@ -1806,6 +1839,7 @@ const form = reactive<SettingsForm>({
   purchase_subscription_url: '',
   sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
+  frontend_url: '',
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',
@@ -2083,6 +2117,7 @@ async function saveSettings() {
       purchase_subscription_url: form.purchase_subscription_url,
       sora_client_enabled: form.sora_client_enabled,
       custom_menu_items: form.custom_menu_items,
+      frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
@@ -2378,9 +2413,38 @@ onMounted(() => {
 }
 
 /* ============ Settings Tab Navigation ============ */
+
+/* Scroll container: thin scrollbar on PC, auto-hide on mobile */
+.settings-tabs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.settings-tabs-scroll:hover {
+  scrollbar-color: rgb(0 0 0 / 0.15) transparent;
+}
+:root.dark .settings-tabs-scroll:hover {
+  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
+}
+.settings-tabs-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+.settings-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.settings-tabs-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+.settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(0 0 0 / 0.15);
+}
+:root.dark .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.2);
+}
+
 .settings-tabs {
-  @apply inline-flex min-w-full gap-1 rounded-2xl
-         border border-gray-100 bg-white/80 p-1.5 backdrop-blur-sm
+  @apply inline-flex min-w-full gap-0.5 rounded-2xl
+         border border-gray-100 bg-white/80 p-1 backdrop-blur-sm
          dark:border-dark-700/50 dark:bg-dark-800/80;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.04), 0 1px 2px rgb(0 0 0 / 0.02);
 }
@@ -2392,8 +2456,8 @@ onMounted(() => {
 }
 
 .settings-tab {
-  @apply relative flex flex-1 items-center justify-center gap-2
-         whitespace-nowrap rounded-xl px-4 py-2.5
+  @apply relative flex flex-1 items-center justify-center gap-1.5
+         whitespace-nowrap rounded-xl px-2.5 py-2
          text-sm font-medium
          text-gray-500 dark:text-dark-400
          transition-all duration-200 ease-out;
@@ -2420,7 +2484,7 @@ onMounted(() => {
 }
 
 .settings-tab-icon {
-  @apply flex h-7 w-7 items-center justify-center rounded-lg
+  @apply flex h-6 w-6 items-center justify-center rounded-lg
          transition-all duration-200;
 }
 
