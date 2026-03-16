@@ -46,6 +46,9 @@ jobs:
         if: steps.sync.outputs.sync_failed == 'false'
         id: version
         run: |
+          # Re-fetch tags with force to ensure clean state
+          git fetch upstream --tags --force
+
           UPSTREAM_TAG=$(git describe --tags --abbrev=0 upstream/main 2>/dev/null || echo "v0.0.0")
           echo "tag=${UPSTREAM_TAG}" >> $GITHUB_OUTPUT
           echo "Upstream tag: ${UPSTREAM_TAG}"
