@@ -18,12 +18,14 @@ type resetQuotaUserSubRepoStub struct {
 
 	sub *UserSubscription
 
-	resetDailyCalled   bool
-	resetWeeklyCalled  bool
-	resetMonthlyCalled bool
-	resetDailyErr      error
-	resetWeeklyErr     error
-	resetMonthlyErr    error
+	resetFiveHourCalled bool
+	resetDailyCalled    bool
+	resetWeeklyCalled   bool
+	resetMonthlyCalled  bool
+	resetFiveHourErr    error
+	resetDailyErr       error
+	resetWeeklyErr      error
+	resetMonthlyErr     error
 }
 
 func (r *resetQuotaUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserSubscription, error) {
@@ -32,6 +34,11 @@ func (r *resetQuotaUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserS
 	}
 	cp := *r.sub
 	return &cp, nil
+}
+
+func (r *resetQuotaUserSubRepoStub) ResetFiveHourUsage(_ context.Context, _ int64, _ time.Time) error {
+	r.resetFiveHourCalled = true
+	return r.resetFiveHourErr
 }
 
 func (r *resetQuotaUserSubRepoStub) ResetDailyUsage(_ context.Context, _ int64, windowStart time.Time) error {
