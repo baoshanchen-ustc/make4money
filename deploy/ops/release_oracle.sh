@@ -84,8 +84,8 @@ upstream_ref="refs/remotes/$REMOTE/$BRANCH"
 git rev-parse --verify "$upstream_ref" >/dev/null 2>&1 || fail "missing upstream ref: $upstream_ref"
 
 counts="$(git rev-list --left-right --count HEAD...$upstream_ref)"
-ahead="${counts%% *}"
-behind="${counts##* }"
+ahead="$(printf '%s\n' "$counts" | awk '{print $1}')"
+behind="$(printf '%s\n' "$counts" | awk '{print $2}')"
 
 if [ "$ahead" -ne 0 ]; then
   fail "local branch has $ahead commit(s) not on $upstream_ref; reconcile before release"
