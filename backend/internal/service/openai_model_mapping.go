@@ -10,6 +10,9 @@ func resolveOpenAIForwardModel(account *Account, requestedModel, defaultMappedMo
 		}
 		return requestedModel
 	}
+	if account.ShouldBypassModelRestrictions() {
+		return requestedModel
+	}
 
 	mappedModel, matched := account.ResolveMappedModel(requestedModel)
 	if !matched && defaultMappedModel != "" {

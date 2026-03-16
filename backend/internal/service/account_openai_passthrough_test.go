@@ -71,6 +71,28 @@ func TestAccount_IsOpenAIOAuthPassthroughEnabled(t *testing.T) {
 	})
 }
 
+func TestAccount_ShouldBypassModelRestrictions_OpenAI(t *testing.T) {
+	t.Run("OpenAI passthrough bypasses model restrictions", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-4o-mini": "gpt-4o-mini",
+				},
+			},
+			Extra: map[string]any{
+				"openai_passthrough": true,
+			},
+		}
+		require.True(t, account.ShouldBypassModelRestrictions())
+		require.True(t, account.IsModelSupported("gpt-5.4"))
+		mapped, matched := account.ResolveMappedModel("gpt-5.4")
+		require.Equal(t, "gpt-5.4", mapped)
+		require.False(t, matched)
+	})
+}
+
 func TestAccount_IsCodexCLIOnlyEnabled(t *testing.T) {
 	t.Run("OpenAI OAuth 开启", func(t *testing.T) {
 		account := &Account{

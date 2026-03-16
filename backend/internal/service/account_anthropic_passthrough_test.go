@@ -60,3 +60,24 @@ func TestAccount_IsAnthropicAPIKeyPassthroughEnabled(t *testing.T) {
 		require.False(t, openai.IsAnthropicAPIKeyPassthroughEnabled())
 	})
 }
+
+func TestAccount_ShouldBypassModelRestrictions_AnthropicAPIKey(t *testing.T) {
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"claude-sonnet-4-5": "claude-sonnet-4-5",
+			},
+		},
+		Extra: map[string]any{
+			"anthropic_passthrough": true,
+		},
+	}
+
+	require.True(t, account.ShouldBypassModelRestrictions())
+	require.True(t, account.IsModelSupported("claude-opus-4-6"))
+	mapped, matched := account.ResolveMappedModel("claude-opus-4-6")
+	require.Equal(t, "claude-opus-4-6", mapped)
+	require.False(t, matched)
+}
