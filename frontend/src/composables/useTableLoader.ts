@@ -16,6 +16,10 @@ interface TableLoaderOptions<T, P> {
   debounceMs?: number
 }
 
+type CancelableReload = ReturnType<typeof useDebounceFn> & {
+  cancel?: () => void
+}
+
 /**
  * 通用表格数据加载 Composable
  * 统一处理分页、筛选、搜索防抖和请求取消
@@ -75,7 +79,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     return load()
   }
 
-  const debouncedReload = useDebounceFn(reload, debounceMs)
+  const debouncedReload = useDebounceFn(reload, debounceMs) as CancelableReload
 
   const handlePageChange = (page: number) => {
     // 确保页码在有效范围内
@@ -91,6 +95,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
   }
 
   onUnmounted(() => {
+    debouncedReload.cancel?.()
     abortController?.abort()
   })
 
