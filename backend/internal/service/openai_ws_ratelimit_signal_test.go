@@ -39,6 +39,10 @@ func (r *openAIWSRateLimitSignalRepo) SetRateLimited(_ context.Context, _ int64,
 	return nil
 }
 
+func (r *openAIWSRateLimitSignalRepo) SetModelRateLimit(_ context.Context, _ int64, _ string, _ time.Time) error {
+	return nil
+}
+
 func (r *openAIWSRateLimitSignalRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
 	copied := make(map[string]any, len(updates))
 	for k, v := range updates {
@@ -52,6 +56,10 @@ func (r *openAICodexSnapshotAsyncRepo) SetRateLimited(_ context.Context, _ int64
 	if r.rateLimitCh != nil {
 		r.rateLimitCh <- resetAt
 	}
+	return nil
+}
+
+func (r *openAICodexSnapshotAsyncRepo) SetModelRateLimit(_ context.Context, _ int64, _ string, _ time.Time) error {
 	return nil
 }
 
@@ -70,6 +78,10 @@ func (r *openAICodexExtraListRepo) SetRateLimited(_ context.Context, _ int64, re
 	if r.rateLimitCh != nil {
 		r.rateLimitCh <- resetAt
 	}
+	return nil
+}
+
+func (r *openAICodexExtraListRepo) SetModelRateLimit(_ context.Context, _ int64, _ string, _ time.Time) error {
 	return nil
 }
 
@@ -140,6 +152,9 @@ func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitPersistsRateLimit(
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": wsServer.URL,
+			"model_mapping": map[string]any{
+				"gpt-5.1": "gpt-5.1",
+			},
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
@@ -210,6 +225,9 @@ func TestOpenAIGatewayService_Forward_WSv2Handshake429PersistsRateLimit(t *testi
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": server.URL,
+			"model_mapping": map[string]any{
+				"gpt-5.1": "gpt-5.1",
+			},
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
@@ -273,6 +291,9 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ErrorEventUsageL
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"api_key": "sk-test",
+			"model_mapping": map[string]any{
+				"gpt-5.1": "gpt-5.1",
+			},
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
@@ -451,6 +472,11 @@ func TestOpenAIGatewayService_GetSchedulableAccount_ExhaustedCodexExtraSetsRateL
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-5.3-codex": "gpt-5.3-codex",
+			},
+		},
 		Extra: map[string]any{
 			"codex_7d_used_percent": 100.0,
 			"codex_7d_reset_at":     resetAt.UTC().Format(time.RFC3339),
@@ -482,6 +508,11 @@ func TestAdminService_ListAccounts_ExhaustedCodexExtraReturnsRateLimitedAccount(
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-5.3-codex": "gpt-5.3-codex",
+				},
+			},
 			Extra: map[string]any{
 				"codex_7d_used_percent": 100.0,
 				"codex_7d_reset_at":     resetAt.UTC().Format(time.RFC3339),

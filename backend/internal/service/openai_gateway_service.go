@@ -1557,6 +1557,9 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	if requestedModel != "" && !fresh.IsModelSupported(requestedModel) {
 		return nil
 	}
+	if requestedModel != "" && fresh.isModelRateLimitedWithContext(ctx, requestedModel) {
+		return nil
+	}
 	return fresh
 }
 
@@ -1636,9 +1639,9 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
 }
 
-func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {
+func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, requestedModel string) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+	s.rateLimitService.HandleUpstreamErrorWithModel(ctx, account, resp.StatusCode, resp.Header, body, requestedModel)
 }
 
 // Forward forwards request to OpenAI API
@@ -2221,14 +2224,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					Detail:             upstreamDetail,
 				})
 
-				s.handleFailoverSideEffects(ctx, resp, account)
+				s.handleFailoverSideEffects(ctx, resp, account, originalModel)
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,
 					RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 				}
 			}
-			return s.handleErrorResponse(ctx, resp, c, account, body)
+			return s.handleErrorResponse(ctx, resp, c, account, body, originalModel)
 		}
 		defer func() { _ = resp.Body.Close() }()
 
@@ -2252,7 +2255,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
 		if account.Type == AccountTypeOAuth {
 			if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
-				s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
+				s.updateCodexUsageSnapshotWithModel(ctx, account.ID, snapshot, originalModel, false)
 			}
 		}
 
@@ -2415,7 +2418,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
-		s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
+		s.updateCodexUsageSnapshotWithModel(ctx, account.ID, snapshot, reqModel, false)
 	}
 
 	if usage == nil {
@@ -2966,6 +2969,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	requestedModel string,
 ) (*OpenAIForwardResult, error) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
@@ -3043,8 +3047,11 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 
 	// Handle upstream error (mark account status)
 	shouldDisable := false
+	if requestedModel == "" {
+		requestedModel, _, _ = extractOpenAIRequestMetaFromBody(requestBody)
+	}
 	if s.rateLimitService != nil {
-		shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+		shouldDisable = s.rateLimitService.HandleUpstreamErrorWithModel(ctx, account, resp.StatusCode, resp.Header, body, requestedModel)
 	}
 	kind := "http_error"
 	if shouldDisable {
@@ -3121,6 +3128,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
+	requestedModel string,
 	writeError compatErrorWriter,
 ) (*OpenAIForwardResult, error) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
@@ -3179,8 +3187,8 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	// Track rate limits and decide whether to trigger secondary failover.
 	shouldDisable := false
 	if s.rateLimitService != nil {
-		shouldDisable = s.rateLimitService.HandleUpstreamError(
-			c.Request.Context(), account, resp.StatusCode, resp.Header, body,
+		shouldDisable = s.rateLimitService.HandleUpstreamErrorWithModel(
+			c.Request.Context(), account, resp.StatusCode, resp.Header, body, requestedModel,
 		)
 	}
 	kind := "http_error"
@@ -4306,62 +4314,69 @@ func codexResetAtRFC3339(base time.Time, resetAfterSeconds *int) *string {
 }
 
 func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow time.Time) map[string]any {
+	return buildCodexUsageExtraUpdatesWithScope(snapshot, fallbackNow, openAICodexQuotaScopeCodex)
+}
+
+func buildCodexUsageExtraUpdatesWithScope(snapshot *OpenAICodexUsageSnapshot, fallbackNow time.Time, scope openAICodexQuotaScope) map[string]any {
 	if snapshot == nil {
 		return nil
 	}
 
 	baseTime := codexSnapshotBaseTime(snapshot, fallbackNow)
 	updates := make(map[string]any)
+	key := func(suffix string) string {
+		return codexScopeExtraKey(scope, suffix)
+	}
 
 	// 保存原始 primary/secondary 字段，便于排查问题
 	if snapshot.PrimaryUsedPercent != nil {
-		updates["codex_primary_used_percent"] = *snapshot.PrimaryUsedPercent
+		updates[key("primary_used_percent")] = *snapshot.PrimaryUsedPercent
 	}
 	if snapshot.PrimaryResetAfterSeconds != nil {
-		updates["codex_primary_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
+		updates[key("primary_reset_after_seconds")] = *snapshot.PrimaryResetAfterSeconds
 	}
 	if snapshot.PrimaryWindowMinutes != nil {
-		updates["codex_primary_window_minutes"] = *snapshot.PrimaryWindowMinutes
+		updates[key("primary_window_minutes")] = *snapshot.PrimaryWindowMinutes
 	}
 	if snapshot.SecondaryUsedPercent != nil {
-		updates["codex_secondary_used_percent"] = *snapshot.SecondaryUsedPercent
+		updates[key("secondary_used_percent")] = *snapshot.SecondaryUsedPercent
 	}
 	if snapshot.SecondaryResetAfterSeconds != nil {
-		updates["codex_secondary_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
+		updates[key("secondary_reset_after_seconds")] = *snapshot.SecondaryResetAfterSeconds
 	}
 	if snapshot.SecondaryWindowMinutes != nil {
-		updates["codex_secondary_window_minutes"] = *snapshot.SecondaryWindowMinutes
+		updates[key("secondary_window_minutes")] = *snapshot.SecondaryWindowMinutes
 	}
 	if snapshot.PrimaryOverSecondaryPercent != nil {
-		updates["codex_primary_over_secondary_percent"] = *snapshot.PrimaryOverSecondaryPercent
+		updates[key("primary_over_secondary_percent")] = *snapshot.PrimaryOverSecondaryPercent
 	}
-	updates["codex_usage_updated_at"] = baseTime.Format(time.RFC3339)
+	updates[key("usage_updated_at")] = baseTime.Format(time.RFC3339)
 
 	// 归一化到 5h/7d 规范字段
 	if normalized := snapshot.Normalize(); normalized != nil {
 		if normalized.Used5hPercent != nil {
-			updates["codex_5h_used_percent"] = *normalized.Used5hPercent
+			updates[key("5h_used_percent")] = *normalized.Used5hPercent
 		}
 		if normalized.Reset5hSeconds != nil {
-			updates["codex_5h_reset_after_seconds"] = *normalized.Reset5hSeconds
+			updates[key("5h_reset_after_seconds")] = *normalized.Reset5hSeconds
 		}
 		if normalized.Window5hMinutes != nil {
-			updates["codex_5h_window_minutes"] = *normalized.Window5hMinutes
+			updates[key("5h_window_minutes")] = *normalized.Window5hMinutes
 		}
 		if normalized.Used7dPercent != nil {
-			updates["codex_7d_used_percent"] = *normalized.Used7dPercent
+			updates[key("7d_used_percent")] = *normalized.Used7dPercent
 		}
 		if normalized.Reset7dSeconds != nil {
-			updates["codex_7d_reset_after_seconds"] = *normalized.Reset7dSeconds
+			updates[key("7d_reset_after_seconds")] = *normalized.Reset7dSeconds
 		}
 		if normalized.Window7dMinutes != nil {
-			updates["codex_7d_window_minutes"] = *normalized.Window7dMinutes
+			updates[key("7d_window_minutes")] = *normalized.Window7dMinutes
 		}
 		if reset5hAt := codexResetAtRFC3339(baseTime, normalized.Reset5hSeconds); reset5hAt != nil {
-			updates["codex_5h_reset_at"] = *reset5hAt
+			updates[key("5h_reset_at")] = *reset5hAt
 		}
 		if reset7dAt := codexResetAtRFC3339(baseTime, normalized.Reset7dSeconds); reset7dAt != nil {
-			updates["codex_7d_reset_at"] = *reset7dAt
+			updates[key("7d_reset_at")] = *reset7dAt
 		}
 	}
 
@@ -4393,25 +4408,60 @@ func codexRateLimitResetAtFromSnapshot(snapshot *OpenAICodexUsageSnapshot, fallb
 }
 
 func codexRateLimitResetAtFromExtra(extra map[string]any, now time.Time) *time.Time {
+	return codexRateLimitResetAtFromExtraWithScope(extra, now, openAICodexQuotaScopeCodex)
+}
+
+func codexRateLimitResetAtFromExtraWithScope(extra map[string]any, now time.Time, scope openAICodexQuotaScope) *time.Time {
 	if len(extra) == 0 {
 		return nil
 	}
-	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil && codexUsagePercentExhausted(&progress.Utilization) && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
+	if progress := buildCodexUsageProgressFromExtraWithScope(extra, "7d", now, scope); progress != nil && codexUsagePercentExhausted(&progress.Utilization) && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
 		resetAt := progress.ResetsAt.UTC()
 		return &resetAt
 	}
-	if progress := buildCodexUsageProgressFromExtra(extra, "5h", now); progress != nil && codexUsagePercentExhausted(&progress.Utilization) && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
+	if progress := buildCodexUsageProgressFromExtraWithScope(extra, "5h", now, scope); progress != nil && codexUsagePercentExhausted(&progress.Utilization) && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
 		resetAt := progress.ResetsAt.UTC()
 		return &resetAt
 	}
 	return nil
 }
 
+func openAICodexGlobalRateLimitResetAtFromExtra(account *Account, now time.Time) *time.Time {
+	if account == nil || len(account.Extra) == 0 {
+		return nil
+	}
+
+	supportCodex := isOpenAICodexScopeSupported(account, openAICodexQuotaScopeCodex)
+	supportSpark := isOpenAICodexScopeSupported(account, openAICodexQuotaScopeSpark)
+	if !supportCodex && !supportSpark {
+		return codexRateLimitResetAtFromExtra(account.Extra, now)
+	}
+
+	candidate := (*time.Time)(nil)
+	if supportCodex {
+		reset := codexRateLimitResetAtFromExtraWithScope(account.Extra, now, openAICodexQuotaScopeCodex)
+		if reset == nil {
+			return nil
+		}
+		candidate = reset
+	}
+	if supportSpark {
+		reset := codexRateLimitResetAtFromExtraWithScope(account.Extra, now, openAICodexQuotaScopeSpark)
+		if reset == nil {
+			return nil
+		}
+		if candidate == nil || reset.Before(*candidate) {
+			candidate = reset
+		}
+	}
+	return candidate
+}
+
 func applyOpenAICodexRateLimitFromExtra(account *Account, now time.Time) (*time.Time, bool) {
 	if account == nil || !account.IsOpenAI() {
 		return nil, false
 	}
-	resetAt := codexRateLimitResetAtFromExtra(account.Extra, now)
+	resetAt := openAICodexGlobalRateLimitResetAtFromExtra(account, now)
 	if resetAt == nil {
 		return nil, false
 	}
@@ -4433,6 +4483,10 @@ func syncOpenAICodexRateLimitFromExtra(ctx context.Context, repo AccountReposito
 
 // updateCodexUsageSnapshot saves the Codex usage snapshot to account's Extra field
 func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, accountID int64, snapshot *OpenAICodexUsageSnapshot) {
+	s.updateCodexUsageSnapshotWithModel(ctx, accountID, snapshot, "", true)
+}
+
+func (s *OpenAIGatewayService) updateCodexUsageSnapshotWithModel(ctx context.Context, accountID int64, snapshot *OpenAICodexUsageSnapshot, requestedModel string, persistGlobalRateLimit bool) {
 	if snapshot == nil {
 		return
 	}
@@ -4440,8 +4494,9 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 		return
 	}
 
+	scope := classifyOpenAICodexQuotaScope(requestedModel)
 	now := time.Now()
-	updates := buildCodexUsageExtraUpdates(snapshot, now)
+	updates := buildCodexUsageExtraUpdatesWithScope(snapshot, now, scope)
 	resetAt := codexRateLimitResetAtFromSnapshot(snapshot, now)
 	if len(updates) == 0 && resetAt == nil {
 		return
@@ -4457,7 +4512,15 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 		if shouldPersistUpdates {
 			_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
 		}
-		if resetAt != nil {
+		shouldPersistScopeRateLimit := resetAt != nil || shouldPersistUpdates
+		if key := codexScopeModelRateLimitKey(scope); key != "" && shouldPersistScopeRateLimit {
+			resetAtForScope := now
+			if resetAt != nil {
+				resetAtForScope = *resetAt
+			}
+			_ = s.accountRepo.SetModelRateLimit(updateCtx, accountID, key, resetAtForScope)
+		}
+		if persistGlobalRateLimit && resetAt != nil {
 			_ = s.accountRepo.SetRateLimited(updateCtx, accountID, *resetAt)
 		}
 	}()
@@ -4468,7 +4531,7 @@ func (s *OpenAIGatewayService) UpdateCodexUsageSnapshotFromHeaders(ctx context.C
 		return
 	}
 	if snapshot := ParseCodexRateLimitHeaders(headers); snapshot != nil {
-		s.updateCodexUsageSnapshot(ctx, accountID, snapshot)
+		s.updateCodexUsageSnapshotWithModel(ctx, accountID, snapshot, "", true)
 	}
 }
 

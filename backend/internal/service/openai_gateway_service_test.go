@@ -78,6 +78,14 @@ func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Co
 	return r.ListSchedulableByPlatform(ctx, platform)
 }
 
+func (r stubOpenAIAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
+	return nil
+}
+
+func (r stubOpenAIAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
+	return nil
+}
+
 type stubConcurrencyCache struct {
 	ConcurrencyCache
 	loadBatchErr    error

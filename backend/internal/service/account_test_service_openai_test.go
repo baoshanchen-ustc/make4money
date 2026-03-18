@@ -55,7 +55,12 @@ func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeOAuth,
 		Concurrency: 1,
-		Credentials: map[string]any{"access_token": "test-token"},
+		Credentials: map[string]any{
+			"access_token": "test-token",
+			"model_mapping": map[string]any{
+				"gpt-5.4": "gpt-5.4",
+			},
+		},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")
@@ -86,7 +91,12 @@ func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimit(t *testing.T) 
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeOAuth,
 		Concurrency: 1,
-		Credentials: map[string]any{"access_token": "test-token"},
+		Credentials: map[string]any{
+			"access_token": "test-token",
+			"model_mapping": map[string]any{
+				"gpt-5.4": "gpt-5.4",
+			},
+		},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")

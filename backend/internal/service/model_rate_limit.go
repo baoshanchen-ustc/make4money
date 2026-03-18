@@ -32,7 +32,13 @@ func (a *Account) isModelRateLimitedWithContext(ctx context.Context, requestedMo
 		return false
 	}
 
-	modelKey := a.GetMappedModel(requestedModel)
+	mappedModel := a.GetMappedModel(requestedModel)
+	modelKey := mappedModel
+	if a.Platform == PlatformOpenAI {
+		if scopedKey := resolveOpenAICodexModelRateLimitKey(requestedModel, mappedModel); scopedKey != "" {
+			modelKey = scopedKey
+		}
+	}
 	if a.Platform == PlatformAntigravity {
 		modelKey = resolveFinalAntigravityModelKey(ctx, a, requestedModel)
 	}
@@ -54,7 +60,13 @@ func (a *Account) GetModelRateLimitRemainingTimeWithContext(ctx context.Context,
 		return 0
 	}
 
-	modelKey := a.GetMappedModel(requestedModel)
+	mappedModel := a.GetMappedModel(requestedModel)
+	modelKey := mappedModel
+	if a.Platform == PlatformOpenAI {
+		if scopedKey := resolveOpenAICodexModelRateLimitKey(requestedModel, mappedModel); scopedKey != "" {
+			modelKey = scopedKey
+		}
+	}
 	if a.Platform == PlatformAntigravity {
 		modelKey = resolveFinalAntigravityModelKey(ctx, a, requestedModel)
 	}

@@ -163,7 +163,16 @@ func (r *openAI429SnapshotRepo) UpdateExtra(_ context.Context, _ int64, updates 
 func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	repo := &openAI429SnapshotRepo{}
 	svc := NewRateLimitService(repo, nil, nil, nil, nil)
-	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	account := &Account{
+		ID:       123,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-5.3-codex": "gpt-5.3-codex",
+			},
+		},
+	}
 
 	headers := http.Header{}
 	headers.Set("x-codex-primary-used-percent", "100")
@@ -173,7 +182,7 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	headers.Set("x-codex-secondary-reset-after-seconds", "18000")
 	headers.Set("x-codex-secondary-window-minutes", "300")
 
-	svc.handle429(context.Background(), account, headers, nil)
+	svc.handle429(context.Background(), account, headers, nil, "gpt-5.3-codex")
 
 	if repo.rateLimitedID != account.ID {
 		t.Fatalf("rateLimitedID = %d, want %d", repo.rateLimitedID, account.ID)
