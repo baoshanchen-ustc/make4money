@@ -28,15 +28,22 @@ func GetClientIP(c *gin.Context) string {
 	// 3. X-Forwarded-For (多个 IP 时取第一个公网 IP)
 	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
 		ips := strings.Split(xff, ",")
+		firstValidIP := ""
 		for _, ip := range ips {
-			ip = strings.TrimSpace(ip)
-			if ip != "" && !isPrivateIP(ip) {
-				return normalizeIP(ip)
+			normalizedIP := normalizeIP(ip)
+			if normalizedIP == "" || net.ParseIP(normalizedIP) == nil {
+				continue
+			}
+			if firstValidIP == "" {
+				firstValidIP = normalizedIP
+			}
+			if !isPrivateIP(normalizedIP) {
+				return normalizedIP
 			}
 		}
-		// 如果都是私有 IP，返回第一个
-		if len(ips) > 0 {
-			return normalizeIP(strings.TrimSpace(ips[0]))
+		// 如果没有公网 IP，返回第一个有效的私有 IP。
+		if firstValidIP != "" {
+			return firstValidIP
 		}
 	}
 
