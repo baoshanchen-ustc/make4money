@@ -2941,34 +2941,6 @@ const handleSubmit = async () => {
           delete newCredentials.custom_error_codes
         }
 
-        // Handle API key
-        if (editApiKey.value.trim()) {
-          // User provided a new API key
-          newCredentials.api_key = editApiKey.value.trim()
-        } else if (currentCredentials.api_key) {
-          // Preserve existing api_key
-          newCredentials.api_key = currentCredentials.api_key
-        } else {
-          appStore.showError(t('admin.accounts.apiKeyIsRequired'))
-          return
-        }
-
-        // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
-        if (shouldApplyModelMapping) {
-          const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-          if (modelMapping) {
-            newCredentials.model_mapping = modelMapping
-          }
-        } else if (currentCredentials.model_mapping) {
-          newCredentials.model_mapping = currentCredentials.model_mapping
-        }
-
-        // Add custom error codes if enabled
-        if (customErrorCodesEnabled.value) {
-          newCredentials.custom_error_codes_enabled = true
-          newCredentials.custom_error_codes = [...selectedErrorCodes.value]
-        }
-
         // Add intercept warmup requests setting
         applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
         if (!applyTempUnschedConfig(newCredentials)) {

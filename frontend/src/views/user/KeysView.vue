@@ -1742,6 +1742,9 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
 
   const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
 
+  // Copilot has no /v1/usage endpoint; disable usage polling to avoid 404
+  const usageEnabledValue = platform === 'copilot' ? 'false' : 'true'
+
   const params = new URLSearchParams({
     resource: 'provider',
     app: app,
@@ -1750,7 +1753,7 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
     endpoint: endpoint,
     apiKey: row.key,
     configFormat: 'json',
-    usageEnabled: 'true',
+    usageEnabled: usageEnabledValue,
     usageScript: btoa(usageScript),
     usageAutoInterval: '30',
     ...extraParams
