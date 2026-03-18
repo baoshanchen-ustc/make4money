@@ -29,6 +29,10 @@ HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-2}"
 DIRTY_MODE="${DIRTY_MODE:-fail}"
 DIRTY_STASH_NAME=""
+GITHUB_REPO="${GITHUB_REPO:-Wei-Shaw/sub2api}"
+BUILD_VERSION="${BUILD_VERSION:-}"
+BUILD_COMMIT="${BUILD_COMMIT:-}"
+BUILD_DATE="${BUILD_DATE:-}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -90,6 +94,34 @@ wait_for_health() {
     attempt=$((attempt + 1))
   done
   fail "health endpoint did not become healthy: $HEALTH_URL"
+}
+
+get_base_release_version() {
+  local latest_version
+  latest_version="$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" |     sed -n 's/.*"tag_name":[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)"
+  if [ -n "$latest_version" ]; then
+    printf '%s\n' "$latest_version"
+    return 0
+  fi
+
+  sed -n '1s/-.*//p' "$REPO_ROOT/backend/cmd/server/VERSION"
+}
+
+compute_build_metadata() {
+  local base_version short_sha commit_count
+  if [ -n "$BUILD_VERSION" ] && [ -n "$BUILD_COMMIT" ] && [ -n "$BUILD_DATE" ]; then
+    return 0
+  fi
+
+  base_version="$(get_base_release_version)"
+  [ -n "$base_version" ] || fail "failed to determine base release version"
+
+  short_sha="$(git rev-parse --short=8 HEAD)"
+  commit_count="$(git rev-list --count HEAD)"
+
+  BUILD_VERSION="${BUILD_VERSION:-${base_version}-oracle.${commit_count}-${short_sha}}"
+  BUILD_COMMIT="${BUILD_COMMIT:-$short_sha}"
+  BUILD_DATE="${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}"
 }
 
 log_dirty_stash_notice() {
@@ -162,8 +194,10 @@ if [ "$behind" -gt 0 ]; then
   git merge --ff-only "$upstream_ref"
 fi
 
-log "rebuilding and restarting $SERVICE"
-compose_cmd -f "$COMPOSE_FILE" up -d --build --no-deps "$SERVICE"
+compute_build_metadata
+log "rebuilding and restarting $SERVICE with version $BUILD_VERSION"
+APP_VERSION="$BUILD_VERSION" APP_COMMIT="$BUILD_COMMIT" APP_DATE="$BUILD_DATE" \
+  compose_cmd -f "$COMPOSE_FILE" up -d --build --no-deps "$SERVICE"
 
 wait_for_health
 running_image="$($SUDO docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null || true)"

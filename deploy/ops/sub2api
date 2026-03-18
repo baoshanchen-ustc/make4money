@@ -65,8 +65,13 @@ case "$cmd" in
     sudo docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk -F '\t' '$1 == "sub2api" || index($1, "sub2api-") == 1'
     ;;
   version)
-    require_file "$REPO_ROOT/backend/cmd/server/VERSION"
-    printf 'repo_version=%s\n' "$(tr -d '\r\n' < "$REPO_ROOT/backend/cmd/server/VERSION")"
+    runtime_version="$(sudo docker exec sub2api /app/sub2api -version 2>/dev/null | sed -n 's/^.*Sub2API \([^ ]*\) (commit:.*$/\1/p')"
+    if [ -n "$runtime_version" ]; then
+      printf 'repo_version=%s\n' "$runtime_version"
+    else
+      require_file "$REPO_ROOT/backend/cmd/server/VERSION"
+      printf 'repo_version=%s\n' "$(tr -d '\r\n' < "$REPO_ROOT/backend/cmd/server/VERSION")"
+    fi
     printf 'container_image=%s\n' "$(sudo docker inspect -f '{{.Config.Image}}' sub2api 2>/dev/null || echo unknown)"
     ;;
   help|-h|--help)
