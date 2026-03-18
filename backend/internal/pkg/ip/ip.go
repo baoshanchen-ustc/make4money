@@ -231,6 +231,10 @@ func CheckIPRestrictionWithCompiledRules(clientIP string, whitelist, blacklist *
 
 // ValidateIPPattern 验证 IP 或 CIDR 格式是否有效。
 func ValidateIPPattern(pattern string) bool {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return false
+	}
 	if strings.Contains(pattern, "/") {
 		_, _, err := net.ParseCIDR(pattern)
 		return err == nil

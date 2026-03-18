@@ -94,3 +94,22 @@ func TestCheckIPRestrictionWithCompiledRules_InvalidWhitelistStillDenies(t *test
 	require.False(t, allowed)
 	require.Equal(t, "access denied", reason)
 }
+
+func TestValidateIPPatternTrimsWhitespace(t *testing.T) {
+	require.True(t, ValidateIPPattern(" 1.2.3.4 "))
+	require.True(t, ValidateIPPattern(" 10.0.0.0/8 "))
+	require.True(t, ValidateIPPattern("\t2001:db8::1\n"))
+	require.False(t, ValidateIPPattern("   "))
+	require.False(t, ValidateIPPattern(" not-an-ip "))
+}
+
+func TestValidateIPPatternsPreservesOriginalInvalidInputs(t *testing.T) {
+	invalid := ValidateIPPatterns([]string{
+		" 1.2.3.4 ",
+		" invalid ",
+		" 10.0.0.0/8 ",
+		" bad-cidr/999 ",
+	})
+
+	require.Equal(t, []string{" invalid ", " bad-cidr/999 "}, invalid)
+}
