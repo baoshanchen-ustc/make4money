@@ -218,7 +218,7 @@ export default {
       email: 'Email',
       password: 'Password',
       confirmPassword: 'Confirm Password',
-      passwordPlaceholder: 'Min 6 characters',
+      passwordPlaceholder: 'Min 8 characters',
       confirmPasswordPlaceholder: 'Confirm password',
       passwordMismatch: 'Passwords do not match'
     },
@@ -4361,6 +4361,16 @@ export default {
           testSuccess: 'Google Drive storage test passed (upload, access, delete all OK)',
           testFailed: 'Google Drive storage test failed'
         }
+      },
+      overloadCooldown: {
+        title: '529 Overload Cooldown',
+        description: 'Configure account scheduling pause strategy when upstream returns 529 (overloaded)',
+        enabled: 'Enable Overload Cooldown',
+        enabledHint: 'Pause account scheduling on 529 errors, auto-recover after cooldown',
+        cooldownMinutes: 'Cooldown Duration (minutes)',
+        cooldownMinutesHint: 'Duration to pause account scheduling (1-120 minutes)',
+        saved: 'Overload cooldown settings saved',
+        saveFailed: 'Failed to save overload cooldown settings'
       },
       streamTimeout: {
         title: 'Stream Timeout Handling',
