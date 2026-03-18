@@ -27,6 +27,23 @@ BACKUP_BEFORE_DEPLOY="${BACKUP_BEFORE_DEPLOY:-1}"
 DEPLOY_IF_UP_TO_DATE="${DEPLOY_IF_UP_TO_DATE:-0}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-2}"
+DIRTY_MODE="${DIRTY_MODE:-fail}"
+DIRTY_STASH_NAME=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --stash-dirty)
+      DIRTY_MODE="stash"
+      ;;
+    --fail-on-dirty)
+      DIRTY_MODE="fail"
+      ;;
+    *)
+      fail "unknown argument: $1"
+      ;;
+  esac
+  shift
+done
 
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
@@ -75,6 +92,32 @@ wait_for_health() {
   fail "health endpoint did not become healthy: $HEALTH_URL"
 }
 
+log_dirty_stash_notice() {
+  if [ -n "$DIRTY_STASH_NAME" ]; then
+    log "local changes were saved to git stash: $DIRTY_STASH_NAME"
+  fi
+}
+
+ensure_repo_ready() {
+  if [ -z "$(git status --porcelain)" ]; then
+    return 0
+  fi
+
+  case "$DIRTY_MODE" in
+    fail)
+      fail "repo working tree is not clean (rerun with --stash-dirty to save local changes before release)"
+      ;;
+    stash)
+      DIRTY_STASH_NAME="sub2api-release-$(date -u +'%Y%m%dT%H%M%SZ')"
+      log "repo working tree is not clean; stashing local changes as $DIRTY_STASH_NAME"
+      git stash push -u -m "$DIRTY_STASH_NAME" >/dev/null || fail "failed to stash local changes"
+      ;;
+    *)
+      fail "unsupported DIRTY_MODE: $DIRTY_MODE"
+      ;;
+  esac
+}
+
 require_cmd git
 require_cmd curl
 require_cmd docker
@@ -85,7 +128,7 @@ cd "$REPO_ROOT"
 
 current_branch="$(git branch --show-current)"
 [ "$current_branch" = "$BRANCH" ] || fail "current branch is $current_branch, expected $BRANCH"
-[ -z "$(git status --porcelain)" ] || fail "repo working tree is not clean"
+ensure_repo_ready
 require_source_build_compose
 
 bash "$PRECHECK_SCRIPT"
@@ -104,6 +147,7 @@ if [ "$ahead" -ne 0 ]; then
 fi
 
 if [ "$behind" -eq 0 ] && [ "$DEPLOY_IF_UP_TO_DATE" != "1" ]; then
+  log_dirty_stash_notice
   log "branch already matches $upstream_ref; skipping deploy"
   exit 0
 fi
@@ -125,4 +169,5 @@ wait_for_health
 running_image="$($SUDO docker inspect -f '{{.Config.Image}}' "$SERVICE" 2>/dev/null || true)"
 [ "$running_image" = "sub2api-local:latest" ] || fail "running image is $running_image, expected sub2api-local:latest"
 bash "$PRECHECK_SCRIPT"
+log_dirty_stash_notice
 log "release completed"
