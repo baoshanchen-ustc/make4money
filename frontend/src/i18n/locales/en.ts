@@ -4607,6 +4607,8 @@ export default {
     noActiveSubscriptionsDesc:
       "You don't have any active subscriptions. Contact administrator to get one.",
     failedToLoad: 'Failed to load subscriptions',
+    today: 'Today',
+    tomorrow: 'Tomorrow',
     status: {
       active: 'Active',
       expired: 'Expired',
