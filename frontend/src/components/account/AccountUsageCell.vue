@@ -925,6 +925,12 @@ const isAnthropicOAuthOrSetupToken = computed(() => {
   return props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')
 })
 
+const requestUsage = (source?: 'passive' | 'active') => {
+  return source
+    ? adminAPI.accounts.getUsage(props.account.id, source)
+    : adminAPI.accounts.getUsage(props.account.id)
+}
+
 const loadUsage = async (source?: 'passive' | 'active') => {
   if (!shouldFetchUsage.value) return
 
@@ -932,7 +938,7 @@ const loadUsage = async (source?: 'passive' | 'active') => {
   error.value = null
 
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, source)
+    usageInfo.value = await requestUsage(source)
   } catch (e: any) {
     error.value = t('common.error')
     console.error('Failed to load usage:', e)
