@@ -87,3 +87,24 @@ func TestWriteConfigFileKeepsDefaultUserConcurrency(t *testing.T) {
 		t.Fatalf("config missing default user concurrency, got:\n%s", string(data))
 	}
 }
+
+func TestBuildPostgresDSN_UsesRequestedDatabaseName(t *testing.T) {
+	cfg := &DatabaseConfig{
+		Host:     "127.0.0.1",
+		Port:     5432,
+		User:     "postgres",
+		Password: "secret",
+		DBName:   "sub2api",
+		SSLMode:  "disable",
+	}
+
+	maintenanceDSN := buildPostgresDSN(cfg, postgresMaintenanceDBName)
+	if !strings.Contains(maintenanceDSN, "dbname=postgres") {
+		t.Fatalf("maintenance DSN should target postgres database, got %q", maintenanceDSN)
+	}
+
+	targetDSN := buildPostgresDSN(cfg, cfg.DBName)
+	if !strings.Contains(targetDSN, "dbname=sub2api") {
+		t.Fatalf("target DSN should target requested database, got %q", targetDSN)
+	}
+}

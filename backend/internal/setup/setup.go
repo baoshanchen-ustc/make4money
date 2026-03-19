@@ -28,6 +28,7 @@ const (
 	InstallLockFile            = ".installed"
 	defaultUserConcurrency     = 5
 	simpleModeAdminConcurrency = 30
+	postgresMaintenanceDBName  = "postgres"
 )
 
 func setupDefaultAdminConcurrency() int {
@@ -59,6 +60,13 @@ func GetDataDir() string {
 
 	// Default to current directory
 	return "."
+}
+
+func buildPostgresDSN(cfg *DatabaseConfig, dbName string) string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, dbName, cfg.SSLMode,
+	)
 }
 
 // GetConfigFilePath returns the full path to config.yaml
@@ -162,11 +170,10 @@ func NeedsSetup() bool {
 
 // TestDatabaseConnection tests the database connection and creates database if not exists
 func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	// First, connect to the default 'postgres' database to check/create target database
-	defaultDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
+	// First connect to the maintenance database so we can create the target
+	// database when it does not exist yet. Connecting to cfg.DBName directly
+	// would fail before we get a chance to create it.
+	defaultDSN := buildPostgresDSN(cfg, postgresMaintenanceDBName)
 
 	db, err := sql.Open("postgres", defaultDSN)
 	if err != nil {
@@ -214,10 +221,7 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 	}
 	db = nil
 
-	targetDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
+	targetDSN := buildPostgresDSN(cfg, cfg.DBName)
 
 	targetDB, err := sql.Open("postgres", targetDSN)
 	if err != nil {
