@@ -60,6 +60,8 @@ type Group struct {
 	SoraVideoPricePerRequest *float64 `json:"sora_video_price_per_request,omitempty"`
 	// SoraVideoPricePerRequestHd holds the value of the "sora_video_price_per_request_hd" field.
 	SoraVideoPricePerRequestHd *float64 `json:"sora_video_price_per_request_hd,omitempty"`
+	// SoraStorageQuotaBytes holds the value of the "sora_storage_quota_bytes" field.
+	SoraStorageQuotaBytes int64 `json:"sora_storage_quota_bytes,omitempty"`
 	// 是否仅允许 Claude Code 客户端
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID
@@ -76,6 +78,10 @@ type Group struct {
 	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
 	// 分组显示排序，数值越小越靠前
 	SortOrder int `json:"sort_order,omitempty"`
+	// 是否允许 /v1/messages 调度到此 OpenAI 分组
+	AllowMessagesDispatch bool `json:"allow_messages_dispatch,omitempty"`
+	// 默认映射模型 ID，当账号级映射找不到时使用此值
+	DefaultMappedModel string `json:"default_mapped_model,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -184,13 +190,13 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject:
+		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldSoraImagePrice360, group.FieldSoraImagePrice540, group.FieldSoraVideoPricePerRequest, group.FieldSoraVideoPricePerRequestHd:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldSoraStorageQuotaBytes, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType:
+		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -353,6 +359,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				_m.SoraVideoPricePerRequestHd = new(float64)
 				*_m.SoraVideoPricePerRequestHd = value.Float64
 			}
+		case group.FieldSoraStorageQuotaBytes:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field sora_storage_quota_bytes", values[i])
+			} else if value.Valid {
+				_m.SoraStorageQuotaBytes = value.Int64
+			}
 		case group.FieldClaudeCodeOnly:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field claude_code_only", values[i])
@@ -406,6 +418,18 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field sort_order", values[i])
 			} else if value.Valid {
 				_m.SortOrder = int(value.Int64)
+			}
+		case group.FieldAllowMessagesDispatch:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_messages_dispatch", values[i])
+			} else if value.Valid {
+				_m.AllowMessagesDispatch = value.Bool
+			}
+		case group.FieldDefaultMappedModel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field default_mapped_model", values[i])
+			} else if value.Valid {
+				_m.DefaultMappedModel = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -570,6 +594,9 @@ func (_m *Group) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
+	builder.WriteString("sora_storage_quota_bytes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SoraStorageQuotaBytes))
+	builder.WriteString(", ")
 	builder.WriteString("claude_code_only=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ClaudeCodeOnly))
 	builder.WriteString(", ")
@@ -597,6 +624,12 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("sort_order=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SortOrder))
+	builder.WriteString(", ")
+	builder.WriteString("allow_messages_dispatch=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowMessagesDispatch))
+	builder.WriteString(", ")
+	builder.WriteString("default_mapped_model=")
+	builder.WriteString(_m.DefaultMappedModel)
 	builder.WriteByte(')')
 	return builder.String()
 }

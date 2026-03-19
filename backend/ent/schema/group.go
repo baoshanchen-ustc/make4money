@@ -105,6 +105,10 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
 
+		// Sora 存储配额
+		field.Int64("sora_storage_quota_bytes").
+			Default(0),
+
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
 			Default(false).
@@ -144,6 +148,15 @@ func (Group) Fields() []ent.Field {
 		field.Int("sort_order").
 			Default(0).
 			Comment("分组显示排序，数值越小越靠前"),
+
+		// OpenAI Messages 调度配置 (added by migration 069)
+		field.Bool("allow_messages_dispatch").
+			Default(false).
+			Comment("是否允许 /v1/messages 调度到此 OpenAI 分组"),
+		field.String("default_mapped_model").
+			MaxLen(100).
+			Default("").
+			Comment("默认映射模型 ID，当账号级映射找不到时使用此值"),
 	}
 }
 

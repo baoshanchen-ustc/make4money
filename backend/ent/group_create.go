@@ -314,6 +314,20 @@ func (_c *GroupCreate) SetNillableSoraVideoPricePerRequestHd(v *float64) *GroupC
 	return _c
 }
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (_c *GroupCreate) SetSoraStorageQuotaBytes(v int64) *GroupCreate {
+	_c.mutation.SetSoraStorageQuotaBytes(v)
+	return _c
+}
+
+// SetNillableSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSoraStorageQuotaBytes(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetSoraStorageQuotaBytes(*v)
+	}
+	return _c
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
 	_c.mutation.SetClaudeCodeOnly(v)
@@ -406,6 +420,34 @@ func (_c *GroupCreate) SetSortOrder(v int) *GroupCreate {
 func (_c *GroupCreate) SetNillableSortOrder(v *int) *GroupCreate {
 	if v != nil {
 		_c.SetSortOrder(*v)
+	}
+	return _c
+}
+
+// SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
+func (_c *GroupCreate) SetAllowMessagesDispatch(v bool) *GroupCreate {
+	_c.mutation.SetAllowMessagesDispatch(v)
+	return _c
+}
+
+// SetNillableAllowMessagesDispatch sets the "allow_messages_dispatch" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowMessagesDispatch(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowMessagesDispatch(*v)
+	}
+	return _c
+}
+
+// SetDefaultMappedModel sets the "default_mapped_model" field.
+func (_c *GroupCreate) SetDefaultMappedModel(v string) *GroupCreate {
+	_c.mutation.SetDefaultMappedModel(v)
+	return _c
+}
+
+// SetNillableDefaultMappedModel sets the "default_mapped_model" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDefaultMappedModel(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetDefaultMappedModel(*v)
 	}
 	return _c
 }
@@ -575,6 +617,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
 	}
+	if _, ok := _c.mutation.SoraStorageQuotaBytes(); !ok {
+		v := group.DefaultSoraStorageQuotaBytes
+		_c.mutation.SetSoraStorageQuotaBytes(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -594,6 +640,14 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.SortOrder(); !ok {
 		v := group.DefaultSortOrder
 		_c.mutation.SetSortOrder(v)
+	}
+	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
+		v := group.DefaultAllowMessagesDispatch
+		_c.mutation.SetAllowMessagesDispatch(v)
+	}
+	if _, ok := _c.mutation.DefaultMappedModel(); !ok {
+		v := group.DefaultDefaultMappedModel
+		_c.mutation.SetDefaultMappedModel(v)
 	}
 	return nil
 }
@@ -647,6 +701,9 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)}
 	}
+	if _, ok := _c.mutation.SoraStorageQuotaBytes(); !ok {
+		return &ValidationError{Name: "sora_storage_quota_bytes", err: errors.New(`ent: missing required field "Group.sora_storage_quota_bytes"`)}
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
 	}
@@ -661,6 +718,17 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.SortOrder(); !ok {
 		return &ValidationError{Name: "sort_order", err: errors.New(`ent: missing required field "Group.sort_order"`)}
+	}
+	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
+		return &ValidationError{Name: "allow_messages_dispatch", err: errors.New(`ent: missing required field "Group.allow_messages_dispatch"`)}
+	}
+	if _, ok := _c.mutation.DefaultMappedModel(); !ok {
+		return &ValidationError{Name: "default_mapped_model", err: errors.New(`ent: missing required field "Group.default_mapped_model"`)}
+	}
+	if v, ok := _c.mutation.DefaultMappedModel(); ok {
+		if err := group.DefaultMappedModelValidator(v); err != nil {
+			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
+		}
 	}
 	return nil
 }
@@ -773,6 +841,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldSoraVideoPricePerRequestHd, field.TypeFloat64, value)
 		_node.SoraVideoPricePerRequestHd = &value
 	}
+	if value, ok := _c.mutation.SoraStorageQuotaBytes(); ok {
+		_spec.SetField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+		_node.SoraStorageQuotaBytes = value
+	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
 		_node.ClaudeCodeOnly = value
@@ -804,6 +876,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SortOrder(); ok {
 		_spec.SetField(group.FieldSortOrder, field.TypeInt, value)
 		_node.SortOrder = value
+	}
+	if value, ok := _c.mutation.AllowMessagesDispatch(); ok {
+		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
+		_node.AllowMessagesDispatch = value
+	}
+	if value, ok := _c.mutation.DefaultMappedModel(); ok {
+		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
+		_node.DefaultMappedModel = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1345,6 +1425,24 @@ func (u *GroupUpsert) ClearSoraVideoPricePerRequestHd() *GroupUpsert {
 	return u
 }
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (u *GroupUpsert) SetSoraStorageQuotaBytes(v int64) *GroupUpsert {
+	u.Set(group.FieldSoraStorageQuotaBytes, v)
+	return u
+}
+
+// UpdateSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSoraStorageQuotaBytes() *GroupUpsert {
+	u.SetExcluded(group.FieldSoraStorageQuotaBytes)
+	return u
+}
+
+// AddSoraStorageQuotaBytes adds v to the "sora_storage_quota_bytes" field.
+func (u *GroupUpsert) AddSoraStorageQuotaBytes(v int64) *GroupUpsert {
+	u.Add(group.FieldSoraStorageQuotaBytes, v)
+	return u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (u *GroupUpsert) SetClaudeCodeOnly(v bool) *GroupUpsert {
 	u.Set(group.FieldClaudeCodeOnly, v)
@@ -1474,6 +1572,30 @@ func (u *GroupUpsert) UpdateSortOrder() *GroupUpsert {
 // AddSortOrder adds v to the "sort_order" field.
 func (u *GroupUpsert) AddSortOrder(v int) *GroupUpsert {
 	u.Add(group.FieldSortOrder, v)
+	return u
+}
+
+// SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
+func (u *GroupUpsert) SetAllowMessagesDispatch(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowMessagesDispatch, v)
+	return u
+}
+
+// UpdateAllowMessagesDispatch sets the "allow_messages_dispatch" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowMessagesDispatch() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowMessagesDispatch)
+	return u
+}
+
+// SetDefaultMappedModel sets the "default_mapped_model" field.
+func (u *GroupUpsert) SetDefaultMappedModel(v string) *GroupUpsert {
+	u.Set(group.FieldDefaultMappedModel, v)
+	return u
+}
+
+// UpdateDefaultMappedModel sets the "default_mapped_model" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDefaultMappedModel() *GroupUpsert {
+	u.SetExcluded(group.FieldDefaultMappedModel)
 	return u
 }
 
@@ -1970,6 +2092,27 @@ func (u *GroupUpsertOne) ClearSoraVideoPricePerRequestHd() *GroupUpsertOne {
 	})
 }
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (u *GroupUpsertOne) SetSoraStorageQuotaBytes(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSoraStorageQuotaBytes(v)
+	})
+}
+
+// AddSoraStorageQuotaBytes adds v to the "sora_storage_quota_bytes" field.
+func (u *GroupUpsertOne) AddSoraStorageQuotaBytes(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSoraStorageQuotaBytes(v)
+	})
+}
+
+// UpdateSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSoraStorageQuotaBytes() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSoraStorageQuotaBytes()
+	})
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (u *GroupUpsertOne) SetClaudeCodeOnly(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -2121,6 +2264,34 @@ func (u *GroupUpsertOne) AddSortOrder(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateSortOrder() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSortOrder()
+	})
+}
+
+// SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
+func (u *GroupUpsertOne) SetAllowMessagesDispatch(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowMessagesDispatch(v)
+	})
+}
+
+// UpdateAllowMessagesDispatch sets the "allow_messages_dispatch" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowMessagesDispatch() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowMessagesDispatch()
+	})
+}
+
+// SetDefaultMappedModel sets the "default_mapped_model" field.
+func (u *GroupUpsertOne) SetDefaultMappedModel(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultMappedModel(v)
+	})
+}
+
+// UpdateDefaultMappedModel sets the "default_mapped_model" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDefaultMappedModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultMappedModel()
 	})
 }
 
@@ -2783,6 +2954,27 @@ func (u *GroupUpsertBulk) ClearSoraVideoPricePerRequestHd() *GroupUpsertBulk {
 	})
 }
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (u *GroupUpsertBulk) SetSoraStorageQuotaBytes(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSoraStorageQuotaBytes(v)
+	})
+}
+
+// AddSoraStorageQuotaBytes adds v to the "sora_storage_quota_bytes" field.
+func (u *GroupUpsertBulk) AddSoraStorageQuotaBytes(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSoraStorageQuotaBytes(v)
+	})
+}
+
+// UpdateSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSoraStorageQuotaBytes() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSoraStorageQuotaBytes()
+	})
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (u *GroupUpsertBulk) SetClaudeCodeOnly(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -2934,6 +3126,34 @@ func (u *GroupUpsertBulk) AddSortOrder(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateSortOrder() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSortOrder()
+	})
+}
+
+// SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
+func (u *GroupUpsertBulk) SetAllowMessagesDispatch(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowMessagesDispatch(v)
+	})
+}
+
+// UpdateAllowMessagesDispatch sets the "allow_messages_dispatch" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowMessagesDispatch() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowMessagesDispatch()
+	})
+}
+
+// SetDefaultMappedModel sets the "default_mapped_model" field.
+func (u *GroupUpsertBulk) SetDefaultMappedModel(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultMappedModel(v)
+	})
+}
+
+// UpdateDefaultMappedModel sets the "default_mapped_model" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDefaultMappedModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultMappedModel()
 	})
 }
 

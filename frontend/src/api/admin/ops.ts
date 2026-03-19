@@ -259,6 +259,13 @@ export interface OpsErrorDistributionResponse {
   items: OpsErrorDistributionItem[]
 }
 
+export interface OpsDashboardSnapshotV2Response {
+  generated_at: string
+  overview: OpsDashboardOverview
+  throughput_trend: OpsThroughputTrendResponse
+  error_trend: OpsErrorTrendResponse
+}
+
 export type OpsOpenAITokenStatsTimeRange = '30m' | '1h' | '1d' | '15d' | '30d'
 
 export interface OpsOpenAITokenStatsItem {
@@ -834,6 +841,9 @@ export interface OpsAdvancedSettings {
   ignore_context_canceled: boolean
   ignore_no_available_accounts: boolean
   ignore_invalid_api_key_errors: boolean
+  ignore_insufficient_balance_errors: boolean
+  display_openai_token_stats: boolean
+  display_alert_events: boolean
   auto_refresh_enabled: boolean
   auto_refresh_interval_seconds: number
 }
@@ -998,6 +1008,24 @@ export async function getDashboardOverview(
   options: OpsRequestOptions = {}
 ): Promise<OpsDashboardOverview> {
   const { data } = await apiClient.get<OpsDashboardOverview>('/admin/ops/dashboard/overview', {
+    params,
+    signal: options.signal
+  })
+  return data
+}
+
+export async function getDashboardSnapshotV2(
+  params: {
+  time_range?: '5m' | '30m' | '1h' | '6h' | '24h'
+  start_time?: string
+  end_time?: string
+  platform?: string
+  group_id?: number | null
+  mode?: OpsQueryMode
+  },
+  options: OpsRequestOptions = {}
+): Promise<OpsDashboardSnapshotV2Response> {
+  const { data } = await apiClient.get<OpsDashboardSnapshotV2Response>('/admin/ops/dashboard/snapshot-v2', {
     params,
     signal: options.signal
   })
@@ -1329,6 +1357,7 @@ async function updateMetricThresholds(thresholds: OpsMetricThresholds): Promise<
 }
 
 export const opsAPI = {
+  getDashboardSnapshotV2,
   getDashboardOverview,
   getThroughputTrend,
   getLatencyHistogram,

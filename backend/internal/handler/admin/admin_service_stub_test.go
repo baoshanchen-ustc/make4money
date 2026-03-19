@@ -10,22 +10,23 @@ import (
 )
 
 type stubAdminService struct {
-	users            []service.User
-	apiKeys          []service.APIKey
-	groups           []service.Group
-	accounts         []service.Account
-	proxies          []service.Proxy
-	proxyCounts      []service.ProxyWithAccountCount
-	redeems          []service.RedeemCode
-	createdAccounts  []*service.CreateAccountInput
-	createdProxies   []*service.CreateProxyInput
-	updatedProxyIDs  []int64
-	updatedProxies   []*service.UpdateProxyInput
-	testedProxyIDs   []int64
-	createAccountErr error
-	updateAccountErr error
-	checkMixedErr    error
-	lastMixedCheck   struct {
+	users                []service.User
+	apiKeys              []service.APIKey
+	groups               []service.Group
+	accounts             []service.Account
+	proxies              []service.Proxy
+	proxyCounts          []service.ProxyWithAccountCount
+	redeems              []service.RedeemCode
+	createdAccounts      []*service.CreateAccountInput
+	createdProxies       []*service.CreateProxyInput
+	updatedProxyIDs      []int64
+	updatedProxies       []*service.UpdateProxyInput
+	testedProxyIDs       []int64
+	createAccountErr     error
+	updateAccountErr     error
+	bulkUpdateAccountErr error
+	checkMixedErr        error
+	lastMixedCheck       struct {
 		accountID int64
 		platform  string
 		groupIDs  []int64
@@ -174,6 +175,18 @@ func (s *stubAdminService) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 	return s.apiKeys, int64(len(s.apiKeys)), nil
 }
 
+func (s *stubAdminService) GetGroupRateMultipliers(_ context.Context, _ int64) ([]service.UserGroupRateEntry, error) {
+	return nil, nil
+}
+
+func (s *stubAdminService) ClearGroupRateMultipliers(_ context.Context, _ int64) error {
+	return nil
+}
+
+func (s *stubAdminService) BatchSetGroupRateMultipliers(_ context.Context, _ int64, _ []service.GroupRateMultiplierInput) error {
+	return nil
+}
+
 func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64) ([]service.Account, int64, error) {
 	return s.accounts, int64(len(s.accounts)), nil
 }
@@ -235,7 +248,10 @@ func (s *stubAdminService) SetAccountSchedulable(ctx context.Context, id int64, 
 }
 
 func (s *stubAdminService) BulkUpdateAccounts(ctx context.Context, input *service.BulkUpdateAccountsInput) (*service.BulkUpdateAccountsResult, error) {
-	return &service.BulkUpdateAccountsResult{Success: 1, Failed: 0, SuccessIDs: []int64{1}}, nil
+	if s.bulkUpdateAccountErr != nil {
+		return nil, s.bulkUpdateAccountErr
+	}
+	return &service.BulkUpdateAccountsResult{Success: len(input.AccountIDs), Failed: 0, SuccessIDs: input.AccountIDs}, nil
 }
 
 func (s *stubAdminService) CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error {
@@ -401,6 +417,32 @@ func (s *stubAdminService) GetUserBalanceHistory(ctx context.Context, userID int
 
 func (s *stubAdminService) UpdateGroupSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
 	return nil
+}
+
+func (s *stubAdminService) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*service.AdminUpdateAPIKeyGroupIDResult, error) {
+	for i := range s.apiKeys {
+		if s.apiKeys[i].ID == keyID {
+			k := s.apiKeys[i]
+			if groupID != nil {
+				if *groupID == 0 {
+					k.GroupID = nil
+				} else {
+					gid := *groupID
+					k.GroupID = &gid
+				}
+			}
+			return &service.AdminUpdateAPIKeyGroupIDResult{APIKey: &k}, nil
+		}
+	}
+	return nil, service.ErrAPIKeyNotFound
+}
+
+func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (s *stubAdminService) EnsureOpenAIPrivacy(ctx context.Context, account *service.Account) string {
+	return ""
 }
 
 // Ensure stub implements interface.

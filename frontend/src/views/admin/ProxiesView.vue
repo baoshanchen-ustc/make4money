@@ -88,6 +88,7 @@
       </template>
 
       <template #table>
+        <div ref="proxyTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable :columns="columns" :data="proxies" :loading="loading">
           <template #header-select>
             <input
@@ -124,7 +125,54 @@
           </template>
 
           <template #cell-address="{ row }">
-            <code class="code text-xs">{{ row.host }}:{{ row.port }}</code>
+            <div class="flex items-center gap-1.5">
+              <code class="code text-xs">{{ row.host }}:{{ row.port }}</code>
+              <div class="relative">
+                <button
+                  type="button"
+                  class="rounded p-0.5 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
+                  :title="t('admin.proxies.copyProxyUrl')"
+                  @click.stop="copyProxyUrl(row)"
+                  @contextmenu.prevent="toggleCopyMenu(row.id)"
+                >
+                  <Icon name="copy" size="sm" />
+                </button>
+                <!-- 右键展开格式选择菜单 -->
+                <div
+                  v-if="copyMenuProxyId === row.id"
+                  class="absolute left-0 top-full z-50 mt-1 w-auto min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-500 dark:bg-dark-700"
+                >
+                  <button
+                    v-for="fmt in getCopyFormats(row)"
+                    :key="fmt.label"
+                    class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-dark-600"
+                    @click.stop="copyFormat(fmt.value)"
+                  >
+                    <span class="truncate font-mono text-gray-600 dark:text-gray-300">{{ fmt.label }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template #cell-auth="{ row }">
+            <div v-if="row.username || row.password" class="flex items-center gap-1.5">
+              <div class="flex flex-col text-xs">
+                <span v-if="row.username" class="text-gray-700 dark:text-gray-200">{{ row.username }}</span>
+                <span v-if="row.password" class="font-mono text-gray-500 dark:text-gray-400">
+                  {{ visiblePasswordIds.has(row.id) ? row.password : '••••••' }}
+                </span>
+              </div>
+              <button
+                v-if="row.password"
+                type="button"
+                class="ml-1 rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                @click.stop="visiblePasswordIds.has(row.id) ? visiblePasswordIds.delete(row.id) : visiblePasswordIds.add(row.id)"
+              >
+                <Icon :name="visiblePasswordIds.has(row.id) ? 'eyeOff' : 'eye'" size="sm" />
+              </button>
+            </div>
+            <span v-else class="text-sm text-gray-400">-</span>
           </template>
 
           <template #cell-location="{ row }">
@@ -278,6 +326,7 @@
             />
           </template>
         </DataTable>
+        </div>
       </template>
 
       <template #pagination>
@@ -397,12 +446,21 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.password') }}</label>
-          <input
-            v-model="createForm.password"
-            type="password"
-            class="input"
-            :placeholder="t('admin.proxies.optionalAuth')"
-          />
+          <div class="relative">
+            <input
+              v-model="createForm.password"
+              :type="createPasswordVisible ? 'text' : 'password'"
+              class="input pr-10"
+              :placeholder="t('admin.proxies.optionalAuth')"
+            />
+            <button
+              type="button"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              @click="createPasswordVisible = !createPasswordVisible"
+            >
+              <Icon :name="createPasswordVisible ? 'eyeOff' : 'eye'" size="md" />
+            </button>
+          </div>
         </div>
 
       </form>
@@ -581,12 +639,22 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.password') }}</label>
-          <input
-            v-model="editForm.password"
-            type="password"
-            :placeholder="t('admin.proxies.leaveEmptyToKeep')"
-            class="input"
-          />
+          <div class="relative">
+            <input
+              v-model="editForm.password"
+              :type="editPasswordVisible ? 'text' : 'password'"
+              :placeholder="t('admin.proxies.leaveEmptyToKeep')"
+              class="input pr-10"
+              @input="editPasswordDirty = true"
+            />
+            <button
+              type="button"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              @click="editPasswordVisible = !editPasswordVisible"
+            >
+              <Icon :name="editPasswordVisible ? 'eyeOff' : 'eye'" size="md" />
+            </button>
+          </div>
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.status') }}</label>
@@ -813,15 +881,20 @@ import ImportDataModal from '@/components/admin/proxy/ImportDataModal.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
+import { useClipboard } from '@/composables/useClipboard'
+import { useSwipeSelect } from '@/composables/useSwipeSelect'
+import { useTableSelection } from '@/composables/useTableSelection'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 
 const columns = computed<Column[]>(() => [
   { key: 'select', label: '', sortable: false },
   { key: 'name', label: t('admin.proxies.columns.name'), sortable: true },
   { key: 'protocol', label: t('admin.proxies.columns.protocol'), sortable: true },
   { key: 'address', label: t('admin.proxies.columns.address'), sortable: false },
+  { key: 'auth', label: t('admin.proxies.columns.auth'), sortable: false },
   { key: 'location', label: t('admin.proxies.columns.location'), sortable: false },
   { key: 'account_count', label: t('admin.proxies.columns.accounts'), sortable: true },
   { key: 'latency', label: t('admin.proxies.columns.latency'), sortable: false },
@@ -858,6 +931,8 @@ const editStatusOptions = computed(() => [
 ])
 
 const proxies = ref<Proxy[]>([])
+const visiblePasswordIds = reactive(new Set<number>())
+const copyMenuProxyId = ref<number | null>(null)
 const loading = ref(false)
 const searchQuery = ref('')
 const filters = reactive({
@@ -872,7 +947,10 @@ const pagination = reactive({
 })
 
 const showCreateModal = ref(false)
+const createPasswordVisible = ref(false)
 const showEditModal = ref(false)
+const editPasswordVisible = ref(false)
+const editPasswordDirty = ref(false)
 const showImportData = ref(false)
 const showDeleteDialog = ref(false)
 const showBatchDeleteDialog = ref(false)
@@ -884,7 +962,26 @@ const testingProxyIds = ref<Set<number>>(new Set())
 const qualityCheckingProxyIds = ref<Set<number>>(new Set())
 const batchTesting = ref(false)
 const batchQualityChecking = ref(false)
-const selectedProxyIds = ref<Set<number>>(new Set())
+const proxyTableRef = ref<HTMLElement | null>(null)
+const {
+  selectedSet: selectedProxyIds,
+  selectedCount,
+  allVisibleSelected,
+  isSelected,
+  select,
+  deselect,
+  clear: clearSelectedProxies,
+  removeMany: removeSelectedProxies,
+  toggleVisible
+} = useTableSelection<Proxy>({
+  rows: proxies,
+  getId: (proxy) => proxy.id
+})
+useSwipeSelect(proxyTableRef, {
+  isSelected,
+  select,
+  deselect
+})
 const accountsProxy = ref<Proxy | null>(null)
 const proxyAccounts = ref<ProxyAccountSummary[]>([])
 const accountsLoading = ref(false)
@@ -893,12 +990,6 @@ const deletingProxy = ref<Proxy | null>(null)
 const showQualityReportDialog = ref(false)
 const qualityReportProxy = ref<Proxy | null>(null)
 const qualityReport = ref<ProxyQualityCheckResult | null>(null)
-
-const selectedCount = computed(() => selectedProxyIds.value.size)
-const allVisibleSelected = computed(() => {
-  if (proxies.value.length === 0) return false
-  return proxies.value.every((proxy) => selectedProxyIds.value.has(proxy.id))
-})
 
 // Batch import state
 const createMode = ref<'standard' | 'batch'>('standard')
@@ -946,26 +1037,16 @@ const isAbortError = (error: unknown) => {
 
 const toggleSelectRow = (id: number, event: Event) => {
   const target = event.target as HTMLInputElement
-  const next = new Set(selectedProxyIds.value)
   if (target.checked) {
-    next.add(id)
-  } else {
-    next.delete(id)
+    select(id)
+    return
   }
-  selectedProxyIds.value = next
+  deselect(id)
 }
 
 const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
-  const next = new Set(selectedProxyIds.value)
-  for (const proxy of proxies.value) {
-    if (target.checked) {
-      next.add(proxy.id)
-    } else {
-      next.delete(proxy.id)
-    }
-  }
-  selectedProxyIds.value = next
+  toggleVisible(target.checked)
 }
 
 const loadProxies = async () => {
@@ -1030,6 +1111,7 @@ const closeCreateModal = () => {
   createForm.port = 8080
   createForm.username = ''
   createForm.password = ''
+  createPasswordVisible.value = false
   batchInput.value = ''
   batchParseResult.total = 0
   batchParseResult.valid = 0
@@ -1173,14 +1255,18 @@ const handleEdit = (proxy: Proxy) => {
   editForm.host = proxy.host
   editForm.port = proxy.port
   editForm.username = proxy.username || ''
-  editForm.password = ''
+  editForm.password = proxy.password || ''
   editForm.status = proxy.status
+  editPasswordVisible.value = false
+  editPasswordDirty.value = false
   showEditModal.value = true
 }
 
 const closeEditModal = () => {
   showEditModal.value = false
   editingProxy.value = null
+  editPasswordVisible.value = false
+  editPasswordDirty.value = false
 }
 
 const handleUpdateProxy = async () => {
@@ -1209,10 +1295,9 @@ const handleUpdateProxy = async () => {
       status: editForm.status
     }
 
-    // Only include password if it was changed
-    const trimmedPassword = editForm.password.trim()
-    if (trimmedPassword) {
-      updateData.password = trimmedPassword
+    // Only include password if user actually modified the field
+    if (editPasswordDirty.value) {
+      updateData.password = editForm.password.trim() || null
     }
 
     await adminAPI.proxies.update(editingProxy.value.id, updateData)
@@ -1653,11 +1738,7 @@ const confirmDelete = async () => {
     await adminAPI.proxies.delete(deletingProxy.value.id)
     appStore.showSuccess(t('admin.proxies.proxyDeleted'))
     showDeleteDialog.value = false
-    if (selectedProxyIds.value.has(deletingProxy.value.id)) {
-      const next = new Set(selectedProxyIds.value)
-      next.delete(deletingProxy.value.id)
-      selectedProxyIds.value = next
-    }
+    removeSelectedProxies([deletingProxy.value.id])
     deletingProxy.value = null
     loadProxies()
   } catch (error: any) {
@@ -1684,7 +1765,7 @@ const confirmBatchDelete = async () => {
       appStore.showInfo(t('admin.proxies.batchDeleteSkipped', { skipped }))
     }
 
-    selectedProxyIds.value = new Set()
+    clearSelectedProxies()
     showBatchDeleteDialog.value = false
     loadProxies()
   } catch (error: any) {
@@ -1715,12 +1796,60 @@ const closeAccountsModal = () => {
   proxyAccounts.value = []
 }
 
+// ── Proxy URL copy ──
+function buildAuthPart(row: any): string {
+  const user = row.username ? encodeURIComponent(row.username) : ''
+  const pass = row.password ? encodeURIComponent(row.password) : ''
+  if (user && pass) return `${user}:${pass}@`
+  if (user) return `${user}@`
+  if (pass) return `:${pass}@`
+  return ''
+}
+
+function buildProxyUrl(row: any): string {
+  return `${row.protocol}://${buildAuthPart(row)}${row.host}:${row.port}`
+}
+
+function getCopyFormats(row: any) {
+  const hasAuth = row.username || row.password
+  const fullUrl = buildProxyUrl(row)
+  const formats = [
+    { label: fullUrl, value: fullUrl },
+  ]
+  if (hasAuth) {
+    const withoutProtocol = fullUrl.replace(/^[^:]+:\/\//, '')
+    formats.push({ label: withoutProtocol, value: withoutProtocol })
+  }
+  formats.push({ label: `${row.host}:${row.port}`, value: `${row.host}:${row.port}` })
+  return formats
+}
+
+function copyProxyUrl(row: any) {
+  copyToClipboard(buildProxyUrl(row), t('admin.proxies.urlCopied'))
+  copyMenuProxyId.value = null
+}
+
+function toggleCopyMenu(id: number) {
+  copyMenuProxyId.value = copyMenuProxyId.value === id ? null : id
+}
+
+function copyFormat(value: string) {
+  copyToClipboard(value, t('admin.proxies.urlCopied'))
+  copyMenuProxyId.value = null
+}
+
+function closeCopyMenu() {
+  copyMenuProxyId.value = null
+}
+
 onMounted(() => {
   loadProxies()
+  document.addEventListener('click', closeCopyMenu)
 })
 
 onUnmounted(() => {
   clearTimeout(searchTimeout)
   abortController?.abort()
+  document.removeEventListener('click', closeCopyMenu)
 })
 </script>

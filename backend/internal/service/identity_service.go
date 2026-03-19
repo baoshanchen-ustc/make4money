@@ -19,8 +19,6 @@ import (
 
 // 预编译正则表达式（避免每次调用重新编译）
 var (
-	// 匹配 user_id 格式: user_{64位hex}_account__session_{uuid}
-	userIDRegex = regexp.MustCompile(`^user_[a-f0-9]{64}_account__session_([a-f0-9-]{36})$`)
 	// 匹配 User-Agent 版本号: xxx/x.y.z
 	userAgentVersionRegex = regexp.MustCompile(`/(\d+)\.(\d+)\.(\d+)`)
 )
@@ -46,6 +44,7 @@ type Fingerprint struct {
 	StainlessArch           string
 	StainlessRuntime        string
 	StainlessRuntimeVersion string
+	UpdatedAt               int64 `json:",omitempty"` // Unix timestamp，用于判断是否需要续期TTL
 }
 
 // IdentityCache defines cache operations for identity service
@@ -78,14 +77,26 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 	// 尝试从缓存获取指纹
 	cached, err := s.cache.GetFingerprint(ctx, accountID)
 	if err == nil && cached != nil {
+		needWrite := false
+
 		// 检查客户端的user-agent是否是更新版本
 		clientUA := headers.Get("User-Agent")
 		if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
-			// 更新user-agent
-			cached.UserAgent = clientUA
-			// 保存更新后的指纹
-			_ = s.cache.SetFingerprint(ctx, accountID, cached)
-			logger.LegacyPrintf("service.identity", "Updated fingerprint user-agent for account %d: %s", accountID, clientUA)
+			// 版本升级：merge 语义 — 仅更新请求中实际携带的字段，保留缓存值
+			// 避免缺失的头被硬编码默认值覆盖（如新 CLI 版本 + 旧 SDK 默认值的不一致）
+			mergeHeadersIntoFingerprint(cached, headers)
+			needWrite = true
+			logger.LegacyPrintf("service.identity", "Updated fingerprint for account %d: %s (merge update)", accountID, clientUA)
+		} else if time.Since(time.Unix(cached.UpdatedAt, 0)) > 24*time.Hour {
+			// 距上次写入超过24小时，续期TTL
+			needWrite = true
+		}
+
+		if needWrite {
+			cached.UpdatedAt = time.Now().Unix()
+			if err := s.cache.SetFingerprint(ctx, accountID, cached); err != nil {
+				logger.LegacyPrintf("service.identity", "Warning: failed to refresh fingerprint for account %d: %v", accountID, err)
+			}
 		}
 		return cached, nil
 	}
@@ -95,8 +106,9 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 
 	// 生成随机ClientID
 	fp.ClientID = generateClientID()
+	fp.UpdatedAt = time.Now().Unix()
 
-	// 保存到缓存（永不过期）
+	// 保存到缓存（7天TTL，每24小时自动续期）
 	if err := s.cache.SetFingerprint(ctx, accountID, fp); err != nil {
 		logger.LegacyPrintf("service.identity", "Warning: failed to cache fingerprint for account %d: %v", accountID, err)
 	}
@@ -125,6 +137,31 @@ func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fin
 	fp.StainlessRuntimeVersion = getHeaderOrDefault(headers, "X-Stainless-Runtime-Version", defaultFingerprint.StainlessRuntimeVersion)
 
 	return fp
+}
+
+// mergeHeadersIntoFingerprint 将请求头中实际存在的字段合并到现有指纹中（用于版本升级场景）
+// 关键语义：请求中有的字段 → 用新值覆盖；缺失的头 → 保留缓存中的已有值
+// 与 createFingerprintFromHeaders 的区别：后者用于首次创建，缺失头回退到 defaultFingerprint；
+// 本函数用于升级更新，缺失头保留缓存值，避免将已知的真实值退化为硬编码默认值
+func mergeHeadersIntoFingerprint(fp *Fingerprint, headers http.Header) {
+	// User-Agent：版本升级的触发条件，一定存在
+	if ua := headers.Get("User-Agent"); ua != "" {
+		fp.UserAgent = ua
+	}
+	// X-Stainless-* 头：仅在请求中实际携带时才更新，否则保留缓存值
+	mergeHeader(headers, "X-Stainless-Lang", &fp.StainlessLang)
+	mergeHeader(headers, "X-Stainless-Package-Version", &fp.StainlessPackageVersion)
+	mergeHeader(headers, "X-Stainless-OS", &fp.StainlessOS)
+	mergeHeader(headers, "X-Stainless-Arch", &fp.StainlessArch)
+	mergeHeader(headers, "X-Stainless-Runtime", &fp.StainlessRuntime)
+	mergeHeader(headers, "X-Stainless-Runtime-Version", &fp.StainlessRuntimeVersion)
+}
+
+// mergeHeader 如果请求头中存在该字段则更新目标值，否则保留原值
+func mergeHeader(headers http.Header, key string, target *string) {
+	if v := headers.Get(key); v != "" {
+		*target = v
+	}
 }
 
 // getHeaderOrDefault 获取header值，如果不存在则返回默认值
@@ -168,12 +205,12 @@ func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 }
 
 // RewriteUserID 重写body中的metadata.user_id
-// 输入格式：user_{clientId}_account__session_{sessionUUID}
-// 输出格式：user_{cachedClientID}_account_{accountUUID}_session_{newHash}
+// 支持旧拼接格式和新 JSON 格式的 user_id 解析，
+// 根据 fingerprintUA 版本选择输出格式。
 //
 // 重要：此函数使用 json.RawMessage 保留其他字段的原始字节，
 // 避免重新序列化导致 thinking 块等内容被修改。
-func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUID, cachedClientID string) ([]byte, error) {
+func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUID, cachedClientID, fingerprintUA string) ([]byte, error) {
 	if len(body) == 0 || accountUUID == "" || cachedClientID == "" {
 		return body, nil
 	}
@@ -200,21 +237,21 @@ func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUI
 		return body, nil
 	}
 
-	// 匹配格式: user_{64位hex}_account__session_{uuid}
-	matches := userIDRegex.FindStringSubmatch(userID)
-	if matches == nil {
+	// 解析 user_id（兼容旧拼接格式和新 JSON 格式）
+	parsed := ParseMetadataUserID(userID)
+	if parsed == nil {
 		return body, nil
 	}
 
-	sessionTail := matches[1] // 原始session UUID
+	sessionTail := parsed.SessionID // 原始session UUID
 
 	// 生成新的session hash: SHA256(accountID::sessionTail) -> UUID格式
 	seed := fmt.Sprintf("%d::%s", accountID, sessionTail)
 	newSessionHash := generateUUIDFromSeed(seed)
 
-	// 构建新的user_id
-	// 格式: user_{cachedClientID}_account_{account_uuid}_session_{newSessionHash}
-	newUserID := fmt.Sprintf("user_%s_account_%s_session_%s", cachedClientID, accountUUID, newSessionHash)
+	// 根据客户端版本选择输出格式
+	version := ExtractCLIVersion(fingerprintUA)
+	newUserID := FormatMetadataUserID(cachedClientID, accountUUID, newSessionHash, version)
 
 	metadata["user_id"] = newUserID
 
@@ -234,9 +271,9 @@ func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUI
 //
 // 重要：此函数使用 json.RawMessage 保留其他字段的原始字节，
 // 避免重新序列化导致 thinking 块等内容被修改。
-func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []byte, account *Account, accountUUID, cachedClientID string) ([]byte, error) {
+func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []byte, account *Account, accountUUID, cachedClientID, fingerprintUA string) ([]byte, error) {
 	// 先执行常规的 RewriteUserID 逻辑
-	newBody, err := s.RewriteUserID(body, account.ID, accountUUID, cachedClientID)
+	newBody, err := s.RewriteUserID(body, account.ID, accountUUID, cachedClientID, fingerprintUA)
 	if err != nil {
 		return newBody, err
 	}
@@ -268,10 +305,9 @@ func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []b
 		return newBody, nil
 	}
 
-	// 查找 _session_ 的位置，替换其后的内容
-	const sessionMarker = "_session_"
-	idx := strings.LastIndex(userID, sessionMarker)
-	if idx == -1 {
+	// 解析已重写的 user_id
+	uidParsed := ParseMetadataUserID(userID)
+	if uidParsed == nil {
 		return newBody, nil
 	}
 
@@ -293,8 +329,9 @@ func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []b
 		logger.LegacyPrintf("service.identity", "Warning: failed to set masked session ID for account %d: %v", account.ID, err)
 	}
 
-	// 替换 session 部分：保留 _session_ 之前的内容，替换之后的内容
-	newUserID := userID[:idx+len(sessionMarker)] + maskedSessionID
+	// 用 FormatMetadataUserID 重建（保持与 RewriteUserID 相同的格式）
+	version := ExtractCLIVersion(fingerprintUA)
+	newUserID := FormatMetadataUserID(uidParsed.DeviceID, uidParsed.AccountUUID, maskedSessionID, version)
 
 	slog.Debug("session_id_masking_applied",
 		"account_id", account.ID,
@@ -371,8 +408,25 @@ func parseUserAgentVersion(ua string) (major, minor, patch int, ok bool) {
 	return major, minor, patch, true
 }
 
+// extractProduct 提取 User-Agent 中 "/" 前的产品名
+// 例如：claude-cli/2.1.22 (external, cli) -> "claude-cli"
+func extractProduct(ua string) string {
+	if idx := strings.Index(ua, "/"); idx > 0 {
+		return strings.ToLower(ua[:idx])
+	}
+	return ""
+}
+
 // isNewerVersion 比较版本号，判断newUA是否比cachedUA更新
+// 要求产品名一致（防止浏览器 UA 如 Mozilla/5.0 误判为更新版本）
 func isNewerVersion(newUA, cachedUA string) bool {
+	// 校验产品名一致性
+	newProduct := extractProduct(newUA)
+	cachedProduct := extractProduct(cachedUA)
+	if newProduct == "" || cachedProduct == "" || newProduct != cachedProduct {
+		return false
+	}
+
 	newMajor, newMinor, newPatch, newOk := parseUserAgentVersion(newUA)
 	cachedMajor, cachedMinor, cachedPatch, cachedOk := parseUserAgentVersion(cachedUA)
 

@@ -57,6 +57,8 @@ const (
 	FieldSoraVideoPricePerRequest = "sora_video_price_per_request"
 	// FieldSoraVideoPricePerRequestHd holds the string denoting the sora_video_price_per_request_hd field in the database.
 	FieldSoraVideoPricePerRequestHd = "sora_video_price_per_request_hd"
+	// FieldSoraStorageQuotaBytes holds the string denoting the sora_storage_quota_bytes field in the database.
+	FieldSoraStorageQuotaBytes = "sora_storage_quota_bytes"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -73,6 +75,10 @@ const (
 	FieldSupportedModelScopes = "supported_model_scopes"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
 	FieldSortOrder = "sort_order"
+	// FieldAllowMessagesDispatch holds the string denoting the allow_messages_dispatch field in the database.
+	FieldAllowMessagesDispatch = "allow_messages_dispatch"
+	// FieldDefaultMappedModel holds the string denoting the default_mapped_model field in the database.
+	FieldDefaultMappedModel = "default_mapped_model"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -169,6 +175,7 @@ var Columns = []string{
 	FieldSoraImagePrice540,
 	FieldSoraVideoPricePerRequest,
 	FieldSoraVideoPricePerRequestHd,
+	FieldSoraStorageQuotaBytes,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
@@ -177,6 +184,8 @@ var Columns = []string{
 	FieldMcpXMLInject,
 	FieldSupportedModelScopes,
 	FieldSortOrder,
+	FieldAllowMessagesDispatch,
+	FieldDefaultMappedModel,
 }
 
 var (
@@ -232,6 +241,8 @@ var (
 	SubscriptionTypeValidator func(string) error
 	// DefaultDefaultValidityDays holds the default value on creation for the "default_validity_days" field.
 	DefaultDefaultValidityDays int
+	// DefaultSoraStorageQuotaBytes holds the default value on creation for the "sora_storage_quota_bytes" field.
+	DefaultSoraStorageQuotaBytes int64
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
@@ -242,6 +253,12 @@ var (
 	DefaultSupportedModelScopes []string
 	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
 	DefaultSortOrder int
+	// DefaultAllowMessagesDispatch holds the default value on creation for the "allow_messages_dispatch" field.
+	DefaultAllowMessagesDispatch bool
+	// DefaultDefaultMappedModel holds the default value on creation for the "default_mapped_model" field.
+	DefaultDefaultMappedModel string
+	// DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
+	DefaultMappedModelValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -357,6 +374,11 @@ func BySoraVideoPricePerRequestHd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSoraVideoPricePerRequestHd, opts...).ToFunc()
 }
 
+// BySoraStorageQuotaBytes orders the results by the sora_storage_quota_bytes field.
+func BySoraStorageQuotaBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSoraStorageQuotaBytes, opts...).ToFunc()
+}
+
 // ByClaudeCodeOnly orders the results by the claude_code_only field.
 func ByClaudeCodeOnly(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldClaudeCodeOnly, opts...).ToFunc()
@@ -385,6 +407,16 @@ func ByMcpXMLInject(opts ...sql.OrderTermOption) OrderOption {
 // BySortOrder orders the results by the sort_order field.
 func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSortOrder, opts...).ToFunc()
+}
+
+// ByAllowMessagesDispatch orders the results by the allow_messages_dispatch field.
+func ByAllowMessagesDispatch(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowMessagesDispatch, opts...).ToFunc()
+}
+
+// ByDefaultMappedModel orders the results by the default_mapped_model field.
+func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

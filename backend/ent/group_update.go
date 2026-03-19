@@ -463,6 +463,27 @@ func (_u *GroupUpdate) ClearSoraVideoPricePerRequestHd() *GroupUpdate {
 	return _u
 }
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (_u *GroupUpdate) SetSoraStorageQuotaBytes(v int64) *GroupUpdate {
+	_u.mutation.ResetSoraStorageQuotaBytes()
+	_u.mutation.SetSoraStorageQuotaBytes(v)
+	return _u
+}
+
+// SetNillableSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSoraStorageQuotaBytes(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetSoraStorageQuotaBytes(*v)
+	}
+	return _u
+}
+
+// AddSoraStorageQuotaBytes adds value to the "sora_storage_quota_bytes" field.
+func (_u *GroupUpdate) AddSoraStorageQuotaBytes(v int64) *GroupUpdate {
+	_u.mutation.AddSoraStorageQuotaBytes(v)
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -601,6 +622,34 @@ func (_u *GroupUpdate) SetNillableSortOrder(v *int) *GroupUpdate {
 // AddSortOrder adds value to the "sort_order" field.
 func (_u *GroupUpdate) AddSortOrder(v int) *GroupUpdate {
 	_u.mutation.AddSortOrder(v)
+	return _u
+}
+
+// SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
+func (_u *GroupUpdate) SetAllowMessagesDispatch(v bool) *GroupUpdate {
+	_u.mutation.SetAllowMessagesDispatch(v)
+	return _u
+}
+
+// SetNillableAllowMessagesDispatch sets the "allow_messages_dispatch" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAllowMessagesDispatch(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAllowMessagesDispatch(*v)
+	}
+	return _u
+}
+
+// SetDefaultMappedModel sets the "default_mapped_model" field.
+func (_u *GroupUpdate) SetDefaultMappedModel(v string) *GroupUpdate {
+	_u.mutation.SetDefaultMappedModel(v)
+	return _u
+}
+
+// SetNillableDefaultMappedModel sets the "default_mapped_model" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDefaultMappedModel(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetDefaultMappedModel(*v)
+	}
 	return _u
 }
 
@@ -889,6 +938,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.DefaultMappedModel(); ok {
+		if err := group.DefaultMappedModelValidator(v); err != nil {
+			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1036,6 +1090,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.SoraVideoPricePerRequestHdCleared() {
 		_spec.ClearField(group.FieldSoraVideoPricePerRequestHd, field.TypeFloat64)
 	}
+	if value, ok := _u.mutation.SoraStorageQuotaBytes(); ok {
+		_spec.SetField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedSoraStorageQuotaBytes(); ok {
+		_spec.AddField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
 	}
@@ -1082,6 +1142,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedSortOrder(); ok {
 		_spec.AddField(group.FieldSortOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllowMessagesDispatch(); ok {
+		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DefaultMappedModel(); ok {
+		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1825,6 +1891,27 @@ func (_u *GroupUpdateOne) ClearSoraVideoPricePerRequestHd() *GroupUpdateOne {
 	return _u
 }
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (_u *GroupUpdateOne) SetSoraStorageQuotaBytes(v int64) *GroupUpdateOne {
+	_u.mutation.ResetSoraStorageQuotaBytes()
+	_u.mutation.SetSoraStorageQuotaBytes(v)
+	return _u
+}
+
+// SetNillableSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSoraStorageQuotaBytes(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSoraStorageQuotaBytes(*v)
+	}
+	return _u
+}
+
+// AddSoraStorageQuotaBytes adds value to the "sora_storage_quota_bytes" field.
+func (_u *GroupUpdateOne) AddSoraStorageQuotaBytes(v int64) *GroupUpdateOne {
+	_u.mutation.AddSoraStorageQuotaBytes(v)
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1963,6 +2050,34 @@ func (_u *GroupUpdateOne) SetNillableSortOrder(v *int) *GroupUpdateOne {
 // AddSortOrder adds value to the "sort_order" field.
 func (_u *GroupUpdateOne) AddSortOrder(v int) *GroupUpdateOne {
 	_u.mutation.AddSortOrder(v)
+	return _u
+}
+
+// SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
+func (_u *GroupUpdateOne) SetAllowMessagesDispatch(v bool) *GroupUpdateOne {
+	_u.mutation.SetAllowMessagesDispatch(v)
+	return _u
+}
+
+// SetNillableAllowMessagesDispatch sets the "allow_messages_dispatch" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAllowMessagesDispatch(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAllowMessagesDispatch(*v)
+	}
+	return _u
+}
+
+// SetDefaultMappedModel sets the "default_mapped_model" field.
+func (_u *GroupUpdateOne) SetDefaultMappedModel(v string) *GroupUpdateOne {
+	_u.mutation.SetDefaultMappedModel(v)
+	return _u
+}
+
+// SetNillableDefaultMappedModel sets the "default_mapped_model" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDefaultMappedModel(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDefaultMappedModel(*v)
+	}
 	return _u
 }
 
@@ -2264,6 +2379,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.DefaultMappedModel(); ok {
+		if err := group.DefaultMappedModelValidator(v); err != nil {
+			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -2428,6 +2548,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if _u.mutation.SoraVideoPricePerRequestHdCleared() {
 		_spec.ClearField(group.FieldSoraVideoPricePerRequestHd, field.TypeFloat64)
 	}
+	if value, ok := _u.mutation.SoraStorageQuotaBytes(); ok {
+		_spec.SetField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedSoraStorageQuotaBytes(); ok {
+		_spec.AddField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
 	}
@@ -2474,6 +2600,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedSortOrder(); ok {
 		_spec.AddField(group.FieldSortOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllowMessagesDispatch(); ok {
+		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DefaultMappedModel(); ok {
+		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

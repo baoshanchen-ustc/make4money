@@ -32,6 +32,9 @@ type Group struct {
 	SoraVideoPricePerRequest   *float64
 	SoraVideoPricePerRequestHD *float64
 
+	// Sora 存储配额
+	SoraStorageQuotaBytes int64
+
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64
@@ -54,11 +57,17 @@ type Group struct {
 	// 分组排序
 	SortOrder int
 
+	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	AllowMessagesDispatch bool
+	DefaultMappedModel    string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
-	AccountGroups []AccountGroup
-	AccountCount  int64
+	AccountGroups           []AccountGroup
+	AccountCount            int64
+	ActiveAccountCount      int64
+	RateLimitedAccountCount int64
 }
 
 func (g *Group) IsActive() bool {

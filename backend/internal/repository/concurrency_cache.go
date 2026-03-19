@@ -147,17 +147,47 @@ var (
 			return 1
 		`)
 
-	// cleanupExpiredSlotsScript - remove expired slots
-	// KEYS[1] = concurrency:account:{accountID}
-	// ARGV[1] = TTL (seconds)
+	// cleanupExpiredSlotsScript 清理单个账号/用户有序集合中过期槽位
+	// KEYS[1] = 有序集合键
+	// ARGV[1] = TTL（秒）
 	cleanupExpiredSlotsScript = redis.NewScript(`
-			local key = KEYS[1]
-			local ttl = tonumber(ARGV[1])
-			local timeResult = redis.call('TIME')
-			local now = tonumber(timeResult[1])
-			local expireBefore = now - ttl
-			return redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
-		`)
+		local key = KEYS[1]
+		local ttl = tonumber(ARGV[1])
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1])
+		local expireBefore = now - ttl
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
+		if redis.call('ZCARD', key) == 0 then
+			redis.call('DEL', key)
+		else
+			redis.call('EXPIRE', key, ttl)
+		end
+		return 1
+	`)
+
+	// startupCleanupScript 清理非当前进程前缀的槽位成员。
+	// KEYS 是有序集合键列表，ARGV[1] 是当前进程前缀，ARGV[2] 是槽位 TTL。
+	// 遍历每个 KEYS[i]，移除前缀不匹配的成员，清空后删 key，否则刷新 EXPIRE。
+	startupCleanupScript = redis.NewScript(`
+		local activePrefix = ARGV[1]
+		local slotTTL = tonumber(ARGV[2])
+		local removed = 0
+		for i = 1, #KEYS do
+			local key = KEYS[i]
+			local members = redis.call('ZRANGE', key, 0, -1)
+			for _, member in ipairs(members) do
+				if string.sub(member, 1, string.len(activePrefix)) ~= activePrefix then
+					removed = removed + redis.call('ZREM', key, member)
+				end
+			end
+			if redis.call('ZCARD', key) == 0 then
+				redis.call('DEL', key)
+			else
+				redis.call('EXPIRE', key, slotTTL)
+			end
+		end
+		return removed
+	`)
 )
 
 type concurrencyCache struct {
@@ -223,6 +253,43 @@ func (c *concurrencyCache) GetAccountConcurrency(ctx context.Context, accountID 
 	result, err := getCountScript.Run(ctx, c.rdb, []string{key}, c.slotTTLSeconds).Int()
 	if err != nil {
 		return 0, err
+	}
+	return result, nil
+}
+
+func (c *concurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+	if len(accountIDs) == 0 {
+		return map[int64]int{}, nil
+	}
+
+	now, err := c.rdb.Time(ctx).Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis TIME: %w", err)
+	}
+	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
+
+	pipe := c.rdb.Pipeline()
+	type accountCmd struct {
+		accountID int64
+		zcardCmd  *redis.IntCmd
+	}
+	cmds := make([]accountCmd, 0, len(accountIDs))
+	for _, accountID := range accountIDs {
+		slotKey := accountSlotKeyPrefix + strconv.FormatInt(accountID, 10)
+		pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
+		cmds = append(cmds, accountCmd{
+			accountID: accountID,
+			zcardCmd:  pipe.ZCard(ctx, slotKey),
+		})
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("pipeline exec: %w", err)
+	}
+
+	result := make(map[int64]int, len(accountIDs))
+	for _, cmd := range cmds {
+		result[cmd.accountID] = int(cmd.zcardCmd.Val())
 	}
 	return result, nil
 }
@@ -425,4 +492,73 @@ func (c *concurrencyCache) CleanupExpiredAccountSlots(ctx context.Context, accou
 	key := accountSlotKey(accountID)
 	_, err := cleanupExpiredSlotsScript.Run(ctx, c.rdb, []string{key}, c.slotTTLSeconds).Result()
 	return err
+}
+
+func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error {
+	if activeRequestPrefix == "" {
+		return nil
+	}
+
+	// 1. 清理有序集合中非当前进程前缀的成员
+	slotPatterns := []string{accountSlotKeyPrefix + "*", userSlotKeyPrefix + "*"}
+	for _, pattern := range slotPatterns {
+		if err := c.cleanupSlotsByPattern(ctx, pattern, activeRequestPrefix); err != nil {
+			return err
+		}
+	}
+
+	// 2. 删除所有等待队列计数器（重启后计数器失效）
+	waitPatterns := []string{accountWaitKeyPrefix + "*", waitQueueKeyPrefix + "*"}
+	for _, pattern := range waitPatterns {
+		if err := c.deleteKeysByPattern(ctx, pattern); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// cleanupSlotsByPattern 扫描匹配 pattern 的有序集合键，批量调用 Lua 脚本清理非当前进程成员。
+func (c *concurrencyCache) cleanupSlotsByPattern(ctx context.Context, pattern, activePrefix string) error {
+	const scanCount = 200
+	var cursor uint64
+	for {
+		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, scanCount).Result()
+		if err != nil {
+			return fmt.Errorf("scan %s: %w", pattern, err)
+		}
+		if len(keys) > 0 {
+			_, err := startupCleanupScript.Run(ctx, c.rdb, keys, activePrefix, c.slotTTLSeconds).Result()
+			if err != nil {
+				return fmt.Errorf("cleanup slots %s: %w", pattern, err)
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+	return nil
+}
+
+// deleteKeysByPattern 扫描匹配 pattern 的键并删除。
+func (c *concurrencyCache) deleteKeysByPattern(ctx context.Context, pattern string) error {
+	const scanCount = 200
+	var cursor uint64
+	for {
+		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, scanCount).Result()
+		if err != nil {
+			return fmt.Errorf("scan %s: %w", pattern, err)
+		}
+		if len(keys) > 0 {
+			if err := c.rdb.Del(ctx, keys...).Err(); err != nil {
+				return fmt.Errorf("del %s: %w", pattern, err)
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+	return nil
 }

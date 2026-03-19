@@ -43,12 +43,13 @@ func TestMatchWildcard(t *testing.T) {
 	}
 }
 
-func TestMatchWildcardMapping(t *testing.T) {
+func TestMatchWildcardMappingResult(t *testing.T) {
 	tests := []struct {
 		name           string
 		mapping        map[string]string
 		requestedModel string
 		expected       string
+		matched        bool
 	}{
 		// 精确匹配优先于通配符
 		{
@@ -59,6 +60,7 @@ func TestMatchWildcardMapping(t *testing.T) {
 			},
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "claude-sonnet-4-5-exact",
+			matched:        true,
 		},
 
 		// 最长通配符优先
@@ -71,6 +73,7 @@ func TestMatchWildcardMapping(t *testing.T) {
 			},
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "claude-sonnet-4-series",
+			matched:        true,
 		},
 
 		// 单个通配符
@@ -81,6 +84,7 @@ func TestMatchWildcardMapping(t *testing.T) {
 			},
 			requestedModel: "claude-opus-4-5",
 			expected:       "claude-mapped",
+			matched:        true,
 		},
 
 		// 无匹配返回原始模型
@@ -91,6 +95,7 @@ func TestMatchWildcardMapping(t *testing.T) {
 			},
 			requestedModel: "gemini-3-flash",
 			expected:       "gemini-3-flash",
+			matched:        false,
 		},
 
 		// 空映射返回原始模型
@@ -99,6 +104,7 @@ func TestMatchWildcardMapping(t *testing.T) {
 			mapping:        map[string]string{},
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "claude-sonnet-4-5",
+			matched:        false,
 		},
 
 		// Gemini 模型映射
@@ -110,14 +116,15 @@ func TestMatchWildcardMapping(t *testing.T) {
 			},
 			requestedModel: "gemini-3-flash-preview",
 			expected:       "gemini-3-pro-high",
+			matched:        true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := matchWildcardMapping(tt.mapping, tt.requestedModel)
-			if result != tt.expected {
-				t.Errorf("matchWildcardMapping(%v, %q) = %q, want %q", tt.mapping, tt.requestedModel, result, tt.expected)
+			result, matched := matchWildcardMappingResult(tt.mapping, tt.requestedModel)
+			if result != tt.expected || matched != tt.matched {
+				t.Errorf("matchWildcardMappingResult(%v, %q) = (%q, %v), want (%q, %v)", tt.mapping, tt.requestedModel, result, matched, tt.expected, tt.matched)
 			}
 		})
 	}
@@ -268,6 +275,69 @@ func TestAccountGetMappedModel(t *testing.T) {
 	}
 }
 
+func TestAccountResolveMappedModel(t *testing.T) {
+	tests := []struct {
+		name           string
+		credentials    map[string]any
+		requestedModel string
+		expectedModel  string
+		expectedMatch  bool
+	}{
+		{
+			name:           "no mapping reports unmatched",
+			credentials:    nil,
+			requestedModel: "gpt-5.4",
+			expectedModel:  "gpt-5.4",
+			expectedMatch:  false,
+		},
+		{
+			name: "exact passthrough mapping still counts as matched",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-5.4": "gpt-5.4",
+				},
+			},
+			requestedModel: "gpt-5.4",
+			expectedModel:  "gpt-5.4",
+			expectedMatch:  true,
+		},
+		{
+			name: "wildcard passthrough mapping still counts as matched",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-*": "gpt-5.4",
+				},
+			},
+			requestedModel: "gpt-5.4",
+			expectedModel:  "gpt-5.4",
+			expectedMatch:  true,
+		},
+		{
+			name: "missing mapping reports unmatched",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-5.2": "gpt-5.2",
+				},
+			},
+			requestedModel: "gpt-5.4",
+			expectedModel:  "gpt-5.4",
+			expectedMatch:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				Credentials: tt.credentials,
+			}
+			mappedModel, matched := account.ResolveMappedModel(tt.requestedModel)
+			if mappedModel != tt.expectedModel || matched != tt.expectedMatch {
+				t.Fatalf("ResolveMappedModel(%q) = (%q, %v), want (%q, %v)", tt.requestedModel, mappedModel, matched, tt.expectedModel, tt.expectedMatch)
+			}
+		})
+	}
+}
+
 func TestAccountGetModelMapping_AntigravityEnsuresGeminiDefaultPassthroughs(t *testing.T) {
 	account := &Account{
 		Platform: PlatformAntigravity,
@@ -312,5 +382,74 @@ func TestAccountGetModelMapping_AntigravityRespectsWildcardOverride(t *testing.T
 	}
 	if mapped := account.GetMappedModel("gemini-3-flash"); mapped != "gemini-3.1-pro-high" {
 		t.Fatalf("expected wildcard mapping to stay effective, got: %q", mapped)
+	}
+}
+
+func TestAccountGetModelMapping_CacheInvalidatesOnCredentialsReplace(t *testing.T) {
+	account := &Account{
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"claude-3-5-sonnet": "upstream-a",
+			},
+		},
+	}
+
+	first := account.GetModelMapping()
+	if first["claude-3-5-sonnet"] != "upstream-a" {
+		t.Fatalf("unexpected first mapping: %v", first)
+	}
+
+	account.Credentials = map[string]any{
+		"model_mapping": map[string]any{
+			"claude-3-5-sonnet": "upstream-b",
+		},
+	}
+	second := account.GetModelMapping()
+	if second["claude-3-5-sonnet"] != "upstream-b" {
+		t.Fatalf("expected cache invalidated after credentials replace, got: %v", second)
+	}
+}
+
+func TestAccountGetModelMapping_CacheInvalidatesOnMappingLenChange(t *testing.T) {
+	rawMapping := map[string]any{
+		"claude-sonnet": "sonnet-a",
+	}
+	account := &Account{
+		Credentials: map[string]any{
+			"model_mapping": rawMapping,
+		},
+	}
+
+	first := account.GetModelMapping()
+	if len(first) != 1 {
+		t.Fatalf("unexpected first mapping length: %d", len(first))
+	}
+
+	rawMapping["claude-opus"] = "opus-b"
+	second := account.GetModelMapping()
+	if second["claude-opus"] != "opus-b" {
+		t.Fatalf("expected cache invalidated after mapping len change, got: %v", second)
+	}
+}
+
+func TestAccountGetModelMapping_CacheInvalidatesOnInPlaceValueChange(t *testing.T) {
+	rawMapping := map[string]any{
+		"claude-sonnet": "sonnet-a",
+	}
+	account := &Account{
+		Credentials: map[string]any{
+			"model_mapping": rawMapping,
+		},
+	}
+
+	first := account.GetModelMapping()
+	if first["claude-sonnet"] != "sonnet-a" {
+		t.Fatalf("unexpected first mapping: %v", first)
+	}
+
+	rawMapping["claude-sonnet"] = "sonnet-b"
+	second := account.GetModelMapping()
+	if second["claude-sonnet"] != "sonnet-b" {
+		t.Fatalf("expected cache invalidated after in-place value change, got: %v", second)
 	}
 }
