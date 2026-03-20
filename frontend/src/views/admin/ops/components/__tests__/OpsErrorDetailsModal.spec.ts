@@ -152,7 +152,7 @@ describe('OpsErrorDetailsModal', () => {
     expect(wrapper.find('.base-dialog-stub').exists()).toBe(true)
     expect(wrapper.find('.detail-panel-stub').text()).toContain('selected=22')
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await flushPromises()
 
     expect(wrapper.find('.base-dialog-stub').exists()).toBe(true)

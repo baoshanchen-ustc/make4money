@@ -340,13 +340,9 @@ const loadAvailableModels = async () => {
     // Default selection by platform
     if (availableModels.value.length > 0) {
       if (props.account.platform === 'gemini') {
-        const preferred =
-          availableModels.value.find((m) => m.id === 'gemini-2.0-flash') ||
-          availableModels.value.find((m) => m.id === 'gemini-2.5-flash') ||
-          availableModels.value.find((m) => m.id === 'gemini-2.5-pro') ||
-          availableModels.value.find((m) => m.id === 'gemini-3-flash-preview') ||
-          availableModels.value.find((m) => m.id === 'gemini-3-pro-preview')
-        selectedModelId.value = preferred?.id || availableModels.value[0].id
+        // availableModels has already been sorted by sortTestModels (prioritizedGeminiModels order)
+        // so simply pick the first model which is the highest priority one
+        selectedModelId.value = availableModels.value[0].id
       } else if (props.account.platform === 'copilot') {
         const preferred =
           availableModels.value.find((m) => m.id === 'gpt-4o') ||
