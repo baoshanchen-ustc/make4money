@@ -96,28 +96,42 @@ jobs:
           git fetch origin --tags --force
           git fetch upstream main --tags --force
 
-      - name: Detect releasable upstream tags
+      - name: Detect new upstream tags
         id: upstream_tag
         shell: bash
         run: |
           set -euo pipefail
+
+          # 获取 fork 当前最高版本
+          FORK_LATEST=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1 || echo "v0.0.0")
+          FORK_VERSION=${FORK_LATEST#v}
+
+          echo "Fork latest version: $FORK_VERSION"
+
+          # 收集高于当前版本的上游 tag
           TAGS=()
           while read -r tag; do
             [ -z "$tag" ] && continue
-            TAG_COMMIT="$(git rev-list -n 1 "$tag")"
-            if git merge-base --is-ancestor "$TAG_COMMIT" HEAD; then
-              if ! git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
-                TAGS+=("$tag")
+            TAG_VERSION=${tag#v}
+
+            # 版本比较：只收集比 fork 更新的版本
+            if [ "$(printf '%s\n' "$FORK_VERSION" "$TAG_VERSION" | sort -V | tail -1)" = "$TAG_VERSION" ] && [ "$TAG_VERSION" != "$FORK_VERSION" ]; then
+              TAG_COMMIT="$(git rev-list -n 1 "$tag")"
+              if git merge-base --is-ancestor "$TAG_COMMIT" HEAD; then
+                if ! git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
+                  TAGS+=("$tag")
+                  echo "Found new tag: $tag (newer than $FORK_VERSION)"
+                fi
               fi
             fi
           done < <(git tag --list 'v[0-9]*' --sort=v:refname)
 
           if [ ${#TAGS[@]} -eq 0 ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No new tags to sync"
             exit 0
           fi
 
-          # Use the highest version tag as the primary
           LATEST="${TAGS[-1]}"
           MESSAGE_FILE="$(mktemp)"
           git for-each-ref "refs/tags/$LATEST" --format='%(contents)' > "$MESSAGE_FILE"
@@ -129,16 +143,42 @@ jobs:
             echo "all_tags=${TAGS[*]}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Push upstream release tags to fork
+          echo "Will sync ${#TAGS[@]} tag(s): ${TAGS[*]}"
+
+      - name: Push upstream release tags sequentially
         if: steps.upstream_tag.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Push tags in ascending version order so the highest version is pushed last
-          # This ensures GitHub marks the highest version as "Latest"
           for tag in ${{ steps.upstream_tag.outputs.all_tags }}; do
-            echo "Pushing tag: $tag"
+            echo "=== Processing tag: $tag ==="
+
             MSG_FILE="$(mktemp)"
             git for-each-ref "refs/tags/$tag" --format='%(contents)' > "$MSG_FILE" 2>/dev/null || echo "$tag" > "$MSG_FILE"
             git tag -d "$tag"
             git tag -a "$tag" -F "$MSG_FILE" HEAD
             git push origin "refs/tags/$tag"
+
+            echo "Waiting for release workflow to start..."
+            sleep 60
+
+            # 等待 release workflow 完成（最多 40 分钟）
+            for i in {1..40}; do
+              RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=release.yml --json status,conclusion,createdAt --limit 5)
+              LATEST_RUN=$(echo "$RUNS" | jq -r 'first(.[] | select(.createdAt > (now - 3600 | todate)))')
+
+              if [ -n "$LATEST_RUN" ] && [ "$LATEST_RUN" != "null" ]; then
+                STATUS=$(echo "$LATEST_RUN" | jq -r '.status')
+                if [ "$STATUS" = "completed" ]; then
+                  CONCLUSION=$(echo "$LATEST_RUN" | jq -r '.conclusion')
+                  echo "Release workflow completed with: $CONCLUSION"
+                  break
+                fi
+              fi
+
+              echo "Waiting... ($i/40)"
+              sleep 60
+            done
+
+            echo "=== Finished processing $tag ==="
           done
