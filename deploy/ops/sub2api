@@ -135,7 +135,7 @@ case "$cmd" in
     cd "$REPO_ROOT"
     git status --short --branch
     echo "---"
-    sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk -F '\t' '$1 == "sub2api" || $1 == "codex-register" || index($1, "sub2api-") == 1'
+    sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk -F '\t' '$1 == "sub2api" || index($1, "sub2api-") == 1'
     echo "---"
     sudo systemctl is-active caddy
     ;;
