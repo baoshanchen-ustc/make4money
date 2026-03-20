@@ -12,7 +12,7 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  group: release-global
   cancel-in-progress: false
 
 permissions:
@@ -170,6 +170,9 @@ jobs:
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
+        timeout-minutes: 30
+        continue-on-error: true
+        id: goreleaser
         with:
           version: '~> v2'
           args: release --clean --skip=validate --config=.goreleaser.yaml
@@ -309,7 +312,7 @@ jobs:
 
   ensure-latest:
     needs: [release]
-    if: ${{ needs.release.result == 'success' }}
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Ensure latest points to highest version
