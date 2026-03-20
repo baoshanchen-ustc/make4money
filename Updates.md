@@ -1,5 +1,20 @@
 # 更新记录
 
+## 2026-03-21（0.1.115）
+
+- 版本号：`0.1.114` → `0.1.115`。
+- **回滚** 0.1.114 对 Sonnet/Opus 4 的粗粒度 id（`claude-sonnet-4` / `claude-opus-4`）：对接真实 GitHub Copilot `/chat/completions` 时，上游会以 **`model_not_supported`** 拒绝该 `model` 字段；恢复为点分 wire id（如 **`claude-sonnet-4.6`**、**`claude-opus-4.6`**），与 Haiku 的 **`claude-haiku-4.5`** 一致。家族简写仍展开为上述带点分 id。
+
+## 2026-03-21（0.1.114）
+
+- 版本号：`0.1.113` → `0.1.114`。
+- ~~Copilot 模型归一化：Sonnet/Opus 4 压为 `claude-sonnet-4` / `claude-opus-4`~~（已在 **0.1.115 回滚**，见上）。
+
+## 2026-03-21（0.1.113）
+
+- 版本号：`0.1.112` → `0.1.113`。
+- Copilot 模型归一化：识别 Claude Code `settings.json` 中的家族简写（如 **`opus[1m]`**、裸 **`opus` / `sonnet` / `haiku`** 及可选 **`[1m]`**），在转发 GitHub Copilot 前映射为 Anthropic 风格 id 再规范化为 Copilot 点分 wire id；Haiku 为 `claude-haiku-4.5`。
+
 ## 2026-03-21（0.1.112）
 
 - 版本号：`0.1.111` → `0.1.112`。
