@@ -706,6 +706,35 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 	response.Paginated(c, out.Items, out.Total, out.Page, out.PageSize)
 }
 
+// GetUsageInspectByRequestID returns the latest usage_logs row for a request_id in a time window.
+// GET /api/v1/admin/ops/usage-inspect?request_id=...&start_time=...&end_time=...
+func (h *OpsHandler) GetUsageInspectByRequestID(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+
+	requestID := strings.TrimSpace(c.Query("request_id"))
+	if requestID == "" {
+		response.BadRequest(c, "request_id is required")
+		return
+	}
+
+	startTime, endTime, err := parseOpsTimeRange(c, "24h")
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	detail, err := h.opsService.GetLatestUsageInspectByRequestID(c.Request.Context(), requestID, startTime, endTime)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, detail)
+}
+
 type opsRetryRequest struct {
 	Mode            string `json:"mode"`
 	PinnedAccountID *int64 `json:"pinned_account_id"`

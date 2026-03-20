@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -39,6 +40,14 @@ func (m *opsRepoMock) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorL
 
 func (m *opsRepoMock) ListRequestDetails(ctx context.Context, filter *OpsRequestDetailFilter) ([]*OpsRequestDetail, int64, error) {
 	return []*OpsRequestDetail{}, 0, nil
+}
+
+func (m *opsRepoMock) GetLatestUsageInspectByRequestID(
+	ctx context.Context,
+	requestID string,
+	startTime, endTime time.Time,
+) (*OpsUsageInspectDetail, error) {
+	return nil, sql.ErrNoRows
 }
 
 func (m *opsRepoMock) BatchInsertSystemLogs(ctx context.Context, inputs []*OpsInsertSystemLogInput) (int64, error) {
