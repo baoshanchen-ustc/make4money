@@ -96,40 +96,49 @@ jobs:
           git fetch origin --tags --force
           git fetch upstream main --tags --force
 
-      - name: Detect releasable upstream tag
+      - name: Detect releasable upstream tags
         id: upstream_tag
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATE=""
+          TAGS=()
           while read -r tag; do
             [ -z "$tag" ] && continue
             TAG_COMMIT="$(git rev-list -n 1 "$tag")"
             if git merge-base --is-ancestor "$TAG_COMMIT" HEAD; then
               if ! git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
-                CANDIDATE="$tag"
-                break
+                TAGS+=("$tag")
               fi
             fi
-          done < <(git tag --list 'v[0-9]*' --sort=-v:refname)
+          done < <(git tag --list 'v[0-9]*' --sort=v:refname)
 
-          if [ -z "$CANDIDATE" ]; then
+          if [ ${#TAGS[@]} -eq 0 ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          # Use the highest version tag as the primary
+          LATEST="${TAGS[-1]}"
           MESSAGE_FILE="$(mktemp)"
-          git for-each-ref "refs/tags/$CANDIDATE" --format='%(contents)' > "$MESSAGE_FILE"
+          git for-each-ref "refs/tags/$LATEST" --format='%(contents)' > "$MESSAGE_FILE"
 
           {
             echo "found=true"
-            echo "name=$CANDIDATE"
+            echo "name=$LATEST"
             echo "message_file=$MESSAGE_FILE"
+            echo "all_tags=${TAGS[*]}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Push upstream release tag to fork
+      - name: Push upstream release tags to fork
         if: steps.upstream_tag.outputs.found == 'true'
         run: |
-          git tag -d "${{ steps.upstream_tag.outputs.name }}"
-          git tag -a "${{ steps.upstream_tag.outputs.name }}" -F "${{ steps.upstream_tag.outputs.message_file }}" HEAD
-          git push origin "refs/tags/${{ steps.upstream_tag.outputs.name }}"
+          # Push tags in ascending version order so the highest version is pushed last
+          # This ensures GitHub marks the highest version as "Latest"
+          for tag in ${{ steps.upstream_tag.outputs.all_tags }}; do
+            echo "Pushing tag: $tag"
+            MSG_FILE="$(mktemp)"
+            git for-each-ref "refs/tags/$tag" --format='%(contents)' > "$MSG_FILE" 2>/dev/null || echo "$tag" > "$MSG_FILE"
+            git tag -d "$tag"
+            git tag -a "$tag" -F "$MSG_FILE" HEAD
+            git push origin "refs/tags/$tag"
+          done

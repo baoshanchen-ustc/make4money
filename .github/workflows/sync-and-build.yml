@@ -94,8 +94,58 @@ jobs:
 
           echo "merge_conflict=false" >> "$GITHUB_OUTPUT"
 
+      - name: Auto-resolve known conflicts
+        if: steps.sync.outputs.merge_conflict == 'true'
+        id: auto_resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFLICT_FILES="$(git diff --name-only --diff-filter=U)"
+          ALL_RESOLVED=true
+
+          echo "Attempting to auto-resolve conflicts..."
+
+          for file in $CONFLICT_FILES; do
+            echo "Processing: $file"
+            case "$file" in
+              backend/cmd/server/VERSION)
+                git checkout "$UPSTREAM_REMOTE/main" -- "$file"
+                git add "$file"
+                echo "✓ Resolved: $file (adopted upstream)"
+                ;;
+              frontend/src/components/account/__tests__/*.spec.ts)
+                git checkout "$UPSTREAM_REMOTE/main" -- "$file"
+                git add "$file"
+                echo "✓ Resolved: $file (adopted upstream)"
+                ;;
+              .github/workflows/release.yml)
+                if python3 .github/scripts/merge-release-yml.py; then
+                  git add "$file"
+                  echo "✓ Resolved: $file (smart merge)"
+                else
+                  ALL_RESOLVED=false
+                  echo "✗ Failed: $file (needs manual resolution)"
+                fi
+                ;;
+              *)
+                ALL_RESOLVED=false
+                echo "✗ Unknown conflict: $file"
+                ;;
+            esac
+          done
+
+          if [ "$ALL_RESOLVED" = "true" ]; then
+            git commit -m "chore: auto-resolve upstream sync conflicts [skip ci]"
+            echo "resolved=true" >> "$GITHUB_OUTPUT"
+            echo "All conflicts auto-resolved!"
+          else
+            echo "resolved=false" >> "$GITHUB_OUTPUT"
+            echo "Some conflicts require manual resolution"
+          fi
+
       - name: Close stale conflict issue
-        if: steps.sync.outputs.changed == 'false' || steps.sync.outputs.merge_conflict == 'false'
+        if: steps.sync.outputs.changed == 'false' || steps.sync.outputs.merge_conflict == 'false' || steps.auto_resolve.outputs.resolved == 'true'
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         shell: bash
@@ -107,7 +157,7 @@ jobs:
           fi
 
       - name: Create or update conflict issue
-        if: steps.sync.outputs.merge_conflict == 'true'
+        if: steps.sync.outputs.merge_conflict == 'true' && steps.auto_resolve.outputs.resolved != 'true'
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         shell: bash
@@ -137,17 +187,17 @@ jobs:
           fi
 
       - name: Stop on merge conflict
-        if: steps.sync.outputs.merge_conflict == 'true'
+        if: steps.sync.outputs.merge_conflict == 'true' && steps.auto_resolve.outputs.resolved != 'true'
         run: |
           echo "Upstream sync conflict recorded in issue tracker."
           exit 1
 
       - name: Push sync branch
-        if: steps.sync.outputs.changed == 'true' && steps.sync.outputs.merge_conflict == 'false'
+        if: steps.sync.outputs.changed == 'true' && (steps.sync.outputs.merge_conflict == 'false' || steps.auto_resolve.outputs.resolved == 'true')
         run: git push --force-with-lease origin "$SYNC_BRANCH"
 
       - name: Create or update sync PR
-        if: steps.sync.outputs.changed == 'true' && steps.sync.outputs.merge_conflict == 'false'
+        if: steps.sync.outputs.changed == 'true' && (steps.sync.outputs.merge_conflict == 'false' || steps.auto_resolve.outputs.resolved == 'true')
         id: pr
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
