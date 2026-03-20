@@ -261,9 +261,9 @@ type openAIDelta struct {
 // translateAnthropicToOpenAI converts an Anthropic /v1/messages request body to
 // an OpenAI /chat/completions request body suitable for the Copilot API.
 //
-// The model name is passed through exactly as provided by the client.
-// The Copilot API returns model IDs with version suffixes (e.g. "claude-sonnet-4.6"),
-// so clients should use the exact ID from the /models endpoint.
+// The model field is copied verbatim from the Anthropic request; CopilotGatewayService
+// then applies account model_mapping and copilot.NormalizeModelIDForCopilotUpstream
+// before sending to GitHub (Anthropic dated / dash ids → Copilot wire ids).
 func translateAnthropicToOpenAI(body []byte, _ map[string]string) ([]byte, error) {
 	var req AnthropicMessagesRequest
 	if err := json.Unmarshal(body, &req); err != nil {

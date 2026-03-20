@@ -98,6 +98,8 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 	// (e.g. <available-deferred-tools> + actual message) that Copilot rejects.
 	body = mergeConsecutiveSameRoleMessagesInOpenAIBody(body)
 
+	body, logModel := rewriteCopilotUpstreamModel(body, account)
+
 	// Get Copilot API token
 	token, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
@@ -115,8 +117,11 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 		baseURL = copilot.ChatBaseURLForPlan(planType)
 	}
 
-	// Extract model from request body for logging
-	model := extractModelFromBody(body)
+	// Model for billing / logs: client-facing name before upstream rewrite.
+	model := logModel
+	if model == "" {
+		model = extractModelFromBody(body)
+	}
 
 	// Detect streaming mode
 	isStream := detectStreamMode(body)
@@ -374,6 +379,30 @@ func extractModelFromBody(body []byte) string {
 	return req.Model
 }
 
+// rewriteCopilotUpstreamModel applies account model_mapping then Copilot API id
+// normalization (Anthropic dated / dash ids → Copilot dot form). Returns the
+// possibly updated body and the original model string from the body for logging.
+func rewriteCopilotUpstreamModel(body []byte, account *Account) ([]byte, string) {
+	if len(body) == 0 || account == nil {
+		return body, extractModelFromBody(body)
+	}
+	original := strings.TrimSpace(extractModelFromBody(body))
+	if original == "" {
+		return body, original
+	}
+	mapped := account.GetMappedModel(original)
+	upstream := copilot.NormalizeModelIDForCopilotUpstream(mapped)
+	if upstream == original {
+		return body, original
+	}
+	newBody, err := sjson.SetBytes(body, "model", upstream)
+	if err != nil {
+		slog.Warn("copilot: rewrite model in body failed", "error", err)
+		return body, original
+	}
+	return newBody, original
+}
+
 // detectStreamMode checks if the request body has "stream": true.
 func detectStreamMode(body []byte) bool {
 	var req struct {
@@ -602,8 +631,11 @@ func (s *CopilotGatewayService) ForwardResponses(
 	// Uses the same gjson-based approach as extractOpenAIReasoningEffortFromBody.
 	reasoningEffort := extractCopilotReasoningEffort(body)
 
-	// Apply model mapping and normalize model name (dash→dot for Claude models).
-	model := extractModelFromBody(body)
+	body, logModel := rewriteCopilotUpstreamModel(body, account)
+	model := logModel
+	if model == "" {
+		model = extractModelFromBody(body)
+	}
 
 	isStream := detectStreamMode(body)
 
@@ -670,6 +702,8 @@ func (s *CopilotGatewayService) ForwardMessages(
 	// Detect whether the *client* wants streaming (we need to know for the response path).
 	clientWantsStream := detectAnthropicStream(anthropicBody)
 
+	clientModel := strings.TrimSpace(gjson.GetBytes(anthropicBody, "model").String())
+
 	// Translate Anthropic request → OpenAI format.
 	openAIBody, err := translateAnthropicToOpenAI(anthropicBody, nil)
 	if err != nil {
@@ -683,8 +717,13 @@ func (s *CopilotGatewayService) ForwardMessages(
 	// when the client requested stream=false.
 	openAIBody = forceStreamTrue(openAIBody)
 
-	// Extract model name for logging.
-	model := extractModelFromBody(openAIBody)
+	openAIBody, _ = rewriteCopilotUpstreamModel(openAIBody, account)
+
+	// Log / billing: preserve the client's Anthropic model id, not the Copilot wire id.
+	model := clientModel
+	if model == "" {
+		model = extractModelFromBody(openAIBody)
+	}
 
 	// DEBUG: log the full translated request body to diagnose 400 Bad Request
 	slog.Debug("copilot messages translated openai body",
