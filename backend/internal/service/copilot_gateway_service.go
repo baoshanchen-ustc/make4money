@@ -68,8 +68,8 @@ func NewCopilotGatewayService(
 
 // CopilotForwardResult holds the result of a Copilot API request.
 type CopilotForwardResult struct {
-	StatusCode      int
-	Model           string
+	StatusCode int
+	Model      string
 	// UpstreamModel is the model id in the JSON body sent to Copilot (after mapping/normalization).
 	UpstreamModel   string
 	Usage           *CopilotUsage

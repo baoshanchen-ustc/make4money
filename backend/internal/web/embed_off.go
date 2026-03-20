@@ -5,7 +5,6 @@ package web
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -20,9 +19,11 @@ type PublicSettingsProvider interface {
 // FrontendServer is a stub for non-embed builds
 type FrontendServer struct{}
 
-// NewFrontendServer returns an error when frontend is not embedded
+// NewFrontendServer is only invoked when HasEmbeddedFrontend() is true; in !embed builds
+// that is always false. Returning nil error keeps static analysis consistent with embed builds
+// where success returns nil error (router still never calls this without embedded assets).
 func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
-	return nil, errors.New("frontend not embedded")
+	return &FrontendServer{}, nil
 }
 
 // InvalidateCache is a no-op for non-embed builds

@@ -484,9 +484,9 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 				recordCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				fwdResult := &service.ForwardResult{
-					Model:           capturedResult.Model,
-					UpstreamModel:   capturedResult.UpstreamModel,
-					Stream:          reqStream,
+					Model:         capturedResult.Model,
+					UpstreamModel: capturedResult.UpstreamModel,
+					Stream:        reqStream,
 					Usage: service.ClaudeUsage{
 						InputTokens:  capturedResult.Usage.PromptTokens,
 						OutputTokens: capturedResult.Usage.CompletionTokens,

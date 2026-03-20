@@ -1,5 +1,10 @@
 # 更新记录
 
+## 2026-03-20（0.1.109）
+
+- 版本号：`0.1.108` → `0.1.109`。
+- 修复 CI（golangci-lint）：`gofmt` 修正 `copilot_gateway_handler.go`、`copilot_gateway_service.go`、`ops_request_details.go`；`account_usage_service.go` OpenAI Codex 探测请求对固定 URL 的 `client.Do` 标注 `gosec` G704 例外；`embed_off` 下 `NewFrontendServer` 存根改为返回 `(*FrontendServer, nil)`，避免与 `embed` 实现混析时触发 staticcheck SA4023（`err != nil` 恒真）。生产带嵌入前端仍仅走 `embed` 构建且 `HasEmbeddedFrontend()` 为真时的真实实现。
+
 ## 2026-03-20
 
 - 版本号：`0.1.107` → `0.1.108`（合并上游 Wei-Shaw/sub2api `main` 至 `a225a241`）。

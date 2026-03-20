@@ -640,6 +640,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if err != nil {
 		return nil, nil, fmt.Errorf("build openai probe client: %w", err)
 	}
+	//nolint:gosec // G704: URL is fixed constant chatgptCodexURL (Codex probe), not user input.
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("openai codex probe request failed: %w", err)
