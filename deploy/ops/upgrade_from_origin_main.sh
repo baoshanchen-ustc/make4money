@@ -15,7 +15,7 @@ require_cmd() {
 }
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${REPO_ROOT:-$(cd -- "$SCRIPT_DIR" && pwd)}"
+REPO_ROOT="${REPO_ROOT:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}"
 COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/deploy/docker-compose.yml}"
 SERVICE="${SERVICE:-sub2api}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/health}"
@@ -51,6 +51,27 @@ compose_cmd() {
   else
     fail "neither docker compose nor docker-compose is available"
   fi
+}
+
+resolve_version_conflict() {
+  local conflict_file ours theirs resolved suffix
+  conflict_file="backend/cmd/server/VERSION"
+
+  git -C "$REPO_ROOT" diff --name-only --diff-filter=U | grep -qx "$conflict_file" || return 1
+  ours="$(git -C "$REPO_ROOT" show ":2:$conflict_file" 2>/dev/null || true)"
+  theirs="$(git -C "$REPO_ROOT" show ":3:$conflict_file" 2>/dev/null || true)"
+  [ -n "$ours" ] || return 1
+  [ -n "$theirs" ] || return 1
+
+  resolved="$theirs"
+  if [[ "$ours" == *-* ]]; then
+    suffix="${ours#*-}"
+    resolved="${theirs}-${suffix}"
+  fi
+
+  printf '%s\n' "$resolved" > "$REPO_ROOT/$conflict_file"
+  git -C "$REPO_ROOT" add "$conflict_file"
+  log "resolved VERSION conflict: ours=$ours theirs=$theirs final=$resolved"
 }
 
 update_build_metadata() {
@@ -164,7 +185,13 @@ fi
 
 ROLLBACK_REQUIRED=1
 log "merging $TARGET_LABEL into $(git branch --show-current)"
-git merge --no-ff --no-edit "$TARGET_COMMIT"
+if ! git merge --no-ff --no-edit "$TARGET_COMMIT"; then
+  resolve_version_conflict || fail "merge conflict requires manual resolution"
+  if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+    fail "merge conflict requires manual resolution"
+  fi
+  git commit --no-edit
+fi
 
 update_build_metadata
 DEPLOY_STARTED=1
