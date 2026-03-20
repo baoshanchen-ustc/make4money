@@ -88,6 +88,35 @@
         </div>
       </div>
 
+      <div
+        v-if="detail.request_body && String(detail.request_body).trim()"
+        class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">
+            {{ t('admin.ops.errorDetail.clientInboundBody') }}
+          </h3>
+          <span v-if="detail.request_body_truncated" class="text-xs font-bold text-amber-600 dark:text-amber-400">
+            {{ t('admin.ops.errorDetail.trimmed') }}
+          </span>
+        </div>
+        <pre
+          class="mt-4 max-h-[520px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"
+        ><code>{{ prettyJSON(detail.request_body) }}</code></pre>
+      </div>
+
+      <div
+        v-if="detail.request_headers && String(detail.request_headers).trim()"
+        class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900"
+      >
+        <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">
+          {{ t('admin.ops.errorDetail.clientInboundHeaders') }}
+        </h3>
+        <pre
+          class="mt-4 max-h-[320px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"
+        ><code>{{ prettyJSON(detail.request_headers) }}</code></pre>
+      </div>
+
       <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.responseBody') }}</h3>
         <pre class="mt-4 max-h-[520px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ prettyJSON(primaryResponseBody || '') }}</code></pre>
@@ -153,6 +182,15 @@
             </div>
 
             <div v-if="ev.message" class="mt-3 break-words text-sm font-medium text-gray-900 dark:text-white">{{ ev.message }}</div>
+
+            <div v-if="upstreamForwardRequestBody(ev)" class="mt-3">
+              <div class="text-xs font-bold uppercase tracking-wide text-gray-400">
+                {{ t('admin.ops.errorDetail.upstreamForwardBody') }}
+              </div>
+              <pre
+                class="mt-2 max-h-[240px] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-100"
+              ><code>{{ prettyJSON(upstreamForwardRequestBody(ev)) }}</code></pre>
+            </div>
 
             <pre
               v-if="expandedUpstreamDetailIds.has(ev.id)"
@@ -220,6 +258,10 @@ function getUpstreamResponsePreview(ev: OpsErrorDetail): string {
   const upstreamPayload = resolveUpstreamPayload(ev)
   if (upstreamPayload) return upstreamPayload
   return String(ev.error_body || '').trim()
+}
+
+function upstreamForwardRequestBody(ev: OpsErrorDetail): string {
+  return String(ev.request_body || '').trim()
 }
 
 function toggleUpstreamDetail(id: number) {

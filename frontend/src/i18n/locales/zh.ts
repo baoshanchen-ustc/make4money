@@ -341,6 +341,7 @@ export default {
     proxies: 'IP管理',
     redeemCodes: '兑换码',
     ops: '运维监控',
+    opsRequestInspect: '请求排查',
     promoCodes: '优惠码',
     settings: '系统设置',
     myAccount: '我的账户',
@@ -3913,6 +3914,9 @@ export default {
         tabRequest: '请求详情',
         tabResponse: '响应详情',
         responseBody: '响应详情',
+        clientInboundBody: '客户端请求体',
+        clientInboundHeaders: '客户端请求头',
+        upstreamForwardBody: '上游转发请求体',
         compareA: '对比 A',
         compareB: '对比 B',
         retrySummary: '重试摘要',
@@ -3964,6 +3968,34 @@ export default {
           severity: '级别',
           message: '错误信息',
           errorInfo: '错误信息'
+        }
+      },
+      requestInspect: {
+        title: '请求排查',
+        description: '按时间窗口列出请求，查看客户端入库的请求体/请求头，以及成功记录在 usage 表中的上游模型与路由字段。',
+        disabled: '运维监控未开启，无法使用此页面。',
+        windowLabel: '时间窗口',
+        kindFilter: '类型',
+        kindAll: '全部',
+        platform: '平台',
+        searchQ: '关键词',
+        searchPlaceholder: 'request_id / model / message',
+        detailTitle: '请求详情',
+        detailHint: '失败请求展示 ops 入库的 body/headers；成功请求展示 usage_logs 中的路由与模型字段。',
+        usageCardTitle: '计费 / 路由记录（usage_logs）',
+        usageHint:
+          '说明：成功请求不会在列表接口返回完整 JSON 请求体；此处展示的是计费表中记录的模型、上游模型与端点等元数据。',
+        usageNotFound: '当前时间窗口内未找到该 request_id 对应的 usage 记录，可尝试扩大窗口。',
+        loadFailed: '加载 usage 排查数据失败',
+        fields: {
+          clientModel: '客户端模型',
+          upstreamModel: '上游模型',
+          inboundEndpoint: '入站 API 路径',
+          upstreamEndpoint: '上游 API 路径',
+          tokens: 'Token（入 / 出）',
+          stream: '流式',
+          serviceTier: 'service_tier',
+          reasoningEffort: 'reasoning_effort'
         }
       },
       alertEvents: {

@@ -217,6 +217,32 @@ export interface OpsRequestDetailsParams {
 
 export type OpsRequestDetailsResponse = PaginatedResponse<OpsRequestDetail>
 
+/** Latest usage_logs row for request inspect (success path; no raw bodies). */
+export interface OpsUsageInspectDetail {
+  id: number
+  created_at: string
+  request_id?: string | null
+  model: string
+  upstream_model?: string | null
+  inbound_endpoint?: string | null
+  upstream_endpoint?: string | null
+  platform: string
+  user_id: number
+  api_key_id: number
+  account_id: number
+  group_id?: number | null
+  account_name: string
+  group_name: string
+  stream: boolean
+  duration_ms?: number | null
+  first_token_ms?: number | null
+  input_tokens: number
+  output_tokens: number
+  service_tier?: string | null
+  reasoning_effort?: string | null
+  ip_address?: string | null
+}
+
 export interface OpsLatencyHistogramBucket {
   range: string
   count: number
@@ -974,6 +1000,7 @@ export interface OpsErrorLog {
 export interface OpsErrorDetail extends OpsErrorLog {
   error_body: string
   user_agent: string
+  request_headers?: string
 
   // Upstream context (optional; enriched by gateway services)
   upstream_status_code?: number | null
@@ -1223,6 +1250,17 @@ export async function listRequestDetails(params: OpsRequestDetailsParams): Promi
   return data
 }
 
+export async function getUsageInspectByRequestId(
+  params: { request_id: string; start_time: string; end_time: string },
+  options: OpsRequestOptions = {}
+): Promise<OpsUsageInspectDetail> {
+  const { data } = await apiClient.get<OpsUsageInspectDetail>('/admin/ops/usage-inspect', {
+    params,
+    signal: options.signal
+  })
+  return data
+}
+
 // Alert rules
 export async function listAlertRules(): Promise<AlertRule[]> {
   const { data } = await apiClient.get<AlertRule[]>('/admin/ops/alert-rules')
@@ -1390,6 +1428,7 @@ export const opsAPI = {
   listRequestErrorUpstreamErrors,
 
   listRequestDetails,
+  getUsageInspectByRequestId,
   listAlertRules,
   createAlertRule,
   updateAlertRule,

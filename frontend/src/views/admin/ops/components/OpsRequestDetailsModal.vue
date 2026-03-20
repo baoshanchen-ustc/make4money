@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -73,6 +73,12 @@ function buildTimeParams(): Pick<OpsRequestDetailsParams, 'start_time' | 'end_ti
     end_time: endTime.toISOString()
   }
 }
+
+const inspectWindow = computed((): { start_time: string; end_time: string } | null => {
+  if (!props.modelValue) return null
+  const w = buildTimeParams()
+  return { start_time: w.start_time!, end_time: w.end_time! }
+})
 
 function syncSelectedRow() {
   if (selectedRow.value && items.value.some((r) => r.request_id === selectedRow.value!.request_id)) return
@@ -293,6 +299,7 @@ const kindBadgeClass = (kind: string) => {
             <OpsRequestDetailPanel
               class="min-h-0 flex-1 overflow-auto"
               :row="selectedRow"
+              :usage-inspect-window="inspectWindow"
               :empty-text="t('admin.ops.requestDetails.detailPaneEmpty')"
             />
           </aside>

@@ -340,6 +340,7 @@ export default {
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
+    opsRequestInspect: 'Request inspect',
     promoCodes: 'Promo Codes',
     settings: 'Settings',
     myAccount: 'My Account',
@@ -3746,6 +3747,9 @@ export default {
         tabRequest: 'Request',
         tabResponse: 'Response',
         responseBody: 'Response',
+        clientInboundBody: 'Client request body',
+        clientInboundHeaders: 'Client request headers',
+        upstreamForwardBody: 'Upstream forwarded request body',
         compareA: 'Compare A',
         compareB: 'Compare B',
         retrySummary: 'Retry Summary',
@@ -3797,6 +3801,36 @@ export default {
           severity: 'Severity',
           message: 'Message',
           errorInfo: 'Error Info'
+        }
+      },
+      requestInspect: {
+        title: 'Request inspect',
+        description:
+          'Browse requests in a time window. For failures, inspect stored client body/headers. For successes, inspect usage_logs routing metadata (models/endpoints).',
+        disabled: 'Ops monitoring is disabled; this page is unavailable.',
+        windowLabel: 'Time window',
+        kindFilter: 'Kind',
+        kindAll: 'All',
+        platform: 'Platform',
+        searchQ: 'Search',
+        searchPlaceholder: 'request_id / model / message',
+        detailTitle: 'Request detail',
+        detailHint:
+          'Failed requests show ops-stored payloads. Successful requests show usage_logs fields (no raw JSON body).',
+        usageCardTitle: 'Billing / routing record (usage_logs)',
+        usageHint:
+          'Successful requests do not return full JSON bodies in the list API. This card shows model, upstream model, and endpoint fields recorded in usage_logs.',
+        usageNotFound: 'No usage_logs row for this request_id in the selected window; try widening the window.',
+        loadFailed: 'Failed to load usage inspect data',
+        fields: {
+          clientModel: 'Client model',
+          upstreamModel: 'Upstream model',
+          inboundEndpoint: 'Inbound API path',
+          upstreamEndpoint: 'Upstream API path',
+          tokens: 'Tokens (in / out)',
+          stream: 'Stream',
+          serviceTier: 'service_tier',
+          reasoningEffort: 'reasoning_effort'
         }
       },
       alertEvents: {
