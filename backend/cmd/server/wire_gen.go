@@ -136,7 +136,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	gatewayCache := repository.NewGatewayCache(redisClient)
 	schedulerOutboxRepository := repository.NewSchedulerOutboxRepository(db)
 	schedulerSnapshotService := service.ProvideSchedulerSnapshotService(schedulerCache, schedulerOutboxRepository, accountRepository, groupRepository, configConfig)
-	antigravityTokenProvider := service.ProvideAntigravityTokenProvider(accountRepository, geminiTokenCache, antigravityOAuthService, oauthRefreshAPI)
+	antigravityTokenProvider := service.ProvideAntigravityTokenProvider(accountRepository, geminiTokenCache, antigravityOAuthService, oauthRefreshAPI, tempUnschedCache)
 	antigravityGatewayService := service.NewAntigravityGatewayService(accountRepository, gatewayCache, schedulerSnapshotService, antigravityTokenProvider, rateLimitService, httpUpstream, settingService)
 	copilotTokenProvider := service.NewCopilotTokenProvider()
 	accountTestService := service.NewAccountTestService(accountRepository, geminiTokenProvider, antigravityGatewayService, copilotTokenProvider, httpUpstream, configConfig)
