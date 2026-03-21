@@ -418,11 +418,11 @@ const currentFiles = computed((): FileConfig[] => {
         return generateAnthropicFiles(baseUrl, apiKey)
       }
       if (activeClientTab.value === 'codex-ws') {
-        return generateOpenAIWsFiles(baseUrl, apiKey)
+        return generateOpenAIWsFiles(apiBase, apiKey)
       }
-      return generateOpenAIFiles(baseUrl, apiKey)
+      return generateOpenAIFiles(apiBase, apiKey)
     case 'gemini':
-      return [generateGeminiCliContent(baseUrl, apiKey)]
+      return [generateGeminiCliContent(apiBase, apiKey)]
     case 'antigravity':
       if (activeClientTab.value === 'gemini') {
         return [generateGeminiCliContent(`${baseUrl}/antigravity`, apiKey)]
