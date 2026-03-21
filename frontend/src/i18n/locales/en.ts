@@ -2869,6 +2869,17 @@ export default {
           used: '{used}/{total} used'
         }
       },
+      // View Models
+      viewModels: 'View Models',
+      copilotModels: {
+        title: 'Copilot Available Models',
+        subtitle: 'Models fetched from GitHub Copilot API',
+        totalCount: '{count} models available',
+        modelId: 'Model ID',
+        displayName: 'Display Name',
+        endpoints: 'Supported Endpoints',
+        empty: 'No models returned from Copilot API',
+      },
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',

@@ -3002,6 +3002,17 @@ export default {
           used: '已用 {used}/{total}'
         }
       },
+      // View Models
+      viewModels: '查看模型',
+      copilotModels: {
+        title: 'Copilot 可用模型',
+        subtitle: '从 GitHub Copilot API 实时获取',
+        totalCount: '共 {count} 个模型',
+        modelId: '模型 ID',
+        displayName: '显示名称',
+        endpoints: '支持的端点',
+        empty: 'Copilot API 未返回任何模型',
+      },
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',
