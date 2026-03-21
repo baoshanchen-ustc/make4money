@@ -222,15 +222,13 @@ jobs:
 
           PR_NUMBER="$(gh pr list --head "$SYNC_BRANCH" --base main --state open --json number --jq '.[0].number' || true)"
           if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
-            gh pr edit "$PR_NUMBER" --title "$TITLE" --body-file "$BODY_FILE" --add-label automation --add-label upstream-sync
+            gh pr edit "$PR_NUMBER" --title "$TITLE" --body-file "$BODY_FILE"
           else
             gh pr create \
               --base main \
               --head "$SYNC_BRANCH" \
               --title "$TITLE" \
-              --body-file "$BODY_FILE" \
-              --label automation \
-              --label upstream-sync
+              --body-file "$BODY_FILE"
             PR_NUMBER="$(gh pr list --head "$SYNC_BRANCH" --base main --state open --json number --jq '.[0].number')"
           fi
 
