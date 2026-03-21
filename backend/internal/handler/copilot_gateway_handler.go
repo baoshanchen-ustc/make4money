@@ -260,6 +260,7 @@ func (h *CopilotGatewayHandler) ChatCompletions(c *gin.Context) {
 					UpstreamEndpoint: EndpointChatCompletions,
 					UserAgent:        userAgent,
 					IPAddress:        clientIP,
+					RequestBodyBytes: intPtr(len(body)),
 					APIKeyService:    nil,
 				}); err != nil {
 					reqLog.Error("copilot.record_usage_failed", zap.Error(err))
@@ -505,6 +506,7 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 					UpstreamEndpoint: EndpointResponses,
 					UserAgent:        userAgent,
 					IPAddress:        clientIP,
+					RequestBodyBytes: intPtr(len(body)),
 					APIKeyService:    nil,
 				}); err != nil {
 					reqLog.Error("copilot.responses.record_usage_failed", zap.Error(err))
@@ -750,6 +752,7 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 					UpstreamEndpoint: EndpointChatCompletions,
 					UserAgent:        userAgent,
 					IPAddress:        clientIP,
+					RequestBodyBytes: intPtr(len(body)),
 					APIKeyService:    nil,
 				}); err != nil {
 					reqLog.Error("copilot.messages.record_usage_failed", zap.Error(err))

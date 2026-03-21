@@ -102,7 +102,8 @@ WITH combined AS (
     ul.api_key_id AS api_key_id,
     ul.account_id AS account_id,
     ul.group_id AS group_id,
-    ul.stream AS stream
+    ul.stream AS stream,
+    ul.request_body_bytes AS request_body_bytes
   FROM usage_logs ul
   LEFT JOIN groups g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
@@ -126,7 +127,8 @@ WITH combined AS (
     o.api_key_id AS api_key_id,
     o.account_id AS account_id,
     o.group_id AS group_id,
-    o.stream AS stream
+    o.stream AS stream,
+    o.request_body_bytes AS request_body_bytes
   FROM ops_error_logs o
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
@@ -175,7 +177,8 @@ SELECT
   api_key_id,
   account_id,
   group_id,
-  stream
+  stream,
+  request_body_bytes
 FROM combined
 %s
 %s
@@ -227,6 +230,8 @@ LIMIT $%d OFFSET $%d
 			groupID   sql.NullInt64
 
 			stream bool
+
+			requestBodyBytes sql.NullInt64
 		)
 
 		if err := rows.Scan(
@@ -246,6 +251,7 @@ LIMIT $%d OFFSET $%d
 			&accountID,
 			&groupID,
 			&stream,
+			&requestBodyBytes,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -270,6 +276,8 @@ LIMIT $%d OFFSET $%d
 			GroupID:   toInt64Ptr(groupID),
 
 			Stream: stream,
+
+			RequestBodyBytes: toIntPtr(requestBodyBytes),
 		}
 
 		if item.Platform == "" {

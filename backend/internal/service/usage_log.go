@@ -145,6 +145,9 @@ type UsageLog struct {
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool
 
+	// 请求体字节数（用于排查大请求导致的 400 等错误）
+	RequestBodyBytes *int
+
 	// 图片生成字段
 	ImageCount int
 	ImageSize  *string

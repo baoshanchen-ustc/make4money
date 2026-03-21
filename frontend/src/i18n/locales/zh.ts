@@ -3971,6 +3971,7 @@ export default {
           platform: '平台',
           model: '模型',
           duration: '耗时',
+          bodySize: '请求大小',
           status: '状态码',
           requestId: '请求ID',
           actions: '操作'

@@ -380,6 +380,9 @@ func (h *ConcurrencyHelper) AcquireAccountSlotWithWaitTimeout(c *gin.Context, ac
 // 性能优化：使用指数退避 + 随机抖动，避免惊群效应
 // current: 当前退避时间
 // 返回值：下一次退避时间（100ms ~ 2s 之间）
+// intPtr returns a pointer to the given int value.
+func intPtr(v int) *int { return &v }
+
 func nextBackoff(current time.Duration) time.Duration {
 	// 指数退避：当前时间 * 1.5
 	next := time.Duration(float64(current) * backoffMultiplier)

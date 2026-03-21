@@ -7195,6 +7195,7 @@ type RecordUsageInput struct {
 	UserAgent          string             // 请求的 User-Agent
 	IPAddress          string             // 请求的客户端 IP 地址
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	RequestBodyBytes   *int               // 请求体字节数（用于排查大请求导致的 400 等错误）
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 }
@@ -7615,6 +7616,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		ImageSize:             imageSize,
 		MediaType:             mediaType,
 		CacheTTLOverridden:    cacheTTLOverridden,
+		RequestBodyBytes:      input.RequestBodyBytes,
 		CreatedAt:             time.Now(),
 	}
 
@@ -7678,6 +7680,7 @@ type RecordUsageLongContextInput struct {
 	UserAgent             string             // 请求的 User-Agent
 	IPAddress             string             // 请求的客户端 IP 地址
 	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	RequestBodyBytes      *int               // 请求体字节数（用于排查大请求导致的 400 等错误）
 	LongContextThreshold  int                // 长上下文阈值（如 200000）
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
 	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
@@ -7796,6 +7799,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		ImageCount:            result.ImageCount,
 		ImageSize:             imageSize,
 		CacheTTLOverridden:    cacheTTLOverridden,
+		RequestBodyBytes:      input.RequestBodyBytes,
 		CreatedAt:             time.Now(),
 	}
 

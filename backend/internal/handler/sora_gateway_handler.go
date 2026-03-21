@@ -416,6 +416,7 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
+				RequestBodyBytes:   intPtr(len(body)),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.sora_gateway.chat_completions"),

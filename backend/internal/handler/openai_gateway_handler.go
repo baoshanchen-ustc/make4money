@@ -377,6 +377,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
+				RequestBodyBytes:   intPtr(len(body)),
 				APIKeyService:      h.apiKeyService,
 			}); err != nil {
 				logger.L().With(
@@ -755,6 +756,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
+				RequestBodyBytes:   intPtr(len(body)),
 				APIKeyService:      h.apiKeyService,
 			}); err != nil {
 				logger.L().With(
@@ -1254,6 +1256,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					UserAgent:          userAgent,
 					IPAddress:          clientIP,
 					RequestPayloadHash: service.HashUsageRequestPayload(firstMessage),
+					RequestBodyBytes:   intPtr(len(firstMessage)),
 					APIKeyService:      h.apiKeyService,
 				}); err != nil {
 					reqLog.Error("openai.websocket_record_usage_failed",

@@ -462,6 +462,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					UserAgent:          userAgent,
 					IPAddress:          clientIP,
 					RequestPayloadHash: requestPayloadHash,
+					RequestBodyBytes:   intPtr(len(body)),
 					ForceCacheBilling:  fs.ForceCacheBilling,
 					APIKeyService:      h.apiKeyService,
 				}); err != nil {
@@ -781,6 +782,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					UserAgent:          userAgent,
 					IPAddress:          clientIP,
 					RequestPayloadHash: requestPayloadHash,
+					RequestBodyBytes:   intPtr(len(body)),
 					ForceCacheBilling:  fs.ForceCacheBilling,
 					APIKeyService:      h.apiKeyService,
 				}); err != nil {

@@ -139,6 +139,9 @@
                         {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '—' }}
                       </td>
                       <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
+                        {{ typeof row.request_body_bytes === 'number' ? formatBytes(row.request_body_bytes) : '—' }}
+                      </td>
+                      <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                         {{ displayListStatusCode(row) }}
                       </td>
                     </tr>
@@ -189,6 +192,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import { useAdminSettingsStore } from '@/stores'
 import { opsAPI, type OpsRequestDetail, type OpsRequestDetailsKind } from '@/api/admin/ops'
 import { formatDateTime, parseTimeRangeMinutes } from './utils/opsFormatters'
+import { formatBytes } from '@/utils/format'
 import OpsRequestDetailPanel from './components/OpsRequestDetailPanel.vue'
 
 const { t } = useI18n()
@@ -214,6 +218,7 @@ const tableCols = computed(() => [
   t('admin.ops.requestDetails.table.platform'),
   t('admin.ops.requestDetails.table.model'),
   t('admin.ops.requestDetails.table.duration'),
+  t('admin.ops.requestDetails.table.bodySize'),
   t('admin.ops.requestDetails.table.status')
 ])
 

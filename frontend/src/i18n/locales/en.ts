@@ -3804,6 +3804,7 @@ export default {
           platform: 'Platform',
           model: 'Model',
           duration: 'Duration',
+          bodySize: 'Req Size',
           status: 'Status',
           requestId: 'Request ID',
           actions: 'Actions'

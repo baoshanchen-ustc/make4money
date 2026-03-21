@@ -7,6 +7,7 @@ import OpsRequestDetailPanel from './OpsRequestDetailPanel.vue'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsRequestDetailsParams, type OpsRequestDetail } from '@/api/admin/ops'
 import { parseTimeRangeMinutes, formatDateTime } from '../utils/opsFormatters'
+import { formatBytes } from '@/utils/format'
 import { pushEscape } from '@/composables/useEscapeStack'
 
 export interface OpsRequestDetailsPreset {
@@ -235,6 +236,9 @@ const kindBadgeClass = (kind: string) => {
                         {{ t('admin.ops.requestDetails.table.duration') }}
                       </th>
                       <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                        {{ t('admin.ops.requestDetails.table.bodySize') }}
+                      </th>
+                      <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
                         {{ t('admin.ops.requestDetails.table.status') }}
                       </th>
                     </tr>
@@ -269,6 +273,9 @@ const kindBadgeClass = (kind: string) => {
                       </td>
                       <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                         {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}
+                      </td>
+                      <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
+                        {{ typeof row.request_body_bytes === 'number' ? formatBytes(row.request_body_bytes) : '-' }}
                       </td>
                       <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                         {{ row.status_code ?? '-' }}

@@ -186,6 +186,8 @@ export interface OpsRequestDetail {
   group_id?: number | null
 
   stream?: boolean
+
+  request_body_bytes?: number | null
 }
 
 export interface OpsRequestDetailsParams {

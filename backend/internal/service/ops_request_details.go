@@ -43,6 +43,8 @@ type OpsRequestDetail struct {
 	GroupID   *int64 `json:"group_id,omitempty"`
 
 	Stream bool `json:"stream"`
+
+	RequestBodyBytes *int `json:"request_body_bytes,omitempty"`
 }
 
 type OpsRequestDetailFilter struct {

@@ -82,6 +82,14 @@
         </div>
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">
+            {{ t('admin.ops.requestDetails.table.bodySize') }}
+          </div>
+          <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+            {{ typeof row.request_body_bytes === 'number' ? formatBytes(row.request_body_bytes) : '—' }}
+          </div>
+        </div>
+        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">
             {{ t('admin.ops.requestDetails.table.status') }}
           </div>
           <div class="mt-1">
@@ -168,6 +176,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsRequestDetail, type OpsUsageInspectDetail } from '@/api/admin/ops'
 import { formatDateTime } from '../utils/opsFormatters'
+import { formatBytes } from '@/utils/format'
 import OpsErrorDetailPanel from './OpsErrorDetailPanel.vue'
 
 interface Props {
