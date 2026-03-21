@@ -181,9 +181,9 @@ jobs:
 
           ISSUE_NUMBER="$(gh issue list --label "$CONFLICT_LABEL" --state open --json number --jq '.[0].number' || true)"
           if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
-            gh issue edit "$ISSUE_NUMBER" --title "$CONFLICT_TITLE" --body-file "$BODY_FILE" --add-label automation --add-label upstream-sync --add-label "$CONFLICT_LABEL"
+            gh issue edit "$ISSUE_NUMBER" --title "$CONFLICT_TITLE" --body-file "$BODY_FILE"
           else
-            gh issue create --title "$CONFLICT_TITLE" --body-file "$BODY_FILE" --label automation --label upstream-sync --label "$CONFLICT_LABEL"
+            gh issue create --title "$CONFLICT_TITLE" --body-file "$BODY_FILE"
           fi
 
       - name: Stop on merge conflict
