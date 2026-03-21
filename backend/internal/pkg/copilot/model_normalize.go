@@ -50,12 +50,21 @@ func expandClaudeCodeModelShorthand(model string) string {
 	}
 }
 
+// copilotModelFallback maps Copilot wire IDs that GitHub's /chat/completions
+// endpoint does not (yet) support to the closest available equivalent.
+// When Copilot adds support for a new model, remove the entry here.
+var copilotModelFallback = map[string]string{
+	"claude-sonnet-4.6": "claude-sonnet-4.5",
+	"claude-opus-4.6":   "claude-opus-4.5",
+}
+
 // NormalizeModelIDForCopilotUpstream converts client / Anthropic-style model ids to
 // ids the GitHub Copilot API accepts:
 //
 //   - Known dated Anthropic ids (via claude.DenormalizeModelID) → short dash form
 //   - Any claude-{sonnet|opus|haiku}-MAJOR-MINOR-YYYYMMDD → short dash form
 //   - claude-{sonnet|opus|haiku}-MAJOR-MINOR → claude-*-MAJOR.MINOR (wire id)
+//   - Wire IDs not yet available in Copilot → closest available fallback
 //
 // Do not collapse Sonnet/Opus 4 minor variants to claude-*-4 alone: the live
 // Copilot /chat/completions endpoint returns model_not_supported for that id.
@@ -72,7 +81,10 @@ func NormalizeModelIDForCopilotUpstream(model string) string {
 		model = "claude-" + m[1] + "-" + m[2] + "-" + m[3]
 	}
 	if m := claudeMajorMinorDash.FindStringSubmatch(model); m != nil {
-		return "claude-" + m[1] + "-" + m[2] + "." + m[3]
+		model = "claude-" + m[1] + "-" + m[2] + "." + m[3]
+	}
+	if fb, ok := copilotModelFallback[model]; ok {
+		return fb
 	}
 	return model
 }
