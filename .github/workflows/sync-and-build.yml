@@ -36,9 +36,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          gh label create automation --color 5319e7 --description "Automation managed" --force
-          gh label create upstream-sync --color 0e8a16 --description "Upstream synchronization" --force
-          gh label create "$CONFLICT_LABEL" --color b60205 --description "Upstream sync needs manual conflict resolution" --force
+          gh label create automation --color 5319e7 --description "Automation managed" --force || true
+          gh label create upstream-sync --color 0e8a16 --description "Upstream synchronization" --force || true
+          gh label create "$CONFLICT_LABEL" --color b60205 --description "Upstream sync needs manual conflict resolution" --force || true
 
       - name: Configure Git
         run: |
