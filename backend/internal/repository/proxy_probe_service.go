@@ -48,9 +48,10 @@ const (
 // 某些 AI API 专用代理只允许访问特定域名，因此需要多个备选
 var probeURLs = []struct {
 	url    string
-	parser string // "ip-api" or "httpbin"
+	parser string // "ip-api", "ipify" or "httpbin"
 }{
 	{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
+	{"https://api64.ipify.org?format=json", "ipify"},
 	{"http://httpbin.org/ip", "httpbin"},
 }
 
@@ -119,6 +120,8 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 	switch parser {
 	case "ip-api":
 		return s.parseIPAPI(body, latencyMs)
+	case "ipify":
+		return s.parseIPify(body, latencyMs)
 	case "httpbin":
 		return s.parseHTTPBin(body, latencyMs)
 	default:
@@ -178,5 +181,20 @@ func (s *proxyProbeService) parseHTTPBin(body []byte, latencyMs int64) (*service
 	}
 	return &service.ProxyExitInfo{
 		IP: result.Origin,
+	}, latencyMs, nil
+}
+
+func (s *proxyProbeService) parseIPify(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
+	var result struct {
+		IP string `json:"ip"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, latencyMs, fmt.Errorf("failed to parse ipify response: %w", err)
+	}
+	if strings.TrimSpace(result.IP) == "" {
+		return nil, latencyMs, fmt.Errorf("ipify: no IP found in response")
+	}
+	return &service.ProxyExitInfo{
+		IP: strings.TrimSpace(result.IP),
 	}, latencyMs, nil
 }

@@ -215,6 +215,7 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 		status    string
 		search    string
 		groupID   int64
+		planType  string
 		wantCount int
 		validate  func(accounts []service.Account)
 	}{
@@ -267,6 +268,27 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
+			name: "filter_by_openai_plan_type",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:        "openai-free",
+					Platform:    service.PlatformOpenAI,
+					Credentials: map[string]any{"plan_type": "free"},
+				})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:        "openai-team",
+					Platform:    service.PlatformOpenAI,
+					Credentials: map[string]any{"plan_type": "team"},
+				})
+			},
+			platform:  service.PlatformOpenAI,
+			planType:  "team",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("team", accounts[0].GetCredential("plan_type"))
+			},
+		},
+		{
 			name: "filter_by_ungrouped",
 			setup: func(client *dbent.Client) {
 				group := mustCreateGroup(s.T(), client, &service.Group{Name: "g-ungrouped"})
@@ -293,7 +315,7 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 
 			tt.setup(client)
 
-			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, tt.platform, tt.accType, tt.status, tt.search, tt.groupID)
+			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, tt.platform, tt.accType, tt.status, tt.search, tt.groupID, tt.planType)
 			s.Require().NoError(err)
 			s.Require().Len(accounts, tt.wantCount)
 			if tt.validate != nil {
@@ -360,7 +382,7 @@ func (s *AccountRepoSuite) TestPreload_And_VirtualFields() {
 	s.Require().Len(got.Groups, 1, "expected Groups to be populated")
 	s.Require().Equal(group.ID, got.Groups[0].ID)
 
-	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "", "acc", 0)
+	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "", "acc", 0, "")
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total)
 	s.Require().Len(accounts, 1)

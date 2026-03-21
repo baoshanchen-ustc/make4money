@@ -67,6 +67,7 @@ type AccountTestService struct {
 	accountRepo               AccountRepository
 	geminiTokenProvider       *GeminiTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
+	rateLimitService          *RateLimitService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	soraTestGuardMu           sync.Mutex
@@ -95,6 +96,10 @@ func NewAccountTestService(
 	}
 }
 
+func (s *AccountTestService) SetRateLimitService(rateLimitService *RateLimitService) {
+	s.rateLimitService = rateLimitService
+}
+
 func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error) {
 	if s.cfg == nil {
 		return "", errors.New("config is not available")
@@ -111,6 +116,14 @@ func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error)
 		return "", err
 	}
 	return normalized, nil
+}
+
+func isUnsupportedAntigravityAPIKeyBaseURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(parsed.Hostname()), "cloudcode-pa.googleapis.com")
 }
 
 // generateSessionString generates a Claude Code style session string.
@@ -310,10 +323,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
 
-		// 403 表示账号被上游封禁，标记为 error 状态
-		if resp.StatusCode == http.StatusForbidden {
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
-		}
+		s.persistTestFailureAccountState(ctx, account, resp.StatusCode, resp.Header, body)
 
 		return s.sendErrorAndEnd(c, errMsg)
 	}
@@ -547,6 +557,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 				account.RateLimitResetAt = resetAt
 			}
 		}
+		s.persistTestFailureAccountState(ctx, account, resp.StatusCode, resp.Header, body)
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
@@ -563,6 +574,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	if testModelID == "" {
 		testModelID = geminicli.DefaultTestModel
 	}
+	testModelID = normalizeGeminiNativeTestModelID(testModelID)
 
 	// For API Key accounts with model mapping, map the model
 	if account.Type == AccountTypeAPIKey {
@@ -618,7 +630,12 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		s.persistTestFailureAccountState(ctx, account, resp.StatusCode, resp.Header, body)
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	if isImageGenerationModel(testModelID) {
+		return s.processGeminiResponse(c, resp.Body)
 	}
 
 	// Process SSE stream
@@ -1320,6 +1337,9 @@ func truncateSoraErrorBody(body []byte, max int) string {
 // APIKey 类型走原生协议（与 gateway_handler 路由一致），OAuth/Upstream 走 CRS 中转。
 func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Account, modelID string, prompt string) error {
 	if account.Type == AccountTypeAPIKey {
+		if isUnsupportedAntigravityAPIKeyBaseURL(account.GetBaseURL()) {
+			return s.sendErrorAndEnd(c, "Antigravity API Key 账号测试不支持 https://cloudcode-pa.googleapis.com，请改用实际的上游兼容网关地址；该地址仅适用于 OAuth 账号")
+		}
 		if strings.HasPrefix(modelID, "gemini-") {
 			return s.testGeminiAccountConnection(c, account, modelID, prompt)
 		}
@@ -1384,9 +1404,12 @@ func (s *AccountTestService) buildGeminiAPIKeyRequest(ctx context.Context, accou
 		return nil, err
 	}
 
-	// Use streamGenerateContent for real-time feedback
-	fullURL := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse",
-		strings.TrimRight(normalizedBaseURL, "/"), modelID)
+	method := "streamGenerateContent?alt=sse"
+	if isImageGenerationModel(modelID) {
+		method = "generateContent"
+	}
+	fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s",
+		strings.TrimRight(normalizedBaseURL, "/"), modelID, method)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(payload))
 	if err != nil {
@@ -1422,7 +1445,11 @@ func (s *AccountTestService) buildGeminiOAuthRequest(ctx context.Context, accoun
 		if err != nil {
 			return nil, err
 		}
-		fullURL := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse", strings.TrimRight(normalizedBaseURL, "/"), modelID)
+		method := "streamGenerateContent?alt=sse"
+		if isImageGenerationModel(modelID) {
+			method = "generateContent"
+		}
+		fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s", strings.TrimRight(normalizedBaseURL, "/"), modelID, method)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 		if err != nil {
@@ -1435,6 +1462,21 @@ func (s *AccountTestService) buildGeminiOAuthRequest(ctx context.Context, accoun
 
 	// Code Assist mode (with project_id)
 	return s.buildCodeAssistRequest(ctx, accessToken, projectID, modelID, payload)
+}
+
+func normalizeGeminiNativeTestModelID(modelID string) string {
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case "gemini-3.1-flash-image":
+		return "gemini-3.1-flash-image-preview"
+	case "gemini-3-pro-image":
+		return "gemini-3-pro-image-preview"
+	default:
+		return modelID
+	}
+}
+
+func shouldForceGeminiCodeAssistStream(modelID string) bool {
+	return !isImageGenerationModel(modelID)
 }
 
 // buildCodeAssistRequest builds request for Google Code Assist API (used by Gemini CLI and Antigravity)
@@ -1455,7 +1497,11 @@ func (s *AccountTestService) buildCodeAssistRequest(ctx context.Context, accessT
 	if err != nil {
 		return nil, err
 	}
-	fullURL := fmt.Sprintf("%s/v1internal:streamGenerateContent?alt=sse", normalizedBaseURL)
+	action := "generateContent"
+	if shouldForceGeminiCodeAssistStream(modelID) {
+		action = "streamGenerateContent?alt=sse"
+	}
+	fullURL := fmt.Sprintf("%s/v1internal:%s", normalizedBaseURL, action)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(wrappedBytes))
 	if err != nil {
@@ -1603,6 +1649,58 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 	}
 }
 
+func (s *AccountTestService) processGeminiResponse(c *gin.Context, body io.Reader) error {
+	payload, err := io.ReadAll(body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Response read error: %s", err.Error()))
+	}
+
+	var data map[string]any
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse Gemini response: %s", err.Error()))
+	}
+
+	if errData, ok := data["error"].(map[string]any); ok {
+		errorMsg := "Unknown error"
+		if msg, ok := errData["message"].(string); ok && strings.TrimSpace(msg) != "" {
+			errorMsg = msg
+		}
+		return s.sendErrorAndEnd(c, errorMsg)
+	}
+
+	if candidates, ok := data["candidates"].([]any); ok && len(candidates) > 0 {
+		if candidate, ok := candidates[0].(map[string]any); ok {
+			if content, ok := candidate["content"].(map[string]any); ok {
+				if parts, ok := content["parts"].([]any); ok {
+					for _, part := range parts {
+						partMap, ok := part.(map[string]any)
+						if !ok {
+							continue
+						}
+						if text, ok := partMap["text"].(string); ok && text != "" {
+							s.sendEvent(c, TestEvent{Type: "content", Text: text})
+						}
+						if inlineData, ok := partMap["inlineData"].(map[string]any); ok {
+							mimeType, _ := inlineData["mimeType"].(string)
+							data, _ := inlineData["data"].(string)
+							if strings.HasPrefix(strings.ToLower(mimeType), "image/") && data != "" {
+								s.sendEvent(c, TestEvent{
+									Type:     "image",
+									ImageURL: fmt.Sprintf("data:%s;base64,%s", mimeType, data),
+									MimeType: mimeType,
+								})
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
 // createOpenAITestPayload creates a test payload for OpenAI Responses API
 func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 	payload := map[string]any{
@@ -1747,6 +1845,40 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 		return
 	}
 	c.Writer.Flush()
+}
+
+func (s *AccountTestService) persistTestFailureAccountState(ctx context.Context, account *Account, statusCode int, headers http.Header, body []byte) {
+	if account == nil {
+		return
+	}
+
+	if s.rateLimitService != nil {
+		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, headers, body)
+		return
+	}
+
+	if s.accountRepo == nil {
+		return
+	}
+
+	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	switch statusCode {
+	case http.StatusUnauthorized:
+		if !isPermanent401AuthFailure(extractUpstreamErrorCode(body), upstreamMsg) {
+			return
+		}
+		msg := "Authentication failed (401): account is permanently unavailable"
+		if upstreamMsg != "" {
+			msg = "Authentication failed (401): " + upstreamMsg
+		}
+		_ = s.accountRepo.SetError(ctx, account.ID, msg)
+	case http.StatusForbidden:
+		msg := "Access forbidden (403): account may be suspended or lack permissions"
+		if upstreamMsg != "" {
+			msg = "Access forbidden (403): " + upstreamMsg
+		}
+		_ = s.accountRepo.SetError(ctx, account.ID, msg)
+	}
 }
 
 // sendErrorAndEnd sends an error event and ends the stream

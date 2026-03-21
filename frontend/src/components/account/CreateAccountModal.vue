@@ -791,7 +791,7 @@
             type="text"
             required
             class="input"
-            placeholder="https://cloudcode-pa.googleapis.com"
+            placeholder="https://your-antigravity-gateway.example.com"
           />
           <p class="input-hint">{{ t('admin.accounts.upstream.baseUrlHint') }}</p>
         </div>

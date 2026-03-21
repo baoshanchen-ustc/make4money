@@ -41,6 +41,7 @@ type dataAccount struct {
 	Type        string         `json:"type"`
 	Credentials map[string]any `json:"credentials"`
 	Extra       map[string]any `json:"extra"`
+	GroupIDs    []int64        `json:"group_ids"`
 	ProxyKey    *string        `json:"proxy_key"`
 	Concurrency int            `json:"concurrency"`
 	Priority    int            `json:"priority"`
@@ -53,6 +54,7 @@ func setupAccountDataRouter() (*gin.Engine, *stubAdminService) {
 
 	h := NewAccountHandler(
 		adminSvc,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -210,6 +212,7 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 					"platform":    service.PlatformOpenAI,
 					"type":        service.AccountTypeOAuth,
 					"credentials": map[string]any{"token": "x"},
+					"group_ids":   []int64{2, 3, 4},
 					"proxy_key":   "socks5|1.2.3.4|1080|u|p",
 					"concurrency": 3,
 					"priority":    50,
@@ -229,4 +232,5 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+	require.Equal(t, []int64{2, 3, 4}, adminSvc.createdAccounts[0].GroupIDs)
 }

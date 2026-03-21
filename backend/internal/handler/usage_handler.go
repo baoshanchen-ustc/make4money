@@ -348,7 +348,29 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 
 	startTime, endTime := parseUserTimeRange(c)
 
-	stats, err := h.usageService.GetUserModelStats(c.Request.Context(), subject.UserID, startTime, endTime)
+	var (
+		stats []usagestats.ModelStat
+		err   error
+	)
+	if apiKeyIDStr := c.Query("api_key_id"); apiKeyIDStr != "" {
+		id, parseErr := strconv.ParseInt(apiKeyIDStr, 10, 64)
+		if parseErr != nil {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+		}
+		apiKey, getErr := h.apiKeyService.GetByID(c.Request.Context(), id)
+		if getErr != nil {
+			response.NotFound(c, "API key not found")
+			return
+		}
+		if apiKey.UserID != subject.UserID {
+			response.Forbidden(c, "Not authorized to access this API key's model statistics")
+			return
+		}
+		stats, err = h.usageService.GetAPIKeyModelStats(c.Request.Context(), id, startTime, endTime)
+	} else {
+		stats, err = h.usageService.GetUserModelStats(c.Request.Context(), subject.UserID, startTime, endTime)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

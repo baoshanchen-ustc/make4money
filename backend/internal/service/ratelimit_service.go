@@ -149,6 +149,15 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
+		if isPermanent401AuthFailure(extractUpstreamErrorCode(responseBody), upstreamMsg) {
+			msg := "Authentication failed (401): account is permanently unavailable"
+			if upstreamMsg != "" {
+				msg = "Authentication failed (401): " + upstreamMsg
+			}
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+			break
+		}
 		// OAuth 账号在 401 错误时临时不可调度（给 token 刷新窗口）；非 OAuth 账号保持原有 SetError 行为。
 		// Antigravity 除外：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制。
 		if account.Type == AccountTypeOAuth && account.Platform != PlatformAntigravity {
@@ -235,6 +244,34 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	}
 
 	return shouldDisable
+}
+
+func isPermanent401AuthFailure(upstreamCode, upstreamMsg string) bool {
+	code := strings.ToLower(strings.TrimSpace(upstreamCode))
+	msg := strings.ToLower(strings.TrimSpace(upstreamMsg))
+
+	switch code {
+	case "account_deactivated", "organization_deactivated", "account_suspended", "token_invalidated":
+		return true
+	}
+
+	permanentMarkers := []string{
+		"account has been deactivated",
+		"organization has been deactivated",
+		"account is deactivated",
+		"account suspended",
+		"account has been suspended",
+		"account disabled",
+		"organization disabled",
+		"authentication token has been invalidated",
+		"token has been invalidated",
+	}
+	for _, marker := range permanentMarkers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // PreCheckUsage proactively checks local quota before dispatching a request.

@@ -73,11 +73,13 @@ type openAIRecordUsageSubRepoStub struct {
 
 	incrementCalls int
 	incrementErr   error
+	lastAmount     float64
 	lastCtxErr     error
 }
 
 func (s *openAIRecordUsageSubRepoStub) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	s.incrementCalls++
+	s.lastAmount = costUSD
 	s.lastCtxErr = ctx.Err()
 	return s.incrementErr
 }
@@ -935,8 +937,13 @@ func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFiel
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 	subscription := &UserSubscription{ID: 99}
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
+		InputTokens:  10,
+		OutputTokens: 5,
+	}, 1)
+	require.NoError(t, err)
 
-	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
 			RequestID: "resp_subscription_billing",
 			Usage:     OpenAIUsage{InputTokens: 10, OutputTokens: 5},
@@ -955,6 +962,7 @@ func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFiel
 	require.NotNil(t, usageRepo.lastLog.SubscriptionID)
 	require.Equal(t, subscription.ID, *usageRepo.lastLog.SubscriptionID)
 	require.Equal(t, 1, subRepo.incrementCalls)
+	require.InDelta(t, expectedCost.ActualCost, subRepo.lastAmount, 1e-12)
 	require.Equal(t, 0, userRepo.deductCalls)
 }
 

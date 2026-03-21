@@ -78,6 +78,11 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_Success_HTTPBinFallback() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
+		// ipify 失败
+		if strings.Contains(r.RequestURI, "api64.ipify.org") {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		// httpbin 成功
 		if strings.Contains(r.RequestURI, "httpbin.org") {
 			w.Header().Set("Content-Type", "application/json")
@@ -106,6 +111,11 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_AllFailed() {
 func (s *ProxyProbeServiceSuite) TestProbeProxy_InvalidJSON() {
 	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.RequestURI, "ip-api.com") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, "not-json")
+			return
+		}
+		if strings.Contains(r.RequestURI, "api64.ipify.org") {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, "not-json")
 			return
@@ -164,6 +174,14 @@ func (s *ProxyProbeServiceSuite) TestParseHTTPBin_NoIP() {
 	_, _, err := s.prober.parseHTTPBin(body, 50)
 	require.Error(s.T(), err)
 	require.ErrorContains(s.T(), err, "no IP found")
+}
+
+func (s *ProxyProbeServiceSuite) TestParseIPify_Success() {
+	body := []byte(`{"ip":"2001:db8::1"}`)
+	info, latencyMs, err := s.prober.parseIPify(body, 25)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(25), latencyMs)
+	require.Equal(s.T(), "2001:db8::1", info.IP)
 }
 
 func TestProxyProbeServiceSuite(t *testing.T) {

@@ -159,4 +159,26 @@ describe('AccountStatusIndicator', () => {
     // AICredits 积分耗尽状态应显示
     expect(wrapper.text()).toContain('account.creditsExhausted')
   })
+
+  it('OAuth 刷新令牌 401 临时不可调度时显示 401 徽标', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 5,
+          type: 'oauth',
+          temp_unschedulable_until: '2099-03-15T00:00:00Z',
+          temp_unschedulable_reason:
+            '{"status_code":401,"message":"refresh_token_reused","error_message":"token refresh retry exhausted"}'
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('401')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.tempUnschedulable')
+  })
 })

@@ -49,6 +49,7 @@ type DataAccount struct {
 	Type               string         `json:"type"`
 	Credentials        map[string]any `json:"credentials"`
 	Extra              map[string]any `json:"extra,omitempty"`
+	GroupIDs           []int64        `json:"group_ids,omitempty"`
 	ProxyKey           *string        `json:"proxy_key,omitempty"`
 	Concurrency        int            `json:"concurrency"`
 	Priority           int            `json:"priority"`
@@ -153,6 +154,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Type:               acc.Type,
 			Credentials:        acc.Credentials,
 			Extra:              acc.Extra,
+			GroupIDs:           append([]int64(nil), acc.GroupIDs...),
 			ProxyKey:           proxyKey,
 			Concurrency:        acc.Concurrency,
 			Priority:           acc.Priority,
@@ -308,7 +310,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Concurrency:          item.Concurrency,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
+			GroupIDs:             append([]int64(nil), item.GroupIDs...),
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
@@ -347,12 +349,12 @@ func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, e
 	return out, nil
 }
 
-func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, accountType, status, search string) ([]service.Account, error) {
+func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, accountType, status, search, planType string) ([]service.Account, error) {
 	page := 1
 	pageSize := dataPageCap
 	var out []service.Account
 	for {
-		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, platform, accountType, status, search, 0)
+		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, platform, accountType, status, search, 0, planType)
 		if err != nil {
 			return nil, err
 		}
@@ -384,11 +386,12 @@ func (h *AccountHandler) resolveExportAccounts(ctx context.Context, ids []int64,
 	platform := c.Query("platform")
 	accountType := c.Query("type")
 	status := c.Query("status")
+	planType := strings.TrimSpace(c.Query("plan_type"))
 	search := strings.TrimSpace(c.Query("search"))
 	if len(search) > 100 {
 		search = search[:100]
 	}
-	return h.listAccountsFiltered(ctx, platform, accountType, status, search)
+	return h.listAccountsFiltered(ctx, platform, accountType, status, search, planType)
 }
 
 func (h *AccountHandler) resolveExportProxies(ctx context.Context, accounts []service.Account) ([]service.Proxy, error) {

@@ -59,6 +59,7 @@
           <iframe
             :src="purchaseUrl"
             class="purchase-embed-frame"
+            allow="payment; fullscreen"
             allowfullscreen
           ></iframe>
         </div>

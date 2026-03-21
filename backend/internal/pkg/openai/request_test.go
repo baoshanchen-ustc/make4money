@@ -40,6 +40,7 @@ func TestIsCodexOfficialClientRequest(t *testing.T) {
 		{name: "codex_atlas 前缀", ua: "codex_atlas/1.0.0", want: true},
 		{name: "codex_exec 前缀", ua: "codex_exec/0.1.0", want: true},
 		{name: "codex_sdk_ts 前缀", ua: "codex_sdk_ts/0.1.0", want: true},
+		{name: "openai js sdk", ua: "OpenAI/JS 6.26.0", want: true},
 		{name: "Codex 桌面 UA", ua: "Codex Desktop/1.2.3", want: true},
 		{name: "复合 UA 包含 codex_app", ua: "Mozilla/5.0 codex_app/0.1.0", want: true},
 		{name: "大小写混合", ua: "Codex_VSCode/1.2.3", want: true},

@@ -234,6 +234,26 @@ const billingTypeOptions = ref<SelectOption[]>([
 
 const emitChange = () => emit('change')
 
+const hydrateSelectedUser = async (userId?: number) => {
+  if (!userId) return
+  try {
+    const user = await adminAPI.users.getById(userId)
+    userKeyword.value = user.email || `#${userId}`
+  } catch {
+    userKeyword.value = `#${userId}`
+  }
+}
+
+const hydrateSelectedAccount = async (accountId?: number) => {
+  if (!accountId) return
+  try {
+    const account = await adminAPI.accounts.getById(accountId)
+    accountKeyword.value = account.name || `#${accountId}`
+  } catch {
+    accountKeyword.value = `#${accountId}`
+  }
+}
+
 const debounceUserSearch = () => {
   if (userSearchTimeout) clearTimeout(userSearchTimeout)
   userSearchTimeout = setTimeout(async () => {
@@ -381,6 +401,10 @@ watch(
     if (!userId) {
       userKeyword.value = ''
       userResults.value = []
+      return
+    }
+    if (!userKeyword.value) {
+      void hydrateSelectedUser(userId)
     }
   }
 )
@@ -401,6 +425,10 @@ watch(
     if (!accountId) {
       accountKeyword.value = ''
       accountResults.value = []
+      return
+    }
+    if (!accountKeyword.value) {
+      void hydrateSelectedAccount(accountId)
     }
   }
 )

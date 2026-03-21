@@ -113,57 +113,13 @@ func chatMessageToResponsesItems(m ChatMessage) ([]ResponsesInputItem, error) {
 
 // chatSystemToResponses converts a system message.
 func chatSystemToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
-	text, err := parseChatContent(m.Content)
-	if err != nil {
-		return nil, err
-	}
-	content, err := json.Marshal(text)
-	if err != nil {
-		return nil, err
-	}
-	return []ResponsesInputItem{{Role: "system", Content: content}}, nil
+	return chatRoleContentToResponses("system", m.Content)
 }
 
 // chatUserToResponses converts a user message, handling both plain strings and
 // multi-modal content arrays.
 func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
-	// Try plain string first.
-	var s string
-	if err := json.Unmarshal(m.Content, &s); err == nil {
-		content, _ := json.Marshal(s)
-		return []ResponsesInputItem{{Role: "user", Content: content}}, nil
-	}
-
-	var parts []ChatContentPart
-	if err := json.Unmarshal(m.Content, &parts); err != nil {
-		return nil, fmt.Errorf("parse user content: %w", err)
-	}
-
-	var responseParts []ResponsesContentPart
-	for _, p := range parts {
-		switch p.Type {
-		case "text":
-			if p.Text != "" {
-				responseParts = append(responseParts, ResponsesContentPart{
-					Type: "input_text",
-					Text: p.Text,
-				})
-			}
-		case "image_url":
-			if p.ImageURL != nil && p.ImageURL.URL != "" {
-				responseParts = append(responseParts, ResponsesContentPart{
-					Type:     "input_image",
-					ImageURL: p.ImageURL.URL,
-				})
-			}
-		}
-	}
-
-	content, err := json.Marshal(responseParts)
-	if err != nil {
-		return nil, err
-	}
-	return []ResponsesInputItem{{Role: "user", Content: content}}, nil
+	return chatRoleContentToResponses("user", m.Content)
 }
 
 // chatAssistantToResponses converts an assistant message. If there is both
@@ -318,10 +274,88 @@ func parseChatContent(raw json.RawMessage) (string, error) {
 		return "", nil
 	}
 	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return "", fmt.Errorf("parse content as string: %w", err)
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s, nil
 	}
-	return s, nil
+
+	parts, err := parseChatTypedContent(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse content: %w", err)
+	}
+
+	var b strings.Builder
+	for _, p := range parts {
+		if p.Type == "text" && p.Text != "" {
+			b.WriteString(p.Text)
+		}
+	}
+	return b.String(), nil
+}
+
+func chatRoleContentToResponses(role string, raw json.RawMessage) ([]ResponsesInputItem, error) {
+	if len(raw) == 0 {
+		content, marshalErr := json.Marshal("")
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		return []ResponsesInputItem{{Role: role, Content: content}}, nil
+	}
+
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		content, marshalErr := json.Marshal(s)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		return []ResponsesInputItem{{Role: role, Content: content}}, nil
+	}
+
+	responseParts, err := convertChatTypedContentToResponsesParts(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s content: %w", role, err)
+	}
+
+	content, err := json.Marshal(responseParts)
+	if err != nil {
+		return nil, err
+	}
+	return []ResponsesInputItem{{Role: role, Content: content}}, nil
+}
+
+func convertChatTypedContentToResponsesParts(raw json.RawMessage) ([]ResponsesContentPart, error) {
+	parts, err := parseChatTypedContent(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	responseParts := make([]ResponsesContentPart, 0, len(parts))
+	for _, p := range parts {
+		switch p.Type {
+		case "text":
+			if p.Text != "" {
+				responseParts = append(responseParts, ResponsesContentPart{
+					Type: "input_text",
+					Text: p.Text,
+				})
+			}
+		case "image_url":
+			if p.ImageURL != nil && p.ImageURL.URL != "" {
+				responseParts = append(responseParts, ResponsesContentPart{
+					Type:     "input_image",
+					ImageURL: p.ImageURL.URL,
+				})
+			}
+		}
+	}
+	return responseParts, nil
+}
+
+func parseChatTypedContent(raw json.RawMessage) ([]ChatContentPart, error) {
+	var parts []ChatContentPart
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return nil, err
+	}
+	return parts, nil
 }
 
 // convertChatToolsToResponses maps Chat Completions tool definitions and legacy

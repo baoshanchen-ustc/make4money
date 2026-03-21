@@ -91,7 +91,7 @@ describe('AccountTestModal', () => {
     getAvailableModels.mockResolvedValue([
       { id: 'gemini-2.0-flash', display_name: 'Gemini 2.0 Flash' },
       { id: 'gemini-2.5-flash-image', display_name: 'Gemini 2.5 Flash Image' },
-      { id: 'gemini-3.1-flash-image', display_name: 'Gemini 3.1 Flash Image' }
+      { id: 'gemini-3.1-flash-image-preview', display_name: 'Gemini 3.1 Flash Image Preview' }
     ])
     copyToClipboard.mockReset()
     Object.defineProperty(globalThis, 'localStorage', {
@@ -136,7 +136,7 @@ describe('AccountTestModal', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1)
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toEqual({
-      model_id: 'gemini-3.1-flash-image',
+      model_id: 'gemini-3.1-flash-image-preview',
       prompt: 'draw a tiny orange cat astronaut'
     })
 
