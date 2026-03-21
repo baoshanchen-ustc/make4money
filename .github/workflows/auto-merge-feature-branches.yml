@@ -33,10 +33,10 @@ jobs:
         id: conflict_check
         run: |
           git fetch origin main
-          if ! git merge-tree $(git merge-base HEAD origin/main) HEAD origin/main | grep -q "^changed in both"; then
-            echo "has_conflict=false" >> $GITHUB_OUTPUT
-          else
+          if git merge-tree $(git merge-base HEAD origin/main) HEAD origin/main | grep -q "^changed in both"; then
             echo "has_conflict=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_conflict=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Create conflict issue
