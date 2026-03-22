@@ -390,6 +390,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			false,
+			sql.NullInt64{}, // request_body_bytes
 			now,
 		}})
 		require.NoError(t, err)
@@ -432,6 +433,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			false,
+			sql.NullInt64{}, // request_body_bytes
 			now,
 		}})
 		require.NoError(t, err)
@@ -474,6 +476,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			false,
+			sql.NullInt64{}, // request_body_bytes
 			now,
 		}})
 		require.NoError(t, err)
