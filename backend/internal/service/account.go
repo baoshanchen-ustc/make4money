@@ -935,6 +935,22 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 	return false
 }
 
+
+// IsOpenAIChatCompletionsMode 返回 OpenAI 账号是否使用标准 Chat Completions API。
+// 某些 OpenAI 兼容的第三方 API（如 Alibaba Coding Plan）不支持 Responses API，
+// 需要使用标准的 /v1/chat/completions 端点。
+//
+// 字段：accounts.extra.openai_chat_completions_mode。
+// 字段缺失或类型不正确时，按 false（使用 Responses API）处理。
+func (a *Account) IsOpenAIChatCompletionsMode() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	if enabled, ok := a.Extra["openai_chat_completions_mode"].(bool); ok {
+		return enabled
+	}
+	return false
+}
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。
 //
 // 分类型新字段：
