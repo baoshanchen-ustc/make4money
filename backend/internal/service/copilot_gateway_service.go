@@ -746,6 +746,7 @@ func (s *CopilotGatewayService) ForwardMessages(
 	openAIBody = clampCopilotUpstreamMaxTokens(openAIBody, account)
 
 	upstreamSent := strings.TrimSpace(extractModelFromBody(openAIBody))
+	translatedBodyBytes := len(openAIBody)
 
 	// Log / billing: preserve the client's Anthropic model id, not the Copilot wire id.
 	model := clientModel
@@ -757,6 +758,7 @@ func (s *CopilotGatewayService) ForwardMessages(
 	slog.Debug("copilot messages translated openai body",
 		"account_id", account.ID,
 		"model", model,
+		"translated_body_bytes", translatedBodyBytes,
 		"body", string(openAIBody))
 
 	// Get Copilot API token.
