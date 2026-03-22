@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -1322,7 +1323,14 @@ func (s *CopilotGatewayService) FetchQuota(
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("copilot: quota HTTP %d: %s", resp.StatusCode, string(body))
+		// Map upstream 401/403 to 422 (account credential issue, not a server error).
+		// Other upstream errors become 502 (bad gateway).
+		outCode := http.StatusBadGateway
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			outCode = http.StatusUnprocessableEntity
+		}
+		return nil, infraerrors.Newf(outCode, "COPILOT_UPSTREAM_ERROR",
+			"copilot: quota HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	var raw copilotInternalUserResponse
