@@ -28,7 +28,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, request_body_bytes, created_at"
 
 var usageLogInsertArgTypes = [...]string{
 	"bigint",
@@ -3931,6 +3931,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		inboundEndpoint       sql.NullString
 		upstreamEndpoint      sql.NullString
 		cacheTTLOverridden    bool
+		requestBodyBytes      sql.NullInt64
 		createdAt             time.Time
 	)
 
@@ -3974,6 +3975,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&inboundEndpoint,
 		&upstreamEndpoint,
 		&cacheTTLOverridden,
+		&requestBodyBytes,
 		&createdAt,
 	); err != nil {
 		return nil, err
@@ -4056,6 +4058,10 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	}
 	if upstreamModel.Valid {
 		log.UpstreamModel = &upstreamModel.String
+	}
+	if requestBodyBytes.Valid {
+		v := int(requestBodyBytes.Int64)
+		log.RequestBodyBytes = &v
 	}
 
 	return log, nil

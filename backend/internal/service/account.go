@@ -581,6 +581,27 @@ func (a *Account) GetExtraString(key string) string {
 	return ""
 }
 
+func (a *Account) GetExtraInt(key string) int {
+	if a.Extra == nil {
+		return 0
+	}
+	if v, ok := a.Extra[key]; ok {
+		switch n := v.(type) {
+		case float64:
+			return int(n)
+		case int:
+			return n
+		}
+	}
+	return 0
+}
+
+// GetMaxBodyBytes returns the per-account request body size limit in bytes.
+// Returns 0 if not configured, meaning the caller should use the system default.
+func (a *Account) GetMaxBodyBytes() int {
+	return a.GetExtraInt("max_body_bytes")
+}
+
 func (a *Account) GetClaudeUserID() string {
 	if v := strings.TrimSpace(a.GetExtraString("claude_user_id")); v != "" {
 		return v

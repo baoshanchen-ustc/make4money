@@ -811,6 +811,7 @@ export default {
     cost: '费用',
     firstToken: '首 Token',
     duration: '耗时',
+    requestBodySize: '请求体大小',
     time: '时间',
     ws: 'WS',
     stream: '流式',
@@ -2976,6 +2977,9 @@ export default {
         maxOutputTokensHint:
           '选填。经 Copilot 转发时，对 Claude Sonnet/Opus 在调用 GitHub 前限制 completion 的 max_tokens（留空默认 8192）。填 0 表示不限制（可能再次触发上游 400）。Haiku 不经过此限制。',
         maxOutputTokensInvalid: '请输入非负整数作为输出上限，或填 0 表示不限制。',
+        maxBodyBytesLabel: '请求体大小上限 (KB)',
+        maxBodyBytesHint: '单次请求体超过此限制时直接拒绝并提示用户缩减上下文。留空使用系统默认 400 KB。',
+        maxBodyBytesInvalid: '请求体限制必须为正整数（KB）',
         deviceOAuth: 'GitHub 登录（推荐）',
         deviceOAuthDesc: '通过浏览器登录，支持组织 Copilot',
         patMethod: '个人访问令牌',

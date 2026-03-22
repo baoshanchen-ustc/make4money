@@ -805,6 +805,7 @@ export default {
     cost: 'Cost',
     firstToken: 'First Token',
     duration: 'Duration',
+    requestBodySize: 'Body Size',
     time: 'Time',
     ws: 'WS',
     stream: 'Stream',
@@ -2843,6 +2844,9 @@ export default {
         maxOutputTokensHint:
           'Optional. For Claude Sonnet/Opus via Copilot, limits completion max_tokens before calling GitHub (default 8192 if empty). Use 0 to disable clamping (may cause upstream 400). Haiku is not clamped.',
         maxOutputTokensInvalid: 'Enter a non-negative integer for the output cap, or 0 to disable clamping.',
+        maxBodyBytesLabel: 'Request body limit (KB)',
+        maxBodyBytesHint: 'Reject requests exceeding this size and prompt the user to reduce context. Leave empty for system default 400 KB.',
+        maxBodyBytesInvalid: 'Request body limit must be a positive integer (KB)',
         deviceOAuth: 'GitHub Login (Recommended)',
         deviceOAuthDesc: 'Login via browser, works with org Copilot',
         patMethod: 'Personal Access Token',

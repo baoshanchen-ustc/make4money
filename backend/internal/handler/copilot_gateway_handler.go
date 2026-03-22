@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -21,6 +22,11 @@ import (
 //
 // It exposes OpenAI-compatible endpoints (/copilot/v1/chat/completions, /copilot/v1/models)
 // that proxy to the GitHub Copilot API via CopilotGatewayService.
+
+// defaultCopilotMaxBodyBytes is the system-level request body size limit for Copilot accounts.
+// Requests exceeding this limit are rejected before forwarding to avoid upstream 5xx errors.
+// Per-account overrides can be set via account.Extra["max_body_bytes"].
+const defaultCopilotMaxBodyBytes = 400 * 1024 // 400 KB
 type CopilotGatewayHandler struct {
 	gatewayService        *service.GatewayService
 	copilotGatewayService *service.CopilotGatewayService
@@ -166,6 +172,11 @@ func (h *CopilotGatewayHandler) ChatCompletions(c *gin.Context) {
 			zap.Int64("account_id", account.ID),
 			zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+
+		// Reject oversized request bodies before hitting the upstream.
+		if h.checkCopilotBodySize(c, body, account, false) {
+			return
+		}
 
 		// Forward request to Copilot API
 		result, fwdErr := h.copilotGatewayService.ForwardChatCompletions(ctx, c, account, body)
@@ -415,6 +426,11 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 			zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
+		// Reject oversized request bodies before hitting the upstream.
+		if h.checkCopilotBodySize(c, body, account, false) {
+			return
+		}
+
 		result, fwdErr := h.copilotGatewayService.ForwardResponses(ctx, c, account, body)
 		if fwdErr != nil {
 			failedAccountIDs[account.ID] = struct{}{}
@@ -519,6 +535,30 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 			zap.Int("switch_count", switchCount))
 		return
 	}
+}
+
+// checkCopilotBodySize checks if the request body exceeds the account's limit.
+// Returns true and writes an error response if the limit is exceeded; the caller must return immediately.
+// anthropicFmt selects the response format: true = Anthropic, false = OpenAI.
+func (h *CopilotGatewayHandler) checkCopilotBodySize(c *gin.Context, body []byte, account *service.Account, anthropicFmt bool) bool {
+	limit := account.GetMaxBodyBytes()
+	if limit <= 0 {
+		limit = defaultCopilotMaxBodyBytes
+	}
+	if len(body) <= limit {
+		return false
+	}
+	msg := fmt.Sprintf(
+		"Request body (%d KB) exceeds the limit for this account (%d KB). "+
+			"Use /compact in Claude Code or reduce conversation history to shrink the context.",
+		len(body)/1024, limit/1024,
+	)
+	if anthropicFmt {
+		h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", msg)
+	} else {
+		h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", msg)
+	}
+	return true
 }
 
 // errorResponse returns OpenAI API format error response.
@@ -663,6 +703,11 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 			zap.Int64("account_id", account.ID),
 			zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+
+		// Reject oversized request bodies before hitting the upstream.
+		if h.checkCopilotBodySize(c, body, account, true) {
+			return
+		}
 
 		// Forward request, translating Anthropic ↔ Copilot.
 		result, fwdErr := h.copilotGatewayService.ForwardMessages(ctx, c, account, body)

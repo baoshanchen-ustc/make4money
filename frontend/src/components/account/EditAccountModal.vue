@@ -441,6 +441,17 @@
           />
           <p class="input-hint">{{ t('admin.accounts.copilot.maxOutputTokensHint') }}</p>
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.copilot.maxBodyBytesLabel') }}</label>
+          <input
+            v-model="copilotMaxBodyKB"
+            type="text"
+            inputmode="numeric"
+            class="input font-mono"
+            placeholder="400"
+          />
+          <p class="input-hint">{{ t('admin.accounts.copilot.maxBodyBytesHint') }}</p>
+        </div>
         <!-- Advanced: custom base URL (collapsed by default) -->
         <details class="rounded-lg border border-gray-200 dark:border-dark-600">
           <summary class="cursor-pointer select-none px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
@@ -1926,6 +1937,8 @@ const editGithubToken = ref('')
 const copilotEditPlanType = ref('individual') // individual | business | enterprise
 /** Copilot Sonnet/Opus max_tokens ceiling; empty = default 8192; "0" = do not clamp */
 const copilotMaxOutputTokens = ref('')
+/** Copilot per-account request body size limit in KB; empty = system default (400 KB) */
+const copilotMaxBodyKB = ref('')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -2153,6 +2166,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
   copilotMaxOutputTokens.value = ''
+  copilotMaxBodyKB.value = ''
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
 
@@ -2289,6 +2303,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             copilotMaxOutputTokens.value = String(rawMaxOut)
           } else {
             copilotMaxOutputTokens.value = ''
+          }
+          const rawMaxBody = (newAccount.extra as Record<string, unknown> | undefined)?.max_body_bytes
+          if (rawMaxBody !== undefined && rawMaxBody !== null && Number(rawMaxBody) > 0) {
+            copilotMaxBodyKB.value = String(Math.round(Number(rawMaxBody) / 1024))
+          } else {
+            copilotMaxBodyKB.value = ''
           }
         } else {
           const platformDefaultUrl =
@@ -2925,6 +2945,20 @@ const handleSubmit = async () => {
           return
         }
         updatePayload.credentials = newCredentials
+        // Handle max_body_bytes in extra
+        const copilotExtra: Record<string, unknown> = { ...((props.account.extra as Record<string, unknown>) || {}) }
+        const maxBodyRaw = copilotMaxBodyKB.value.trim()
+        if (maxBodyRaw === '' || maxBodyRaw === '0') {
+          delete copilotExtra.max_body_bytes
+        } else {
+          const kb = parseInt(maxBodyRaw, 10)
+          if (!Number.isFinite(kb) || kb <= 0) {
+            appStore.showError(t('admin.accounts.copilot.maxBodyBytesInvalid'))
+            return
+          }
+          copilotExtra.max_body_bytes = kb * 1024
+        }
+        updatePayload.extra = copilotExtra
       } else {
         const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 

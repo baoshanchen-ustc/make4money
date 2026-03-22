@@ -302,6 +302,16 @@
             }}</span>
           </template>
 
+          <template #cell-request_body_size="{ row }">
+            <span
+              v-if="row.request_body_bytes != null"
+              class="text-sm text-gray-600 dark:text-gray-400"
+            >
+              {{ Math.round(row.request_body_bytes / 1024) }} KB
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          </template>
+
           <template #cell-created_at="{ value }">
             <span class="text-sm text-gray-600 dark:text-gray-400">{{
               formatDateTime(value)
@@ -529,6 +539,7 @@ const columns = computed<Column[]>(() => [
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'first_token', label: t('usage.firstToken'), sortable: false },
   { key: 'duration', label: t('usage.duration'), sortable: false },
+  { key: 'request_body_size', label: t('usage.requestBodySize'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false }
 ])

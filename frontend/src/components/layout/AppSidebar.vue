@@ -545,9 +545,10 @@ const userNavItems = computed((): NavItem[] => {
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 })
 
-// Personal navigation items (for admin's "My Account" section, without Dashboard)
+// Personal navigation items (for admin's "My Account" section)
 const personalNavItems = computed((): NavItem[] => {
   const items: NavItem[] = [
+    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },

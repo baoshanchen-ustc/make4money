@@ -1019,6 +1019,9 @@ export interface UsageLog {
   // Cache TTL Override
   cache_ttl_overridden: boolean
 
+  // Request body size in bytes
+  request_body_bytes?: number | null
+
   created_at: string
 
   user?: User

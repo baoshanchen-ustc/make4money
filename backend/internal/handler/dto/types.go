@@ -381,6 +381,9 @@ type UsageLog struct {
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
 
+	// RequestBodyBytes is the incoming request body size in bytes.
+	RequestBodyBytes *int `json:"request_body_bytes,omitempty"`
+
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`
 
