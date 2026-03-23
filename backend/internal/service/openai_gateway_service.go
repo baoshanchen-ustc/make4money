@@ -2308,7 +2308,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			return nil, fmt.Errorf("openai passthrough rejected before upstream: %s", rejectReason)
 		}
 
-		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, isOpenAIResponsesCompactPath(c))
+		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(
+			body,
+			isOpenAIResponsesCompactPath(c),
+			openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -2736,7 +2740,56 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawDone := false
+	streamCommitted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	pendingLines := make([]string, 0, 8)
+
+	flushPendingLines := func() error {
+		if len(pendingLines) == 0 {
+			streamCommitted = true
+			return nil
+		}
+		for _, line := range pendingLines {
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
+		}
+		flusher.Flush()
+		pendingLines = pendingLines[:0]
+		streamCommitted = true
+		return nil
+	}
+	buildPreCommitFailover := func(reason string, cause error) error {
+		msg := strings.TrimSpace(reason)
+		if msg == "" {
+			msg = "OpenAI passthrough upstream stream ended before first data event"
+		}
+		setOpsUpstreamError(c, http.StatusBadGateway, msg, "")
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: http.StatusBadGateway,
+			UpstreamRequestID:  upstreamRequestID,
+			Passthrough:        true,
+			Kind:               "failover",
+			Message:            msg,
+		})
+		logFields := []zap.Field{
+			zap.String("component", "service.openai_gateway"),
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_request_id", upstreamRequestID),
+		}
+		if cause != nil {
+			logFields = append(logFields, zap.Error(cause))
+		}
+		logger.FromContext(ctx).With(logFields...).Warn("OpenAI passthrough 首个数据包前断流，触发 failover")
+		return &UpstreamFailoverError{
+			StatusCode:      http.StatusBadGateway,
+			ResponseBody:    []byte(msg),
+			ResponseHeaders: resp.Header.Clone(),
+		}
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -2749,11 +2802,15 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		shouldCommit := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
 			if trimmedData == "[DONE]" {
 				sawDone = true
+			}
+			if trimmedData != "" {
+				shouldCommit = true
 			}
 			if firstTokenMs == nil && trimmedData != "" && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
@@ -2763,6 +2820,16 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 
 		if !clientDisconnected {
+			if !streamCommitted {
+				pendingLines = append(pendingLines, line)
+				if shouldCommit {
+					if err := flushPendingLines(); err != nil {
+						clientDisconnected = true
+						logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+					}
+				}
+				continue
+			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
@@ -2784,6 +2851,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				err,
 				ctx.Err(),
 			)
+			if !streamCommitted && ctx.Err() == nil {
+				return nil, buildPreCommitFailover("OpenAI passthrough upstream stream canceled before first data event", err)
+			}
 			return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs}, nil
 		}
 		if errors.Is(err, bufio.ErrTooLong) {
@@ -2796,9 +2866,15 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			upstreamRequestID,
 			err,
 		)
+		if !streamCommitted {
+			return nil, buildPreCommitFailover("OpenAI passthrough upstream stream read failed before first data event", err)
+		}
 		return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream read error: %w", err)
 	}
 	if !clientDisconnected && !sawDone && ctx.Err() == nil {
+		if !streamCommitted {
+			return nil, buildPreCommitFailover("OpenAI passthrough upstream stream ended before first data event", nil)
+		}
 		logger.FromContext(ctx).With(
 			zap.String("component", "service.openai_gateway"),
 			zap.Int64("account_id", account.ID),
@@ -4441,14 +4517,37 @@ func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, p
 }
 
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
-// 1) store=false 2) 非 compact 保持 stream=true；compact 强制 stream=false
-func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, bool, error) {
+// 1) 非官方 Codex 客户端缺失 instructions 时注入默认值
+// 2) store=false
+// 3) 非 compact 保持 stream=true；compact 强制 stream=false
+func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool, codexOfficialClient bool) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
 	}
 
 	normalized := body
 	changed := false
+
+	if !codexOfficialClient {
+		if instructionsReason := detectMissingOpenAIInstructionsReason(normalized); instructionsReason != "" {
+			next, err := sjson.SetBytes(normalized, "instructions", "You are a helpful coding assistant.")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body instructions default: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+		for _, field := range []string{"max_output_tokens", "max_completion_tokens"} {
+			if value := gjson.GetBytes(normalized, field); value.Exists() {
+				next, err := sjson.DeleteBytes(normalized, field)
+				if err != nil {
+					return body, false, fmt.Errorf("normalize passthrough body delete %s: %w", field, err)
+				}
+				normalized = next
+				changed = true
+			}
+		}
+	}
 
 	if compact {
 		if store := gjson.GetBytes(normalized, "store"); store.Exists() {
@@ -4495,6 +4594,20 @@ func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byt
 		return ""
 	}
 
+	instructions := gjson.GetBytes(body, "instructions")
+	if !instructions.Exists() {
+		return "instructions_missing"
+	}
+	if instructions.Type != gjson.String {
+		return "instructions_not_string"
+	}
+	if strings.TrimSpace(instructions.String()) == "" {
+		return "instructions_empty"
+	}
+	return ""
+}
+
+func detectMissingOpenAIInstructionsReason(body []byte) string {
 	instructions := gjson.GetBytes(body, "instructions")
 	if !instructions.Exists() {
 		return "instructions_missing"
