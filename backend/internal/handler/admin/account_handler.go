@@ -235,6 +235,24 @@ func (h *AccountHandler) List(c *gin.Context) {
 		return
 	}
 
+	result := make([]AccountWithConcurrency, len(accounts))
+	for i := range accounts {
+		result[i] = AccountWithConcurrency{Account: dto.AccountFromService(&accounts[i])}
+	}
+	if lite {
+		etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, true)
+		if etag != "" {
+			c.Header("ETag", etag)
+			c.Header("Vary", "If-None-Match")
+			if ifNoneMatchMatched(c.GetHeader("If-None-Match"), etag) {
+				c.Status(http.StatusNotModified)
+				return
+			}
+		}
+		response.Paginated(c, result, total, page, pageSize)
+		return
+	}
+
 	// Get current concurrency counts for all accounts
 	accountIDs := make([]int64, len(accounts))
 	for i, acc := range accounts {
@@ -319,7 +337,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	// Build response with concurrency info
-	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
 		item := AccountWithConcurrency{
