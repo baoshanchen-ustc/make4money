@@ -57,6 +57,7 @@ func TestAccountHandlerList_LiteSkipsHeavyRuntimeMetrics(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.True(t, body.Success)
 	require.Len(t, body.Data.Items, 1)
+	require.NotContains(t, body.Data.Items[0], "current_concurrency")
 	require.NotContains(t, body.Data.Items[0], "current_window_cost")
 	require.NotContains(t, body.Data.Items[0], "active_sessions")
 	require.NotContains(t, body.Data.Items[0], "current_rpm")
