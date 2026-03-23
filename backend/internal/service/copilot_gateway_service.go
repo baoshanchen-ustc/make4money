@@ -1490,9 +1490,10 @@ func clampCopilotUpstreamMaxTokens(body []byte, account *Account) []byte {
 func mergeConsecutiveSameRoleMessagesInOpenAIBody(body []byte) []byte {
 	var req struct {
 		Messages []struct {
-			Role      string          `json:"role"`
-			Content   json.RawMessage `json:"content"`
-			ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
+			Role       string          `json:"role"`
+			Content    json.RawMessage `json:"content"`
+			ToolCallID string          `json:"tool_call_id,omitempty"`
+			ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
 		} `json:"messages"`
 	}
 
@@ -1516,15 +1517,16 @@ func mergeConsecutiveSameRoleMessagesInOpenAIBody(body []byte) []byte {
 
 	// Build merged messages list.
 	type msg struct {
-		Role      string          `json:"role"`
-		Content   json.RawMessage `json:"content"`
-		ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
+		Role       string          `json:"role"`
+		Content    json.RawMessage `json:"content"`
+		ToolCallID string          `json:"tool_call_id,omitempty"`
+		ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
 	}
 
 	merged := make([]msg, 0, len(req.Messages))
 	for _, m := range req.Messages {
 		if len(merged) == 0 {
-			merged = append(merged, msg{Role: m.Role, Content: m.Content, ToolCalls: m.ToolCalls})
+			merged = append(merged, msg{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, ToolCalls: m.ToolCalls})
 			continue
 		}
 		prev := &merged[len(merged)-1]
@@ -1537,7 +1539,7 @@ func mergeConsecutiveSameRoleMessagesInOpenAIBody(body []byte) []byte {
 			len(prev.ToolCalls) == 0
 
 		if !canMerge {
-			merged = append(merged, msg{Role: m.Role, Content: m.Content, ToolCalls: m.ToolCalls})
+			merged = append(merged, msg{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, ToolCalls: m.ToolCalls})
 			continue
 		}
 
@@ -1553,7 +1555,7 @@ func mergeConsecutiveSameRoleMessagesInOpenAIBody(body []byte) []byte {
 		}
 		combinedJSON, err := json.Marshal(combined)
 		if err != nil {
-			merged = append(merged, msg{Role: m.Role, Content: m.Content, ToolCalls: m.ToolCalls})
+			merged = append(merged, msg{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, ToolCalls: m.ToolCalls})
 			continue
 		}
 		prev.Content = combinedJSON
