@@ -469,6 +469,7 @@ var ProviderSet = wire.NewSet(
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
 	NewCRSSyncService,
+	NewCPAImportService,
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	ProvideAccountExpiryService,

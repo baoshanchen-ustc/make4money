@@ -111,6 +111,9 @@
               <button @click="showImportData = true" class="btn btn-secondary">
                 {{ t('admin.accounts.dataImport') }}
               </button>
+              <button @click="showImportCpa = true" class="btn btn-secondary">
+                {{ t('admin.accounts.cpaImport') }}
+              </button>
               <button @click="openExportDataDialog" class="btn btn-secondary">
                 {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
               </button>
@@ -278,6 +281,7 @@
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
+    <ImportFromCpaModal :show="showImportCpa" :proxies="proxies" :groups="groups" @close="showImportCpa = false" @imported="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :selected-platforms="selPlatforms" :selected-types="selTypes" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
@@ -307,7 +311,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
+import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, ImportFromCpaModal, TempUnschedStatusModal } from '@/components/account'
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
@@ -357,6 +361,7 @@ const showCreate = ref(false)
 const showEdit = ref(false)
 const showSync = ref(false)
 const showImportData = ref(false)
+const showImportCpa = ref(false)
 const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
@@ -673,6 +678,7 @@ const isAnyModalOpen = computed(() => {
     showEdit.value ||
     showSync.value ||
     showImportData.value ||
+    showImportCpa.value ||
     showExportDataDialog.value ||
     showBulkEdit.value ||
     showTempUnsched.value ||
