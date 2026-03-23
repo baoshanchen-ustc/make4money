@@ -1033,8 +1033,6 @@ func (s *CRSSyncService) mapOrCreateProxy(ctx context.Context, enabled bool, cac
 	switch protocol {
 	case "socks":
 		protocol = "socks5"
-	case "socks5h":
-		protocol = "socks5"
 	}
 	host := strings.TrimSpace(src.Host)
 	port := src.Port
@@ -1044,7 +1042,7 @@ func (s *CRSSyncService) mapOrCreateProxy(ctx context.Context, enabled bool, cac
 	if protocol == "" || host == "" || port <= 0 {
 		return nil, nil
 	}
-	if protocol != "http" && protocol != "https" && protocol != "socks5" {
+	if protocol != "http" && protocol != "https" && protocol != "socks5" && protocol != "socks5h" && protocol != "ss" {
 		return nil, nil
 	}
 

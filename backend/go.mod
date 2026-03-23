@@ -26,6 +26,7 @@ require (
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/shadowsocks/go-shadowsocks2 v0.1.5
 	github.com/shirou/gopsutil/v4 v4.25.6
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.11.1
@@ -142,6 +143,7 @@ require (
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.57.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/riobard/go-bloom v0.0.0-20200614022211-cdc8013cb5b3 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect

@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ssutil"
 )
 
 // allowedSchemes 代理协议白名单
@@ -18,6 +20,7 @@ var allowedSchemes = map[string]bool{
 	"https":   true,
 	"socks5":  true,
 	"socks5h": true,
+	"ss":      true,
 }
 
 // Parse 解析并验证代理 URL。
@@ -31,7 +34,7 @@ var allowedSchemes = map[string]bool{
 //   - TrimSpace 后为空视为直连
 //   - url.Parse 失败返回 error（不含原始 URL，防凭据泄露）
 //   - Host 为空返回 error（用 Redacted() 脱敏）
-//   - Scheme 必须为 http/https/socks5/socks5h
+//   - Scheme 必须为 http/https/socks5/socks5h/ss
 //   - socks5:// 自动升级为 socks5h://（确保 DNS 由代理端解析，防止 DNS 泄漏）
 func Parse(raw string) (trimmed string, parsed *url.URL, err error) {
 	trimmed = strings.TrimSpace(raw)
@@ -45,13 +48,32 @@ func Parse(raw string) (trimmed string, parsed *url.URL, err error) {
 		return "", nil, fmt.Errorf("invalid proxy URL: %v", err)
 	}
 
-	if parsed.Host == "" || parsed.Hostname() == "" {
-		return "", nil, fmt.Errorf("proxy URL missing host: %s", parsed.Redacted())
-	}
-
 	scheme := strings.ToLower(parsed.Scheme)
 	if !allowedSchemes[scheme] {
-		return "", nil, fmt.Errorf("unsupported proxy scheme %q (allowed: http, https, socks5, socks5h)", scheme)
+		return "", nil, fmt.Errorf("unsupported proxy scheme %q (allowed: http, https, socks5, socks5h, ss)", scheme)
+	}
+
+	if scheme == "ss" {
+		node, err := ssutil.ParseParsedURL(parsed)
+		if err != nil {
+			return "", nil, err
+		}
+		if node.Plugin != "" {
+			return "", nil, fmt.Errorf("ss plugin is not supported")
+		}
+		canonical, err := ssutil.BuildURL(node.Method, node.Password, node.Host, node.Port, node.Tag)
+		if err != nil {
+			return "", nil, err
+		}
+		parsed, err = url.Parse(canonical)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid proxy URL: %v", err)
+		}
+		return canonical, parsed, nil
+	}
+
+	if parsed.Host == "" || parsed.Hostname() == "" {
+		return "", nil, fmt.Errorf("proxy URL missing host: %s", parsed.Redacted())
 	}
 
 	// 自动升级 socks5 → socks5h，确保 DNS 由代理端解析，防止 DNS 泄漏。

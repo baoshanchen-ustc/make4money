@@ -4,7 +4,10 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ssutil"
 )
 
 type Proxy struct {
@@ -25,6 +28,13 @@ func (p *Proxy) IsActive() bool {
 }
 
 func (p *Proxy) URL() string {
+	if strings.EqualFold(p.Protocol, "ss") {
+		ssURL, err := ssutil.BuildURL(p.Username, p.Password, p.Host, p.Port, p.Name)
+		if err == nil {
+			return ssURL
+		}
+	}
+
 	u := &url.URL{
 		Scheme: p.Protocol,
 		Host:   net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),

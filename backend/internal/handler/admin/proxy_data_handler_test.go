@@ -186,3 +186,47 @@ func TestProxyImportDataReusesAndTriggersLatencyProbe(t *testing.T) {
 		return len(adminSvc.testedProxyIDs) == 1
 	}, time.Second, 10*time.Millisecond)
 }
+
+func TestProxyImportDataSupportsSS(t *testing.T) {
+	router, adminSvc := setupProxyDataRouter()
+
+	payload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{
+				{
+					"proxy_key": "ss|ss.example.com|8388|aes-256-gcm|secret",
+					"name":      "ss-node",
+					"protocol":  "ss",
+					"host":      "ss.example.com",
+					"port":      8388,
+					"username":  "aes-256-gcm",
+					"password":  "secret",
+					"status":    "active",
+				},
+			},
+			"accounts": []map[string]any{},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp proxyImportResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 1, resp.Data.ProxyCreated)
+	require.Equal(t, 0, resp.Data.ProxyFailed)
+
+	adminSvc.mu.Lock()
+	defer adminSvc.mu.Unlock()
+	require.Len(t, adminSvc.createdProxies, 1)
+	require.Equal(t, "ss", adminSvc.createdProxies[0].Protocol)
+	require.Equal(t, "aes-256-gcm", adminSvc.createdProxies[0].Username)
+	require.Equal(t, "secret", adminSvc.createdProxies[0].Password)
+}

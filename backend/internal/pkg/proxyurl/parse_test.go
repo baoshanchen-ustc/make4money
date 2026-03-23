@@ -1,8 +1,11 @@
 package proxyurl
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ssutil"
 )
 
 func TestParse_空字符串直连(t *testing.T) {
@@ -211,5 +214,62 @@ func TestParse_无Scheme裸地址(t *testing.T) {
 	_, _, err := Parse("proxy.example.com:8080")
 	if err == nil {
 		t.Fatal("无 scheme 的裸地址应返回错误")
+	}
+}
+
+func TestParse_有效SS代理(t *testing.T) {
+	raw, err := ssutil.BuildURL("aes-256-gcm", "secret", "ss.example.com", 8388, "node-a")
+	if err != nil {
+		t.Fatalf("build ss url failed: %v", err)
+	}
+
+	trimmed, parsed, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("有效 ss 代理应成功: %v", err)
+	}
+	if trimmed != raw {
+		t.Fatalf("ss canonical url mismatch: got %q want %q", trimmed, raw)
+	}
+	if parsed == nil {
+		t.Fatal("parsed 不应为 nil")
+	}
+	if parsed.Scheme != "ss" {
+		t.Fatalf("Scheme 不匹配: got %q", parsed.Scheme)
+	}
+}
+
+func TestParse_兼容LegacySS整节点Base64(t *testing.T) {
+	legacyPayload := base64.RawURLEncoding.EncodeToString([]byte("aes-128-gcm:pass@example.com:8388"))
+	raw := "ss://" + legacyPayload + "#legacy"
+
+	trimmed, parsed, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("legacy ss 代理应成功: %v", err)
+	}
+
+	want, err := ssutil.BuildURL("aes-128-gcm", "pass", "example.com", 8388, "legacy")
+	if err != nil {
+		t.Fatalf("build canonical ss url failed: %v", err)
+	}
+	if trimmed != want {
+		t.Fatalf("legacy ss canonical url mismatch: got %q want %q", trimmed, want)
+	}
+	if parsed == nil || parsed.Host != "example.com:8388" {
+		t.Fatalf("legacy ss host mismatch: got %+v", parsed)
+	}
+}
+
+func TestParse_SSPluginFailFast(t *testing.T) {
+	raw, err := ssutil.BuildURL("aes-256-gcm", "secret", "ss.example.com", 8388, "")
+	if err != nil {
+		t.Fatalf("build ss url failed: %v", err)
+	}
+
+	_, _, err = Parse(raw + "?plugin=obfs-local")
+	if err == nil {
+		t.Fatal("带 plugin 的 ss 代理应返回错误")
+	}
+	if !strings.Contains(err.Error(), "plugin is not supported") {
+		t.Fatalf("错误信息应包含 plugin 不支持: got %v", err)
 	}
 }

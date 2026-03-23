@@ -42,16 +42,17 @@ func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
 const (
 	defaultProxyProbeTimeout          = 10 * time.Second
 	defaultProxyProbeResponseMaxBytes = int64(1024 * 1024)
+	proxyProbeUserAgent               = "sub2api-proxy-probe/1.0"
 )
 
 // probeURLs 按优先级排列的探测 URL 列表
-// 某些 AI API 专用代理只允许访问特定域名，因此需要多个备选
+// 使用 HTTPS 地理信息源，尽量减少公共 HTTP 出口探测服务的不稳定因素。
 var probeURLs = []struct {
 	url    string
-	parser string // "ip-api" or "httpbin"
+	parser string // "country-is" or "ifconfig"
 }{
-	{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
-	{"http://httpbin.org/ip", "httpbin"},
+	{"https://api.country.is/?fields=ip,country,city,subdivision", "country-is"},
+	{"https://ifconfig.co/json", "ifconfig"},
 }
 
 type proxyProbeService struct {
@@ -91,6 +92,8 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", proxyProbeUserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -117,66 +120,118 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 	}
 
 	switch parser {
-	case "ip-api":
-		return s.parseIPAPI(body, latencyMs)
-	case "httpbin":
-		return s.parseHTTPBin(body, latencyMs)
+	case "country-is":
+		return s.parseCountryIs(body, latencyMs)
+	case "ifconfig":
+		return s.parseIfConfig(body, latencyMs)
 	default:
 		return nil, latencyMs, fmt.Errorf("unknown parser: %s", parser)
 	}
 }
 
-func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
-	var ipInfo struct {
-		Status      string `json:"status"`
-		Message     string `json:"message"`
-		Query       string `json:"query"`
-		City        string `json:"city"`
-		Region      string `json:"region"`
-		RegionName  string `json:"regionName"`
-		Country     string `json:"country"`
-		CountryCode string `json:"countryCode"`
+func (s *proxyProbeService) parseCountryIs(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
+	fields, err := parseProbeJSON(body)
+	if err != nil {
+		return nil, latencyMs, err
 	}
 
-	if err := json.Unmarshal(body, &ipInfo); err != nil {
+	if success, ok := fields["success"].(bool); ok && !success {
+		message := firstJSONString(fields, "message", "error", "detail")
+		if message == "" {
+			message = "country.is request failed"
+		}
+		return nil, latencyMs, fmt.Errorf("country.is request failed: %s", message)
+	}
+
+	ipAddress := firstJSONString(fields, "ip", "query")
+	if ipAddress == "" {
+		return nil, latencyMs, fmt.Errorf("country.is: no IP found in response")
+	}
+
+	countryCode := strings.ToUpper(firstJSONString(fields, "country_code", "country"))
+	country := firstJSONString(fields, "country_name")
+	if country == "" {
+		country = countryCode
+	}
+
+	return &service.ProxyExitInfo{
+		IP:          ipAddress,
+		City:        firstJSONString(fields, "city"),
+		Region:      firstJSONString(fields, "subdivision", "region_name", "region"),
+		Country:     country,
+		CountryCode: countryCode,
+	}, latencyMs, nil
+}
+
+func (s *proxyProbeService) parseIfConfig(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
+	fields, err := parseProbeJSON(body)
+	if err != nil {
+		return nil, latencyMs, err
+	}
+
+	if firstJSONString(fields, "error", "detail", "message") != "" && firstJSONString(fields, "ip") == "" {
+		return nil, latencyMs, fmt.Errorf("ifconfig probe failed: %s", firstJSONString(fields, "error", "detail", "message"))
+	}
+
+	ipAddress := firstJSONString(fields, "ip")
+	if ipAddress == "" {
+		return nil, latencyMs, fmt.Errorf("ifconfig: no IP found in response")
+	}
+
+	countryCode := strings.ToUpper(firstJSONString(fields, "country_iso", "country_code"))
+	country := firstJSONString(fields, "country")
+	if country == "" {
+		country = countryCode
+	}
+
+	return &service.ProxyExitInfo{
+		IP:          ipAddress,
+		City:        firstJSONString(fields, "city"),
+		Region:      firstJSONString(fields, "region_name", "region", "subdivision"),
+		Country:     country,
+		CountryCode: countryCode,
+	}, latencyMs, nil
+}
+
+func parseProbeJSON(body []byte) (map[string]any, error) {
+	var fields map[string]any
+	if err := json.Unmarshal(body, &fields); err != nil {
 		preview := string(body)
 		if len(preview) > 200 {
 			preview = preview[:200] + "..."
 		}
-		return nil, latencyMs, fmt.Errorf("failed to parse response: %w (body: %s)", err, preview)
+		return nil, fmt.Errorf("failed to parse response: %w (body: %s)", err, preview)
 	}
-	if strings.ToLower(ipInfo.Status) != "success" {
-		if ipInfo.Message == "" {
-			ipInfo.Message = "ip-api request failed"
-		}
-		return nil, latencyMs, fmt.Errorf("ip-api request failed: %s", ipInfo.Message)
-	}
-
-	region := ipInfo.RegionName
-	if region == "" {
-		region = ipInfo.Region
-	}
-	return &service.ProxyExitInfo{
-		IP:          ipInfo.Query,
-		City:        ipInfo.City,
-		Region:      region,
-		Country:     ipInfo.Country,
-		CountryCode: ipInfo.CountryCode,
-	}, latencyMs, nil
+	return fields, nil
 }
 
-func (s *proxyProbeService) parseHTTPBin(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
-	// httpbin.org/ip 返回格式: {"origin": "1.2.3.4"}
-	var result struct {
-		Origin string `json:"origin"`
+func firstJSONString(fields map[string]any, keys ...string) string {
+	for _, key := range keys {
+		value, ok := fields[key]
+		if !ok {
+			continue
+		}
+		if text := extractProbeString(value); text != "" {
+			return text
+		}
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, latencyMs, fmt.Errorf("failed to parse httpbin response: %w", err)
+	return ""
+}
+
+func extractProbeString(value any) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case map[string]any:
+		for _, key := range []string{"name", "value", "code", "iso", "iso_code"} {
+			nested, ok := v[key]
+			if !ok {
+				continue
+			}
+			if text := extractProbeString(nested); text != "" {
+				return text
+			}
+		}
 	}
-	if result.Origin == "" {
-		return nil, latencyMs, fmt.Errorf("httpbin: no IP found in response")
-	}
-	return &service.ProxyExitInfo{
-		IP: result.Origin,
-	}, latencyMs, nil
+	return ""
 }
