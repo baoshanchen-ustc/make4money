@@ -30,6 +30,18 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+  secret-scanning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run secret scan
+        run: python tools/secret_scan.py
+
   frontend-security:
     runs-on: ubuntu-latest
     steps:
