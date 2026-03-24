@@ -347,6 +347,12 @@ gateway:
     # Enable batch load calculation for scheduling
     # 启用调度批量负载计算
     load_batch_enabled: true
+    # Load-aware scheduling page size when sampling large account pools
+    # 大账号池负载调度时每次窗口化读取的候选数量
+    candidate_page_size: 256
+    # Maximum ordered accounts considered during rotating candidate sampling
+    # 轮转候选采样时最多参与扫描的有序账号数量
+    candidate_scan_limit: 8192
     # Slot cleanup interval (duration)
     # 并发槽位清理周期（时间段）
     slot_cleanup_interval: 30s

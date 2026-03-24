@@ -504,7 +504,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
 	accounts, err := r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
 		status: service.StatusActive,
-	})
+	}, 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -811,12 +811,16 @@ func (r *accountRepository) ListSchedulableByGroupID(ctx context.Context, groupI
 	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
 		status:      service.StatusActive,
 		schedulable: true,
-	})
+	}, 0, 0)
 }
 
 func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
+	return r.ListSchedulableByPlatformWindow(ctx, platform, 0, 0)
+}
+
+func (r *accountRepository) ListSchedulableByPlatformWindow(ctx context.Context, platform string, offset, limit int) ([]service.Account, error) {
 	now := time.Now()
-	accounts, err := r.client.Account.Query().
+	query := r.client.Account.Query().
 		Where(
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
@@ -826,31 +830,35 @@ func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platf
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		).
-		Order(dbent.Asc(dbaccount.FieldPriority)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return r.accountsToService(ctx, accounts)
+		Order(dbent.Asc(dbaccount.FieldPriority))
+	return r.queryAccountsWindow(ctx, query, offset, limit)
 }
 
 func (r *accountRepository) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]service.Account, error) {
 	// 单平台查询复用多平台逻辑，保持过滤条件与排序策略一致。
+	return r.ListSchedulableByGroupIDAndPlatformWindow(ctx, groupID, platform, 0, 0)
+}
+
+func (r *accountRepository) ListSchedulableByGroupIDAndPlatformWindow(ctx context.Context, groupID int64, platform string, offset, limit int) ([]service.Account, error) {
 	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
 		status:      service.StatusActive,
 		schedulable: true,
 		platforms:   []string{platform},
-	})
+	}, offset, limit)
 }
 
 func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {
+	return r.ListSchedulableByPlatformsWindow(ctx, platforms, 0, 0)
+}
+
+func (r *accountRepository) ListSchedulableByPlatformsWindow(ctx context.Context, platforms []string, offset, limit int) ([]service.Account, error) {
 	if len(platforms) == 0 {
 		return nil, nil
 	}
 	// 仅返回可调度的活跃账号，并过滤处于过载/限流窗口的账号。
 	// 代理与分组信息统一在 accountsToService 中批量加载，避免 N+1 查询。
 	now := time.Now()
-	accounts, err := r.client.Account.Query().
+	query := r.client.Account.Query().
 		Where(
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
@@ -860,17 +868,17 @@ func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, plat
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		).
-		Order(dbent.Asc(dbaccount.FieldPriority)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return r.accountsToService(ctx, accounts)
+		Order(dbent.Asc(dbaccount.FieldPriority))
+	return r.queryAccountsWindow(ctx, query, offset, limit)
 }
 
 func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
+	return r.ListSchedulableUngroupedByPlatformWindow(ctx, platform, 0, 0)
+}
+
+func (r *accountRepository) ListSchedulableUngroupedByPlatformWindow(ctx context.Context, platform string, offset, limit int) ([]service.Account, error) {
 	now := time.Now()
-	accounts, err := r.client.Account.Query().
+	query := r.client.Account.Query().
 		Where(
 			dbaccount.PlatformEQ(platform),
 			dbaccount.StatusEQ(service.StatusActive),
@@ -881,20 +889,20 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Conte
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		).
-		Order(dbent.Asc(dbaccount.FieldPriority)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return r.accountsToService(ctx, accounts)
+		Order(dbent.Asc(dbaccount.FieldPriority))
+	return r.queryAccountsWindow(ctx, query, offset, limit)
 }
 
 func (r *accountRepository) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {
+	return r.ListSchedulableUngroupedByPlatformsWindow(ctx, platforms, 0, 0)
+}
+
+func (r *accountRepository) ListSchedulableUngroupedByPlatformsWindow(ctx context.Context, platforms []string, offset, limit int) ([]service.Account, error) {
 	if len(platforms) == 0 {
 		return nil, nil
 	}
 	now := time.Now()
-	accounts, err := r.client.Account.Query().
+	query := r.client.Account.Query().
 		Where(
 			dbaccount.PlatformIn(platforms...),
 			dbaccount.StatusEQ(service.StatusActive),
@@ -905,12 +913,8 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatforms(ctx context.Cont
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		).
-		Order(dbent.Asc(dbaccount.FieldPriority)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return r.accountsToService(ctx, accounts)
+		Order(dbent.Asc(dbaccount.FieldPriority))
+	return r.queryAccountsWindow(ctx, query, offset, limit)
 }
 
 func (r *accountRepository) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]service.Account, error) {
@@ -918,11 +922,18 @@ func (r *accountRepository) ListSchedulableByGroupIDAndPlatforms(ctx context.Con
 		return nil, nil
 	}
 	// 复用按分组查询逻辑，保证分组优先级 + 账号优先级的排序与筛选一致。
+	return r.ListSchedulableByGroupIDAndPlatformsWindow(ctx, groupID, platforms, 0, 0)
+}
+
+func (r *accountRepository) ListSchedulableByGroupIDAndPlatformsWindow(ctx context.Context, groupID int64, platforms []string, offset, limit int) ([]service.Account, error) {
+	if len(platforms) == 0 {
+		return nil, nil
+	}
 	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
 		status:      service.StatusActive,
 		schedulable: true,
 		platforms:   platforms,
-	})
+	}, offset, limit)
 }
 
 func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
@@ -1363,7 +1374,7 @@ type accountGroupQueryOptions struct {
 	platforms   []string // 允许的多个平台，空切片表示不进行平台过滤
 }
 
-func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID int64, opts accountGroupQueryOptions) ([]service.Account, error) {
+func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID int64, opts accountGroupQueryOptions, offset, limit int) ([]service.Account, error) {
 	q := r.client.AccountGroup.Query().
 		Where(dbaccountgroup.GroupIDEQ(groupID))
 
@@ -1391,13 +1402,19 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 		q = q.Where(dbaccountgroup.HasAccountWith(preds...))
 	}
 
-	groups, err := q.
+	q = q.
 		Order(
 			dbaccountgroup.ByPriority(),
 			dbaccountgroup.ByAccountField(dbaccount.FieldPriority),
 		).
-		WithAccount().
-		All(ctx)
+		WithAccount()
+	if offset > 0 {
+		q = q.Offset(offset)
+	}
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	groups, err := q.All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1422,6 +1439,20 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 		}
 	}
 
+	return r.accountsToService(ctx, accounts)
+}
+
+func (r *accountRepository) queryAccountsWindow(ctx context.Context, query *dbent.AccountQuery, offset, limit int) ([]service.Account, error) {
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	accounts, err := query.All(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return r.accountsToService(ctx, accounts)
 }
 

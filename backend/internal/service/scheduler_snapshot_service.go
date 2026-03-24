@@ -131,6 +131,50 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	return accounts, useMixed, nil
 }
 
+func (s *SchedulerSnapshotService) ListSchedulableAccountsWindow(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool, offset, limit int) ([]Account, bool, error) {
+	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
+	mode := s.resolveMode(platform, hasForcePlatform)
+	bucket := s.bucketFor(groupID, platform, mode)
+
+	if limit <= 0 {
+		return s.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	if s.cache != nil {
+		if windowCache, ok := s.cache.(schedulerWindowCache); ok {
+			cached, hit, err := windowCache.GetSnapshotWindow(ctx, bucket, offset, limit)
+			if err != nil {
+				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache window read failed: bucket=%s offset=%d limit=%d err=%v", bucket.String(), offset, limit, err)
+			} else if hit {
+				return derefAccounts(cached), useMixed, nil
+			}
+		} else {
+			cached, hit, err := s.cache.GetSnapshot(ctx, bucket)
+			if err != nil {
+				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache read failed: bucket=%s err=%v", bucket.String(), err)
+			} else if hit {
+				return sliceAccountsWindow(derefAccounts(cached), offset, limit), useMixed, nil
+			}
+		}
+	}
+
+	if err := s.guardFallback(ctx); err != nil {
+		return nil, useMixed, err
+	}
+
+	fallbackCtx, cancel := s.withFallbackTimeout(ctx)
+	defer cancel()
+
+	accounts, err := s.loadAccountsWindowFromDB(fallbackCtx, bucket, useMixed, offset, limit)
+	if err != nil {
+		return nil, useMixed, err
+	}
+	return accounts, useMixed, nil
+}
+
 func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
 	if accountID <= 0 {
 		return nil, nil
@@ -591,6 +635,10 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, oldest Sc
 }
 
 func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucket SchedulerBucket, useMixed bool) ([]Account, error) {
+	return s.loadAccountsWindowFromDB(ctx, bucket, useMixed, 0, 0)
+}
+
+func (s *SchedulerSnapshotService) loadAccountsWindowFromDB(ctx context.Context, bucket SchedulerBucket, useMixed bool, offset, limit int) ([]Account, error) {
 	if s.accountRepo == nil {
 		return nil, ErrSchedulerCacheNotReady
 	}
@@ -603,7 +651,15 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		platforms := []string{bucket.Platform, PlatformAntigravity}
 		var accounts []Account
 		var err error
-		if groupID > 0 {
+		if loader, ok := s.accountRepo.(schedulableAccountWindowLoader); ok {
+			if groupID > 0 {
+				accounts, err = loader.ListSchedulableByGroupIDAndPlatformsWindow(ctx, groupID, platforms, offset, limit)
+			} else if s.isRunModeSimple() {
+				accounts, err = loader.ListSchedulableByPlatformsWindow(ctx, platforms, offset, limit)
+			} else {
+				accounts, err = loader.ListSchedulableUngroupedByPlatformsWindow(ctx, platforms, offset, limit)
+			}
+		} else if groupID > 0 {
 			accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, groupID, platforms)
 		} else if s.isRunModeSimple() {
 			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
@@ -612,6 +668,9 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		}
 		if err != nil {
 			return nil, err
+		}
+		if _, ok := s.accountRepo.(schedulableAccountWindowLoader); !ok {
+			accounts = sliceAccountsWindow(accounts, offset, limit)
 		}
 		filtered := make([]Account, 0, len(accounts))
 		for _, acc := range accounts {
@@ -623,13 +682,25 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return filtered, nil
 	}
 
+	if loader, ok := s.accountRepo.(schedulableAccountWindowLoader); ok {
+		if groupID > 0 {
+			return loader.ListSchedulableByGroupIDAndPlatformWindow(ctx, groupID, bucket.Platform, offset, limit)
+		}
+		if s.isRunModeSimple() {
+			return loader.ListSchedulableByPlatformWindow(ctx, bucket.Platform, offset, limit)
+		}
+		return loader.ListSchedulableUngroupedByPlatformWindow(ctx, bucket.Platform, offset, limit)
+	}
 	if groupID > 0 {
-		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, bucket.Platform)
+		accounts, err := s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, bucket.Platform)
+		return sliceAccountsWindow(accounts, offset, limit), err
 	}
 	if s.isRunModeSimple() {
-		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
+		accounts, err := s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
+		return sliceAccountsWindow(accounts, offset, limit), err
 	}
-	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
+	accounts, err := s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
+	return sliceAccountsWindow(accounts, offset, limit), err
 }
 
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {

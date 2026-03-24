@@ -562,40 +562,36 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (*AccountSelectionResult, int, int, float64, error) {
-	accounts, err := s.service.listSchedulableAccounts(ctx, req.GroupID)
-	if err != nil {
-		return nil, 0, 0, 0, err
-	}
-	if len(accounts) == 0 {
-		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
-	}
-
-	filtered := make([]*Account, 0, len(accounts))
-	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
-	for i := range accounts {
-		account := &accounts[i]
+	filtered, err := s.service.collectBoundedOpenAICandidates(ctx, req.GroupID, req.SessionHash, req.RequestedModel, func(account *Account) bool {
 		if req.ExcludedIDs != nil {
 			if _, excluded := req.ExcludedIDs[account.ID]; excluded {
-				continue
+				return false
 			}
 		}
 		if !account.IsSchedulable() || !account.IsOpenAI() {
-			continue
+			return false
 		}
 		if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
-			continue
+			return false
 		}
 		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
-			continue
+			return false
 		}
-		filtered = append(filtered, account)
+		return true
+	})
+	if err != nil {
+		return nil, 0, 0, 0, err
+	}
+	if len(filtered) == 0 {
+		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
+	}
+
+	loadReq := make([]AccountWithConcurrency, 0, len(filtered))
+	for _, account := range filtered {
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
 			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
-	}
-	if len(filtered) == 0 {
-		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
