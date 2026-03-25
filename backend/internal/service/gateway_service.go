@@ -1101,14 +1101,16 @@ func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account
 		return ""
 	}
 
-	userID := strings.TrimSpace(account.GetClaudeUserID())
-	if userID == "" && fp != nil {
+	// device_id 统一使用 fp.ClientID（与 RewriteUserIDWithMasking 一致），
+	// 不使用 GetClaudeUserID()，避免同一账号在不同出口产生不同的 device_id。
+	var userID string
+	if fp != nil {
 		userID = fp.ClientID
 	}
 	if userID == "" {
-		// Fall back to a random, well-formed client id so we can still satisfy
-		// Claude Code OAuth requirements when account metadata is incomplete.
-		userID = generateClientID()
+		// fp 为 nil 或 fp.ClientID 为空均不应发生（GetOrCreateFingerprint 保证），
+		// 此处仅做防御性保护，不生成随机值以避免 device_id 不稳定。
+		return ""
 	}
 
 	sessionHash := s.GenerateSessionHash(parsed)

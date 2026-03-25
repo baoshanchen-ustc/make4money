@@ -275,14 +275,30 @@ func (s *OAuthService) RefreshToken(ctx context.Context, refreshToken string, pr
 		return nil, err
 	}
 
-	return &TokenInfo{
+	tokenInfo := &TokenInfo{
 		AccessToken:  tokenResp.AccessToken,
 		TokenType:    tokenResp.TokenType,
 		ExpiresIn:    tokenResp.ExpiresIn,
 		ExpiresAt:    time.Now().Unix() + tokenResp.ExpiresIn,
 		RefreshToken: tokenResp.RefreshToken,
 		Scope:        tokenResp.Scope,
-	}, nil
+	}
+
+	if tokenResp.Organization != nil && tokenResp.Organization.UUID != "" {
+		tokenInfo.OrgUUID = tokenResp.Organization.UUID
+		log.Printf("[OAuth] RefreshToken: got org_uuid")
+	}
+	if tokenResp.Account != nil {
+		if tokenResp.Account.UUID != "" {
+			tokenInfo.AccountUUID = tokenResp.Account.UUID
+			log.Printf("[OAuth] RefreshToken: got account_uuid")
+		}
+		if tokenResp.Account.EmailAddress != "" {
+			tokenInfo.EmailAddress = tokenResp.Account.EmailAddress
+		}
+	}
+
+	return tokenInfo, nil
 }
 
 // RefreshAccountToken refreshes token for an account

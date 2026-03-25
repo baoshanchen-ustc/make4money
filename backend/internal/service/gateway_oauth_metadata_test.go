@@ -53,7 +53,9 @@ func TestBuildOAuthMetadataUserID_UsesAccountUUIDWhenPresent(t *testing.T) {
 		},
 	}
 
-	got := svc.buildOAuthMetadataUserID(parsed, account, nil)
+	fp := &Fingerprint{ClientID: "clientid123"}
+
+	got := svc.buildOAuthMetadataUserID(parsed, account, fp)
 	require.NotEmpty(t, got)
 
 	// New format: user_{client}_account_{account_uuid}_session_{uuid}

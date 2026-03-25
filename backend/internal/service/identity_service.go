@@ -80,6 +80,13 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 	if err == nil && cached != nil {
 		needWrite := false
 
+		// 修复缓存中 ClientID 为空的异常（旧数据或缓存损坏）
+		if cached.ClientID == "" {
+			cached.ClientID = generateClientID()
+			needWrite = true
+			logger.LegacyPrintf("service.identity", "Repaired empty ClientID for account %d: %s", accountID, cached.ClientID)
+		}
+
 		// 检查客户端的user-agent是否是更新版本
 		clientUA := headers.Get("User-Agent")
 		if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {

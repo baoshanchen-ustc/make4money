@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -65,6 +63,7 @@ const (
 // AccountTestService handles account testing operations
 type AccountTestService struct {
 	accountRepo               AccountRepository
+	identityService           *IdentityService
 	geminiTokenProvider       *GeminiTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
@@ -79,6 +78,7 @@ const defaultSoraTestCooldown = 10 * time.Second
 // NewAccountTestService creates a new AccountTestService
 func NewAccountTestService(
 	accountRepo AccountRepository,
+	identityService *IdentityService,
 	geminiTokenProvider *GeminiTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
@@ -86,6 +86,7 @@ func NewAccountTestService(
 ) *AccountTestService {
 	return &AccountTestService{
 		accountRepo:               accountRepo,
+		identityService:           identityService,
 		geminiTokenProvider:       geminiTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
@@ -114,25 +115,19 @@ func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error)
 }
 
 // generateSessionString generates a Claude Code style session string.
-// The output format is determined by the UA version in claude.DefaultHeaders,
-// ensuring consistency between the user_id format and the UA sent to upstream.
-func generateSessionString() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	hex64 := hex.EncodeToString(b)
+// clientID 和 accountUUID 应来自账号的 fingerprint 缓存和 Extra，
+// 保证同一账号在所有出口使用相同的 device_id 和 account_uuid。
+// 输出格式根据 DefaultHeaders 的 UA 版本自动选择（旧拼接 or 新 JSON）。
+func generateSessionString(clientID, accountUUID string) string {
 	sessionUUID := uuid.New().String()
 	uaVersion := ExtractCLIVersion(claude.DefaultHeaders["User-Agent"])
-	return FormatMetadataUserID(hex64, "", sessionUUID, uaVersion), nil
+	return FormatMetadataUserID(clientID, accountUUID, sessionUUID, uaVersion)
 }
 
-// createTestPayload creates a Claude Code style test request payload
-func createTestPayload(modelID string) (map[string]any, error) {
-	sessionID, err := generateSessionString()
-	if err != nil {
-		return nil, err
-	}
+// createTestPayload creates a Claude Code style test request payload.
+// clientID 和 accountUUID 用于构建稳定的 metadata.user_id。
+func createTestPayload(modelID, clientID, accountUUID string) map[string]any {
+	sessionID := generateSessionString(clientID, accountUUID)
 
 	return map[string]any{
 		"model": modelID,
@@ -165,7 +160,7 @@ func createTestPayload(modelID string) (map[string]any, error) {
 		"max_tokens":  1024,
 		"temperature": 1,
 		"stream":      true,
-	}, nil
+	}
 }
 
 // TestAccountConnection tests an account's connection by sending a test request
@@ -261,11 +256,21 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Create Claude Code style payload (same for all account types)
-	payload, err := createTestPayload(testModelID)
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create test payload")
+	// 获取账号的 fingerprint，保证 device_id 与正常请求一致
+	clientID := ""
+	accountUUID := account.GetExtraString("account_uuid")
+	if s.identityService != nil {
+		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		if err == nil && fp != nil {
+			clientID = fp.ClientID
+		}
 	}
+	if clientID == "" {
+		return s.sendErrorAndEnd(c, "Failed to get fingerprint: clientID unavailable")
+	}
+
+	// Create Claude Code style payload (same for all account types)
+	payload := createTestPayload(testModelID, clientID, accountUUID)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event

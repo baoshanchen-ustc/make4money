@@ -57,6 +57,9 @@ func (r *ClaudeTokenRefresher) NeedsRefresh(account *Account, refreshWindow time
 
 // Refresh 执行token刷新
 // 保留原有credentials中的所有字段，只更新token相关字段
+// Refresh 执行token刷新，返回更新后的credentials。
+// 同时将上游返回的 account_uuid / org_uuid 持久化到 account.Extra，
+// 供 metadata.user_id 重写使用。
 func (r *ClaudeTokenRefresher) Refresh(ctx context.Context, account *Account) (map[string]any, error) {
 	tokenInfo, err := r.oauthService.RefreshAccountToken(ctx, account)
 	if err != nil {
@@ -65,6 +68,19 @@ func (r *ClaudeTokenRefresher) Refresh(ctx context.Context, account *Account) (m
 
 	newCredentials := BuildClaudeAccountCredentials(tokenInfo)
 	newCredentials = MergeCredentials(account.Credentials, newCredentials)
+
+	// Persist account_uuid / org_uuid to Extra (saved by accountRepo.Update in caller)
+	if tokenInfo.AccountUUID != "" || tokenInfo.OrgUUID != "" {
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		if tokenInfo.AccountUUID != "" {
+			account.Extra["account_uuid"] = tokenInfo.AccountUUID
+		}
+		if tokenInfo.OrgUUID != "" {
+			account.Extra["org_uuid"] = tokenInfo.OrgUUID
+		}
+	}
 
 	return newCredentials, nil
 }
