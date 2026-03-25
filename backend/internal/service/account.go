@@ -501,8 +501,12 @@ func ensureAntigravityDefaultPassthroughs(mapping map[string]string, models []st
 }
 
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
-// 如果未配置 mapping，返回 true（允许所有模型）
+// 如果未配置 mapping，返回 true（允许所有模型）。
+// 自动透传账号会绕过模型白名单/映射限制。
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	if a.ShouldBypassModelRestrictions() {
+		return true
+	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
 		return true // 无映射 = 允许所有
@@ -521,7 +525,8 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 }
 
 // GetMappedModel 获取映射后的模型名（支持通配符，最长优先匹配）
-// 如果未配置 mapping，返回原始模型名
+// 如果未配置 mapping，返回原始模型名。
+// 自动透传账号会绕过模型映射。
 func (a *Account) GetMappedModel(requestedModel string) string {
 	mappedModel, _ := a.ResolveMappedModel(requestedModel)
 	return mappedModel
@@ -530,6 +535,9 @@ func (a *Account) GetMappedModel(requestedModel string) string {
 // ResolveMappedModel 获取映射后的模型名，并返回是否命中了账号级映射。
 // matched=true 表示命中了精确映射或通配符映射，即使映射结果与原模型名相同。
 func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string, matched bool) {
+	if a.ShouldBypassModelRestrictions() {
+		return requestedModel, false
+	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
 		return requestedModel, false
@@ -1104,6 +1112,15 @@ func (a *Account) IsOpenAIWSAllowStoreRecoveryEnabled() bool {
 // IsOpenAIOAuthPassthroughEnabled 兼容旧接口，等价于 OAuth 账号的 IsOpenAIPassthroughEnabled。
 func (a *Account) IsOpenAIOAuthPassthroughEnabled() bool {
 	return a != nil && a.IsOpenAIOAuth() && a.IsOpenAIPassthroughEnabled()
+}
+
+// ShouldBypassModelRestrictions 返回账号是否应绕过模型白名单/映射限制。
+// 当前仅自动透传账号需要绕过该限制，保持“仅替换认证”的语义一致。
+func (a *Account) ShouldBypassModelRestrictions() bool {
+	if a == nil {
+		return false
+	}
+	return a.IsOpenAIPassthroughEnabled() || a.IsAnthropicAPIKeyPassthroughEnabled()
 }
 
 // IsAnthropicAPIKeyPassthroughEnabled 返回 Anthropic API Key 账号是否启用“自动透传（仅替换认证）”。

@@ -977,11 +977,11 @@
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div
-            v-if="isOpenAIModelRestrictionDisabled"
+            v-if="isModelRestrictionDisabledByPassthrough"
             class="mb-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
           >
             <p class="text-xs text-amber-700 dark:text-amber-400">
-              {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') }}
+              {{ t('admin.accounts.modelRestrictionDisabledByPassthrough') }}
             </p>
           </div>
 
@@ -1594,11 +1594,11 @@
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
         <div
-          v-if="isOpenAIModelRestrictionDisabled"
+          v-if="isModelRestrictionDisabledByPassthrough"
           class="mb-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
         >
           <p class="text-xs text-amber-700 dark:text-amber-400">
-            {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') }}
+            {{ t('admin.accounts.modelRestrictionDisabledByPassthrough') }}
           </p>
         </div>
 
@@ -3131,8 +3131,9 @@ const openAIWSModeConcurrencyHintKey = computed(() =>
   resolveOpenAIWSModeConcurrencyHintKey(openaiResponsesWebSocketV2Mode.value)
 )
 
-const isOpenAIModelRestrictionDisabled = computed(() =>
-  form.platform === 'openai' && openaiPassthroughEnabled.value
+const isModelRestrictionDisabledByPassthrough = computed(() =>
+  (form.platform === 'openai' && openaiPassthroughEnabled.value) ||
+  (form.platform === 'anthropic' && accountCategory.value === 'apikey' && anthropicPassthroughEnabled.value)
 )
 
 const mixedChannelWarningMessageText = computed(() => {
@@ -4041,7 +4042,7 @@ const handleSubmit = async () => {
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
-  if (!isOpenAIModelRestrictionDisabled.value) {
+  if (!isModelRestrictionDisabledByPassthrough.value) {
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (modelMapping) {
       credentials.model_mapping = modelMapping
@@ -4287,7 +4288,7 @@ const handleOpenAIExchange = async (authCode: string) => {
     const shouldCreateSora = form.platform === 'sora'
 
     // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
-    if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
+    if (shouldCreateOpenAI && !isModelRestrictionDisabledByPassthrough.value) {
       const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
       if (modelMapping) {
         credentials.model_mapping = modelMapping
@@ -4412,7 +4413,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const extra = buildOpenAIExtra(oauthExtra)
 
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
-        if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
+        if (shouldCreateOpenAI && !isModelRestrictionDisabledByPassthrough.value) {
           const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
           if (modelMapping) {
             credentials.model_mapping = modelMapping

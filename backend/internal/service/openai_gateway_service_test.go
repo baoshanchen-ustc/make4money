@@ -472,6 +472,34 @@ func TestOpenAISelectAccountForModelWithExclusions_NoModelSupport(t *testing.T) 
 	}
 }
 
+func TestOpenAISelectAccountForModelWithExclusions_PassthroughBypassesModelRestrictions(t *testing.T) {
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Credentials: map[string]any{"model_mapping": map[string]any{"gpt-3.5-turbo": "gpt-3.5-turbo"}},
+				Extra:       map[string]any{"openai_passthrough": true},
+			},
+		},
+	}
+	cache := &stubGatewayCache{}
+
+	svc := &OpenAIGatewayService{
+		accountRepo: repo,
+		cache:       cache,
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(context.Background(), nil, "", "gpt-5.4", nil)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.Equal(t, int64(1), acc.ID)
+}
+
 func TestOpenAISelectAccountWithLoadAwareness_LoadBatchErrorFallback(t *testing.T) {
 	groupID := int64(1)
 	repo := stubOpenAIAccountRepo{

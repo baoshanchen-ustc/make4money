@@ -58,6 +58,24 @@ func TestResolveOpenAIForwardModel(t *testing.T) {
 			defaultMappedModel: "gpt-4o-mini",
 			expectedModel:      "gpt-5.4",
 		},
+		{
+			name: "passthrough bypasses both account and group default mappings",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"gpt-5.4": "gpt-4o-mini",
+					},
+				},
+				Extra: map[string]any{
+					"openai_passthrough": true,
+				},
+			},
+			requestedModel:     "gpt-5.4",
+			defaultMappedModel: "gpt-4o-mini",
+			expectedModel:      "gpt-5.4",
+		},
 	}
 
 	for _, tt := range tests {

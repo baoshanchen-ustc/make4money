@@ -173,7 +173,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
 
-	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(upstream.lastBody, "model").String(), "透传模式应应用账号级模型映射")
+	require.Equal(t, "claude-3-7-sonnet-20250219", gjson.GetBytes(upstream.lastBody, "model").String(), "透传模式应保留客户端原始模型")
 
 	require.Equal(t, "upstream-anthropic-key", upstream.lastReq.Header.Get("x-api-key"))
 	require.Empty(t, upstream.lastReq.Header.Get("authorization"))
@@ -191,7 +191,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	require.True(t, ok)
 	bodyBytes, ok := rawBody.([]byte)
 	require.True(t, ok, "应以 []byte 形式缓存上游请求体，避免重复 string 拷贝")
-	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(bodyBytes, "model").String(), "缓存的上游请求体应包含映射后的模型")
+	require.Equal(t, "claude-3-7-sonnet-20250219", gjson.GetBytes(bodyBytes, "model").String(), "缓存的上游请求体应保留原始模型")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBody(t *testing.T) {
@@ -256,7 +256,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBo
 	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
 	require.NoError(t, err)
 
-	require.Equal(t, "claude-3-opus-20240229", gjson.GetBytes(upstream.lastBody, "model").String(), "count_tokens 透传模式应应用账号级模型映射")
+	require.Equal(t, "claude-3-5-sonnet-latest", gjson.GetBytes(upstream.lastBody, "model").String(), "count_tokens 透传模式应保留客户端原始模型")
 	require.Equal(t, "upstream-anthropic-key", upstream.lastReq.Header.Get("x-api-key"))
 	require.Empty(t, upstream.lastReq.Header.Get("authorization"))
 	require.Empty(t, upstream.lastReq.Header.Get("cookie"))
@@ -265,8 +265,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBo
 	require.Empty(t, rec.Header().Get("Set-Cookie"))
 }
 
-// TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases 覆盖透传模式下模型映射的各种边界情况
-func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *testing.T) {
+// TestGatewayService_AnthropicAPIKeyPassthrough_ModelRestrictionsBypassed 覆盖透传模式下模型白名单/映射被绕过的情况。
+func TestGatewayService_AnthropicAPIKeyPassthrough_ModelRestrictionsBypassed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
@@ -277,66 +277,66 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *test
 		endpoint      string // "messages" or "count_tokens"
 	}{
 		{
-			name:          "Forward: 无映射配置时不改写模型",
+			name:          "Forward: 无映射配置时保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  nil,
 			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "messages",
 		},
 		{
-			name:          "Forward: 空映射配置时不改写模型",
+			name:          "Forward: 空映射配置时保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  map[string]any{},
 			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "messages",
 		},
 		{
-			name:          "Forward: 模型不在映射表中时不改写",
+			name:          "Forward: 模型不在映射表中时保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  map[string]any{"claude-3-haiku-20240307": "claude-3-opus-20240229"},
 			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "messages",
 		},
 		{
-			name:          "Forward: 精确匹配映射应改写模型",
+			name:          "Forward: 精确匹配映射时仍保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  map[string]any{"claude-sonnet-4-20250514": "claude-sonnet-4-5-20241022"},
-			expectedModel: "claude-sonnet-4-5-20241022",
+			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "messages",
 		},
 		{
-			name:          "Forward: 通配符映射应改写模型",
+			name:          "Forward: 通配符映射时仍保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  map[string]any{"claude-sonnet-4-*": "claude-sonnet-4-5-20241022"},
-			expectedModel: "claude-sonnet-4-5-20241022",
+			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "messages",
 		},
 		{
-			name:          "CountTokens: 无映射配置时不改写模型",
+			name:          "CountTokens: 无映射配置时保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  nil,
 			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "count_tokens",
 		},
 		{
-			name:          "CountTokens: 模型不在映射表中时不改写",
+			name:          "CountTokens: 模型不在映射表中时保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  map[string]any{"claude-3-haiku-20240307": "claude-3-opus-20240229"},
 			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "count_tokens",
 		},
 		{
-			name:          "CountTokens: 精确匹配映射应改写模型",
+			name:          "CountTokens: 精确匹配映射时仍保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  map[string]any{"claude-sonnet-4-20250514": "claude-sonnet-4-5-20241022"},
-			expectedModel: "claude-sonnet-4-5-20241022",
+			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "count_tokens",
 		},
 		{
-			name:          "CountTokens: 通配符映射应改写模型",
+			name:          "CountTokens: 通配符映射时仍保留原始模型",
 			model:         "claude-sonnet-4-20250514",
 			modelMapping:  map[string]any{"claude-sonnet-4-*": "claude-sonnet-4-5-20241022"},
-			expectedModel: "claude-sonnet-4-5-20241022",
+			expectedModel: "claude-sonnet-4-20250514",
 			endpoint:      "count_tokens",
 		},
 	}
@@ -421,9 +421,9 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *test
 	}
 }
 
-// TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFields
-// 确保模型映射只替换 model 字段，不影响请求体中的其他字段
-func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFields(t *testing.T) {
+// TestGatewayService_AnthropicAPIKeyPassthrough_PreservesOtherFields
+// 确保透传模式不会改写 model 字段，也不会影响请求体中的其他字段。
+func TestGatewayService_AnthropicAPIKeyPassthrough_PreservesOtherFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -472,7 +472,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	require.NoError(t, err)
 
 	sentBody := upstream.lastBody
-	require.Equal(t, "claude-sonnet-4-5-20241022", gjson.GetBytes(sentBody, "model").String(), "model 应被映射")
+	require.Equal(t, "claude-sonnet-4-20250514", gjson.GetBytes(sentBody, "model").String(), "model 应保留客户端原始值")
 	require.Equal(t, "You are a helpful assistant.", gjson.GetBytes(sentBody, "system.0.text").String(), "system 字段不应被修改")
 	require.Equal(t, "hello world", gjson.GetBytes(sentBody, "messages.0.content.0.text").String(), "messages 字段不应被修改")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String(), "thinking 字段不应被修改")
