@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ssutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,6 +61,20 @@ func TestConfigureTransportProxy_SOCKS5H(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, transport.Proxy, "SOCKS5H proxy should not set Proxy")
 	assert.NotNil(t, transport.DialContext, "SOCKS5H proxy should set DialContext")
+}
+
+func TestConfigureTransportProxy_SS(t *testing.T) {
+	transport := &http.Transport{}
+	raw, err := ssutil.BuildURL("aes-256-gcm", "secret", "ss.example.com", 8388, "")
+	require.NoError(t, err)
+	proxyURL, err := url.Parse(raw)
+	require.NoError(t, err)
+
+	err = ConfigureTransportProxy(transport, proxyURL)
+
+	require.NoError(t, err)
+	assert.Nil(t, transport.Proxy, "SS proxy should not set Proxy")
+	assert.NotNil(t, transport.DialContext, "SS proxy should set DialContext")
 }
 
 func TestConfigureTransportProxy_CaseInsensitive(t *testing.T) {

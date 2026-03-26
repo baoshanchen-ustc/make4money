@@ -3,6 +3,8 @@ package service
 import (
 	"net/url"
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ssutil"
 )
 
 func TestProxyURL(t *testing.T) {
@@ -91,5 +93,26 @@ func TestProxyURL_SpecialCharactersRoundTrip(t *testing.T) {
 	}
 	if pass != proxy.Password {
 		t.Fatalf("password mismatch after parse: got=%q want=%q", pass, proxy.Password)
+	}
+}
+
+func TestProxyURL_Shadowsocks(t *testing.T) {
+	t.Parallel()
+
+	proxy := Proxy{
+		Protocol: "ss",
+		Host:     "ss.example.com",
+		Port:     8388,
+		Username: "aes-256-gcm",
+		Password: "secret",
+		Name:     "hk-1",
+	}
+
+	want, err := ssutil.BuildURL(proxy.Username, proxy.Password, proxy.Host, proxy.Port, proxy.Name)
+	if err != nil {
+		t.Fatalf("build ss url failed: %v", err)
+	}
+	if got := proxy.URL(); got != want {
+		t.Fatalf("Proxy.URL() mismatch: got=%q want=%q", got, want)
 	}
 }

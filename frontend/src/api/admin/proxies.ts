@@ -15,6 +15,15 @@ import type {
   AdminDataImportResult
 } from '@/types'
 
+export interface ParsedSubscriptionProxy {
+  name: string
+  protocol: 'ss'
+  host: string
+  port: number
+  username: string
+  password: string
+}
+
 /**
  * List all proxies with pagination
  * @param page - Page number (default: 1)
@@ -154,6 +163,17 @@ export async function checkProxyQuality(id: number): Promise<ProxyQualityCheckRe
   return data
 }
 
+export async function parseSubscription(
+  url: string
+): Promise<{
+  proxies: ParsedSubscriptionProxy[]
+}> {
+  const { data } = await apiClient.post<{
+    proxies: ParsedSubscriptionProxy[]
+  }>('/admin/proxies/subscription/parse', { url })
+  return data
+}
+
 /**
  * Get proxy usage statistics
  * @param id - Proxy ID
@@ -260,6 +280,7 @@ export const proxiesAPI = {
   toggleStatus,
   testProxy,
   checkProxyQuality,
+  parseSubscription,
   getStats,
   getProxyAccounts,
   batchCreate,
