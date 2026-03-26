@@ -136,3 +136,4 @@ aicodex
 output/
 
 backend/logs/*
+.ccb/*
