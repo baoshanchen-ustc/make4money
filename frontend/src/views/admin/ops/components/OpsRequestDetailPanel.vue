@@ -165,6 +165,12 @@
           </div>
         </div>
       </div>
+
+      <!-- 耗时分解卡片 -->
+      <OpsLatencyBreakdownCard
+        v-if="row.kind === 'success' && usageInspect && !usageInspectLoading"
+        :detail="usageInspect"
+      />
     </div>
   </div>
 </template>
@@ -178,6 +184,7 @@ import { opsAPI, type OpsRequestDetail, type OpsUsageInspectDetail } from '@/api
 import { formatDateTime } from '../utils/opsFormatters'
 import { formatBytes } from '@/utils/format'
 import OpsErrorDetailPanel from './OpsErrorDetailPanel.vue'
+import OpsLatencyBreakdownCard from './OpsLatencyBreakdownCard.vue'
 
 interface Props {
   row: OpsRequestDetail | null

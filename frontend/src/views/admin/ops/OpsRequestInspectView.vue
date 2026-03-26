@@ -136,7 +136,23 @@
                         </div>
                       </td>
                       <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
-                        {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '—' }}
+                        <DurationBadge :ms="row.duration_ms ?? null" />
+                      </td>
+                      <!-- 认证 -->
+                      <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {{ row.kind === 'success' && row.auth_latency_ms != null ? `${row.auth_latency_ms} ms` : '—' }}
+                      </td>
+                      <!-- 路由 -->
+                      <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {{ row.kind === 'success' && row.routing_latency_ms != null ? `${row.routing_latency_ms} ms` : '—' }}
+                      </td>
+                      <!-- 上游 -->
+                      <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {{ row.kind === 'success' && row.upstream_latency_ms != null ? `${row.upstream_latency_ms} ms` : '—' }}
+                      </td>
+                      <!-- 传输 -->
+                      <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {{ row.kind === 'success' && row.response_latency_ms != null ? `${row.response_latency_ms} ms` : '—' }}
                       </td>
                       <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                         {{ typeof row.request_body_bytes === 'number' ? formatBytes(row.request_body_bytes) : '—' }}
@@ -194,6 +210,7 @@ import { opsAPI, type OpsRequestDetail, type OpsRequestDetailsKind } from '@/api
 import { formatDateTime, parseTimeRangeMinutes } from './utils/opsFormatters'
 import { formatBytes } from '@/utils/format'
 import OpsRequestDetailPanel from './components/OpsRequestDetailPanel.vue'
+import DurationBadge from './components/DurationBadge.vue'
 
 const { t } = useI18n()
 const adminSettingsStore = useAdminSettingsStore()
@@ -218,6 +235,10 @@ const tableCols = computed(() => [
   t('admin.ops.requestDetails.table.platform'),
   t('admin.ops.requestDetails.table.model'),
   t('admin.ops.requestDetails.table.duration'),
+  t('admin.ops.requestDetails.table.authLatency'),
+  t('admin.ops.requestDetails.table.routingLatency'),
+  t('admin.ops.requestDetails.table.upstreamLatency'),
+  t('admin.ops.requestDetails.table.responseLatency'),
   t('admin.ops.requestDetails.table.bodySize'),
   t('admin.ops.requestDetails.table.status')
 ])

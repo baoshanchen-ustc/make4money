@@ -188,6 +188,12 @@ export interface OpsRequestDetail {
   stream?: boolean
 
   request_body_bytes?: number | null
+
+  // Stage latencies — only populated for successful requests.
+  auth_latency_ms?: number | null
+  routing_latency_ms?: number | null
+  upstream_latency_ms?: number | null
+  response_latency_ms?: number | null
 }
 
 export interface OpsRequestDetailsParams {
@@ -238,6 +244,14 @@ export interface OpsUsageInspectDetail {
   stream: boolean
   duration_ms?: number | null
   first_token_ms?: number | null
+  /** 认证鉴权阶段耗时（ms）*/
+  auth_latency_ms?: number | null
+  /** 路由选择阶段耗时（ms）*/
+  routing_latency_ms?: number | null
+  /** 上游请求阶段耗时（发出请求→收到首字节，ms）*/
+  upstream_latency_ms?: number | null
+  /** 响应处理阶段耗时（流式传输或读取响应体，ms）*/
+  response_latency_ms?: number | null
   input_tokens: number
   output_tokens: number
   service_tier?: string | null

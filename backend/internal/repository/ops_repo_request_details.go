@@ -103,7 +103,11 @@ WITH combined AS (
     ul.account_id AS account_id,
     ul.group_id AS group_id,
     ul.stream AS stream,
-    ul.request_body_bytes AS request_body_bytes
+    ul.request_body_bytes AS request_body_bytes,
+    ul.auth_latency_ms AS auth_latency_ms,
+    ul.routing_latency_ms AS routing_latency_ms,
+    ul.upstream_latency_ms AS upstream_latency_ms,
+    ul.response_latency_ms AS response_latency_ms
   FROM usage_logs ul
   LEFT JOIN groups g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
@@ -128,7 +132,11 @@ WITH combined AS (
     o.account_id AS account_id,
     o.group_id AS group_id,
     o.stream AS stream,
-    o.request_body_bytes AS request_body_bytes
+    o.request_body_bytes AS request_body_bytes,
+    NULL::INT AS auth_latency_ms,
+    NULL::INT AS routing_latency_ms,
+    NULL::INT AS upstream_latency_ms,
+    NULL::INT AS response_latency_ms
   FROM ops_error_logs o
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
@@ -178,7 +186,11 @@ SELECT
   account_id,
   group_id,
   stream,
-  request_body_bytes
+  request_body_bytes,
+  auth_latency_ms,
+  routing_latency_ms,
+  upstream_latency_ms,
+  response_latency_ms
 FROM combined
 %s
 %s
@@ -231,7 +243,11 @@ LIMIT $%d OFFSET $%d
 
 			stream bool
 
-			requestBodyBytes sql.NullInt64
+			requestBodyBytes  sql.NullInt64
+			authLatencyMs     sql.NullInt64
+			routingLatencyMs  sql.NullInt64
+			upstreamLatencyMs sql.NullInt64
+			responseLatencyMs sql.NullInt64
 		)
 
 		if err := rows.Scan(
@@ -252,6 +268,10 @@ LIMIT $%d OFFSET $%d
 			&groupID,
 			&stream,
 			&requestBodyBytes,
+			&authLatencyMs,
+			&routingLatencyMs,
+			&upstreamLatencyMs,
+			&responseLatencyMs,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -278,6 +298,11 @@ LIMIT $%d OFFSET $%d
 			Stream: stream,
 
 			RequestBodyBytes: toIntPtr(requestBodyBytes),
+
+			AuthLatencyMs:     toIntPtr(authLatencyMs),
+			RoutingLatencyMs:  toIntPtr(routingLatencyMs),
+			UpstreamLatencyMs: toIntPtr(upstreamLatencyMs),
+			ResponseLatencyMs: toIntPtr(responseLatencyMs),
 		}
 
 		if item.Platform == "" {

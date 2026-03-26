@@ -88,6 +88,12 @@
         </div>
       </div>
 
+      <!-- 阶段耗时分解（有 stage 数据时展示，帮助排查失败原因） -->
+      <OpsLatencyBreakdownCard
+        v-if="detail.auth_latency_ms != null || detail.routing_latency_ms != null || detail.upstream_latency_ms != null || detail.response_latency_ms != null"
+        :detail="detail"
+      />
+
       <div
         v-if="detail.request_body && String(detail.request_body).trim()"
         class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900"
@@ -221,6 +227,7 @@ import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
 import { formatDateTime } from '@/utils/format'
 import { resolvePrimaryResponseBody, resolveUpstreamPayload } from '../utils/errorDetailResponse'
+import OpsLatencyBreakdownCard from './OpsLatencyBreakdownCard.vue'
 
 interface Props {
   show: boolean

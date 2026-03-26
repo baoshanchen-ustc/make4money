@@ -3975,6 +3975,10 @@ export default {
           platform: '平台',
           model: '模型',
           duration: '耗时',
+          authLatency: '认证',
+          routingLatency: '路由',
+          upstreamLatency: '上游',
+          responseLatency: '传输',
           bodySize: '请求大小',
           status: '状态码',
           requestId: '请求ID',
@@ -4016,6 +4020,24 @@ export default {
           stream: '流式',
           serviceTier: 'service_tier',
           reasoningEffort: 'reasoning_effort'
+        },
+        latency: {
+          title: '耗时分解',
+          total: '分段合计',
+          auth: '认证',
+          authDesc: '认证鉴权 & 计费资格检查',
+          routing: '路由',
+          routingDesc: '账号选择 & 并发槽位等待',
+          upstream: '上游首字节',
+          upstreamDesc: '从发出上游请求到收到第一个字节（TTFB）',
+          response: '响应传输',
+          responseDesc: '流式传输或读取上游响应体',
+          ttfb: '首个 token',
+          ttfbDesc: '收到第一个生成 token 的时间（仅流式请求）',
+          tokensPerSec: 'tokens/s',
+          e2e: '转发耗时',
+          e2eDesc: 'Forward 调用阶段总耗时（不含 auth/routing 前置阶段，仅供参考）',
+          noData: '该请求暂无阶段耗时数据（较早的记录可能未采集分段指标）'
         }
       },
       alertEvents: {

@@ -3808,6 +3808,10 @@ export default {
           platform: 'Platform',
           model: 'Model',
           duration: 'Duration',
+          authLatency: 'Auth',
+          routingLatency: 'Routing',
+          upstreamLatency: 'Upstream',
+          responseLatency: 'Response',
           bodySize: 'Req Size',
           status: 'Status',
           requestId: 'Request ID',
@@ -3851,6 +3855,24 @@ export default {
           stream: 'Stream',
           serviceTier: 'service_tier',
           reasoningEffort: 'reasoning_effort'
+        },
+        latency: {
+          title: 'Latency breakdown',
+          total: 'Stage total',
+          auth: 'Auth',
+          authDesc: 'Authentication & billing eligibility check',
+          routing: 'Routing',
+          routingDesc: 'Account selection & concurrency slot wait',
+          upstream: 'Upstream TTFB',
+          upstreamDesc: 'Time from sending request to receiving first byte from upstream',
+          response: 'Response transfer',
+          responseDesc: 'Streaming transfer or reading response body',
+          ttfb: 'First token',
+          ttfbDesc: 'Time to first generated token (streaming only)',
+          tokensPerSec: 'tokens/s',
+          e2e: 'Forward duration',
+          e2eDesc: 'Total Forward call duration (excludes auth/routing pre-stages; for reference only)',
+          noData: 'No latency breakdown data for this request (older records may not have stage metrics)'
         }
       },
       alertEvents: {

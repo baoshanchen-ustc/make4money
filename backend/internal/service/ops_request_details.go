@@ -45,6 +45,12 @@ type OpsRequestDetail struct {
 	Stream bool `json:"stream"`
 
 	RequestBodyBytes *int `json:"request_body_bytes,omitempty"`
+
+	// Stage latencies — only populated for successful requests.
+	AuthLatencyMs     *int `json:"auth_latency_ms,omitempty"`
+	RoutingLatencyMs  *int `json:"routing_latency_ms,omitempty"`
+	UpstreamLatencyMs *int `json:"upstream_latency_ms,omitempty"`
+	ResponseLatencyMs *int `json:"response_latency_ms,omitempty"`
 }
 
 type OpsRequestDetailFilter struct {
@@ -138,11 +144,18 @@ type OpsUsageInspectDetail struct {
 	Stream           bool      `json:"stream"`
 	DurationMs       *int      `json:"duration_ms,omitempty"`
 	FirstTokenMs     *int      `json:"first_token_ms,omitempty"`
-	InputTokens      int       `json:"input_tokens"`
-	OutputTokens     int       `json:"output_tokens"`
-	ServiceTier      *string   `json:"service_tier,omitempty"`
-	ReasoningEffort  *string   `json:"reasoning_effort,omitempty"`
-	IPAddress        *string   `json:"ip_address,omitempty"`
+
+	// 阶段耗时（毫秒），用于精确定位各环节瓶颈
+	AuthLatencyMs     *int `json:"auth_latency_ms,omitempty"`     // 认证鉴权阶段耗时
+	RoutingLatencyMs  *int `json:"routing_latency_ms,omitempty"`  // 路由选择阶段耗时
+	UpstreamLatencyMs *int `json:"upstream_latency_ms,omitempty"` // 上游请求阶段耗时（发出请求→收到首字节）
+	ResponseLatencyMs *int `json:"response_latency_ms,omitempty"` // 响应处理阶段耗时（流式传输或读取响应体）
+
+	InputTokens     int     `json:"input_tokens"`
+	OutputTokens    int     `json:"output_tokens"`
+	ServiceTier     *string `json:"service_tier,omitempty"`
+	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
+	IPAddress       *string `json:"ip_address,omitempty"`
 }
 
 func (s *OpsService) ListRequestDetails(ctx context.Context, filter *OpsRequestDetailFilter) (*OpsRequestDetailList, error) {
