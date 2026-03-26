@@ -232,6 +232,146 @@ func TestApplyCodexOAuthTransform_EmptyInput(t *testing.T) {
 	require.Len(t, input, 0)
 }
 
+func TestApplyCodexOAuthTransform_SystemMessagesBecomeInstructions(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"input": []any{
+			map[string]any{
+				"type": "message",
+				"role": "system",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "You are a concise assistant."},
+				},
+			},
+			map[string]any{
+				"type":    "message",
+				"role":    "user",
+				"content": "hello",
+			},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+	require.True(t, result.Modified)
+	require.Equal(t, "You are a concise assistant.", reqBody["instructions"])
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", first["role"])
+}
+
+func TestApplyCodexOAuthTransform_SystemMessagesAppendToExistingInstructions(t *testing.T) {
+	reqBody := map[string]any{
+		"model":        "gpt-5.4",
+		"instructions": "Existing instructions.",
+		"input": []any{
+			map[string]any{
+				"type":    "message",
+				"role":    "system",
+				"content": "Extra system guidance.",
+			},
+			map[string]any{
+				"type":    "message",
+				"role":    "user",
+				"content": "hello",
+			},
+		},
+	}
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	require.Equal(t, "Existing instructions.\n\nExtra system guidance.", reqBody["instructions"])
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+}
+
+func TestApplyCodexOAuthTransform_SystemMessagesWithoutTypeBecomeInstructions(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"input": []any{
+			map[string]any{
+				"role": "system",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "Handle filesystem edits carefully."},
+				},
+			},
+			map[string]any{
+				"role":    "user",
+				"content": "hello",
+			},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+	require.True(t, result.Modified)
+	require.Equal(t, "Handle filesystem edits carefully.", reqBody["instructions"])
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", first["role"])
+	require.Equal(t, "message", first["type"])
+}
+
+func TestApplyCodexOAuthTransform_TopLevelSystemBecomesInstructions(t *testing.T) {
+	reqBody := map[string]any{
+		"model":  "gpt-5.4",
+		"system": "Prefer concise patches.",
+		"input": []any{
+			map[string]any{
+				"role":    "user",
+				"content": "hello",
+			},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+	require.True(t, result.Modified)
+	require.Equal(t, "Prefer concise patches.", reqBody["instructions"])
+	_, exists := reqBody["system"]
+	require.False(t, exists)
+}
+
+func TestApplyCodexOAuthTransform_MessagesBecomeInputAndInstructions(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"messages": []any{
+			map[string]any{
+				"role":    "system",
+				"content": "Prefer terse answers.",
+			},
+			map[string]any{
+				"role":    "user",
+				"content": "hello",
+			},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+	require.True(t, result.Modified)
+	require.Equal(t, "Prefer terse answers.", reqBody["instructions"])
+
+	_, exists := reqBody["messages"]
+	require.False(t, exists)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", first["role"])
+	require.Equal(t, "message", first["type"])
+}
+
 func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 	cases := map[string]string{
 		"gpt-5.4":                   "gpt-5.4",

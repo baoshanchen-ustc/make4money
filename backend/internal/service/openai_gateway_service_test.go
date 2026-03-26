@@ -29,6 +29,10 @@ type stubOpenAIAccountRepo struct {
 	accounts []Account
 }
 
+type groupAwareOpenAIAccountRepo struct {
+	stubOpenAIAccountRepo
+}
+
 type snapshotUpdateAccountRepo struct {
 	stubOpenAIAccountRepo
 	updateExtraCalls chan map[string]any
@@ -76,6 +80,22 @@ func (r stubOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, pl
 
 func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	return r.ListSchedulableByPlatform(ctx, platform)
+}
+
+func (r groupAwareOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	var result []Account
+	for _, acc := range r.accounts {
+		if acc.Platform != platform {
+			continue
+		}
+		for _, ag := range acc.AccountGroups {
+			if ag.GroupID == groupID {
+				result = append(result, acc)
+				break
+			}
+		}
+	}
+	return result, nil
 }
 
 type stubConcurrencyCache struct {
@@ -217,6 +237,52 @@ func TestOpenAIGatewayService_GenerateSessionHash_AttachesLegacyHashToContext(t 
 	require.NotNil(t, c.Request)
 	require.NotNil(t, c.Request.Context())
 	require.NotEmpty(t, openAILegacySessionHashFromContext(c.Request.Context()))
+}
+
+func TestOpenAIGatewayService_ListSchedulableAccounts_SimpleModeGroupedKeyBypassesSnapshot(t *testing.T) {
+	groupID := int64(2)
+	repo := groupAwareOpenAIAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{
+			accounts: []Account{
+				{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, AccountGroups: []AccountGroup{{GroupID: 2}}},
+				{ID: 11, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, AccountGroups: []AccountGroup{{GroupID: 4}}},
+			},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		schedulerSnapshot:  &SchedulerSnapshotService{},
+		cfg:                &config.Config{RunMode: config.RunModeSimple},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	accounts, err := svc.listSchedulableAccounts(context.Background(), &groupID)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	require.Equal(t, int64(7), accounts[0].ID)
+}
+
+func TestOpenAIGatewayService_ListSchedulableAccounts_SimpleModeUngroupedKeepsPlatformPool(t *testing.T) {
+	repo := groupAwareOpenAIAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{
+			accounts: []Account{
+				{ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, AccountGroups: []AccountGroup{{GroupID: 2}}},
+				{ID: 11, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, AccountGroups: []AccountGroup{{GroupID: 4}}},
+			},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo: repo,
+		cfg:         &config.Config{RunMode: config.RunModeSimple},
+	}
+
+	accounts, err := svc.listSchedulableAccounts(context.Background(), nil)
+	require.NoError(t, err)
+	require.Len(t, accounts, 2)
+	require.Equal(t, int64(7), accounts[0].ID)
+	require.Equal(t, int64(11), accounts[1].ID)
 }
 
 func TestOpenAIGatewayService_GenerateSessionHashWithFallback(t *testing.T) {

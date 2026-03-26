@@ -16,7 +16,14 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VERSION: ${APP_VERSION:-docker}
+        COMMIT: ${APP_COMMIT:-docker}
+        DATE: ${APP_DATE:-}
+    image: sub2api-local:latest
     container_name: sub2api
     restart: unless-stopped
     ulimits:

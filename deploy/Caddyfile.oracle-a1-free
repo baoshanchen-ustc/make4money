@@ -1,0 +1,22 @@
+vault.zhangjiajia.me {
+    tls /etc/caddy/certs/vault.zhangjiajia.me/vault.zhangjiajia.me.crt /etc/caddy/certs/vault.zhangjiajia.me/vault.zhangjiajia.me.key
+    reverse_proxy 127.0.0.1:8222
+}
+
+api.zhangjiajia.me {
+    @mgmt path /management.html
+    handle @mgmt {
+        root * /var/www/cliproxy-admin
+        file_server
+    }
+    handle_path /codex/* {
+        rewrite /responses /v1/responses
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    rewrite /responses /v1/responses
+    reverse_proxy 127.0.0.1:8080
+}
+:80 {
+    respond "migrating" 200
+}

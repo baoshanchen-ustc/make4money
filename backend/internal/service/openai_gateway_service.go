@@ -1525,6 +1525,13 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && groupID != nil && *groupID > 0 && s.accountRepo != nil {
+		accounts, err := s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+		if err != nil {
+			return nil, fmt.Errorf("query accounts failed: %w", err)
+		}
+		return accounts, nil
+	}
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
 		return accounts, err
@@ -1665,11 +1672,28 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 	}
 }
 
+func isOpenAICompatibilityFailoverError(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if statusCode != http.StatusBadRequest {
+		return false
+	}
+
+	msg := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if msg == "" && len(upstreamBody) > 0 {
+		msg = strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(upstreamBody)))
+	}
+	if msg == "" {
+		return false
+	}
+
+	return strings.Contains(msg, "system messages are not allowed") ||
+		strings.Contains(msg, "unsupported parameter: messages")
+}
+
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	if s.shouldFailoverUpstreamError(statusCode) {
 		return true
 	}
-	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
+	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody) || isOpenAICompatibilityFailoverError(statusCode, upstreamMsg, upstreamBody)
 }
 
 func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {

@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+MODE="${SUB2API_WRAPPER_MODE:-auto}"
+SSH_TARGET="${SUB2API_SSH_TARGET:-oracle}"
+REPO_ROOT="${REPO_ROOT:-/home/ubuntu/sub2api}"
+RELEASE_SCRIPT="$REPO_ROOT/deploy/ops/release_oracle.sh"
+UPGRADE_SCRIPT="$REPO_ROOT/deploy/ops/upgrade_from_origin_main.sh"
+PREFLIGHT_SCRIPT="$REPO_ROOT/deploy/ops/preflight_oracle.sh"
+BACKUP_SCRIPT="$REPO_ROOT/deploy/ops/backup_sub2api.sh"
+VERIFY_BACKUP_SCRIPT="$REPO_ROOT/deploy/ops/verify_backup_sub2api.sh"
+
+detect_mode() {
+  case "$MODE" in
+    local|remote)
+      printf '%s\n' "$MODE"
+      return
+      ;;
+    auto)
+      if [ -f "$RELEASE_SCRIPT" ]; then
+        printf 'remote\n'
+      else
+        printf 'local\n'
+      fi
+      return
+      ;;
+    *)
+      printf 'invalid SUB2API_WRAPPER_MODE: %s\n' "$MODE" >&2
+      exit 1
+      ;;
+  esac
+}
+
+usage() {
+  cat <<'EOF'
+Usage: sub2api <command> [args]
+
+Commands:
+  deploy          Fetch, fast-forward, rebuild, and restart sub2api
+  update          Alias of deploy
+  upgrade         Merge latest origin/main (or a commit) into current branch, rebuild, health-check, rollback on failure
+  check           Run Oracle preflight checks
+  preflight       Alias of check
+  backup          Run online backup
+  verify          Verify latest backup or a provided target
+  verify-backup   Alias of verify
+  status          Show git branch, key containers, and Caddy status
+  version         Show repo version file and container image
+  open            Open the Sub2API admin page in the default browser (local only)
+  ssh             Open an interactive shell on the Oracle host (local only)
+  help            Show this message
+
+Env:
+  SUB2API_SSH_TARGET    SSH host alias or target (default: oracle)
+  SUB2API_WRAPPER_MODE  auto | local | remote (default: auto)
+EOF
+}
+
+run_in_repo() {
+  cd "$REPO_ROOT"
+  "$@"
+}
+
+run_remote() {
+  local remote_cmd="$1"
+  shift || true
+  exec ssh "$SSH_TARGET" sub2api "$remote_cmd" "$@"
+}
+
+require_file() {
+  local path="$1"
+  [ -f "$path" ] || {
+    printf 'missing file: %s\n' "$path" >&2
+    exit 1
+  }
+}
+
+cmd="${1:-help}"
+shift || true
+wrapper_mode="$(detect_mode)"
+
+case "$wrapper_mode" in
+  local)
+    case "$cmd" in
+      deploy|update|upgrade|check|preflight|backup|verify|verify-backup|status|version)
+        run_remote "$cmd" "$@"
+        ;;
+      help|-h|--help)
+        usage
+        exit 0
+        ;;
+      open)
+        exec open "https://api.zhangjiajia.me"
+        ;;
+      ssh)
+        exec ssh "$SSH_TARGET"
+        ;;
+      *)
+        printf 'unknown command: %s\n\n' "$cmd" >&2
+        usage >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  remote)
+    ;;
+esac
+
+case "$cmd" in
+  upgrade)
+    require_file "$UPGRADE_SCRIPT"
+    run_in_repo bash "$UPGRADE_SCRIPT" "$@"
+    ;;
+  deploy|update)
+    require_file "$RELEASE_SCRIPT"
+    run_in_repo env DEPLOY_IF_UP_TO_DATE=1 bash "$RELEASE_SCRIPT" "$@"
+    ;;
+  check|preflight)
+    require_file "$PREFLIGHT_SCRIPT"
+    run_in_repo bash "$PREFLIGHT_SCRIPT" "$@"
+    ;;
+  backup)
+    require_file "$BACKUP_SCRIPT"
+    run_in_repo bash "$BACKUP_SCRIPT" "$@"
+    ;;
+  verify|verify-backup)
+    require_file "$VERIFY_BACKUP_SCRIPT"
+    if [ "$#" -eq 0 ]; then
+      run_in_repo bash "$VERIFY_BACKUP_SCRIPT" latest
+    else
+      run_in_repo bash "$VERIFY_BACKUP_SCRIPT" "$@"
+    fi
+    ;;
+  status)
+    cd "$REPO_ROOT"
+    git status --short --branch
+    echo "---"
+    sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk -F '\t' '$1 == "sub2api" || index($1, "sub2api-") == 1'
+    echo "---"
+    sudo systemctl is-active caddy
+    ;;
+  version)
+    runtime_version="$(sudo docker exec sub2api /app/sub2api --version 2>/dev/null | sed -n 's/^.*Sub2API \([^ ]*\) (commit:.*$/\1/p')"
+    if [ -n "$runtime_version" ]; then
+      printf 'repo_version=%s\n' "$runtime_version"
+    else
+      require_file "$REPO_ROOT/backend/cmd/server/VERSION"
+      printf 'repo_version=%s\n' "$(tr -d '\r\n' < "$REPO_ROOT/backend/cmd/server/VERSION")"
+    fi
+    printf 'container_image=%s\n' "$(sudo docker inspect -f '{{.Config.Image}}' sub2api 2>/dev/null || echo unknown)"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  open)
+    printf 'open is only available in local mode\n' >&2
+    exit 1
+    ;;
+  ssh)
+    printf 'ssh is only available in local mode\n' >&2
+    exit 1
+    ;;
+  *)
+    printf 'unknown command: %s\n\n' "$cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

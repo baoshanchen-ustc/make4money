@@ -1,0 +1,19 @@
+[Unit]
+Description=Sub2API online backup job
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+ConditionPathExists=/home/ubuntu/sub2api/deploy/ops/backup_sub2api.sh
+ConditionPathExists=/home/ubuntu/sub2api/deploy/.env
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/sub2api
+Environment=BACKUP_ROOT=/home/ubuntu/backups/sub2api
+ExecStart=/home/ubuntu/sub2api/deploy/ops/backup_sub2api.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal
