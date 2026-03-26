@@ -541,10 +541,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		if isOAuth && s.accountRepo != nil {
-			if resetAt := (&RateLimitService{}).calculateOpenAI429ResetTime(resp.Header); resetAt != nil {
-				_ = s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt)
-				account.RateLimitResetAt = resetAt
+		if s.accountRepo != nil {
+			upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+			if errorCode := classifyOpenAIPermanentAuthError(resp.StatusCode, body); errorCode != "" {
+				_ = s.accountRepo.SetError(ctx, account.ID, buildOpenAIPermanentAuthErrorMessage(errorCode, upstreamMsg))
+			} else if isOAuth {
+				if resetAt := (&RateLimitService{}).calculateOpenAI429ResetTime(resp.Header); resetAt != nil {
+					_ = s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt)
+					account.RateLimitResetAt = resetAt
+				}
 			}
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))

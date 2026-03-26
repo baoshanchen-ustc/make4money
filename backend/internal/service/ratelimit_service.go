@@ -150,16 +150,13 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
-		// OpenAI: token_invalidated / token_revoked 表示 token 被永久作废（非过期），直接标记 error
-		openai401Code := extractUpstreamErrorCode(responseBody)
-		if account.Platform == PlatformOpenAI && (openai401Code == "token_invalidated" || openai401Code == "token_revoked") {
-			msg := "Token revoked (401): account authentication permanently revoked"
-			if upstreamMsg != "" {
-				msg = "Token revoked (401): " + upstreamMsg
+		// OpenAI: token_invalidated / token_revoked / account_deactivated 表示账号已永久失效，直接标记 error
+		if account.Platform == PlatformOpenAI {
+			if errorCode := classifyOpenAIPermanentAuthError(statusCode, responseBody); errorCode != "" {
+				s.handleAuthError(ctx, account, buildOpenAIPermanentAuthErrorMessage(errorCode, upstreamMsg))
+				shouldDisable = true
+				break
 			}
-			s.handleAuthError(ctx, account, msg)
-			shouldDisable = true
-			break
 		}
 		// OAuth 账号在 401 错误时临时不可调度（给 token 刷新窗口）；非 OAuth 账号保持原有 SetError 行为。
 		// Antigravity 除外：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制。

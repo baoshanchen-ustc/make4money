@@ -225,6 +225,7 @@ import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
+import { streamAccountTest, type AccountTestStreamEvent } from '@/utils/accountTestStream'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -257,7 +258,6 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
-let eventSource: EventSource | null = null
 const isSoraAccount = computed(() => props.account?.platform === 'sora')
 const generatedImages = ref<PreviewImage[]>([])
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
@@ -288,8 +288,6 @@ watch(
       testPrompt.value = ''
       resetState()
       await loadAvailableModels()
-    } else {
-      closeEventSource()
     }
   }
 )
@@ -349,15 +347,7 @@ const handleClose = () => {
   if (status.value === 'connecting') {
     return
   }
-  closeEventSource()
   emit('close')
-}
-
-const closeEventSource = () => {
-  if (eventSource) {
-    eventSource.close()
-    eventSource = null
-  }
 }
 
 const addLine = (text: string, className: string = 'text-gray-300') => {
@@ -381,63 +371,13 @@ const startTest = async () => {
   addLine(t('admin.accounts.testAccountTypeLabel', { type: props.account.type }), 'text-gray-400')
   addLine('', 'text-gray-300')
 
-  closeEventSource()
-
   try {
-    // Create EventSource for SSE
-    const url = `/api/v1/admin/accounts/${props.account.id}/test`
-
-    // Use fetch with streaming for SSE since EventSource doesn't support POST
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(
-        isSoraAccount.value
-          ? {}
-          : {
-              model_id: selectedModelId.value,
-              prompt: supportsGeminiImageTest.value ? testPrompt.value.trim() : ''
-            }
-      )
+    await streamAccountTest(props.account.id, {
+      isSora: isSoraAccount.value,
+      modelId: isSoraAccount.value ? undefined : selectedModelId.value,
+      prompt: supportsGeminiImageTest.value ? testPrompt.value.trim() : undefined,
+      onEvent: handleEvent
     })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) {
-      throw new Error('No response body')
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6).trim()
-          if (jsonStr) {
-            try {
-              const event = JSON.parse(jsonStr)
-              handleEvent(event)
-            } catch (e) {
-              console.error('Failed to parse SSE event:', e)
-            }
-          }
-        }
-      }
-    }
   } catch (error: any) {
     status.value = 'error'
     errorMessage.value = error.message || 'Unknown error'
@@ -445,15 +385,7 @@ const startTest = async () => {
   }
 }
 
-const handleEvent = (event: {
-  type: string
-  text?: string
-  model?: string
-  success?: boolean
-  error?: string
-  image_url?: string
-  mime_type?: string
-}) => {
+const handleEvent = (event: AccountTestStreamEvent) => {
   switch (event.type) {
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
