@@ -17,7 +17,9 @@ import type {
   AdminDataPayload,
   AdminDataImportResult,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  CodexBulkImportRequest,
+  CodexBulkImportResult
 } from '@/types'
 
 /**
@@ -532,6 +534,17 @@ export async function importData(payload: {
   return data
 }
 
+export async function createCodexBulkImport(
+  payload: CodexBulkImportRequest
+): Promise<CodexBulkImportResult> {
+  const { data } = await apiClient.post<CodexBulkImportResult>(
+    '/admin/openai/codex/bulk-import',
+    payload,
+    { timeout: 120000 }
+  )
+  return data
+}
+
 /**
  * Get Antigravity default model mapping from backend
  * @returns Default model mapping (from -> to)
@@ -671,6 +684,7 @@ export const accountsAPI = {
   syncFromCrs,
   exportData,
   importData,
+  createCodexBulkImport,
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,

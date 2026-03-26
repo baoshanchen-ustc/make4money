@@ -108,6 +108,9 @@
               </div>
             </template>
             <template #beforeCreate>
+              <button @click="showCodexBulkImport = true" class="btn btn-secondary">
+                {{ t('admin.accounts.codexBulk.openButton') }}
+              </button>
               <button @click="showImportData = true" class="btn btn-secondary">
                 {{ t('admin.accounts.dataImport') }}
               </button>
@@ -271,6 +274,7 @@
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
+    <CodexBulkImportModal :show="showCodexBulkImport" :groups="groups" @close="showCodexBulkImport = false" @created="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
@@ -307,7 +311,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
+import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal, CodexBulkImportModal } from '@/components/account'
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
@@ -354,6 +358,7 @@ const selTypes = computed<AccountType[]>(() => {
   return [...types]
 })
 const showCreate = ref(false)
+const showCodexBulkImport = ref(false)
 const showEdit = ref(false)
 const showSync = ref(false)
 const showImportData = ref(false)
@@ -670,6 +675,7 @@ watch(loading, (isLoading, wasLoading) => {
 const isAnyModalOpen = computed(() => {
   return (
     showCreate.value ||
+    showCodexBulkImport.value ||
     showEdit.value ||
     showSync.value ||
     showImportData.value ||

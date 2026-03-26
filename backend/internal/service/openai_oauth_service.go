@@ -222,6 +222,17 @@ func (s *OpenAIOAuthService) RefreshToken(ctx context.Context, refreshToken stri
 	return s.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, "")
 }
 
+// ValidateRefreshTokenWithClientID validates an OpenAI/Sora OAuth refresh token
+// and enriches token metadata without performing privacy-setting side effects.
+func (s *OpenAIOAuthService) ValidateRefreshTokenWithClientID(ctx context.Context, refreshToken string, proxyURL string, clientID string) (*OpenAITokenInfo, error) {
+	tokenResp, err := s.oauthClient.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.buildTokenInfoFromRefreshResponse(ctx, tokenResp, proxyURL, clientID, false), nil
+}
+
 // RefreshTokenWithClientID refreshes an OpenAI/Sora OAuth token with optional client_id.
 func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refreshToken string, proxyURL string, clientID string) (*OpenAITokenInfo, error) {
 	tokenResp, err := s.oauthClient.RefreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
@@ -229,6 +240,10 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 		return nil, err
 	}
 
+	return s.buildTokenInfoFromRefreshResponse(ctx, tokenResp, proxyURL, clientID, true), nil
+}
+
+func (s *OpenAIOAuthService) buildTokenInfoFromRefreshResponse(ctx context.Context, tokenResp *openai.TokenResponse, proxyURL string, clientID string, applyPrivacyMode bool) *OpenAITokenInfo {
 	// Parse ID token to get user info
 	var userInfo *openai.UserInfo
 	if tokenResp.IDToken != "" {
@@ -279,11 +294,11 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 	}
 
 	// 尝试设置隐私（关闭训练数据共享），best-effort
-	if tokenInfo.AccessToken != "" && s.privacyClientFactory != nil {
+	if applyPrivacyMode && tokenInfo.AccessToken != "" && s.privacyClientFactory != nil {
 		tokenInfo.PrivacyMode = disableOpenAITraining(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL)
 	}
 
-	return tokenInfo, nil
+	return tokenInfo
 }
 
 // ExchangeSoraSessionToken exchanges Sora session_token to access_token.
