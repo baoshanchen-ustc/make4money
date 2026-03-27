@@ -47,7 +47,10 @@ const (
 
 // PlanType constants for GitHub Copilot account plans.
 const (
-	PlanTypeIndividual = "individual"
+	PlanTypeIndividual    = "individual"     // legacy value; treated same as individual_pro
+	PlanTypeIndividualFree    = "individual_free"
+	PlanTypeIndividualPro     = "individual_pro"
+	PlanTypeIndividualProPlus = "individual_pro_plus"
 	PlanTypeBusiness   = "business"
 	PlanTypeEnterprise = "enterprise"
 )
@@ -55,9 +58,12 @@ const (
 // ChatBaseURLForPlan returns the appropriate /chat/completions base URL for the
 // given plan_type credential value.  If plan_type is empty or unrecognised, the
 // canonical CopilotAPIBase is used (works for all plan types).
+//
+// Individual Free/Pro/Pro+ all share the same canonical API base URL.
+// Business and Enterprise use plan-specific subdomain URLs.
 func ChatBaseURLForPlan(planType string) string {
 	switch planType {
-	case PlanTypeIndividual:
+	case PlanTypeIndividual, PlanTypeIndividualFree, PlanTypeIndividualPro, PlanTypeIndividualProPlus:
 		return CopilotAPIBaseIndividual
 	case PlanTypeBusiness:
 		return CopilotAPIBaseBusiness

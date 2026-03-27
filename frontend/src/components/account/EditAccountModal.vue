@@ -1791,6 +1791,7 @@
         :groups="groups"
         :platform="account?.platform"
         :mixed-scheduling="mixedScheduling"
+        :scrollable="false"
         data-tour="account-form-groups"
       />
 

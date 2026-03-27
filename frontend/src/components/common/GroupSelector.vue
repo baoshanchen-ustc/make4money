@@ -5,7 +5,10 @@
       <span class="font-normal text-gray-400">{{ t('common.selectedCount', { count: modelValue.length }) }}</span>
     </label>
     <div
-      class="grid grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-800"
+      :class="[
+        'grid grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-800',
+        props.scrollable ? 'max-h-72 overflow-y-auto' : ''
+      ]"
     >
       <label
         v-for="group in filteredGroups"
@@ -53,9 +56,14 @@ interface Props {
   groups: AdminGroup[]
   platform?: GroupPlatform // Optional platform filter
   mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
+  /** When true (default), the list has a max-height and scrolls. Set false to show all groups without scrolling. */
+  scrollable?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  scrollable: true,
+})
+
 const emit = defineEmits<{
   'update:modelValue': [value: number[]]
 }>()
