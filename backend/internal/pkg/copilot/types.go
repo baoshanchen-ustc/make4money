@@ -47,12 +47,12 @@ const (
 
 // PlanType constants for GitHub Copilot account plans.
 const (
-	PlanTypeIndividual    = "individual"     // legacy value; treated same as individual_pro
+	PlanTypeIndividual        = "individual" // legacy value; treated same as individual_pro
 	PlanTypeIndividualFree    = "individual_free"
 	PlanTypeIndividualPro     = "individual_pro"
 	PlanTypeIndividualProPlus = "individual_pro_plus"
-	PlanTypeBusiness   = "business"
-	PlanTypeEnterprise = "enterprise"
+	PlanTypeBusiness          = "business"
+	PlanTypeEnterprise        = "enterprise"
 )
 
 // ChatBaseURLForPlan returns the appropriate /chat/completions base URL for the
