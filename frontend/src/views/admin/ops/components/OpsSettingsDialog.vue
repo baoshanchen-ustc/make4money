@@ -33,7 +33,7 @@ const advancedSettings = ref<OpsAdvancedSettings | null>(null)
 const metricThresholds = ref<OpsMetricThresholds>({
   sla_percent_min: 99.5,
   ttft_p99_ms_max: 500,
-  request_error_rate_percent_max: 5,
+  request_error_rate_percent_max: 0.5,
   upstream_error_rate_percent_max: 5
 })
 
@@ -55,7 +55,7 @@ async function loadAllSettings() {
         metricThresholds.value = {
           sla_percent_min: thresholds.sla_percent_min ?? 99.5,
           ttft_p99_ms_max: thresholds.ttft_p99_ms_max ?? 500,
-          request_error_rate_percent_max: thresholds.request_error_rate_percent_max ?? 5,
+          request_error_rate_percent_max: thresholds.request_error_rate_percent_max ?? 0.5,
           upstream_error_rate_percent_max: thresholds.upstream_error_rate_percent_max ?? 5
         }
     }

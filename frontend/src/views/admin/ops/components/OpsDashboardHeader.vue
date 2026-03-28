@@ -245,7 +245,15 @@ function getTTFTThresholdLevel(ttftMs: number | null): ThresholdLevel {
 
 function getRequestErrorRateThresholdLevel(errorRatePercent: number | null): ThresholdLevel {
   if (errorRatePercent == null) return 'normal'
-  const threshold = props.thresholds?.request_error_rate_percent_max
+  // error_rate 和 sla 是同一 SLA 口径下的互补指标（sla + error_rate ≈ 1）
+  // 始终取"更严格（更小）"的阈值：独立配置值 vs 从 SLA 阈值推导的互补值
+  // 这样无论旧配置中 request_error_rate_percent_max 是否与 sla_percent_min 匹配，颜色都不会矛盾
+  const explicitThreshold = props.thresholds?.request_error_rate_percent_max
+  const slaMin = props.thresholds?.sla_percent_min
+  const complementaryThreshold = typeof slaMin === 'number' ? Math.max(0, 100 - slaMin) : null
+  const threshold = explicitThreshold != null && complementaryThreshold != null
+    ? Math.min(explicitThreshold, complementaryThreshold)
+    : (explicitThreshold ?? complementaryThreshold)
   if (threshold == null) return 'normal'
   if (errorRatePercent >= threshold) return 'critical'
   if (errorRatePercent >= threshold * 0.8) return 'warning'
