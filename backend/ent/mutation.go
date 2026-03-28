@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/copilotquotasnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -51,6 +52,7 @@ const (
 	TypeAccountGroup            = "AccountGroup"
 	TypeAnnouncement            = "Announcement"
 	TypeAnnouncementRead        = "AnnouncementRead"
+	TypeCopilotQuotaSnapshot    = "CopilotQuotaSnapshot"
 	TypeErrorPassthroughRule    = "ErrorPassthroughRule"
 	TypeGroup                   = "Group"
 	TypeIdempotencyRecord       = "IdempotencyRecord"
@@ -6875,6 +6877,954 @@ func (m *AnnouncementReadMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AnnouncementRead edge %s", name)
+}
+
+// CopilotQuotaSnapshotMutation represents an operation that mutates the CopilotQuotaSnapshot nodes in the graph.
+type CopilotQuotaSnapshotMutation struct {
+	config
+	op                     Op
+	typ                    string
+	id                     *int64
+	account_id             *int64
+	addaccount_id          *int64
+	snapshot_date          *time.Time
+	plan_type              *string
+	premium_entitlement    *int
+	addpremium_entitlement *int
+	premium_remaining      *int
+	addpremium_remaining   *int
+	premium_used           *int
+	addpremium_used        *int
+	premium_overage        *int
+	addpremium_overage     *int
+	unlimited              *bool
+	created_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*CopilotQuotaSnapshot, error)
+	predicates             []predicate.CopilotQuotaSnapshot
+}
+
+var _ ent.Mutation = (*CopilotQuotaSnapshotMutation)(nil)
+
+// copilotquotasnapshotOption allows management of the mutation configuration using functional options.
+type copilotquotasnapshotOption func(*CopilotQuotaSnapshotMutation)
+
+// newCopilotQuotaSnapshotMutation creates new mutation for the CopilotQuotaSnapshot entity.
+func newCopilotQuotaSnapshotMutation(c config, op Op, opts ...copilotquotasnapshotOption) *CopilotQuotaSnapshotMutation {
+	m := &CopilotQuotaSnapshotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCopilotQuotaSnapshot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCopilotQuotaSnapshotID sets the ID field of the mutation.
+func withCopilotQuotaSnapshotID(id int64) copilotquotasnapshotOption {
+	return func(m *CopilotQuotaSnapshotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CopilotQuotaSnapshot
+		)
+		m.oldValue = func(ctx context.Context) (*CopilotQuotaSnapshot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CopilotQuotaSnapshot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCopilotQuotaSnapshot sets the old CopilotQuotaSnapshot of the mutation.
+func withCopilotQuotaSnapshot(node *CopilotQuotaSnapshot) copilotquotasnapshotOption {
+	return func(m *CopilotQuotaSnapshotMutation) {
+		m.oldValue = func(context.Context) (*CopilotQuotaSnapshot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CopilotQuotaSnapshotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CopilotQuotaSnapshotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CopilotQuotaSnapshotMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CopilotQuotaSnapshotMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CopilotQuotaSnapshot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *CopilotQuotaSnapshotMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *CopilotQuotaSnapshotMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *CopilotQuotaSnapshotMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *CopilotQuotaSnapshotMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetSnapshotDate sets the "snapshot_date" field.
+func (m *CopilotQuotaSnapshotMutation) SetSnapshotDate(t time.Time) {
+	m.snapshot_date = &t
+}
+
+// SnapshotDate returns the value of the "snapshot_date" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) SnapshotDate() (r time.Time, exists bool) {
+	v := m.snapshot_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSnapshotDate returns the old "snapshot_date" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldSnapshotDate(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSnapshotDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSnapshotDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSnapshotDate: %w", err)
+	}
+	return oldValue.SnapshotDate, nil
+}
+
+// ResetSnapshotDate resets all changes to the "snapshot_date" field.
+func (m *CopilotQuotaSnapshotMutation) ResetSnapshotDate() {
+	m.snapshot_date = nil
+}
+
+// SetPlanType sets the "plan_type" field.
+func (m *CopilotQuotaSnapshotMutation) SetPlanType(s string) {
+	m.plan_type = &s
+}
+
+// PlanType returns the value of the "plan_type" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) PlanType() (r string, exists bool) {
+	v := m.plan_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlanType returns the old "plan_type" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldPlanType(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlanType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlanType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlanType: %w", err)
+	}
+	return oldValue.PlanType, nil
+}
+
+// ClearPlanType clears the value of the "plan_type" field.
+func (m *CopilotQuotaSnapshotMutation) ClearPlanType() {
+	m.plan_type = nil
+	m.clearedFields[copilotquotasnapshot.FieldPlanType] = struct{}{}
+}
+
+// PlanTypeCleared returns if the "plan_type" field was cleared in this mutation.
+func (m *CopilotQuotaSnapshotMutation) PlanTypeCleared() bool {
+	_, ok := m.clearedFields[copilotquotasnapshot.FieldPlanType]
+	return ok
+}
+
+// ResetPlanType resets all changes to the "plan_type" field.
+func (m *CopilotQuotaSnapshotMutation) ResetPlanType() {
+	m.plan_type = nil
+	delete(m.clearedFields, copilotquotasnapshot.FieldPlanType)
+}
+
+// SetPremiumEntitlement sets the "premium_entitlement" field.
+func (m *CopilotQuotaSnapshotMutation) SetPremiumEntitlement(i int) {
+	m.premium_entitlement = &i
+	m.addpremium_entitlement = nil
+}
+
+// PremiumEntitlement returns the value of the "premium_entitlement" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) PremiumEntitlement() (r int, exists bool) {
+	v := m.premium_entitlement
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPremiumEntitlement returns the old "premium_entitlement" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldPremiumEntitlement(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPremiumEntitlement is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPremiumEntitlement requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPremiumEntitlement: %w", err)
+	}
+	return oldValue.PremiumEntitlement, nil
+}
+
+// AddPremiumEntitlement adds i to the "premium_entitlement" field.
+func (m *CopilotQuotaSnapshotMutation) AddPremiumEntitlement(i int) {
+	if m.addpremium_entitlement != nil {
+		*m.addpremium_entitlement += i
+	} else {
+		m.addpremium_entitlement = &i
+	}
+}
+
+// AddedPremiumEntitlement returns the value that was added to the "premium_entitlement" field in this mutation.
+func (m *CopilotQuotaSnapshotMutation) AddedPremiumEntitlement() (r int, exists bool) {
+	v := m.addpremium_entitlement
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPremiumEntitlement resets all changes to the "premium_entitlement" field.
+func (m *CopilotQuotaSnapshotMutation) ResetPremiumEntitlement() {
+	m.premium_entitlement = nil
+	m.addpremium_entitlement = nil
+}
+
+// SetPremiumRemaining sets the "premium_remaining" field.
+func (m *CopilotQuotaSnapshotMutation) SetPremiumRemaining(i int) {
+	m.premium_remaining = &i
+	m.addpremium_remaining = nil
+}
+
+// PremiumRemaining returns the value of the "premium_remaining" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) PremiumRemaining() (r int, exists bool) {
+	v := m.premium_remaining
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPremiumRemaining returns the old "premium_remaining" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldPremiumRemaining(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPremiumRemaining is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPremiumRemaining requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPremiumRemaining: %w", err)
+	}
+	return oldValue.PremiumRemaining, nil
+}
+
+// AddPremiumRemaining adds i to the "premium_remaining" field.
+func (m *CopilotQuotaSnapshotMutation) AddPremiumRemaining(i int) {
+	if m.addpremium_remaining != nil {
+		*m.addpremium_remaining += i
+	} else {
+		m.addpremium_remaining = &i
+	}
+}
+
+// AddedPremiumRemaining returns the value that was added to the "premium_remaining" field in this mutation.
+func (m *CopilotQuotaSnapshotMutation) AddedPremiumRemaining() (r int, exists bool) {
+	v := m.addpremium_remaining
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPremiumRemaining resets all changes to the "premium_remaining" field.
+func (m *CopilotQuotaSnapshotMutation) ResetPremiumRemaining() {
+	m.premium_remaining = nil
+	m.addpremium_remaining = nil
+}
+
+// SetPremiumUsed sets the "premium_used" field.
+func (m *CopilotQuotaSnapshotMutation) SetPremiumUsed(i int) {
+	m.premium_used = &i
+	m.addpremium_used = nil
+}
+
+// PremiumUsed returns the value of the "premium_used" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) PremiumUsed() (r int, exists bool) {
+	v := m.premium_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPremiumUsed returns the old "premium_used" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldPremiumUsed(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPremiumUsed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPremiumUsed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPremiumUsed: %w", err)
+	}
+	return oldValue.PremiumUsed, nil
+}
+
+// AddPremiumUsed adds i to the "premium_used" field.
+func (m *CopilotQuotaSnapshotMutation) AddPremiumUsed(i int) {
+	if m.addpremium_used != nil {
+		*m.addpremium_used += i
+	} else {
+		m.addpremium_used = &i
+	}
+}
+
+// AddedPremiumUsed returns the value that was added to the "premium_used" field in this mutation.
+func (m *CopilotQuotaSnapshotMutation) AddedPremiumUsed() (r int, exists bool) {
+	v := m.addpremium_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPremiumUsed resets all changes to the "premium_used" field.
+func (m *CopilotQuotaSnapshotMutation) ResetPremiumUsed() {
+	m.premium_used = nil
+	m.addpremium_used = nil
+}
+
+// SetPremiumOverage sets the "premium_overage" field.
+func (m *CopilotQuotaSnapshotMutation) SetPremiumOverage(i int) {
+	m.premium_overage = &i
+	m.addpremium_overage = nil
+}
+
+// PremiumOverage returns the value of the "premium_overage" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) PremiumOverage() (r int, exists bool) {
+	v := m.premium_overage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPremiumOverage returns the old "premium_overage" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldPremiumOverage(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPremiumOverage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPremiumOverage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPremiumOverage: %w", err)
+	}
+	return oldValue.PremiumOverage, nil
+}
+
+// AddPremiumOverage adds i to the "premium_overage" field.
+func (m *CopilotQuotaSnapshotMutation) AddPremiumOverage(i int) {
+	if m.addpremium_overage != nil {
+		*m.addpremium_overage += i
+	} else {
+		m.addpremium_overage = &i
+	}
+}
+
+// AddedPremiumOverage returns the value that was added to the "premium_overage" field in this mutation.
+func (m *CopilotQuotaSnapshotMutation) AddedPremiumOverage() (r int, exists bool) {
+	v := m.addpremium_overage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPremiumOverage resets all changes to the "premium_overage" field.
+func (m *CopilotQuotaSnapshotMutation) ResetPremiumOverage() {
+	m.premium_overage = nil
+	m.addpremium_overage = nil
+}
+
+// SetUnlimited sets the "unlimited" field.
+func (m *CopilotQuotaSnapshotMutation) SetUnlimited(b bool) {
+	m.unlimited = &b
+}
+
+// Unlimited returns the value of the "unlimited" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) Unlimited() (r bool, exists bool) {
+	v := m.unlimited
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnlimited returns the old "unlimited" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldUnlimited(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnlimited is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnlimited requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnlimited: %w", err)
+	}
+	return oldValue.Unlimited, nil
+}
+
+// ResetUnlimited resets all changes to the "unlimited" field.
+func (m *CopilotQuotaSnapshotMutation) ResetUnlimited() {
+	m.unlimited = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CopilotQuotaSnapshotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CopilotQuotaSnapshotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CopilotQuotaSnapshot entity.
+// If the CopilotQuotaSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotQuotaSnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CopilotQuotaSnapshotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the CopilotQuotaSnapshotMutation builder.
+func (m *CopilotQuotaSnapshotMutation) Where(ps ...predicate.CopilotQuotaSnapshot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CopilotQuotaSnapshotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CopilotQuotaSnapshotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CopilotQuotaSnapshot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CopilotQuotaSnapshotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CopilotQuotaSnapshotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CopilotQuotaSnapshot).
+func (m *CopilotQuotaSnapshotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CopilotQuotaSnapshotMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.account_id != nil {
+		fields = append(fields, copilotquotasnapshot.FieldAccountID)
+	}
+	if m.snapshot_date != nil {
+		fields = append(fields, copilotquotasnapshot.FieldSnapshotDate)
+	}
+	if m.plan_type != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPlanType)
+	}
+	if m.premium_entitlement != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPremiumEntitlement)
+	}
+	if m.premium_remaining != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPremiumRemaining)
+	}
+	if m.premium_used != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPremiumUsed)
+	}
+	if m.premium_overage != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPremiumOverage)
+	}
+	if m.unlimited != nil {
+		fields = append(fields, copilotquotasnapshot.FieldUnlimited)
+	}
+	if m.created_at != nil {
+		fields = append(fields, copilotquotasnapshot.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CopilotQuotaSnapshotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case copilotquotasnapshot.FieldAccountID:
+		return m.AccountID()
+	case copilotquotasnapshot.FieldSnapshotDate:
+		return m.SnapshotDate()
+	case copilotquotasnapshot.FieldPlanType:
+		return m.PlanType()
+	case copilotquotasnapshot.FieldPremiumEntitlement:
+		return m.PremiumEntitlement()
+	case copilotquotasnapshot.FieldPremiumRemaining:
+		return m.PremiumRemaining()
+	case copilotquotasnapshot.FieldPremiumUsed:
+		return m.PremiumUsed()
+	case copilotquotasnapshot.FieldPremiumOverage:
+		return m.PremiumOverage()
+	case copilotquotasnapshot.FieldUnlimited:
+		return m.Unlimited()
+	case copilotquotasnapshot.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CopilotQuotaSnapshotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case copilotquotasnapshot.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case copilotquotasnapshot.FieldSnapshotDate:
+		return m.OldSnapshotDate(ctx)
+	case copilotquotasnapshot.FieldPlanType:
+		return m.OldPlanType(ctx)
+	case copilotquotasnapshot.FieldPremiumEntitlement:
+		return m.OldPremiumEntitlement(ctx)
+	case copilotquotasnapshot.FieldPremiumRemaining:
+		return m.OldPremiumRemaining(ctx)
+	case copilotquotasnapshot.FieldPremiumUsed:
+		return m.OldPremiumUsed(ctx)
+	case copilotquotasnapshot.FieldPremiumOverage:
+		return m.OldPremiumOverage(ctx)
+	case copilotquotasnapshot.FieldUnlimited:
+		return m.OldUnlimited(ctx)
+	case copilotquotasnapshot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CopilotQuotaSnapshot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CopilotQuotaSnapshotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case copilotquotasnapshot.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case copilotquotasnapshot.FieldSnapshotDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSnapshotDate(v)
+		return nil
+	case copilotquotasnapshot.FieldPlanType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlanType(v)
+		return nil
+	case copilotquotasnapshot.FieldPremiumEntitlement:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPremiumEntitlement(v)
+		return nil
+	case copilotquotasnapshot.FieldPremiumRemaining:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPremiumRemaining(v)
+		return nil
+	case copilotquotasnapshot.FieldPremiumUsed:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPremiumUsed(v)
+		return nil
+	case copilotquotasnapshot.FieldPremiumOverage:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPremiumOverage(v)
+		return nil
+	case copilotquotasnapshot.FieldUnlimited:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnlimited(v)
+		return nil
+	case copilotquotasnapshot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CopilotQuotaSnapshot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CopilotQuotaSnapshotMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, copilotquotasnapshot.FieldAccountID)
+	}
+	if m.addpremium_entitlement != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPremiumEntitlement)
+	}
+	if m.addpremium_remaining != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPremiumRemaining)
+	}
+	if m.addpremium_used != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPremiumUsed)
+	}
+	if m.addpremium_overage != nil {
+		fields = append(fields, copilotquotasnapshot.FieldPremiumOverage)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CopilotQuotaSnapshotMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case copilotquotasnapshot.FieldAccountID:
+		return m.AddedAccountID()
+	case copilotquotasnapshot.FieldPremiumEntitlement:
+		return m.AddedPremiumEntitlement()
+	case copilotquotasnapshot.FieldPremiumRemaining:
+		return m.AddedPremiumRemaining()
+	case copilotquotasnapshot.FieldPremiumUsed:
+		return m.AddedPremiumUsed()
+	case copilotquotasnapshot.FieldPremiumOverage:
+		return m.AddedPremiumOverage()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CopilotQuotaSnapshotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case copilotquotasnapshot.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case copilotquotasnapshot.FieldPremiumEntitlement:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPremiumEntitlement(v)
+		return nil
+	case copilotquotasnapshot.FieldPremiumRemaining:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPremiumRemaining(v)
+		return nil
+	case copilotquotasnapshot.FieldPremiumUsed:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPremiumUsed(v)
+		return nil
+	case copilotquotasnapshot.FieldPremiumOverage:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPremiumOverage(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CopilotQuotaSnapshot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CopilotQuotaSnapshotMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(copilotquotasnapshot.FieldPlanType) {
+		fields = append(fields, copilotquotasnapshot.FieldPlanType)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CopilotQuotaSnapshotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CopilotQuotaSnapshotMutation) ClearField(name string) error {
+	switch name {
+	case copilotquotasnapshot.FieldPlanType:
+		m.ClearPlanType()
+		return nil
+	}
+	return fmt.Errorf("unknown CopilotQuotaSnapshot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CopilotQuotaSnapshotMutation) ResetField(name string) error {
+	switch name {
+	case copilotquotasnapshot.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case copilotquotasnapshot.FieldSnapshotDate:
+		m.ResetSnapshotDate()
+		return nil
+	case copilotquotasnapshot.FieldPlanType:
+		m.ResetPlanType()
+		return nil
+	case copilotquotasnapshot.FieldPremiumEntitlement:
+		m.ResetPremiumEntitlement()
+		return nil
+	case copilotquotasnapshot.FieldPremiumRemaining:
+		m.ResetPremiumRemaining()
+		return nil
+	case copilotquotasnapshot.FieldPremiumUsed:
+		m.ResetPremiumUsed()
+		return nil
+	case copilotquotasnapshot.FieldPremiumOverage:
+		m.ResetPremiumOverage()
+		return nil
+	case copilotquotasnapshot.FieldUnlimited:
+		m.ResetUnlimited()
+		return nil
+	case copilotquotasnapshot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CopilotQuotaSnapshot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CopilotQuotaSnapshotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CopilotQuotaSnapshotMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CopilotQuotaSnapshotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CopilotQuotaSnapshotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CopilotQuotaSnapshotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CopilotQuotaSnapshotMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CopilotQuotaSnapshotMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CopilotQuotaSnapshot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CopilotQuotaSnapshotMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CopilotQuotaSnapshot edge %s", name)
 }
 
 // ErrorPassthroughRuleMutation represents an operation that mutates the ErrorPassthroughRule nodes in the graph.

@@ -338,6 +338,42 @@ var (
 			},
 		},
 	}
+	// CopilotQuotaSnapshotsColumns holds the columns for the "copilot_quota_snapshots" table.
+	CopilotQuotaSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "snapshot_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "plan_type", Type: field.TypeString, Nullable: true, Size: 30},
+		{Name: "premium_entitlement", Type: field.TypeInt, Default: 0},
+		{Name: "premium_remaining", Type: field.TypeInt, Default: 0},
+		{Name: "premium_used", Type: field.TypeInt, Default: 0},
+		{Name: "premium_overage", Type: field.TypeInt, Default: 0},
+		{Name: "unlimited", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// CopilotQuotaSnapshotsTable holds the schema information for the "copilot_quota_snapshots" table.
+	CopilotQuotaSnapshotsTable = &schema.Table{
+		Name:       "copilot_quota_snapshots",
+		Columns:    CopilotQuotaSnapshotsColumns,
+		PrimaryKey: []*schema.Column{CopilotQuotaSnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "copilotquotasnapshot_account_id_snapshot_date",
+				Unique:  true,
+				Columns: []*schema.Column{CopilotQuotaSnapshotsColumns[1], CopilotQuotaSnapshotsColumns[2]},
+			},
+			{
+				Name:    "copilotquotasnapshot_snapshot_date",
+				Unique:  false,
+				Columns: []*schema.Column{CopilotQuotaSnapshotsColumns[2]},
+			},
+			{
+				Name:    "copilotquotasnapshot_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{CopilotQuotaSnapshotsColumns[1]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1111,6 +1147,7 @@ var (
 		AccountGroupsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
+		CopilotQuotaSnapshotsTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1152,6 +1189,9 @@ func init() {
 	AnnouncementReadsTable.ForeignKeys[1].RefTable = UsersTable
 	AnnouncementReadsTable.Annotation = &entsql.Annotation{
 		Table: "announcement_reads",
+	}
+	CopilotQuotaSnapshotsTable.Annotation = &entsql.Annotation{
+		Table: "copilot_quota_snapshots",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

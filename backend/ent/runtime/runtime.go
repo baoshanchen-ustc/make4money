@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/copilotquotasnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -303,6 +304,36 @@ func init() {
 	announcementreadDescCreatedAt := announcementreadFields[3].Descriptor()
 	// announcementread.DefaultCreatedAt holds the default value on creation for the created_at field.
 	announcementread.DefaultCreatedAt = announcementreadDescCreatedAt.Default.(func() time.Time)
+	copilotquotasnapshotFields := schema.CopilotQuotaSnapshot{}.Fields()
+	_ = copilotquotasnapshotFields
+	// copilotquotasnapshotDescPlanType is the schema descriptor for plan_type field.
+	copilotquotasnapshotDescPlanType := copilotquotasnapshotFields[2].Descriptor()
+	// copilotquotasnapshot.PlanTypeValidator is a validator for the "plan_type" field. It is called by the builders before save.
+	copilotquotasnapshot.PlanTypeValidator = copilotquotasnapshotDescPlanType.Validators[0].(func(string) error)
+	// copilotquotasnapshotDescPremiumEntitlement is the schema descriptor for premium_entitlement field.
+	copilotquotasnapshotDescPremiumEntitlement := copilotquotasnapshotFields[3].Descriptor()
+	// copilotquotasnapshot.DefaultPremiumEntitlement holds the default value on creation for the premium_entitlement field.
+	copilotquotasnapshot.DefaultPremiumEntitlement = copilotquotasnapshotDescPremiumEntitlement.Default.(int)
+	// copilotquotasnapshotDescPremiumRemaining is the schema descriptor for premium_remaining field.
+	copilotquotasnapshotDescPremiumRemaining := copilotquotasnapshotFields[4].Descriptor()
+	// copilotquotasnapshot.DefaultPremiumRemaining holds the default value on creation for the premium_remaining field.
+	copilotquotasnapshot.DefaultPremiumRemaining = copilotquotasnapshotDescPremiumRemaining.Default.(int)
+	// copilotquotasnapshotDescPremiumUsed is the schema descriptor for premium_used field.
+	copilotquotasnapshotDescPremiumUsed := copilotquotasnapshotFields[5].Descriptor()
+	// copilotquotasnapshot.DefaultPremiumUsed holds the default value on creation for the premium_used field.
+	copilotquotasnapshot.DefaultPremiumUsed = copilotquotasnapshotDescPremiumUsed.Default.(int)
+	// copilotquotasnapshotDescPremiumOverage is the schema descriptor for premium_overage field.
+	copilotquotasnapshotDescPremiumOverage := copilotquotasnapshotFields[6].Descriptor()
+	// copilotquotasnapshot.DefaultPremiumOverage holds the default value on creation for the premium_overage field.
+	copilotquotasnapshot.DefaultPremiumOverage = copilotquotasnapshotDescPremiumOverage.Default.(int)
+	// copilotquotasnapshotDescUnlimited is the schema descriptor for unlimited field.
+	copilotquotasnapshotDescUnlimited := copilotquotasnapshotFields[7].Descriptor()
+	// copilotquotasnapshot.DefaultUnlimited holds the default value on creation for the unlimited field.
+	copilotquotasnapshot.DefaultUnlimited = copilotquotasnapshotDescUnlimited.Default.(bool)
+	// copilotquotasnapshotDescCreatedAt is the schema descriptor for created_at field.
+	copilotquotasnapshotDescCreatedAt := copilotquotasnapshotFields[8].Descriptor()
+	// copilotquotasnapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	copilotquotasnapshot.DefaultCreatedAt = copilotquotasnapshotDescCreatedAt.Default.(func() time.Time)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0

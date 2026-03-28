@@ -69,6 +69,18 @@ func (f AnnouncementReadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementReadMutation", m)
 }
 
+// The CopilotQuotaSnapshotFunc type is an adapter to allow the use of ordinary
+// function as CopilotQuotaSnapshot mutator.
+type CopilotQuotaSnapshotFunc func(context.Context, *ent.CopilotQuotaSnapshotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CopilotQuotaSnapshotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CopilotQuotaSnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CopilotQuotaSnapshotMutation", m)
+}
+
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary
 // function as ErrorPassthroughRule mutator.
 type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleMutation) (ent.Value, error)
