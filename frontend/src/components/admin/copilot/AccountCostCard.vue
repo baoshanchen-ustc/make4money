@@ -76,7 +76,10 @@ const props = defineProps<{
 const premiumUsed = computed(() => {
   const snap = props.account.quota_snapshot
   if (!snap) return 0
-  return snap.github_total_used + snap.external_used
+  // github_total_used is the authoritative total from GitHub API.
+  // external_used is a derived sub-component (github_total_used - system usage),
+  // so we must NOT add them together.
+  return snap.github_total_used
 })
 
 const premiumTotal = computed(() => {
@@ -88,8 +91,7 @@ const premiumTotal = computed(() => {
 const usagePercent = computed(() => {
   const snap = props.account.quota_snapshot
   if (!snap || snap.unlimited || snap.entitlement === 0) return 0
-  const used = snap.github_total_used + snap.external_used
-  return Math.min(100, Math.round((used / snap.entitlement) * 100))
+  return Math.min(100, Math.round((snap.github_total_used / snap.entitlement) * 100))
 })
 
 const statusBadgeClass = computed(() => {

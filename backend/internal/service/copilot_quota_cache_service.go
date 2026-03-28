@@ -91,14 +91,23 @@ func (s *CopilotQuotaCacheService) FetchAll(ctx context.Context) ([]CopilotCache
 	return result, nil
 }
 
-// FetchAllCached returns all quota entries from cache + any uncached accounts.
-// If an account is not in the cache, a real-time fetch is triggered.
+// FetchAllCached returns quota entries from the in-memory cache for all accounts.
+// If the cache is empty (cold start), a full real-time fetch is performed.
+// Individual cache entries expire after copilotQuotaCacheTTL (5 minutes);
+// go-cache handles TTL eviction automatically, so stale entries are never returned.
 // This is the primary call for the accounts overview page.
 func (s *CopilotQuotaCacheService) FetchAllCached(ctx context.Context) ([]CopilotCachedQuota, error) {
-	// For simplicity we always do a full refresh on cache miss.
-	// A partial miss (some accounts cached) still benefits from the cached TTL:
-	// FetchAllCopilotQuotas only hits GitHub API for uncached accounts.
-	// Since FetchAllCopilotQuotas is already concurrent, a full call is acceptable.
+	items := s.cache.Items()
+	if len(items) > 0 {
+		result := make([]CopilotCachedQuota, 0, len(items))
+		for _, item := range items {
+			if cq, ok := item.Object.(CopilotCachedQuota); ok {
+				result = append(result, cq)
+			}
+		}
+		return result, nil
+	}
+	// Cache is cold — do a full fetch and populate the cache.
 	return s.FetchAll(ctx)
 }
 
@@ -196,8 +205,10 @@ func AlertStatus(usageRate float64, threshold int) string {
 
 // buildSnapshot constructs a CopilotQuotaSnapshot from live quota info.
 func buildSnapshot(accountID int64, qi *copilotpkg.CopilotQuotaInfo, fetchedAt time.Time) *CopilotQuotaSnapshot {
-	// Truncate to date precision (midnight UTC) so one row per day.
-	date := time.Date(fetchedAt.Year(), fetchedAt.Month(), fetchedAt.Day(), 0, 0, 0, 0, time.UTC)
+	// Normalise to UTC before extracting year/month/day so the snapshot date is
+	// always the UTC calendar date regardless of server local timezone.
+	utc := fetchedAt.UTC()
+	date := time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
 
 	snap := &CopilotQuotaSnapshot{
 		AccountID:    accountID,

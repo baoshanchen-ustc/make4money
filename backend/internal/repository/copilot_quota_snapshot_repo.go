@@ -38,7 +38,8 @@ func (r *copilotQuotaSnapshotRepository) Upsert(ctx context.Context, snap *servi
 }
 
 // ListByAccountID returns snapshots for the account ordered by snapshot_date ASC.
-// Pass limit=0 to return all rows.
+// Pass limit=0 to return all rows. When limit > 0, the most recent `limit` rows
+// are returned (by snapshot_date DESC) and then reversed to ascending order.
 func (r *copilotQuotaSnapshotRepository) ListByAccountID(
 	ctx context.Context, accountID int64, limit int,
 ) ([]*service.CopilotQuotaSnapshot, error) {
@@ -46,7 +47,7 @@ func (r *copilotQuotaSnapshotRepository) ListByAccountID(
 
 	q := client.CopilotQuotaSnapshot.Query().
 		Where(dbcqs.AccountID(accountID)).
-		Order(dbent.Asc(dbcqs.FieldSnapshotDate))
+		Order(dbent.Desc(dbcqs.FieldSnapshotDate))
 
 	if limit > 0 {
 		q = q.Limit(limit)
@@ -57,9 +58,10 @@ func (r *copilotQuotaSnapshotRepository) ListByAccountID(
 		return nil, err
 	}
 
+	// Reverse to return in ascending date order for chart rendering.
 	result := make([]*service.CopilotQuotaSnapshot, len(rows))
 	for i, row := range rows {
-		result[i] = copilotQuotaSnapshotFromEnt(row)
+		result[len(rows)-1-i] = copilotQuotaSnapshotFromEnt(row)
 	}
 	return result, nil
 }

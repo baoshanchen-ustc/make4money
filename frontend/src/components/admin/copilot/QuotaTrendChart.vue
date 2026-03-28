@@ -1,6 +1,9 @@
 <template>
   <div>
     <div v-if="loading" class="flex h-32 items-center justify-center text-xs text-gray-400">加载中…</div>
+    <div v-else-if="loadError" class="flex h-32 items-center justify-center text-xs text-red-500">
+      加载失败：{{ loadError }}
+    </div>
     <div v-else-if="!data || data.trend.length === 0" class="flex h-32 items-center justify-center text-xs text-gray-400">
       暂无趋势数据
     </div>
@@ -31,11 +34,15 @@ const props = defineProps<{ accountId: number; days?: number }>()
 
 const loading = ref(false)
 const data = ref<CopilotAccountQuotaTrendResult | null>(null)
+const loadError = ref<string | null>(null)
 
 async function load() {
   loading.value = true
+  loadError.value = null
   try {
     data.value = await getCopilotAccountQuotaTrend(props.accountId, { days: props.days ?? 30 })
+  } catch (e: unknown) {
+    loadError.value = e instanceof Error ? e.message : String(e)
   } finally {
     loading.value = false
   }

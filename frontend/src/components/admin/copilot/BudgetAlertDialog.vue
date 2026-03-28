@@ -107,7 +107,10 @@ const form = ref({
 })
 
 watch(() => props.visible, (v) => {
-  if (v && props.initial) {
+  if (!v) return
+  // Always reset form when dialog opens, then overlay with existing config if present.
+  form.value = { monthly_budget: 0, alert_threshold: 80, enabled: true }
+  if (props.initial) {
     form.value = {
       monthly_budget: props.initial.monthly_budget,
       alert_threshold: props.initial.alert_threshold,

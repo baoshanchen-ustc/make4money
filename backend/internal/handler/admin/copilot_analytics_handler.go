@@ -237,6 +237,10 @@ func (h *CopilotAnalyticsHandler) UpsertBudgetAlert(c *gin.Context) {
 		response.BadRequest(c, "alert_threshold must be between 0 and 100")
 		return
 	}
+	if body.MonthlyBudget < 0 {
+		response.BadRequest(c, "monthly_budget must be non-negative")
+		return
+	}
 
 	alert := &service.CopilotBudgetAlert{
 		AccountID:      accountID,

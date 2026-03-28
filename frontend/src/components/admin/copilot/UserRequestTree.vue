@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { getCopilotUserRequests } from '@/api/admin/copilotAnalytics'
 import type { CopilotUserRequestsResult } from '@/api/admin/copilotAnalytics'
 
@@ -76,5 +76,9 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-onMounted(load)
+// Reload when date changes; also fires on initial mount (immediate: true).
+watch(() => [props.date, props.userId], () => {
+  page.value = 1
+  load()
+}, { immediate: true })
 </script>
