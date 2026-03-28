@@ -4173,7 +4173,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
-		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream, s.cancelStreamOnDisconnect())
 		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 		releaseUpstreamCtx()
 		if err != nil {
@@ -4255,7 +4255,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					//    also downgrade tool_use/tool_result blocks to text.
 
 					filteredBody := FilterThinkingBlocksForRetry(body)
-					retryCtx, releaseRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
+					retryCtx, releaseRetryCtx := detachStreamUpstreamContext(ctx, reqStream, s.cancelStreamOnDisconnect())
 					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
@@ -4290,7 +4290,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
 									logger.LegacyPrintf("service.gateway", "Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
 									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
-									retryCtx2, releaseRetryCtx2 := detachStreamUpstreamContext(ctx, reqStream)
+									retryCtx2, releaseRetryCtx2 := detachStreamUpstreamContext(ctx, reqStream, s.cancelStreamOnDisconnect())
 									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
@@ -4361,7 +4361,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					rectifiedBody, applied := RectifyThinkingBudget(body)
 					if applied && time.Since(retryStart) < maxRetryElapsed {
 						logger.LegacyPrintf("service.gateway", "Account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, BudgetRectifyBudgetTokens, BudgetRectifyMaxTokens)
-						budgetRetryCtx, releaseBudgetRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
+						budgetRetryCtx, releaseBudgetRetryCtx := detachStreamUpstreamContext(ctx, reqStream, s.cancelStreamOnDisconnect())
 						budgetRetryReq, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 						releaseBudgetRetryCtx()
 						if buildErr == nil {
@@ -4664,7 +4664,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	var resp *http.Response
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
-		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
+		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream, s.cancelStreamOnDisconnect())
 		upstreamReq, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
 		releaseUpstreamCtx()
 		if err != nil {
@@ -4915,6 +4915,8 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	startTime time.Time,
 	model string,
 ) (*streamingResult, error) {
+	cancelOnDisconnect := s.cancelStreamOnDisconnect()
+
 	if s.rateLimitService != nil {
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 	}
@@ -5052,9 +5054,17 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			if !clientDisconnected {
 				if _, err := io.WriteString(w, line); err != nil {
 					clientDisconnected = true
+					if cancelOnDisconnect {
+						logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected, canceling upstream stream: account=%d", account.ID)
+						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+					}
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				} else if _, err := io.WriteString(w, "\n"); err != nil {
 					clientDisconnected = true
+					if cancelOnDisconnect {
+						logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected, canceling upstream stream: account=%d", account.ID)
+						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+					}
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				} else if line == "" {
 					// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
@@ -6630,6 +6640,8 @@ type streamingResult struct {
 }
 
 func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (*streamingResult, error) {
+	cancelOnDisconnect := s.cancelStreamOnDisconnect()
+
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
@@ -6922,6 +6934,10 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 					if !clientDisconnected {
 						if _, werr := fmt.Fprint(w, block); werr != nil {
 							clientDisconnected = true
+							if cancelOnDisconnect {
+								logger.LegacyPrintf("service.gateway", "Client disconnected, canceling upstream stream")
+								return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+							}
 							logger.LegacyPrintf("service.gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 							break
 						}
@@ -6970,6 +6986,10 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			// 同时保持连接活跃防止 Cloudflare Tunnel 等代理断开
 			if _, werr := fmt.Fprint(w, "event: ping\ndata: {\"type\": \"ping\"}\n\n"); werr != nil {
 				clientDisconnected = true
+				if cancelOnDisconnect {
+					logger.LegacyPrintf("service.gateway", "Client disconnected, canceling upstream stream")
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+				}
 				logger.LegacyPrintf("service.gateway", "Client disconnected during keepalive ping, continuing to drain upstream for billing")
 				continue
 			}
@@ -7553,12 +7573,19 @@ func detachedBillingContext(ctx context.Context) (context.Context, context.Cance
 	return context.WithTimeout(base, postUsageBillingTimeout)
 }
 
-func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {
+func (s *GatewayService) cancelStreamOnDisconnect() bool {
+	return s != nil && s.cfg != nil && s.cfg.Gateway.CancelStreamOnClientDisconnect
+}
+
+func detachStreamUpstreamContext(ctx context.Context, stream bool, cancelOnDisconnect bool) (context.Context, context.CancelFunc) {
 	if !stream {
 		return ctx, func() {}
 	}
 	if ctx == nil {
 		return context.Background(), func() {}
+	}
+	if cancelOnDisconnect {
+		return ctx, func() {}
 	}
 	return context.WithoutCancel(ctx), func() {}
 }
