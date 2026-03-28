@@ -145,10 +145,11 @@ type CopilotAccountsOverviewResult struct {
 // ─────────────────────────────────────────────
 
 // GetUserStats returns per-user Copilot request counts for the given date.
-// date must be in "YYYY-MM-DD" format.
+// date must be in "YYYY-MM-DD" format; interpreted in the server's local timezone
+// (set via timezone.Init at startup, defaults to Asia/Shanghai).
 func (s *CopilotAnalyticsService) GetUserStats(ctx context.Context, date string, userID int64) (*CopilotUserStatsResult, error) {
-	// Determine date bounds in UTC.
-	day, err := time.Parse("2006-01-02", date)
+	// Parse date in local timezone so that date boundaries match the server's configured timezone.
+	day, err := time.ParseInLocation("2006-01-02", date, time.Local)
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: invalid date %q: %w", date, err)
 	}
@@ -221,7 +222,7 @@ ORDER BY premium_requests DESC, total_requests DESC
 
 // GetUserTimeline returns 24-hour bucket stats for a single user on a given date.
 func (s *CopilotAnalyticsService) GetUserTimeline(ctx context.Context, userID int64, date string) (*CopilotUserTimelineResult, error) {
-	day, err := time.Parse("2006-01-02", date)
+	day, err := time.ParseInLocation("2006-01-02", date, time.Local)
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: invalid date %q: %w", date, err)
 	}
@@ -280,7 +281,7 @@ ORDER BY hour
 func (s *CopilotAnalyticsService) GetUserRequests(
 	ctx context.Context, userID int64, date string, page, pageSize int,
 ) (*CopilotUserRequestsResult, error) {
-	day, err := time.Parse("2006-01-02", date)
+	day, err := time.ParseInLocation("2006-01-02", date, time.Local)
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: invalid date %q: %w", date, err)
 	}
@@ -522,7 +523,7 @@ func (s *CopilotAnalyticsService) GetAccountQuotaTrend(ctx context.Context, acco
 
 // GetAccountHourlyStats returns 24-hour bucket stats for an account on a given date.
 func (s *CopilotAnalyticsService) GetAccountHourlyStats(ctx context.Context, accountID int64, date string) ([]CopilotHourlyBucket, error) {
-	day, err := time.Parse("2006-01-02", date)
+	day, err := time.ParseInLocation("2006-01-02", date, time.Local)
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: invalid date %q: %w", date, err)
 	}
@@ -573,9 +574,9 @@ ORDER BY hour
 func (s *CopilotAnalyticsService) fetchAccountUsageCounts(ctx context.Context) (
 	today map[int64]int, month map[int64]int, err error,
 ) {
-	now := time.Now().UTC()
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	now := time.Now() // uses time.Local (set by timezone.Init to Asia/Shanghai)
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 
 	query := `
 SELECT

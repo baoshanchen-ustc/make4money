@@ -43,7 +43,7 @@ func NewCopilotAnalyticsHandler(
 func (h *CopilotAnalyticsHandler) GetUserStats(c *gin.Context) {
 	date := strings.TrimSpace(c.Query("date"))
 	if date == "" {
-		date = time.Now().UTC().Format("2006-01-02")
+		date = time.Now().Format("2006-01-02")
 	}
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		response.BadRequest(c, "invalid date format, expected YYYY-MM-DD")
@@ -78,7 +78,7 @@ func (h *CopilotAnalyticsHandler) GetUserTimeline(c *gin.Context) {
 
 	date := strings.TrimSpace(c.Query("date"))
 	if date == "" {
-		date = time.Now().UTC().Format("2006-01-02")
+		date = time.Now().Format("2006-01-02")
 	}
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		response.BadRequest(c, "invalid date format, expected YYYY-MM-DD")
@@ -103,7 +103,7 @@ func (h *CopilotAnalyticsHandler) GetUserRequests(c *gin.Context) {
 
 	date := strings.TrimSpace(c.Query("date"))
 	if date == "" {
-		date = time.Now().UTC().Format("2006-01-02")
+		date = time.Now().Format("2006-01-02")
 	}
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		response.BadRequest(c, "invalid date format, expected YYYY-MM-DD")
@@ -175,7 +175,7 @@ func (h *CopilotAnalyticsHandler) GetAccountHourlyStats(c *gin.Context) {
 
 	date := strings.TrimSpace(c.Query("date"))
 	if date == "" {
-		date = time.Now().UTC().Format("2006-01-02")
+		date = time.Now().Format("2006-01-02")
 	}
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		response.BadRequest(c, "invalid date format, expected YYYY-MM-DD")

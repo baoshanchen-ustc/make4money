@@ -144,7 +144,16 @@ import UserRequestTree from '@/components/admin/copilot/UserRequestTree.vue'
 
 const { t } = useI18n()
 
-const selectedDate = ref(new Date().toISOString().split('T')[0])
+// 使用本地日期（而非 UTC），避免 +08:00 时区用户深夜访问时取到"昨天"的 UTC 日期
+function localDateString(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const selectedDate = ref(localDateString())
 const searchQuery = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
