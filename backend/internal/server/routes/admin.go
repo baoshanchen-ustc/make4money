@@ -87,6 +87,9 @@ func RegisterAdminRoutes(
 
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
+
+		// Copilot 成本分析
+		registerCopilotAnalyticsRoutes(admin, h)
 	}
 }
 
@@ -564,5 +567,30 @@ func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		rules.POST("", h.Admin.ErrorPassthrough.Create)
 		rules.PUT("/:id", h.Admin.ErrorPassthrough.Update)
 		rules.DELETE("/:id", h.Admin.ErrorPassthrough.Delete)
+	}
+}
+
+func registerCopilotAnalyticsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.CopilotAnalytics == nil {
+		return
+	}
+	copilot := admin.Group("/copilot")
+	{
+		// 用户维度
+		users := copilot.Group("/users")
+		{
+			users.GET("/stats", h.Admin.CopilotAnalytics.GetUserStats)
+			users.GET("/:id/timeline", h.Admin.CopilotAnalytics.GetUserTimeline)
+			users.GET("/:id/requests", h.Admin.CopilotAnalytics.GetUserRequests)
+		}
+		// 账户维度
+		accounts := copilot.Group("/accounts")
+		{
+			accounts.GET("/overview", h.Admin.CopilotAnalytics.GetAccountsOverview)
+			accounts.GET("/:id/quota-trend", h.Admin.CopilotAnalytics.GetAccountQuotaTrend)
+			accounts.GET("/:id/hourly-stats", h.Admin.CopilotAnalytics.GetAccountHourlyStats)
+			accounts.POST("/:id/quota-refresh", h.Admin.CopilotAnalytics.QuotaRefresh)
+			accounts.PUT("/:id/budget", h.Admin.CopilotAnalytics.UpsertBudgetAlert)
+		}
 	}
 }
