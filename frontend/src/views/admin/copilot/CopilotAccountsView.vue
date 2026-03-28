@@ -1,5 +1,6 @@
 <template>
-  <div class="container mx-auto max-w-7xl px-4 py-6">
+  <AppLayout>
+    <div class="space-y-6">
     <!-- Header -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -124,7 +125,8 @@
       @saved="onBudgetSaved"
       @error="onBudgetError"
     />
-  </div>
+    </div>
+  </AppLayout>
 </template>
 
 <script setup lang="ts">
@@ -139,6 +141,7 @@ import type {
   CopilotAccountOverviewEntry,
   CopilotAccountBudgetAlertInfo,
 } from '@/api/admin/copilotAnalytics'
+import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import SummaryCard from '@/components/admin/copilot/CopilotSummaryCard.vue'
 import AccountCostCard from '@/components/admin/copilot/AccountCostCard.vue'

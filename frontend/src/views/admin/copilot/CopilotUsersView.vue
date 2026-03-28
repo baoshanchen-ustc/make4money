@@ -1,5 +1,6 @@
 <template>
-  <div class="container mx-auto max-w-7xl px-4 py-6">
+  <AppLayout>
+    <div class="space-y-6">
     <!-- Header -->
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
@@ -127,7 +128,8 @@
         </tbody>
       </table>
     </div>
-  </div>
+    </div>
+  </AppLayout>
 </template>
 
 <script setup lang="ts">
@@ -135,6 +137,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getCopilotUserStats } from '@/api/admin/copilotAnalytics'
 import type { CopilotUserStatsResult } from '@/api/admin/copilotAnalytics'
+import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import SummaryCard from '@/components/admin/copilot/CopilotSummaryCard.vue'
 import UserRequestTree from '@/components/admin/copilot/UserRequestTree.vue'
