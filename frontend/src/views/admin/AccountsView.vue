@@ -7,6 +7,7 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
+            :proxies="proxies"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -594,7 +595,7 @@ const {
   handlePageSizeChange: baseHandlePageSizeChange
 } = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
-  initialParams: { platform: '', type: '', status: '', privacy_mode: '', group: '', search: '' }
+  initialParams: { platform: '', type: '', status: '', privacy_mode: '', group: '', proxy_id: '', search: '' }
 })
 
 const {
@@ -773,6 +774,7 @@ const refreshAccountsIncrementally = async () => {
         status?: string
         privacy_mode?: string
         group?: string
+        proxy_id?: string
         search?: string
 
       },

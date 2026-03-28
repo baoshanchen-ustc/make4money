@@ -37,6 +37,7 @@ export async function list(
     group?: string
     search?: string
     privacy_mode?: string
+    proxy_id?: string
     lite?: string
   },
   options?: {
@@ -70,6 +71,7 @@ export async function listWithEtag(
     group?: string
     search?: string
     privacy_mode?: string
+    proxy_id?: string
     lite?: string
   },
   options?: {

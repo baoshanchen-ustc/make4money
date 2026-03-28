@@ -1908,6 +1908,8 @@ export default {
       allTypes: 'All Types',
       allStatus: 'All Status',
       allGroups: 'All Groups',
+      allProxies: 'All Proxies',
+      searchProxyPlaceholder: 'Search proxy name / host / ID...',
       ungroupedGroup: 'Ungrouped',
       oauthType: 'OAuth',
       setupToken: 'Setup Token',
