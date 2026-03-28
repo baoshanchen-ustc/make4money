@@ -361,6 +361,18 @@ func (s *CopilotGatewayService) handleErrorResponse(
 	}, nil
 }
 
+// CopilotInitiatorFromBody returns the Copilot initiator type for the given
+// OpenAI-format request body: "agent" when the conversation already contains an
+// assistant or tool message (multi-turn / sub-agent call), "user" otherwise.
+//
+// The value maps directly to the X-Initiator request header sent to GitHub
+// Copilot and determines which quota bucket the request draws from:
+//   - "user"  → Premium Interaction quota (paid)
+//   - "agent" → standard quota (free sub-request)
+func CopilotInitiatorFromBody(openAIBody []byte) string {
+	return copilotInitiator(openAIBody)
+}
+
 // copilotInitiator returns the value for the X-Initiator header.
 //
 // When the conversation already includes an assistant or tool message
