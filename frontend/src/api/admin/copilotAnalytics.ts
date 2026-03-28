@@ -149,7 +149,7 @@ export async function getCopilotUserStats(params: {
   user_id?: number
 }): Promise<CopilotUserStatsResult> {
   const { data } = await apiClient.get(`${BASE}/users/stats`, { params })
-  return data.data
+  return data
 }
 
 export async function getCopilotUserTimeline(
@@ -157,7 +157,7 @@ export async function getCopilotUserTimeline(
   params: { date?: string },
 ): Promise<CopilotUserTimelineResult> {
   const { data } = await apiClient.get(`${BASE}/users/${userId}/timeline`, { params })
-  return data.data
+  return data
 }
 
 export async function getCopilotUserRequests(
@@ -165,14 +165,14 @@ export async function getCopilotUserRequests(
   params: { date?: string; page?: number; page_size?: number },
 ): Promise<CopilotUserRequestsResult> {
   const { data } = await apiClient.get(`${BASE}/users/${userId}/requests`, { params })
-  return data.data
+  return data
 }
 
 // 账户维度
 
 export async function getCopilotAccountsOverview(): Promise<CopilotAccountsOverviewResult> {
   const { data } = await apiClient.get(`${BASE}/accounts/overview`)
-  return data.data
+  return data
 }
 
 export async function getCopilotAccountQuotaTrend(
@@ -180,7 +180,7 @@ export async function getCopilotAccountQuotaTrend(
   params: { days?: number } = {},
 ): Promise<CopilotAccountQuotaTrendResult> {
   const { data } = await apiClient.get(`${BASE}/accounts/${accountId}/quota-trend`, { params })
-  return data.data
+  return data
 }
 
 export async function getCopilotAccountHourlyStats(
@@ -188,12 +188,12 @@ export async function getCopilotAccountHourlyStats(
   params: { date?: string } = {},
 ): Promise<CopilotAccountHourlyStatsResult> {
   const { data } = await apiClient.get(`${BASE}/accounts/${accountId}/hourly-stats`, { params })
-  return data.data
+  return data
 }
 
 export async function refreshCopilotAccountQuota(accountId: number): Promise<unknown> {
   const { data } = await apiClient.post(`${BASE}/accounts/${accountId}/quota-refresh`)
-  return data.data
+  return data
 }
 
 export async function upsertCopilotBudgetAlert(
@@ -201,5 +201,5 @@ export async function upsertCopilotBudgetAlert(
   body: BudgetAlertUpsertRequest,
 ): Promise<unknown> {
   const { data } = await apiClient.put(`${BASE}/accounts/${accountId}/budget`, body)
-  return data.data
+  return data
 }
