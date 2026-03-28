@@ -86,3 +86,30 @@ export type { BalanceHistoryItem } from './users'
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { CopilotQuotaDetail, CopilotQuotaInfo, CopilotAccountQuotaSummary } from './accounts'
+export type {
+  CopilotUserStatsResult,
+  CopilotUserStatEntry,
+  CopilotHourlyBucket,
+  CopilotUserTimelineResult,
+  CopilotRequestItem,
+  CopilotUserRequestsResult,
+  CopilotAccountsOverviewResult,
+  CopilotAccountOverviewEntry,
+  CopilotAccountQuotaSnapshot,
+  CopilotAccountBudgetAlertInfo,
+  CopilotAlertStatus,
+  CopilotAccountQuotaTrendResult,
+  CopilotQuotaSnapshotTrendEntry,
+  CopilotAccountHourlyStatsResult,
+  BudgetAlertUpsertRequest,
+} from './copilotAnalytics'
+export {
+  getCopilotUserStats,
+  getCopilotUserTimeline,
+  getCopilotUserRequests,
+  getCopilotAccountsOverview,
+  getCopilotAccountQuotaTrend,
+  getCopilotAccountHourlyStats,
+  refreshCopilotAccountQuota,
+  upsertCopilotBudgetAlert,
+} from './copilotAnalytics'
