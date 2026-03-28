@@ -152,6 +152,15 @@ func (UsageLog) Fields() []ent.Field {
 		field.Bool("cache_ttl_overridden").
 			Default(false),
 
+		// initiator: 请求发起类型
+		// 'user'  = 用户首轮请求，消耗 Premium Interactions 配额
+		// 'agent' = 任务内子请求（含 assistant/tool 历史消息），消耗标准配额
+		// 非 Copilot 平台统一写 'user'
+		field.String("initiator").
+			MaxLen(10).
+			Default("user").
+			Comment("Request initiator type: 'user' (premium) or 'agent' (standard sub-request)."),
+
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").
 			Default(time.Now).
@@ -205,5 +214,8 @@ func (UsageLog) Indexes() []ent.Index {
 		index.Fields("api_key_id", "created_at"),
 		// 分组维度时间范围查询（线上由 SQL 迁移创建 group_id IS NOT NULL 的部分索引）
 		index.Fields("group_id", "created_at"),
+		// Copilot 分析查询复合索引
+		index.Fields("account_id", "initiator", "created_at"),
+		index.Fields("user_id", "initiator", "created_at"),
 	}
 }

@@ -341,6 +341,8 @@ export default {
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     opsRequestInspect: 'Request inspect',
+    copilotUsers: 'Copilot User Requests',
+    copilotAccounts: 'Copilot Account Costs',
     promoCodes: 'Promo Codes',
     settings: 'Settings',
     myAccount: 'My Account',
@@ -2851,6 +2853,8 @@ export default {
         maxBodyBytesLabel: 'Request body limit (KB)',
         maxBodyBytesHint: 'Reject requests exceeding this size and prompt the user to reduce context. Leave empty for system default 400 KB.',
         maxBodyBytesInvalid: 'Request body limit must be a positive integer (KB)',
+        seatCountLabel: 'Seat count (for cost analytics)',
+        seatCountHint: 'Number of Copilot licensed seats for this account, used to calculate monthly plan cost.',
         deviceOAuth: 'GitHub Login (Recommended)',
         deviceOAuthDesc: 'Login via browser, works with org Copilot',
         patMethod: 'Personal Access Token',
@@ -3425,6 +3429,54 @@ export default {
           canceled: 'Canceled'
         }
       }
+    },
+
+    // Copilot Analytics
+    copilot: {
+      users: {
+        title: 'Copilot User Requests',
+        description: 'View per-user Copilot premium request and sub-request statistics',
+        premiumRequests: 'Total Premium Requests',
+        agentRequests: 'Total Agent Sub-Requests',
+        activeUsers: 'Active Users',
+        userTable: 'User Request Details',
+        searchPlaceholder: 'Search username…',
+        noData: 'No data available',
+        username: 'Username',
+        agentCol: 'Agent Requests',
+        models: 'Models Used',
+        lastRequest: 'Last Request',
+      },
+      accounts: {
+        title: 'Copilot Account Costs',
+        description: 'View Copilot account quota usage, plan costs, and budget alerts',
+        noData: 'No account data',
+        refreshing: 'Refreshing quota…',
+        refreshSuccess: 'Quota refreshed',
+        refreshFailed: 'Quota refresh failed',
+        budgetSaved: 'Budget alert saved',
+        budgetFailed: 'Failed to save budget alert',
+        accountName: 'Account',
+        plan: 'Plan',
+        seats: 'Seats',
+        premiumUsed: 'Premium Used',
+        premiumTotal: 'Premium Total',
+        monthlyCost: 'Monthly Cost',
+        budgetAlert: 'Budget Alert',
+        actions: 'Actions',
+        setBudget: 'Set Alert',
+        refreshQuota: 'Refresh Quota',
+        budgetDialog: {
+          title: 'Set Quota Alert',
+          threshold: 'Reference Monthly Budget (USD)',
+          thresholdHint: 'Reference only — not used in alert calculation',
+          email: 'Alert Email',
+          emailHint: 'Leave empty to use account default email',
+          enabled: 'Enable Alert',
+          save: 'Save',
+          cancel: 'Cancel',
+        },
+      },
     },
 
     // Ops Monitoring

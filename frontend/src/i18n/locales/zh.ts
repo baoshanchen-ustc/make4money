@@ -342,6 +342,8 @@ export default {
     redeemCodes: '兑换码',
     ops: '运维监控',
     opsRequestInspect: '请求排查',
+    copilotUsers: 'Copilot 用户请求',
+    copilotAccounts: 'Copilot 账户成本',
     promoCodes: '优惠码',
     settings: '系统设置',
     myAccount: '我的账户',
@@ -2984,6 +2986,8 @@ export default {
         maxBodyBytesLabel: '请求体大小上限 (KB)',
         maxBodyBytesHint: '单次请求体超过此限制时直接拒绝并提示用户缩减上下文。留空使用系统默认 400 KB。',
         maxBodyBytesInvalid: '请求体限制必须为正整数（KB）',
+        seatCountLabel: '座席数（用于成本统计）',
+        seatCountHint: '此账户的 Copilot 授权座席数量，用于计算月度套餐费用。',
         deviceOAuth: 'GitHub 登录（推荐）',
         deviceOAuthDesc: '通过浏览器登录，支持组织 Copilot',
         patMethod: '个人访问令牌',
@@ -3586,6 +3590,54 @@ export default {
           canceled: '已取消'
         }
       }
+    },
+
+    // Copilot Analytics
+    copilot: {
+      users: {
+        title: 'Copilot 用户请求分析',
+        description: '查看各用户的 Copilot Premium 请求与子请求统计',
+        premiumRequests: 'Premium 请求总数',
+        agentRequests: 'Agent 子请求总数',
+        activeUsers: '活跃用户数',
+        userTable: '用户请求明细',
+        searchPlaceholder: '搜索用户名…',
+        noData: '暂无数据',
+        username: '用户名',
+        agentCol: 'Agent 请求',
+        models: '使用模型',
+        lastRequest: '最近请求',
+      },
+      accounts: {
+        title: 'Copilot 账户成本分析',
+        description: '查看 Copilot 账户配额消耗、套餐费用与预算告警',
+        noData: '暂无账户数据',
+        refreshing: '刷新配额中…',
+        refreshSuccess: '配额刷新成功',
+        refreshFailed: '配额刷新失败',
+        budgetSaved: '预算告警已保存',
+        budgetFailed: '保存预算告警失败',
+        accountName: '账户名',
+        plan: '套餐',
+        seats: '座席',
+        premiumUsed: 'Premium 已用',
+        premiumTotal: 'Premium 总量',
+        monthlyCost: '月度费用',
+        budgetAlert: '预算告警',
+        actions: '操作',
+        setBudget: '设置告警',
+        refreshQuota: '刷新配额',
+        budgetDialog: {
+          title: '设置配额告警',
+          threshold: '参考月预算 (USD)',
+          thresholdHint: '参考金额，仅供展示，不参与告警计算',
+          email: '告警邮箱',
+          emailHint: '留空则使用账户默认邮箱',
+          enabled: '启用告警',
+          save: '保存',
+          cancel: '取消',
+        },
+      },
     },
 
     // Ops Monitoring

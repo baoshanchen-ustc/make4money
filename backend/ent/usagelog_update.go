@@ -774,6 +774,20 @@ func (_u *UsageLogUpdate) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdate
 	return _u
 }
 
+// SetInitiator sets the "initiator" field.
+func (_u *UsageLogUpdate) SetInitiator(v string) *UsageLogUpdate {
+	_u.mutation.SetInitiator(v)
+	return _u
+}
+
+// SetNillableInitiator sets the "initiator" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableInitiator(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetInitiator(*v)
+	}
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdate) SetUser(v *User) *UsageLogUpdate {
 	return _u.SetUserID(v.ID)
@@ -896,6 +910,11 @@ func (_u *UsageLogUpdate) check() error {
 	if v, ok := _u.mutation.MediaType(); ok {
 		if err := usagelog.MediaTypeValidator(v); err != nil {
 			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "UsageLog.media_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Initiator(); ok {
+		if err := usagelog.InitiatorValidator(v); err != nil {
+			return &ValidationError{Name: "initiator", err: fmt.Errorf(`ent: validator failed for field "UsageLog.initiator": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1116,6 +1135,9 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Initiator(); ok {
+		_spec.SetField(usagelog.FieldInitiator, field.TypeString, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2024,6 +2046,20 @@ func (_u *UsageLogUpdateOne) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpd
 	return _u
 }
 
+// SetInitiator sets the "initiator" field.
+func (_u *UsageLogUpdateOne) SetInitiator(v string) *UsageLogUpdateOne {
+	_u.mutation.SetInitiator(v)
+	return _u
+}
+
+// SetNillableInitiator sets the "initiator" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableInitiator(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetInitiator(*v)
+	}
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdateOne) SetUser(v *User) *UsageLogUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -2159,6 +2195,11 @@ func (_u *UsageLogUpdateOne) check() error {
 	if v, ok := _u.mutation.MediaType(); ok {
 		if err := usagelog.MediaTypeValidator(v); err != nil {
 			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "UsageLog.media_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Initiator(); ok {
+		if err := usagelog.InitiatorValidator(v); err != nil {
+			return &ValidationError{Name: "initiator", err: fmt.Errorf(`ent: validator failed for field "UsageLog.initiator": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -2396,6 +2437,9 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Initiator(); ok {
+		_spec.SetField(usagelog.FieldInitiator, field.TypeString, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

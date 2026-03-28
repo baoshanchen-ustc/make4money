@@ -28,7 +28,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, auth_latency_ms, routing_latency_ms, upstream_latency_ms, response_latency_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, request_body_bytes, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, auth_latency_ms, routing_latency_ms, upstream_latency_ms, response_latency_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, request_body_bytes, initiator, created_at"
 
 var usageLogInsertArgTypes = [...]string{
 	"bigint",
@@ -74,6 +74,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",
 	"boolean",
 	"integer",
+	"text",       // initiator
 	"timestamptz",
 }
 
@@ -321,6 +322,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			upstream_endpoint,
 			cache_ttl_overridden,
 			request_body_bytes,
+			initiator,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
@@ -328,7 +330,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$9, $10, $11, $12,
 			$13, $14,
 			$15, $16, $17, $18, $19, $20,
-			$21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44
+			$21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -757,6 +759,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			upstream_endpoint,
 			cache_ttl_overridden,
 			request_body_bytes,
+			initiator,
 			created_at
 		) AS (VALUES `)
 
@@ -964,6 +967,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			upstream_endpoint,
 			cache_ttl_overridden,
 			request_body_bytes,
+			initiator,
 			created_at
 		) AS (VALUES `)
 
@@ -1036,6 +1040,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			upstream_endpoint,
 			cache_ttl_overridden,
 			request_body_bytes,
+			initiator,
 			created_at
 		)
 		SELECT
@@ -1082,6 +1087,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			upstream_endpoint,
 			cache_ttl_overridden,
 			request_body_bytes,
+			initiator,
 			created_at
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1136,6 +1142,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			upstream_endpoint,
 			cache_ttl_overridden,
 			request_body_bytes,
+			initiator,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
@@ -1143,7 +1150,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$9, $10, $11, $12,
 			$13, $14,
 			$15, $16, $17, $18, $19, $20,
-			$21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44
+			$21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1235,6 +1242,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			upstreamEndpoint,
 			log.CacheTTLOverridden,
 			nullInt(log.RequestBodyBytes),
+			log.Initiator,
 			createdAt,
 		},
 	}
@@ -3980,6 +3988,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		upstreamEndpoint      sql.NullString
 		cacheTTLOverridden    bool
 		requestBodyBytes      sql.NullInt64
+		initiator             string
 		createdAt             time.Time
 	)
 
@@ -4028,6 +4037,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&upstreamEndpoint,
 		&cacheTTLOverridden,
 		&requestBodyBytes,
+		&initiator,
 		&createdAt,
 	); err != nil {
 		return nil, err
@@ -4057,6 +4067,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		RequestType:           service.RequestTypeFromInt16(requestTypeRaw),
 		ImageCount:            imageCount,
 		CacheTTLOverridden:    cacheTTLOverridden,
+		Initiator:             initiator,
 		CreatedAt:             createdAt,
 	}
 	// 先回填 legacy 字段，再基于 legacy + request_type 计算最终请求类型，保证历史数据兼容。

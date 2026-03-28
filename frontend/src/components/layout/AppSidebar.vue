@@ -602,6 +602,8 @@ const adminNavItems = computed((): NavItem[] => {
           { path: '/admin/ops/request-inspect', label: t('nav.opsRequestInspect'), icon: InspectIcon }
         ]
       : []),
+    { path: '/admin/copilot/users', label: t('nav.copilotUsers'), icon: UsersIcon },
+    { path: '/admin/copilot/accounts', label: t('nav.copilotAccounts'), icon: CreditCardIcon },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },

@@ -432,6 +432,19 @@
           </div>
           <p class="input-hint mt-1.5">{{ t('admin.accounts.copilot.planTypeHint') }}</p>
         </div>
+        <!-- Seat count (for cost analytics) -->
+        <div>
+          <label class="input-label">{{ t('admin.accounts.copilot.seatCountLabel') }}</label>
+          <input
+            v-model.number="copilotSeatCount"
+            type="number"
+            min="1"
+            step="1"
+            class="input font-mono w-32"
+            placeholder="1"
+          />
+          <p class="input-hint">{{ t('admin.accounts.copilot.seatCountHint') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.copilot.maxOutputTokensLabel') }}</label>
           <input
@@ -1938,6 +1951,8 @@ const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
 const editGithubToken = ref('')
 const copilotEditPlanType = ref('individual_pro') // individual_free | individual_pro | individual_pro_plus | business | enterprise
+/** 座席数，用于成本分析；默认 1 */
+const copilotSeatCount = ref(1)
 /** Copilot Sonnet/Opus max_tokens ceiling; empty = default 8192; "0" = do not clamp */
 const copilotMaxOutputTokens = ref('')
 /** Copilot per-account request body size limit in KB; empty = system default (400 KB) */
@@ -2170,6 +2185,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
   copilotMaxOutputTokens.value = ''
   copilotMaxBodyKB.value = ''
+  copilotSeatCount.value = 1
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
 
@@ -2317,6 +2333,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           } else {
             copilotMaxBodyKB.value = ''
           }
+          // Load seat count for cost analytics
+          const rawSeatCount = (newAccount.extra as Record<string, unknown> | undefined)?.copilot_seat_count
+          copilotSeatCount.value = (typeof rawSeatCount === 'number' && rawSeatCount >= 1) ? rawSeatCount : 1
         } else {
           const platformDefaultUrl =
             newAccount.platform === 'openai' || newAccount.platform === 'sora'
@@ -2965,6 +2984,9 @@ const handleSubmit = async () => {
           }
           copilotExtra.max_body_bytes = kb * 1024
         }
+        // Persist plan type and seat count for cost analytics
+        copilotExtra.copilot_plan_type = copilotEditPlanType.value || 'individual_pro'
+        copilotExtra.copilot_seat_count = Math.max(1, copilotSeatCount.value || 1)
         updatePayload.extra = copilotExtra
       } else {
         const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)

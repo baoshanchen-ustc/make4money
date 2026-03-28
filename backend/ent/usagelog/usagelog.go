@@ -86,6 +86,8 @@ const (
 	FieldMediaType = "media_type"
 	// FieldCacheTTLOverridden holds the string denoting the cache_ttl_overridden field in the database.
 	FieldCacheTTLOverridden = "cache_ttl_overridden"
+	// FieldInitiator holds the string denoting the initiator field in the database.
+	FieldInitiator = "initiator"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
@@ -176,6 +178,7 @@ var Columns = []string{
 	FieldImageSize,
 	FieldMediaType,
 	FieldCacheTTLOverridden,
+	FieldInitiator,
 	FieldCreatedAt,
 }
 
@@ -238,6 +241,10 @@ var (
 	MediaTypeValidator func(string) error
 	// DefaultCacheTTLOverridden holds the default value on creation for the "cache_ttl_overridden" field.
 	DefaultCacheTTLOverridden bool
+	// DefaultInitiator holds the default value on creation for the "initiator" field.
+	DefaultInitiator string
+	// InitiatorValidator is a validator for the "initiator" field. It is called by the builders before save.
+	InitiatorValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 )
@@ -428,6 +435,11 @@ func ByMediaType(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheTTLOverridden orders the results by the cache_ttl_overridden field.
 func ByCacheTTLOverridden(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheTTLOverridden, opts...).ToFunc()
+}
+
+// ByInitiator orders the results by the initiator field.
+func ByInitiator(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldInitiator, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

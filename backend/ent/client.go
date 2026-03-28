@@ -20,6 +20,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/copilotbudgetalert"
+	"github.com/Wei-Shaw/sub2api/ent/copilotquotasnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -55,6 +57,10 @@ type Client struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// CopilotBudgetAlert is the client for interacting with the CopilotBudgetAlert builders.
+	CopilotBudgetAlert *CopilotBudgetAlertClient
+	// CopilotQuotaSnapshot is the client for interacting with the CopilotQuotaSnapshot builders.
+	CopilotQuotaSnapshot *CopilotQuotaSnapshotClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
@@ -103,6 +109,8 @@ func (c *Client) init() {
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
+	c.CopilotBudgetAlert = NewCopilotBudgetAlertClient(c.config)
+	c.CopilotQuotaSnapshot = NewCopilotQuotaSnapshotClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
@@ -216,6 +224,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AccountGroup:            NewAccountGroupClient(cfg),
 		Announcement:            NewAnnouncementClient(cfg),
 		AnnouncementRead:        NewAnnouncementReadClient(cfg),
+		CopilotBudgetAlert:      NewCopilotBudgetAlertClient(cfg),
+		CopilotQuotaSnapshot:    NewCopilotQuotaSnapshotClient(cfg),
 		ErrorPassthroughRule:    NewErrorPassthroughRuleClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
@@ -256,6 +266,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AccountGroup:            NewAccountGroupClient(cfg),
 		Announcement:            NewAnnouncementClient(cfg),
 		AnnouncementRead:        NewAnnouncementReadClient(cfg),
+		CopilotBudgetAlert:      NewCopilotBudgetAlertClient(cfg),
+		CopilotQuotaSnapshot:    NewCopilotQuotaSnapshotClient(cfg),
 		ErrorPassthroughRule:    NewErrorPassthroughRuleClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
@@ -302,10 +314,11 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.CopilotBudgetAlert, c.CopilotQuotaSnapshot, c.ErrorPassthroughRule, c.Group,
+		c.IdempotencyRecord, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -316,10 +329,11 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.CopilotBudgetAlert, c.CopilotQuotaSnapshot, c.ErrorPassthroughRule, c.Group,
+		c.IdempotencyRecord, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -338,6 +352,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Announcement.mutate(ctx, m)
 	case *AnnouncementReadMutation:
 		return c.AnnouncementRead.mutate(ctx, m)
+	case *CopilotBudgetAlertMutation:
+		return c.CopilotBudgetAlert.mutate(ctx, m)
+	case *CopilotQuotaSnapshotMutation:
+		return c.CopilotQuotaSnapshot.mutate(ctx, m)
 	case *ErrorPassthroughRuleMutation:
 		return c.ErrorPassthroughRule.mutate(ctx, m)
 	case *GroupMutation:
@@ -1184,6 +1202,272 @@ func (c *AnnouncementReadClient) mutate(ctx context.Context, m *AnnouncementRead
 		return (&AnnouncementReadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AnnouncementRead mutation op: %q", m.Op())
+	}
+}
+
+// CopilotBudgetAlertClient is a client for the CopilotBudgetAlert schema.
+type CopilotBudgetAlertClient struct {
+	config
+}
+
+// NewCopilotBudgetAlertClient returns a client for the CopilotBudgetAlert from the given config.
+func NewCopilotBudgetAlertClient(c config) *CopilotBudgetAlertClient {
+	return &CopilotBudgetAlertClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `copilotbudgetalert.Hooks(f(g(h())))`.
+func (c *CopilotBudgetAlertClient) Use(hooks ...Hook) {
+	c.hooks.CopilotBudgetAlert = append(c.hooks.CopilotBudgetAlert, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `copilotbudgetalert.Intercept(f(g(h())))`.
+func (c *CopilotBudgetAlertClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CopilotBudgetAlert = append(c.inters.CopilotBudgetAlert, interceptors...)
+}
+
+// Create returns a builder for creating a CopilotBudgetAlert entity.
+func (c *CopilotBudgetAlertClient) Create() *CopilotBudgetAlertCreate {
+	mutation := newCopilotBudgetAlertMutation(c.config, OpCreate)
+	return &CopilotBudgetAlertCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CopilotBudgetAlert entities.
+func (c *CopilotBudgetAlertClient) CreateBulk(builders ...*CopilotBudgetAlertCreate) *CopilotBudgetAlertCreateBulk {
+	return &CopilotBudgetAlertCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CopilotBudgetAlertClient) MapCreateBulk(slice any, setFunc func(*CopilotBudgetAlertCreate, int)) *CopilotBudgetAlertCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CopilotBudgetAlertCreateBulk{err: fmt.Errorf("calling to CopilotBudgetAlertClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CopilotBudgetAlertCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CopilotBudgetAlertCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CopilotBudgetAlert.
+func (c *CopilotBudgetAlertClient) Update() *CopilotBudgetAlertUpdate {
+	mutation := newCopilotBudgetAlertMutation(c.config, OpUpdate)
+	return &CopilotBudgetAlertUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CopilotBudgetAlertClient) UpdateOne(_m *CopilotBudgetAlert) *CopilotBudgetAlertUpdateOne {
+	mutation := newCopilotBudgetAlertMutation(c.config, OpUpdateOne, withCopilotBudgetAlert(_m))
+	return &CopilotBudgetAlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CopilotBudgetAlertClient) UpdateOneID(id int64) *CopilotBudgetAlertUpdateOne {
+	mutation := newCopilotBudgetAlertMutation(c.config, OpUpdateOne, withCopilotBudgetAlertID(id))
+	return &CopilotBudgetAlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CopilotBudgetAlert.
+func (c *CopilotBudgetAlertClient) Delete() *CopilotBudgetAlertDelete {
+	mutation := newCopilotBudgetAlertMutation(c.config, OpDelete)
+	return &CopilotBudgetAlertDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CopilotBudgetAlertClient) DeleteOne(_m *CopilotBudgetAlert) *CopilotBudgetAlertDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CopilotBudgetAlertClient) DeleteOneID(id int64) *CopilotBudgetAlertDeleteOne {
+	builder := c.Delete().Where(copilotbudgetalert.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CopilotBudgetAlertDeleteOne{builder}
+}
+
+// Query returns a query builder for CopilotBudgetAlert.
+func (c *CopilotBudgetAlertClient) Query() *CopilotBudgetAlertQuery {
+	return &CopilotBudgetAlertQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCopilotBudgetAlert},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CopilotBudgetAlert entity by its id.
+func (c *CopilotBudgetAlertClient) Get(ctx context.Context, id int64) (*CopilotBudgetAlert, error) {
+	return c.Query().Where(copilotbudgetalert.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CopilotBudgetAlertClient) GetX(ctx context.Context, id int64) *CopilotBudgetAlert {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CopilotBudgetAlertClient) Hooks() []Hook {
+	return c.hooks.CopilotBudgetAlert
+}
+
+// Interceptors returns the client interceptors.
+func (c *CopilotBudgetAlertClient) Interceptors() []Interceptor {
+	return c.inters.CopilotBudgetAlert
+}
+
+func (c *CopilotBudgetAlertClient) mutate(ctx context.Context, m *CopilotBudgetAlertMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CopilotBudgetAlertCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CopilotBudgetAlertUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CopilotBudgetAlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CopilotBudgetAlertDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CopilotBudgetAlert mutation op: %q", m.Op())
+	}
+}
+
+// CopilotQuotaSnapshotClient is a client for the CopilotQuotaSnapshot schema.
+type CopilotQuotaSnapshotClient struct {
+	config
+}
+
+// NewCopilotQuotaSnapshotClient returns a client for the CopilotQuotaSnapshot from the given config.
+func NewCopilotQuotaSnapshotClient(c config) *CopilotQuotaSnapshotClient {
+	return &CopilotQuotaSnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `copilotquotasnapshot.Hooks(f(g(h())))`.
+func (c *CopilotQuotaSnapshotClient) Use(hooks ...Hook) {
+	c.hooks.CopilotQuotaSnapshot = append(c.hooks.CopilotQuotaSnapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `copilotquotasnapshot.Intercept(f(g(h())))`.
+func (c *CopilotQuotaSnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CopilotQuotaSnapshot = append(c.inters.CopilotQuotaSnapshot, interceptors...)
+}
+
+// Create returns a builder for creating a CopilotQuotaSnapshot entity.
+func (c *CopilotQuotaSnapshotClient) Create() *CopilotQuotaSnapshotCreate {
+	mutation := newCopilotQuotaSnapshotMutation(c.config, OpCreate)
+	return &CopilotQuotaSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CopilotQuotaSnapshot entities.
+func (c *CopilotQuotaSnapshotClient) CreateBulk(builders ...*CopilotQuotaSnapshotCreate) *CopilotQuotaSnapshotCreateBulk {
+	return &CopilotQuotaSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CopilotQuotaSnapshotClient) MapCreateBulk(slice any, setFunc func(*CopilotQuotaSnapshotCreate, int)) *CopilotQuotaSnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CopilotQuotaSnapshotCreateBulk{err: fmt.Errorf("calling to CopilotQuotaSnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CopilotQuotaSnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CopilotQuotaSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CopilotQuotaSnapshot.
+func (c *CopilotQuotaSnapshotClient) Update() *CopilotQuotaSnapshotUpdate {
+	mutation := newCopilotQuotaSnapshotMutation(c.config, OpUpdate)
+	return &CopilotQuotaSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CopilotQuotaSnapshotClient) UpdateOne(_m *CopilotQuotaSnapshot) *CopilotQuotaSnapshotUpdateOne {
+	mutation := newCopilotQuotaSnapshotMutation(c.config, OpUpdateOne, withCopilotQuotaSnapshot(_m))
+	return &CopilotQuotaSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CopilotQuotaSnapshotClient) UpdateOneID(id int64) *CopilotQuotaSnapshotUpdateOne {
+	mutation := newCopilotQuotaSnapshotMutation(c.config, OpUpdateOne, withCopilotQuotaSnapshotID(id))
+	return &CopilotQuotaSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CopilotQuotaSnapshot.
+func (c *CopilotQuotaSnapshotClient) Delete() *CopilotQuotaSnapshotDelete {
+	mutation := newCopilotQuotaSnapshotMutation(c.config, OpDelete)
+	return &CopilotQuotaSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CopilotQuotaSnapshotClient) DeleteOne(_m *CopilotQuotaSnapshot) *CopilotQuotaSnapshotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CopilotQuotaSnapshotClient) DeleteOneID(id int64) *CopilotQuotaSnapshotDeleteOne {
+	builder := c.Delete().Where(copilotquotasnapshot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CopilotQuotaSnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for CopilotQuotaSnapshot.
+func (c *CopilotQuotaSnapshotClient) Query() *CopilotQuotaSnapshotQuery {
+	return &CopilotQuotaSnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCopilotQuotaSnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CopilotQuotaSnapshot entity by its id.
+func (c *CopilotQuotaSnapshotClient) Get(ctx context.Context, id int64) (*CopilotQuotaSnapshot, error) {
+	return c.Query().Where(copilotquotasnapshot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CopilotQuotaSnapshotClient) GetX(ctx context.Context, id int64) *CopilotQuotaSnapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CopilotQuotaSnapshotClient) Hooks() []Hook {
+	return c.hooks.CopilotQuotaSnapshot
+}
+
+// Interceptors returns the client interceptors.
+func (c *CopilotQuotaSnapshotClient) Interceptors() []Interceptor {
+	return c.inters.CopilotQuotaSnapshot
+}
+
+func (c *CopilotQuotaSnapshotClient) mutate(ctx context.Context, m *CopilotQuotaSnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CopilotQuotaSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CopilotQuotaSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CopilotQuotaSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CopilotQuotaSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CopilotQuotaSnapshot mutation op: %q", m.Op())
 	}
 }
 
@@ -3888,17 +4172,17 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
-		ErrorPassthroughRule, Group, IdempotencyRecord, PromoCode, PromoCodeUsage,
-		Proxy, RedeemCode, SecuritySecret, Setting, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Hook
+		CopilotBudgetAlert, CopilotQuotaSnapshot, ErrorPassthroughRule, Group,
+		IdempotencyRecord, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
+		SecuritySecret, Setting, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
-		ErrorPassthroughRule, Group, IdempotencyRecord, PromoCode, PromoCodeUsage,
-		Proxy, RedeemCode, SecuritySecret, Setting, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Interceptor
+		CopilotBudgetAlert, CopilotQuotaSnapshot, ErrorPassthroughRule, Group,
+		IdempotencyRecord, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
+		SecuritySecret, Setting, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

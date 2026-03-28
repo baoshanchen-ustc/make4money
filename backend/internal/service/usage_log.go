@@ -152,6 +152,10 @@ type UsageLog struct {
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool
 
+	// Initiator: Copilot 请求发起类型，'user'（Premium 配额）或 'agent'（标准配额子请求）。
+	// 非 Copilot 平台统一为 'user'。
+	Initiator string
+
 	// 请求体字节数（用于排查大请求导致的 400 等错误）
 	RequestBodyBytes *int
 

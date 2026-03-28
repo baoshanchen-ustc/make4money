@@ -235,6 +235,11 @@ func CacheTTLOverridden(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheTTLOverridden, v))
 }
 
+// Initiator applies equality check predicate on the "initiator" field. It's identical to InitiatorEQ.
+func Initiator(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldInitiator, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCreatedAt, v))
@@ -1833,6 +1838,71 @@ func CacheTTLOverriddenEQ(v bool) predicate.UsageLog {
 // CacheTTLOverriddenNEQ applies the NEQ predicate on the "cache_ttl_overridden" field.
 func CacheTTLOverriddenNEQ(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNEQ(FieldCacheTTLOverridden, v))
+}
+
+// InitiatorEQ applies the EQ predicate on the "initiator" field.
+func InitiatorEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldInitiator, v))
+}
+
+// InitiatorNEQ applies the NEQ predicate on the "initiator" field.
+func InitiatorNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldInitiator, v))
+}
+
+// InitiatorIn applies the In predicate on the "initiator" field.
+func InitiatorIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldInitiator, vs...))
+}
+
+// InitiatorNotIn applies the NotIn predicate on the "initiator" field.
+func InitiatorNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldInitiator, vs...))
+}
+
+// InitiatorGT applies the GT predicate on the "initiator" field.
+func InitiatorGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldInitiator, v))
+}
+
+// InitiatorGTE applies the GTE predicate on the "initiator" field.
+func InitiatorGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldInitiator, v))
+}
+
+// InitiatorLT applies the LT predicate on the "initiator" field.
+func InitiatorLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldInitiator, v))
+}
+
+// InitiatorLTE applies the LTE predicate on the "initiator" field.
+func InitiatorLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldInitiator, v))
+}
+
+// InitiatorContains applies the Contains predicate on the "initiator" field.
+func InitiatorContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldInitiator, v))
+}
+
+// InitiatorHasPrefix applies the HasPrefix predicate on the "initiator" field.
+func InitiatorHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldInitiator, v))
+}
+
+// InitiatorHasSuffix applies the HasSuffix predicate on the "initiator" field.
+func InitiatorHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldInitiator, v))
+}
+
+// InitiatorEqualFold applies the EqualFold predicate on the "initiator" field.
+func InitiatorEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldInitiator, v))
+}
+
+// InitiatorContainsFold applies the ContainsFold predicate on the "initiator" field.
+func InitiatorContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldInitiator, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -491,6 +491,20 @@ func (_c *UsageLogCreate) SetNillableCacheTTLOverridden(v *bool) *UsageLogCreate
 	return _c
 }
 
+// SetInitiator sets the "initiator" field.
+func (_c *UsageLogCreate) SetInitiator(v string) *UsageLogCreate {
+	_c.mutation.SetInitiator(v)
+	return _c
+}
+
+// SetNillableInitiator sets the "initiator" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableInitiator(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetInitiator(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UsageLogCreate) SetCreatedAt(v time.Time) *UsageLogCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -633,6 +647,10 @@ func (_c *UsageLogCreate) defaults() {
 		v := usagelog.DefaultCacheTTLOverridden
 		_c.mutation.SetCacheTTLOverridden(v)
 	}
+	if _, ok := _c.mutation.Initiator(); !ok {
+		v := usagelog.DefaultInitiator
+		_c.mutation.SetInitiator(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := usagelog.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -741,6 +759,14 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
 		return &ValidationError{Name: "cache_ttl_overridden", err: errors.New(`ent: missing required field "UsageLog.cache_ttl_overridden"`)}
+	}
+	if _, ok := _c.mutation.Initiator(); !ok {
+		return &ValidationError{Name: "initiator", err: errors.New(`ent: missing required field "UsageLog.initiator"`)}
+	}
+	if v, ok := _c.mutation.Initiator(); ok {
+		if err := usagelog.InitiatorValidator(v); err != nil {
+			return &ValidationError{Name: "initiator", err: fmt.Errorf(`ent: validator failed for field "UsageLog.initiator": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UsageLog.created_at"`)}
@@ -904,6 +930,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
 		_node.CacheTTLOverridden = value
+	}
+	if value, ok := _c.mutation.Initiator(); ok {
+		_spec.SetField(usagelog.FieldInitiator, field.TypeString, value)
+		_node.Initiator = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(usagelog.FieldCreatedAt, field.TypeTime, value)
@@ -1691,6 +1721,18 @@ func (u *UsageLogUpsert) SetCacheTTLOverridden(v bool) *UsageLogUpsert {
 // UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateCacheTTLOverridden() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldCacheTTLOverridden)
+	return u
+}
+
+// SetInitiator sets the "initiator" field.
+func (u *UsageLogUpsert) SetInitiator(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldInitiator, v)
+	return u
+}
+
+// UpdateInitiator sets the "initiator" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateInitiator() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldInitiator)
 	return u
 }
 
@@ -2492,6 +2534,20 @@ func (u *UsageLogUpsertOne) SetCacheTTLOverridden(v bool) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheTTLOverridden() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetInitiator sets the "initiator" field.
+func (u *UsageLogUpsertOne) SetInitiator(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetInitiator(v)
+	})
+}
+
+// UpdateInitiator sets the "initiator" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateInitiator() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateInitiator()
 	})
 }
 
@@ -3459,6 +3515,20 @@ func (u *UsageLogUpsertBulk) SetCacheTTLOverridden(v bool) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateCacheTTLOverridden() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetInitiator sets the "initiator" field.
+func (u *UsageLogUpsertBulk) SetInitiator(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetInitiator(v)
+	})
+}
+
+// UpdateInitiator sets the "initiator" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateInitiator() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateInitiator()
 	})
 }
 

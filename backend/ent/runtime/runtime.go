@@ -10,6 +10,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/copilotbudgetalert"
+	"github.com/Wei-Shaw/sub2api/ent/copilotquotasnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -303,6 +305,63 @@ func init() {
 	announcementreadDescCreatedAt := announcementreadFields[3].Descriptor()
 	// announcementread.DefaultCreatedAt holds the default value on creation for the created_at field.
 	announcementread.DefaultCreatedAt = announcementreadDescCreatedAt.Default.(func() time.Time)
+	copilotbudgetalertMixin := schema.CopilotBudgetAlert{}.Mixin()
+	copilotbudgetalertMixinFields0 := copilotbudgetalertMixin[0].Fields()
+	_ = copilotbudgetalertMixinFields0
+	copilotbudgetalertFields := schema.CopilotBudgetAlert{}.Fields()
+	_ = copilotbudgetalertFields
+	// copilotbudgetalertDescCreatedAt is the schema descriptor for created_at field.
+	copilotbudgetalertDescCreatedAt := copilotbudgetalertMixinFields0[0].Descriptor()
+	// copilotbudgetalert.DefaultCreatedAt holds the default value on creation for the created_at field.
+	copilotbudgetalert.DefaultCreatedAt = copilotbudgetalertDescCreatedAt.Default.(func() time.Time)
+	// copilotbudgetalertDescUpdatedAt is the schema descriptor for updated_at field.
+	copilotbudgetalertDescUpdatedAt := copilotbudgetalertMixinFields0[1].Descriptor()
+	// copilotbudgetalert.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	copilotbudgetalert.DefaultUpdatedAt = copilotbudgetalertDescUpdatedAt.Default.(func() time.Time)
+	// copilotbudgetalert.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	copilotbudgetalert.UpdateDefaultUpdatedAt = copilotbudgetalertDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// copilotbudgetalertDescMonthlyBudget is the schema descriptor for monthly_budget field.
+	copilotbudgetalertDescMonthlyBudget := copilotbudgetalertFields[1].Descriptor()
+	// copilotbudgetalert.DefaultMonthlyBudget holds the default value on creation for the monthly_budget field.
+	copilotbudgetalert.DefaultMonthlyBudget = copilotbudgetalertDescMonthlyBudget.Default.(float64)
+	// copilotbudgetalertDescAlertThreshold is the schema descriptor for alert_threshold field.
+	copilotbudgetalertDescAlertThreshold := copilotbudgetalertFields[2].Descriptor()
+	// copilotbudgetalert.DefaultAlertThreshold holds the default value on creation for the alert_threshold field.
+	copilotbudgetalert.DefaultAlertThreshold = copilotbudgetalertDescAlertThreshold.Default.(int)
+	// copilotbudgetalertDescEnabled is the schema descriptor for enabled field.
+	copilotbudgetalertDescEnabled := copilotbudgetalertFields[3].Descriptor()
+	// copilotbudgetalert.DefaultEnabled holds the default value on creation for the enabled field.
+	copilotbudgetalert.DefaultEnabled = copilotbudgetalertDescEnabled.Default.(bool)
+	copilotquotasnapshotFields := schema.CopilotQuotaSnapshot{}.Fields()
+	_ = copilotquotasnapshotFields
+	// copilotquotasnapshotDescPlanType is the schema descriptor for plan_type field.
+	copilotquotasnapshotDescPlanType := copilotquotasnapshotFields[2].Descriptor()
+	// copilotquotasnapshot.PlanTypeValidator is a validator for the "plan_type" field. It is called by the builders before save.
+	copilotquotasnapshot.PlanTypeValidator = copilotquotasnapshotDescPlanType.Validators[0].(func(string) error)
+	// copilotquotasnapshotDescPremiumEntitlement is the schema descriptor for premium_entitlement field.
+	copilotquotasnapshotDescPremiumEntitlement := copilotquotasnapshotFields[3].Descriptor()
+	// copilotquotasnapshot.DefaultPremiumEntitlement holds the default value on creation for the premium_entitlement field.
+	copilotquotasnapshot.DefaultPremiumEntitlement = copilotquotasnapshotDescPremiumEntitlement.Default.(int)
+	// copilotquotasnapshotDescPremiumRemaining is the schema descriptor for premium_remaining field.
+	copilotquotasnapshotDescPremiumRemaining := copilotquotasnapshotFields[4].Descriptor()
+	// copilotquotasnapshot.DefaultPremiumRemaining holds the default value on creation for the premium_remaining field.
+	copilotquotasnapshot.DefaultPremiumRemaining = copilotquotasnapshotDescPremiumRemaining.Default.(int)
+	// copilotquotasnapshotDescPremiumUsed is the schema descriptor for premium_used field.
+	copilotquotasnapshotDescPremiumUsed := copilotquotasnapshotFields[5].Descriptor()
+	// copilotquotasnapshot.DefaultPremiumUsed holds the default value on creation for the premium_used field.
+	copilotquotasnapshot.DefaultPremiumUsed = copilotquotasnapshotDescPremiumUsed.Default.(int)
+	// copilotquotasnapshotDescPremiumOverage is the schema descriptor for premium_overage field.
+	copilotquotasnapshotDescPremiumOverage := copilotquotasnapshotFields[6].Descriptor()
+	// copilotquotasnapshot.DefaultPremiumOverage holds the default value on creation for the premium_overage field.
+	copilotquotasnapshot.DefaultPremiumOverage = copilotquotasnapshotDescPremiumOverage.Default.(int)
+	// copilotquotasnapshotDescUnlimited is the schema descriptor for unlimited field.
+	copilotquotasnapshotDescUnlimited := copilotquotasnapshotFields[7].Descriptor()
+	// copilotquotasnapshot.DefaultUnlimited holds the default value on creation for the unlimited field.
+	copilotquotasnapshot.DefaultUnlimited = copilotquotasnapshotDescUnlimited.Default.(bool)
+	// copilotquotasnapshotDescCreatedAt is the schema descriptor for created_at field.
+	copilotquotasnapshotDescCreatedAt := copilotquotasnapshotFields[8].Descriptor()
+	// copilotquotasnapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	copilotquotasnapshot.DefaultCreatedAt = copilotquotasnapshotDescCreatedAt.Default.(func() time.Time)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0
@@ -909,8 +968,14 @@ func init() {
 	usagelogDescCacheTTLOverridden := usagelogFields[35].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
+	// usagelogDescInitiator is the schema descriptor for initiator field.
+	usagelogDescInitiator := usagelogFields[36].Descriptor()
+	// usagelog.DefaultInitiator holds the default value on creation for the initiator field.
+	usagelog.DefaultInitiator = usagelogDescInitiator.Default.(string)
+	// usagelog.InitiatorValidator is a validator for the "initiator" field. It is called by the builders before save.
+	usagelog.InitiatorValidator = usagelogDescInitiator.Validators[0].(func(string) error)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[36].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[37].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()

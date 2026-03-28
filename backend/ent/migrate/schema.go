@@ -338,6 +338,71 @@ var (
 			},
 		},
 	}
+	// CopilotBudgetAlertsColumns holds the columns for the "copilot_budget_alerts" table.
+	CopilotBudgetAlertsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "account_id", Type: field.TypeInt64, Unique: true},
+		{Name: "monthly_budget", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(10,2)"}},
+		{Name: "alert_threshold", Type: field.TypeInt, Default: 80},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "last_alerted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// CopilotBudgetAlertsTable holds the schema information for the "copilot_budget_alerts" table.
+	CopilotBudgetAlertsTable = &schema.Table{
+		Name:       "copilot_budget_alerts",
+		Columns:    CopilotBudgetAlertsColumns,
+		PrimaryKey: []*schema.Column{CopilotBudgetAlertsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "copilotbudgetalert_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{CopilotBudgetAlertsColumns[3]},
+			},
+			{
+				Name:    "copilotbudgetalert_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{CopilotBudgetAlertsColumns[6]},
+			},
+		},
+	}
+	// CopilotQuotaSnapshotsColumns holds the columns for the "copilot_quota_snapshots" table.
+	CopilotQuotaSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "snapshot_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "plan_type", Type: field.TypeString, Nullable: true, Size: 30},
+		{Name: "premium_entitlement", Type: field.TypeInt, Default: 0},
+		{Name: "premium_remaining", Type: field.TypeInt, Default: 0},
+		{Name: "premium_used", Type: field.TypeInt, Default: 0},
+		{Name: "premium_overage", Type: field.TypeInt, Default: 0},
+		{Name: "unlimited", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// CopilotQuotaSnapshotsTable holds the schema information for the "copilot_quota_snapshots" table.
+	CopilotQuotaSnapshotsTable = &schema.Table{
+		Name:       "copilot_quota_snapshots",
+		Columns:    CopilotQuotaSnapshotsColumns,
+		PrimaryKey: []*schema.Column{CopilotQuotaSnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "copilotquotasnapshot_account_id_snapshot_date",
+				Unique:  true,
+				Columns: []*schema.Column{CopilotQuotaSnapshotsColumns[1], CopilotQuotaSnapshotsColumns[2]},
+			},
+			{
+				Name:    "copilotquotasnapshot_snapshot_date",
+				Unique:  false,
+				Columns: []*schema.Column{CopilotQuotaSnapshotsColumns[2]},
+			},
+			{
+				Name:    "copilotquotasnapshot_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{CopilotQuotaSnapshotsColumns[1]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -745,6 +810,7 @@ var (
 		{Name: "image_size", Type: field.TypeString, Nullable: true, Size: 10},
 		{Name: "media_type", Type: field.TypeString, Nullable: true, Size: 16},
 		{Name: "cache_ttl_overridden", Type: field.TypeBool, Default: false},
+		{Name: "initiator", Type: field.TypeString, Size: 10, Default: "user"},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "api_key_id", Type: field.TypeInt64},
 		{Name: "account_id", Type: field.TypeInt64},
@@ -760,31 +826,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[33]},
+				Columns:    []*schema.Column{UsageLogsColumns[34]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[34]},
+				Columns:    []*schema.Column{UsageLogsColumns[35]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[35]},
+				Columns:    []*schema.Column{UsageLogsColumns[36]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[36]},
+				Columns:    []*schema.Column{UsageLogsColumns[37]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[37]},
+				Columns:    []*schema.Column{UsageLogsColumns[38]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -793,32 +859,32 @@ var (
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[36]},
+				Columns: []*schema.Column{UsageLogsColumns[37]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[33]},
+				Columns: []*schema.Column{UsageLogsColumns[34]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[34]},
+				Columns: []*schema.Column{UsageLogsColumns[35]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[35]},
+				Columns: []*schema.Column{UsageLogsColumns[36]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[37]},
+				Columns: []*schema.Column{UsageLogsColumns[38]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[32]},
+				Columns: []*schema.Column{UsageLogsColumns[33]},
 			},
 			{
 				Name:    "usagelog_model",
@@ -833,17 +899,27 @@ var (
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[36], UsageLogsColumns[32]},
+				Columns: []*schema.Column{UsageLogsColumns[37], UsageLogsColumns[33]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[33], UsageLogsColumns[32]},
+				Columns: []*schema.Column{UsageLogsColumns[34], UsageLogsColumns[33]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[35], UsageLogsColumns[32]},
+				Columns: []*schema.Column{UsageLogsColumns[36], UsageLogsColumns[33]},
+			},
+			{
+				Name:    "usagelog_account_id_initiator_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[35], UsageLogsColumns[32], UsageLogsColumns[33]},
+			},
+			{
+				Name:    "usagelog_user_id_initiator_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[37], UsageLogsColumns[32], UsageLogsColumns[33]},
 			},
 		},
 	}
@@ -1100,6 +1176,8 @@ var (
 		AccountGroupsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
+		CopilotBudgetAlertsTable,
+		CopilotQuotaSnapshotsTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1141,6 +1219,12 @@ func init() {
 	AnnouncementReadsTable.ForeignKeys[1].RefTable = UsersTable
 	AnnouncementReadsTable.Annotation = &entsql.Annotation{
 		Table: "announcement_reads",
+	}
+	CopilotBudgetAlertsTable.Annotation = &entsql.Annotation{
+		Table: "copilot_budget_alerts",
+	}
+	CopilotQuotaSnapshotsTable.Annotation = &entsql.Annotation{
+		Table: "copilot_quota_snapshots",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

@@ -7213,6 +7213,10 @@ type RecordUsageInput struct {
 	RoutingLatencyMs  *int // 路由选择阶段耗时（账号选择 + 并发槽位等待）
 	UpstreamLatencyMs *int // 上游请求阶段耗时（发出请求→收到首字节）
 	ResponseLatencyMs *int // 响应处理阶段耗时（流式传输或读取响应体）
+
+	// Initiator: Copilot 请求发起类型，'user'（Premium 配额）或 'agent'（标准配额子请求）。
+	// 非 Copilot 平台传空字符串，RecordUsage 内默认为 'user'。
+	Initiator string
 }
 
 // APIKeyQuotaUpdater defines the interface for updating API Key quota and rate limit usage
@@ -7293,6 +7297,15 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	}
 
 	finalizePostUsageBilling(p, deps)
+}
+
+// resolveInitiator 返回规范化的 initiator 值。
+// 仅允许 "agent"，其他值（含空字符串）统一返回 "user"。
+func resolveInitiator(s string) string {
+	if s == "agent" {
+		return "agent"
+	}
+	return "user"
 }
 
 func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string) string {
@@ -7635,6 +7648,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		ImageSize:             imageSize,
 		MediaType:             mediaType,
 		CacheTTLOverridden:    cacheTTLOverridden,
+		Initiator:             resolveInitiator(input.Initiator),
 		RequestBodyBytes:      input.RequestBodyBytes,
 		CreatedAt:             time.Now(),
 	}
@@ -7710,6 +7724,10 @@ type RecordUsageLongContextInput struct {
 	RoutingLatencyMs  *int // 路由选择阶段耗时（账号选择 + 并发槽位等待）
 	UpstreamLatencyMs *int // 上游请求阶段耗时（发出请求→收到首字节）
 	ResponseLatencyMs *int // 响应处理阶段耗时（流式传输或读取响应体）
+
+	// Initiator: Copilot 请求发起类型，'user'（Premium 配额）或 'agent'（标准配额子请求）。
+	// 非 Copilot 平台统一写 'user'。
+	Initiator string
 }
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
@@ -7828,6 +7846,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		ImageCount:            result.ImageCount,
 		ImageSize:             imageSize,
 		CacheTTLOverridden:    cacheTTLOverridden,
+		Initiator:             resolveInitiator(input.Initiator),
 		RequestBodyBytes:      input.RequestBodyBytes,
 		CreatedAt:             time.Now(),
 	}

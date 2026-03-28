@@ -307,6 +307,7 @@ func (h *CopilotGatewayHandler) ChatCompletions(c *gin.Context) {
 			routingLatencyMs := getContextLatencyMsPtr(c, service.OpsRoutingLatencyMsKey)
 			upstreamLatencyMsVal := getContextLatencyMsPtr(c, service.OpsUpstreamLatencyMsKey)
 			responseLatencyMsVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
+			capturedInitiator := service.CopilotInitiatorFromBody(body)
 			go func() {
 				recordCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
@@ -337,6 +338,7 @@ func (h *CopilotGatewayHandler) ChatCompletions(c *gin.Context) {
 					RoutingLatencyMs:  routingLatencyMs,
 					UpstreamLatencyMs: upstreamLatencyMsVal,
 					ResponseLatencyMs: responseLatencyMsVal,
+					Initiator:         capturedInitiator,
 				}); err != nil {
 					reqLog.Error("copilot.record_usage_failed", zap.Error(err))
 				}
@@ -678,6 +680,7 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 			routingLatencyMsResp := getContextLatencyMsPtr(c, service.OpsRoutingLatencyMsKey)
 			upstreamLatencyMsRespVal := getContextLatencyMsPtr(c, service.OpsUpstreamLatencyMsKey)
 			responseLatencyMsRespVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
+			capturedInitiatorResp := service.CopilotInitiatorFromBody(body)
 			go func() {
 				recordCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
@@ -709,6 +712,7 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 					RoutingLatencyMs:  routingLatencyMsResp,
 					UpstreamLatencyMs: upstreamLatencyMsRespVal,
 					ResponseLatencyMs: responseLatencyMsRespVal,
+					Initiator:         capturedInitiatorResp,
 				}); err != nil {
 					reqLog.Error("copilot.responses.record_usage_failed", zap.Error(err))
 				}
@@ -1017,6 +1021,7 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 			routingLatencyMsMsg := getContextLatencyMsPtr(c, service.OpsRoutingLatencyMsKey)
 			upstreamLatencyMsMsgVal := getContextLatencyMsPtr(c, service.OpsUpstreamLatencyMsKey)
 			responseLatencyMsMsgVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
+			capturedInitiatorMsg := service.CopilotInitiatorFromBody(body)
 			go func() {
 				recordCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
@@ -1047,6 +1052,7 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 					RoutingLatencyMs:  routingLatencyMsMsg,
 					UpstreamLatencyMs: upstreamLatencyMsMsgVal,
 					ResponseLatencyMs: responseLatencyMsMsgVal,
+					Initiator:         capturedInitiatorMsg,
 				}); err != nil {
 					reqLog.Error("copilot.messages.record_usage_failed", zap.Error(err))
 				}

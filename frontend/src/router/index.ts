@@ -278,6 +278,30 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/copilot/users',
+    name: 'AdminCopilotUsers',
+    component: () => import('@/views/admin/copilot/CopilotUsersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Copilot User Requests',
+      titleKey: 'admin.copilot.users.title',
+      descriptionKey: 'admin.copilot.users.description'
+    }
+  },
+  {
+    path: '/admin/copilot/accounts',
+    name: 'AdminCopilotAccounts',
+    component: () => import('@/views/admin/copilot/CopilotAccountsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Copilot Account Costs',
+      titleKey: 'admin.copilot.accounts.title',
+      descriptionKey: 'admin.copilot.accounts.description'
+    }
+  },
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('@/views/admin/UsersView.vue'),
