@@ -1,6 +1,16 @@
 # 更新记录
 
-## 2026-03-21（0.1.117）
+## 2026-03-28（0.1.126）
+
+- 版本号：`0.1.125` → `0.1.126`。
+- **新功能：Copilot 成本分析系统**
+  - `usage_logs` 新增 `initiator` 字段：`user`（Premium 配额请求）/ `agent`（标准配额子请求），网关层自动识别 `X-Initiator` 或请求体 `messages[].role` 推断。
+  - 新增 Ent Schema：`CopilotQuotaSnapshot`（日维度配额快照）、`CopilotBudgetAlert`（预算告警配置）及对应数据库迁移。
+  - 新增后端服务：`CopilotQuotaCacheService`（实时拉取 GitHub Copilot 配额 + 5 分钟内存缓存）、`CopilotAnalyticsService`（用户维度/账户维度聚合查询）。
+  - 新增后端 API（`/admin/copilot/`）：用户请求统计、时序分布、请求明细（含 30 秒窗口层级分组）、账户配额概览、配额趋势、配额刷新、预算告警配置。
+  - 新增前端页面：`/admin/copilot/users`（Copilot 用户请求分析）、`/admin/copilot/accounts`（Copilot 账户成本分析），包含配额趋势图（Chart.js）、预算告警弹窗。
+  - 账户编辑表单新增「座席数」字段，结合套餐类型自动计算月度费用。
+
 
 - 版本号：`0.1.116` → `0.1.117`。
 - **修复 Copilot Sonnet/Opus 400**：GitHub Copilot API 尚未上架 `claude-sonnet-4.6` / `claude-opus-4.6`，导致所有 Sonnet 4.6 和 Opus 4.6 请求被上游 400 Bad Request 拒绝。新增 `copilotModelFallback` 映射，将 4.6 模型自动降级到 Copilot 已支持的 4.5 版本（`claude-sonnet-4.5` / `claude-opus-4.5`）。待 Copilot 上线 4.6 后删除 fallback 条目即可。
