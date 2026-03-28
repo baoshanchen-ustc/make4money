@@ -48,7 +48,7 @@ async function load() {
   }
 }
 
-watch(() => props.accountId, load, { immediate: true })
+watch(() => [props.accountId, props.days], load, { immediate: true })
 
 const chartData = computed(() => {
   const trend = data.value?.trend ?? []

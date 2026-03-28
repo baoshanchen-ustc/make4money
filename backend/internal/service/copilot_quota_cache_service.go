@@ -61,53 +61,52 @@ func cacheKey(accountID int64) string {
 	return fmt.Sprintf("copilot_quota:%d", accountID)
 }
 
-// FetchAll fetches quota for all active Copilot accounts concurrently.
-// Cached results are returned immediately; stale or missing entries trigger
-// real-time GitHub API calls.
+// FetchAll returns quota for all active Copilot accounts.
+// Accounts with a fresh cache entry are returned immediately without hitting GitHub.
+// Only accounts with a missing or expired cache entry trigger real-time API calls.
 func (s *CopilotQuotaCacheService) FetchAll(ctx context.Context) ([]CopilotCachedQuota, error) {
-	summaries, err := s.copilotSvc.FetchAllCopilotQuotas(ctx, s.adminSvc)
+	accounts, _, err := s.adminSvc.ListAccounts(ctx, 1, 500, PlatformCopilot, "", StatusActive, "", 0)
 	if err != nil {
-		return nil, fmt.Errorf("copilot quota cache: fetch all: %w", err)
+		return nil, fmt.Errorf("copilot quota cache: list accounts: %w", err)
 	}
 
 	now := time.Now()
-	result := make([]CopilotCachedQuota, 0, len(summaries))
-	for _, summary := range summaries {
-		entry := CopilotCachedQuota{
-			AccountID: summary.AccountID,
-			QuotaInfo: summary.QuotaInfo,
-			CachedAt:  now,
-		}
-		// Update cache entry.
-		s.cache.Set(cacheKey(summary.AccountID), entry, gocache.DefaultExpiration)
+	result := make([]CopilotCachedQuota, 0, len(accounts))
 
-		// Persist snapshot and check alerts asynchronously to avoid blocking the caller.
-		if summary.QuotaInfo != nil {
-			go s.persistAndAlert(context.Background(), summary.AccountID, summary.QuotaInfo, now)
+	for _, acc := range accounts {
+		// Return cached entry if still valid.
+		if v, ok := s.cache.Get(cacheKey(acc.ID)); ok {
+			if cq, ok := v.(CopilotCachedQuota); ok {
+				result = append(result, cq)
+				continue
+			}
 		}
 
+		// Cache miss — fetch from GitHub API.
+		qi, err := s.copilotSvc.FetchQuota(ctx, &acc)
+		if err != nil {
+			logger.LegacyPrintf("copilot.quota_cache", "fetch quota for account %d: %v", acc.ID, err)
+			// Include a placeholder so the account still appears in the overview.
+			result = append(result, CopilotCachedQuota{AccountID: acc.ID, QuotaInfo: nil, CachedAt: now})
+			continue
+		}
+
+		entry := CopilotCachedQuota{AccountID: acc.ID, QuotaInfo: qi, CachedAt: now}
+		s.cache.Set(cacheKey(acc.ID), entry, gocache.DefaultExpiration)
+
+		if qi != nil {
+			go s.persistAndAlert(context.Background(), acc.ID, qi, now)
+		}
 		result = append(result, entry)
 	}
 	return result, nil
 }
 
-// FetchAllCached returns quota entries from the in-memory cache for all accounts.
-// If the cache is empty (cold start), a full real-time fetch is performed.
-// Individual cache entries expire after copilotQuotaCacheTTL (5 minutes);
-// go-cache handles TTL eviction automatically, so stale entries are never returned.
+// FetchAllCached returns quota for all active Copilot accounts, preferring the
+// in-memory cache to avoid redundant GitHub API calls. Falls through to FetchAll
+// which performs per-account cache checks and only hits GitHub for stale entries.
 // This is the primary call for the accounts overview page.
 func (s *CopilotQuotaCacheService) FetchAllCached(ctx context.Context) ([]CopilotCachedQuota, error) {
-	items := s.cache.Items()
-	if len(items) > 0 {
-		result := make([]CopilotCachedQuota, 0, len(items))
-		for _, item := range items {
-			if cq, ok := item.Object.(CopilotCachedQuota); ok {
-				result = append(result, cq)
-			}
-		}
-		return result, nil
-	}
-	// Cache is cold — do a full fetch and populate the cache.
 	return s.FetchAll(ctx)
 }
 
