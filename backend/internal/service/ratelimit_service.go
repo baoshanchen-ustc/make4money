@@ -150,12 +150,19 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
-		// OpenAI: token_invalidated / token_revoked 表示 token 被永久作废（非过期），直接标记 error
+		// OpenAI: token_invalidated / token_revoked / account_deactivated 表示认证或账号被永久作废，直接标记 error
 		openai401Code := extractUpstreamErrorCode(responseBody)
-		if account.Platform == PlatformOpenAI && (openai401Code == "token_invalidated" || openai401Code == "token_revoked") {
+		if account.Platform == PlatformOpenAI && (openai401Code == "token_invalidated" || openai401Code == "token_revoked" || openai401Code == "account_deactivated") {
 			msg := "Token revoked (401): account authentication permanently revoked"
+			if openai401Code == "account_deactivated" {
+				msg = "Account deactivated (401): account has been deactivated"
+			}
 			if upstreamMsg != "" {
-				msg = "Token revoked (401): " + upstreamMsg
+				if openai401Code == "account_deactivated" {
+					msg = "Account deactivated (401): " + upstreamMsg
+				} else {
+					msg = "Token revoked (401): " + upstreamMsg
+				}
 			}
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true

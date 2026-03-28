@@ -140,21 +140,25 @@ func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {
 	require.Empty(t, invalidator.accounts)
 }
 
-func TestRateLimitService_HandleUpstreamError_OAuth401UsesCredentialsUpdater(t *testing.T) {
+func TestRateLimitService_HandleUpstreamError_OpenAIAccountDeactivatedUsesSetError(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
+	invalidator := &tokenCacheInvalidatorRecorder{}
 	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	service.SetTokenCacheInvalidator(invalidator)
 	account := &Account{
-		ID:       103,
+		ID:       104,
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
-		Credentials: map[string]any{
-			"access_token": "token",
-		},
 	}
 
-	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
+	body := []byte(`{"error":{"code":"account_deactivated","message":"Your OpenAI account has been deactivated","type":"invalid_request_error"},"status":401}`)
+	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
 
 	require.True(t, shouldDisable)
-	require.Equal(t, 1, repo.updateCredentialsCalls)
-	require.NotEmpty(t, repo.lastCredentials["expires_at"])
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, 0, repo.tempCalls)
+	require.Equal(t, 0, repo.updateCredentialsCalls)
+	require.Empty(t, invalidator.accounts)
+	require.Contains(t, repo.lastErrorMsg, "Account deactivated (401)")
 }
+
