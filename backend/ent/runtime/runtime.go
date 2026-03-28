@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/copilotbudgetalert"
 	"github.com/Wei-Shaw/sub2api/ent/copilotquotasnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
@@ -304,6 +305,33 @@ func init() {
 	announcementreadDescCreatedAt := announcementreadFields[3].Descriptor()
 	// announcementread.DefaultCreatedAt holds the default value on creation for the created_at field.
 	announcementread.DefaultCreatedAt = announcementreadDescCreatedAt.Default.(func() time.Time)
+	copilotbudgetalertMixin := schema.CopilotBudgetAlert{}.Mixin()
+	copilotbudgetalertMixinFields0 := copilotbudgetalertMixin[0].Fields()
+	_ = copilotbudgetalertMixinFields0
+	copilotbudgetalertFields := schema.CopilotBudgetAlert{}.Fields()
+	_ = copilotbudgetalertFields
+	// copilotbudgetalertDescCreatedAt is the schema descriptor for created_at field.
+	copilotbudgetalertDescCreatedAt := copilotbudgetalertMixinFields0[0].Descriptor()
+	// copilotbudgetalert.DefaultCreatedAt holds the default value on creation for the created_at field.
+	copilotbudgetalert.DefaultCreatedAt = copilotbudgetalertDescCreatedAt.Default.(func() time.Time)
+	// copilotbudgetalertDescUpdatedAt is the schema descriptor for updated_at field.
+	copilotbudgetalertDescUpdatedAt := copilotbudgetalertMixinFields0[1].Descriptor()
+	// copilotbudgetalert.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	copilotbudgetalert.DefaultUpdatedAt = copilotbudgetalertDescUpdatedAt.Default.(func() time.Time)
+	// copilotbudgetalert.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	copilotbudgetalert.UpdateDefaultUpdatedAt = copilotbudgetalertDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// copilotbudgetalertDescMonthlyBudget is the schema descriptor for monthly_budget field.
+	copilotbudgetalertDescMonthlyBudget := copilotbudgetalertFields[1].Descriptor()
+	// copilotbudgetalert.DefaultMonthlyBudget holds the default value on creation for the monthly_budget field.
+	copilotbudgetalert.DefaultMonthlyBudget = copilotbudgetalertDescMonthlyBudget.Default.(float64)
+	// copilotbudgetalertDescAlertThreshold is the schema descriptor for alert_threshold field.
+	copilotbudgetalertDescAlertThreshold := copilotbudgetalertFields[2].Descriptor()
+	// copilotbudgetalert.DefaultAlertThreshold holds the default value on creation for the alert_threshold field.
+	copilotbudgetalert.DefaultAlertThreshold = copilotbudgetalertDescAlertThreshold.Default.(int)
+	// copilotbudgetalertDescEnabled is the schema descriptor for enabled field.
+	copilotbudgetalertDescEnabled := copilotbudgetalertFields[3].Descriptor()
+	// copilotbudgetalert.DefaultEnabled holds the default value on creation for the enabled field.
+	copilotbudgetalert.DefaultEnabled = copilotbudgetalertDescEnabled.Default.(bool)
 	copilotquotasnapshotFields := schema.CopilotQuotaSnapshot{}.Fields()
 	_ = copilotquotasnapshotFields
 	// copilotquotasnapshotDescPlanType is the schema descriptor for plan_type field.

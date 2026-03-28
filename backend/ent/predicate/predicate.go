@@ -21,6 +21,9 @@ type Announcement func(*sql.Selector)
 // AnnouncementRead is the predicate function for announcementread builders.
 type AnnouncementRead func(*sql.Selector)
 
+// CopilotBudgetAlert is the predicate function for copilotbudgetalert builders.
+type CopilotBudgetAlert func(*sql.Selector)
+
 // CopilotQuotaSnapshot is the predicate function for copilotquotasnapshot builders.
 type CopilotQuotaSnapshot func(*sql.Selector)
 

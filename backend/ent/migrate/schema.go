@@ -338,6 +338,35 @@ var (
 			},
 		},
 	}
+	// CopilotBudgetAlertsColumns holds the columns for the "copilot_budget_alerts" table.
+	CopilotBudgetAlertsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "account_id", Type: field.TypeInt64, Unique: true},
+		{Name: "monthly_budget", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(10,2)"}},
+		{Name: "alert_threshold", Type: field.TypeInt, Default: 80},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "last_alerted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// CopilotBudgetAlertsTable holds the schema information for the "copilot_budget_alerts" table.
+	CopilotBudgetAlertsTable = &schema.Table{
+		Name:       "copilot_budget_alerts",
+		Columns:    CopilotBudgetAlertsColumns,
+		PrimaryKey: []*schema.Column{CopilotBudgetAlertsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "copilotbudgetalert_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{CopilotBudgetAlertsColumns[3]},
+			},
+			{
+				Name:    "copilotbudgetalert_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{CopilotBudgetAlertsColumns[6]},
+			},
+		},
+	}
 	// CopilotQuotaSnapshotsColumns holds the columns for the "copilot_quota_snapshots" table.
 	CopilotQuotaSnapshotsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1147,6 +1176,7 @@ var (
 		AccountGroupsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
+		CopilotBudgetAlertsTable,
 		CopilotQuotaSnapshotsTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
@@ -1189,6 +1219,9 @@ func init() {
 	AnnouncementReadsTable.ForeignKeys[1].RefTable = UsersTable
 	AnnouncementReadsTable.Annotation = &entsql.Annotation{
 		Table: "announcement_reads",
+	}
+	CopilotBudgetAlertsTable.Annotation = &entsql.Annotation{
+		Table: "copilot_budget_alerts",
 	}
 	CopilotQuotaSnapshotsTable.Annotation = &entsql.Annotation{
 		Table: "copilot_quota_snapshots",

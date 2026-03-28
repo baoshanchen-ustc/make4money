@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/copilotbudgetalert"
 	"github.com/Wei-Shaw/sub2api/ent/copilotquotasnapshot"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
@@ -52,6 +53,7 @@ const (
 	TypeAccountGroup            = "AccountGroup"
 	TypeAnnouncement            = "Announcement"
 	TypeAnnouncementRead        = "AnnouncementRead"
+	TypeCopilotBudgetAlert      = "CopilotBudgetAlert"
 	TypeCopilotQuotaSnapshot    = "CopilotQuotaSnapshot"
 	TypeErrorPassthroughRule    = "ErrorPassthroughRule"
 	TypeGroup                   = "Group"
@@ -6877,6 +6879,780 @@ func (m *AnnouncementReadMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AnnouncementRead edge %s", name)
+}
+
+// CopilotBudgetAlertMutation represents an operation that mutates the CopilotBudgetAlert nodes in the graph.
+type CopilotBudgetAlertMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int64
+	created_at         *time.Time
+	updated_at         *time.Time
+	account_id         *int64
+	addaccount_id      *int64
+	monthly_budget     *float64
+	addmonthly_budget  *float64
+	alert_threshold    *int
+	addalert_threshold *int
+	enabled            *bool
+	last_alerted_at    *time.Time
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*CopilotBudgetAlert, error)
+	predicates         []predicate.CopilotBudgetAlert
+}
+
+var _ ent.Mutation = (*CopilotBudgetAlertMutation)(nil)
+
+// copilotbudgetalertOption allows management of the mutation configuration using functional options.
+type copilotbudgetalertOption func(*CopilotBudgetAlertMutation)
+
+// newCopilotBudgetAlertMutation creates new mutation for the CopilotBudgetAlert entity.
+func newCopilotBudgetAlertMutation(c config, op Op, opts ...copilotbudgetalertOption) *CopilotBudgetAlertMutation {
+	m := &CopilotBudgetAlertMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCopilotBudgetAlert,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCopilotBudgetAlertID sets the ID field of the mutation.
+func withCopilotBudgetAlertID(id int64) copilotbudgetalertOption {
+	return func(m *CopilotBudgetAlertMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CopilotBudgetAlert
+		)
+		m.oldValue = func(ctx context.Context) (*CopilotBudgetAlert, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CopilotBudgetAlert.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCopilotBudgetAlert sets the old CopilotBudgetAlert of the mutation.
+func withCopilotBudgetAlert(node *CopilotBudgetAlert) copilotbudgetalertOption {
+	return func(m *CopilotBudgetAlertMutation) {
+		m.oldValue = func(context.Context) (*CopilotBudgetAlert, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CopilotBudgetAlertMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CopilotBudgetAlertMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CopilotBudgetAlertMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CopilotBudgetAlertMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CopilotBudgetAlert.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CopilotBudgetAlertMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CopilotBudgetAlertMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CopilotBudgetAlert entity.
+// If the CopilotBudgetAlert object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotBudgetAlertMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CopilotBudgetAlertMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CopilotBudgetAlertMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CopilotBudgetAlertMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CopilotBudgetAlert entity.
+// If the CopilotBudgetAlert object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotBudgetAlertMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CopilotBudgetAlertMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *CopilotBudgetAlertMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *CopilotBudgetAlertMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the CopilotBudgetAlert entity.
+// If the CopilotBudgetAlert object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotBudgetAlertMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *CopilotBudgetAlertMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *CopilotBudgetAlertMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *CopilotBudgetAlertMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetMonthlyBudget sets the "monthly_budget" field.
+func (m *CopilotBudgetAlertMutation) SetMonthlyBudget(f float64) {
+	m.monthly_budget = &f
+	m.addmonthly_budget = nil
+}
+
+// MonthlyBudget returns the value of the "monthly_budget" field in the mutation.
+func (m *CopilotBudgetAlertMutation) MonthlyBudget() (r float64, exists bool) {
+	v := m.monthly_budget
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonthlyBudget returns the old "monthly_budget" field's value of the CopilotBudgetAlert entity.
+// If the CopilotBudgetAlert object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotBudgetAlertMutation) OldMonthlyBudget(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlyBudget is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlyBudget requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlyBudget: %w", err)
+	}
+	return oldValue.MonthlyBudget, nil
+}
+
+// AddMonthlyBudget adds f to the "monthly_budget" field.
+func (m *CopilotBudgetAlertMutation) AddMonthlyBudget(f float64) {
+	if m.addmonthly_budget != nil {
+		*m.addmonthly_budget += f
+	} else {
+		m.addmonthly_budget = &f
+	}
+}
+
+// AddedMonthlyBudget returns the value that was added to the "monthly_budget" field in this mutation.
+func (m *CopilotBudgetAlertMutation) AddedMonthlyBudget() (r float64, exists bool) {
+	v := m.addmonthly_budget
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMonthlyBudget resets all changes to the "monthly_budget" field.
+func (m *CopilotBudgetAlertMutation) ResetMonthlyBudget() {
+	m.monthly_budget = nil
+	m.addmonthly_budget = nil
+}
+
+// SetAlertThreshold sets the "alert_threshold" field.
+func (m *CopilotBudgetAlertMutation) SetAlertThreshold(i int) {
+	m.alert_threshold = &i
+	m.addalert_threshold = nil
+}
+
+// AlertThreshold returns the value of the "alert_threshold" field in the mutation.
+func (m *CopilotBudgetAlertMutation) AlertThreshold() (r int, exists bool) {
+	v := m.alert_threshold
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAlertThreshold returns the old "alert_threshold" field's value of the CopilotBudgetAlert entity.
+// If the CopilotBudgetAlert object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotBudgetAlertMutation) OldAlertThreshold(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAlertThreshold is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAlertThreshold requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAlertThreshold: %w", err)
+	}
+	return oldValue.AlertThreshold, nil
+}
+
+// AddAlertThreshold adds i to the "alert_threshold" field.
+func (m *CopilotBudgetAlertMutation) AddAlertThreshold(i int) {
+	if m.addalert_threshold != nil {
+		*m.addalert_threshold += i
+	} else {
+		m.addalert_threshold = &i
+	}
+}
+
+// AddedAlertThreshold returns the value that was added to the "alert_threshold" field in this mutation.
+func (m *CopilotBudgetAlertMutation) AddedAlertThreshold() (r int, exists bool) {
+	v := m.addalert_threshold
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAlertThreshold resets all changes to the "alert_threshold" field.
+func (m *CopilotBudgetAlertMutation) ResetAlertThreshold() {
+	m.alert_threshold = nil
+	m.addalert_threshold = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *CopilotBudgetAlertMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *CopilotBudgetAlertMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the CopilotBudgetAlert entity.
+// If the CopilotBudgetAlert object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotBudgetAlertMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *CopilotBudgetAlertMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetLastAlertedAt sets the "last_alerted_at" field.
+func (m *CopilotBudgetAlertMutation) SetLastAlertedAt(t time.Time) {
+	m.last_alerted_at = &t
+}
+
+// LastAlertedAt returns the value of the "last_alerted_at" field in the mutation.
+func (m *CopilotBudgetAlertMutation) LastAlertedAt() (r time.Time, exists bool) {
+	v := m.last_alerted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastAlertedAt returns the old "last_alerted_at" field's value of the CopilotBudgetAlert entity.
+// If the CopilotBudgetAlert object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CopilotBudgetAlertMutation) OldLastAlertedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastAlertedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastAlertedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastAlertedAt: %w", err)
+	}
+	return oldValue.LastAlertedAt, nil
+}
+
+// ClearLastAlertedAt clears the value of the "last_alerted_at" field.
+func (m *CopilotBudgetAlertMutation) ClearLastAlertedAt() {
+	m.last_alerted_at = nil
+	m.clearedFields[copilotbudgetalert.FieldLastAlertedAt] = struct{}{}
+}
+
+// LastAlertedAtCleared returns if the "last_alerted_at" field was cleared in this mutation.
+func (m *CopilotBudgetAlertMutation) LastAlertedAtCleared() bool {
+	_, ok := m.clearedFields[copilotbudgetalert.FieldLastAlertedAt]
+	return ok
+}
+
+// ResetLastAlertedAt resets all changes to the "last_alerted_at" field.
+func (m *CopilotBudgetAlertMutation) ResetLastAlertedAt() {
+	m.last_alerted_at = nil
+	delete(m.clearedFields, copilotbudgetalert.FieldLastAlertedAt)
+}
+
+// Where appends a list predicates to the CopilotBudgetAlertMutation builder.
+func (m *CopilotBudgetAlertMutation) Where(ps ...predicate.CopilotBudgetAlert) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CopilotBudgetAlertMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CopilotBudgetAlertMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CopilotBudgetAlert, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CopilotBudgetAlertMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CopilotBudgetAlertMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CopilotBudgetAlert).
+func (m *CopilotBudgetAlertMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CopilotBudgetAlertMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.created_at != nil {
+		fields = append(fields, copilotbudgetalert.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, copilotbudgetalert.FieldUpdatedAt)
+	}
+	if m.account_id != nil {
+		fields = append(fields, copilotbudgetalert.FieldAccountID)
+	}
+	if m.monthly_budget != nil {
+		fields = append(fields, copilotbudgetalert.FieldMonthlyBudget)
+	}
+	if m.alert_threshold != nil {
+		fields = append(fields, copilotbudgetalert.FieldAlertThreshold)
+	}
+	if m.enabled != nil {
+		fields = append(fields, copilotbudgetalert.FieldEnabled)
+	}
+	if m.last_alerted_at != nil {
+		fields = append(fields, copilotbudgetalert.FieldLastAlertedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CopilotBudgetAlertMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case copilotbudgetalert.FieldCreatedAt:
+		return m.CreatedAt()
+	case copilotbudgetalert.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case copilotbudgetalert.FieldAccountID:
+		return m.AccountID()
+	case copilotbudgetalert.FieldMonthlyBudget:
+		return m.MonthlyBudget()
+	case copilotbudgetalert.FieldAlertThreshold:
+		return m.AlertThreshold()
+	case copilotbudgetalert.FieldEnabled:
+		return m.Enabled()
+	case copilotbudgetalert.FieldLastAlertedAt:
+		return m.LastAlertedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CopilotBudgetAlertMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case copilotbudgetalert.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case copilotbudgetalert.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case copilotbudgetalert.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case copilotbudgetalert.FieldMonthlyBudget:
+		return m.OldMonthlyBudget(ctx)
+	case copilotbudgetalert.FieldAlertThreshold:
+		return m.OldAlertThreshold(ctx)
+	case copilotbudgetalert.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case copilotbudgetalert.FieldLastAlertedAt:
+		return m.OldLastAlertedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CopilotBudgetAlert field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CopilotBudgetAlertMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case copilotbudgetalert.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case copilotbudgetalert.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case copilotbudgetalert.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case copilotbudgetalert.FieldMonthlyBudget:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonthlyBudget(v)
+		return nil
+	case copilotbudgetalert.FieldAlertThreshold:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAlertThreshold(v)
+		return nil
+	case copilotbudgetalert.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case copilotbudgetalert.FieldLastAlertedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastAlertedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CopilotBudgetAlert field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CopilotBudgetAlertMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, copilotbudgetalert.FieldAccountID)
+	}
+	if m.addmonthly_budget != nil {
+		fields = append(fields, copilotbudgetalert.FieldMonthlyBudget)
+	}
+	if m.addalert_threshold != nil {
+		fields = append(fields, copilotbudgetalert.FieldAlertThreshold)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CopilotBudgetAlertMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case copilotbudgetalert.FieldAccountID:
+		return m.AddedAccountID()
+	case copilotbudgetalert.FieldMonthlyBudget:
+		return m.AddedMonthlyBudget()
+	case copilotbudgetalert.FieldAlertThreshold:
+		return m.AddedAlertThreshold()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CopilotBudgetAlertMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case copilotbudgetalert.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case copilotbudgetalert.FieldMonthlyBudget:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMonthlyBudget(v)
+		return nil
+	case copilotbudgetalert.FieldAlertThreshold:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAlertThreshold(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CopilotBudgetAlert numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CopilotBudgetAlertMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(copilotbudgetalert.FieldLastAlertedAt) {
+		fields = append(fields, copilotbudgetalert.FieldLastAlertedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CopilotBudgetAlertMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CopilotBudgetAlertMutation) ClearField(name string) error {
+	switch name {
+	case copilotbudgetalert.FieldLastAlertedAt:
+		m.ClearLastAlertedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CopilotBudgetAlert nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CopilotBudgetAlertMutation) ResetField(name string) error {
+	switch name {
+	case copilotbudgetalert.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case copilotbudgetalert.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case copilotbudgetalert.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case copilotbudgetalert.FieldMonthlyBudget:
+		m.ResetMonthlyBudget()
+		return nil
+	case copilotbudgetalert.FieldAlertThreshold:
+		m.ResetAlertThreshold()
+		return nil
+	case copilotbudgetalert.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case copilotbudgetalert.FieldLastAlertedAt:
+		m.ResetLastAlertedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CopilotBudgetAlert field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CopilotBudgetAlertMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CopilotBudgetAlertMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CopilotBudgetAlertMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CopilotBudgetAlertMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CopilotBudgetAlertMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CopilotBudgetAlertMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CopilotBudgetAlertMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CopilotBudgetAlert unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CopilotBudgetAlertMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CopilotBudgetAlert edge %s", name)
 }
 
 // CopilotQuotaSnapshotMutation represents an operation that mutates the CopilotQuotaSnapshot nodes in the graph.

@@ -24,6 +24,8 @@ type Tx struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// CopilotBudgetAlert is the client for interacting with the CopilotBudgetAlert builders.
+	CopilotBudgetAlert *CopilotBudgetAlertClient
 	// CopilotQuotaSnapshot is the client for interacting with the CopilotQuotaSnapshot builders.
 	CopilotQuotaSnapshot *CopilotQuotaSnapshotClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
@@ -194,6 +196,7 @@ func (tx *Tx) init() {
 	tx.AccountGroup = NewAccountGroupClient(tx.config)
 	tx.Announcement = NewAnnouncementClient(tx.config)
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
+	tx.CopilotBudgetAlert = NewCopilotBudgetAlertClient(tx.config)
 	tx.CopilotQuotaSnapshot = NewCopilotQuotaSnapshotClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
