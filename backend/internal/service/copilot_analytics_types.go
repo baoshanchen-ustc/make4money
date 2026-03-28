@@ -35,16 +35,16 @@ var CopilotPlanConfigs = map[string]CopilotPlanConfig{
 // CopilotQuotaSnapshot is the service-layer representation of a daily quota snapshot
 // for a Copilot account. Written on every successful real-time quota fetch (UPSERT).
 type CopilotQuotaSnapshot struct {
-	ID                 int64
-	AccountID          int64
-	SnapshotDate       time.Time // date precision (no time component)
-	PlanType           *string
-	PremiumEntitlement int
-	PremiumRemaining   int
-	PremiumUsed        int
-	PremiumOverage     int
-	Unlimited          bool
-	CreatedAt          time.Time
+	ID                 int64     `json:"id"`
+	AccountID          int64     `json:"account_id"`
+	SnapshotDate       time.Time `json:"snapshot_date"` // date precision (no time component)
+	PlanType           *string   `json:"plan_type"`
+	PremiumEntitlement int       `json:"premium_entitlement"`
+	PremiumRemaining   int       `json:"premium_remaining"`
+	PremiumUsed        int       `json:"premium_used"`
+	PremiumOverage     int       `json:"premium_overage"`
+	Unlimited          bool      `json:"unlimited"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // CopilotQuotaSnapshotRepository defines the persistence interface for quota snapshots.
