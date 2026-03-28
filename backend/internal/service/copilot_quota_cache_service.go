@@ -61,11 +61,30 @@ func cacheKey(accountID int64) string {
 	return fmt.Sprintf("copilot_quota:%d", accountID)
 }
 
+// listAllActiveCopilotAccounts returns every active Copilot account by paging
+// through all records. The page size is kept large to minimise round-trips while
+// remaining within typical database limits.
+func listAllActiveCopilotAccounts(ctx context.Context, adminSvc AdminService) ([]Account, error) {
+	const pageSize = 500
+	var all []Account
+	for page := 1; ; page++ {
+		batch, total, err := adminSvc.ListAccounts(ctx, page, pageSize, PlatformCopilot, "", StatusActive, "", 0)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, batch...)
+		if int64(len(all)) >= total || len(batch) < pageSize {
+			break
+		}
+	}
+	return all, nil
+}
+
 // FetchAll returns quota for all active Copilot accounts.
 // Accounts with a fresh cache entry are returned immediately without hitting GitHub.
 // Only accounts with a missing or expired cache entry trigger real-time API calls.
 func (s *CopilotQuotaCacheService) FetchAll(ctx context.Context) ([]CopilotCachedQuota, error) {
-	accounts, _, err := s.adminSvc.ListAccounts(ctx, 1, 500, PlatformCopilot, "", StatusActive, "", 0)
+	accounts, err := listAllActiveCopilotAccounts(ctx, s.adminSvc)
 	if err != nil {
 		return nil, fmt.Errorf("copilot quota cache: list accounts: %w", err)
 	}

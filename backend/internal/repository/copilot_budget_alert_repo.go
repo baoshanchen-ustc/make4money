@@ -70,6 +70,22 @@ func (r *copilotBudgetAlertRepository) ListEnabled(ctx context.Context) ([]*serv
 	return result, nil
 }
 
+// ListAll returns every alert config regardless of enabled status.
+func (r *copilotBudgetAlertRepository) ListAll(ctx context.Context) ([]*service.CopilotBudgetAlert, error) {
+	client := clientFromContext(ctx, r.client)
+
+	rows, err := client.CopilotBudgetAlert.Query().All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*service.CopilotBudgetAlert, len(rows))
+	for i, row := range rows {
+		result[i] = copilotBudgetAlertFromEnt(row)
+	}
+	return result, nil
+}
+
 // copilotBudgetAlertFromEnt converts an Ent entity to a service struct.
 func copilotBudgetAlertFromEnt(e *dbent.CopilotBudgetAlert) *service.CopilotBudgetAlert {
 	return &service.CopilotBudgetAlert{

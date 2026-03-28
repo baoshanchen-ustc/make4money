@@ -91,4 +91,8 @@ type CopilotBudgetAlertRepository interface {
 
 	// ListEnabled returns all alert configs that have enabled=true.
 	ListEnabled(ctx context.Context) ([]*CopilotBudgetAlert, error)
+
+	// ListAll returns every alert config regardless of enabled status.
+	// Used by GetAccountsOverview so disabled configs remain visible for editing.
+	ListAll(ctx context.Context) ([]*CopilotBudgetAlert, error)
 }

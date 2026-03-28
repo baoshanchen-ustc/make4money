@@ -56,7 +56,7 @@
             step="1"
             class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           />
-          <p class="mt-1 text-xs text-gray-400">当月费用超过预算的此百分比时触发告警</p>
+          <p class="mt-1 text-xs text-gray-400">当 Premium 配额使用率超过此百分比时触发告警</p>
         </div>
       </div>
 

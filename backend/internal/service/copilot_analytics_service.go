@@ -398,8 +398,8 @@ func (s *CopilotAnalyticsService) GetAccountsOverview(ctx context.Context) (*Cop
 		quotaByAccount[q.AccountID] = &q
 	}
 
-	// 2. Load all Copilot accounts.
-	accounts, _, err := s.adminSvc.ListAccounts(ctx, 1, 500, PlatformCopilot, "", StatusActive, "", 0)
+	// 2. Load all Copilot accounts (paginates internally to avoid the 500-row cap).
+	accounts, err := listAllActiveCopilotAccounts(ctx, s.adminSvc)
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: list accounts: %w", err)
 	}
@@ -410,8 +410,8 @@ func (s *CopilotAnalyticsService) GetAccountsOverview(ctx context.Context) (*Cop
 		return nil, fmt.Errorf("copilot analytics: fetch usage counts: %w", err)
 	}
 
-	// 4. Fetch all alert configs.
-	alerts, err := s.alertRepo.ListEnabled(ctx)
+	// 4. Fetch all alert configs (including disabled ones so the UI can edit them).
+	alerts, err := s.alertRepo.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: list alerts: %w", err)
 	}
@@ -465,13 +465,12 @@ func (s *CopilotAnalyticsService) GetAccountsOverview(ctx context.Context) (*Cop
 				}
 
 				if !pi.Unlimited && pi.Entitlement > 0 {
-					usageRate := float64(pi.Used) / float64(pi.Entitlement) * 100
 					alertCfg := alertByAccount[acc.ID]
-					threshold := 80
-					if alertCfg != nil {
-						threshold = alertCfg.AlertThreshold
+					// Only trigger alerts when an enabled budget alert config exists.
+					if alertCfg != nil && alertCfg.Enabled {
+						usageRate := float64(pi.Used) / float64(pi.Entitlement) * 100
+						alertStatus = AlertStatus(usageRate, alertCfg.AlertThreshold)
 					}
-					alertStatus = AlertStatus(usageRate, threshold)
 				}
 			}
 		}
