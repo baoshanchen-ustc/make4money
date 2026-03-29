@@ -159,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Chart,
@@ -357,23 +357,31 @@ async function loadAll() {
   donutChart?.destroy()
   donutChart = null
 
-  try {
-    const [sum, daily] = await Promise.all([
-      getCopilotUserSummary(userId.value),
-      getCopilotUsersDailyStats({ days: BAR_DAYS }),
-    ])
-    summary.value = sum
-    dailyStats.value = daily
-    // Defer chart rendering to let Vue update the DOM
-    setTimeout(() => {
-      buildBarChart()
-      buildDonutChart()
-    }, 50)
-  } catch (e: unknown) {
-    summaryError.value = extractErrorMessage(e)
-  } finally {
-    summaryLoading.value = false
-    dailyLoading.value = false
+  const [sumResult, dailyResult] = await Promise.allSettled([
+    getCopilotUserSummary(userId.value),
+    getCopilotUsersDailyStats({ days: BAR_DAYS }),
+  ])
+
+  if (sumResult.status === 'fulfilled') {
+    summary.value = sumResult.value
+  } else {
+    summaryError.value = extractErrorMessage(sumResult.reason)
+  }
+
+  if (dailyResult.status === 'fulfilled') {
+    dailyStats.value = dailyResult.value
+  } else {
+    dailyError.value = extractErrorMessage(dailyResult.reason)
+  }
+
+  summaryLoading.value = false
+  dailyLoading.value = false
+
+  // Wait for Vue to render the canvas elements before drawing charts
+  if (summary.value) {
+    await nextTick()
+    buildBarChart()
+    buildDonutChart()
   }
 }
 
