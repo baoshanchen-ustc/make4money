@@ -1,12 +1,14 @@
 <template>
   <div class="relative">
-    <div v-if="loading" class="flex h-64 items-center justify-center">
+    <div v-if="loading" class="flex h-[300px] items-center justify-center">
       <LoadingSpinner />
     </div>
-    <div v-else-if="error" class="flex h-64 items-center justify-center text-sm text-red-500">
+    <div v-else-if="error" class="flex h-[300px] items-center justify-center text-sm text-red-500">
       {{ error }}
     </div>
-    <canvas v-else ref="chartRef" />
+    <div v-else class="h-[300px]">
+      <canvas ref="chartRef" class="!h-full !w-full" />
+    </div>
   </div>
 </template>
 
@@ -135,7 +137,3 @@ onMounted(buildChart)
 watch(() => [props.days, props.metric], buildChart)
 onBeforeUnmount(() => chart?.destroy())
 </script>
-
-<style scoped>
-canvas { height: 300px; }
-</style>
