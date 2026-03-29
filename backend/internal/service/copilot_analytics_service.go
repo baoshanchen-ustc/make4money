@@ -521,6 +521,91 @@ func (s *CopilotAnalyticsService) GetAccountQuotaTrend(ctx context.Context, acco
 	return s.snapshotRepo.ListByAccountID(ctx, accountID, days)
 }
 
+// CopilotAccountDailyEntry holds one account's daily request count for a single day.
+type CopilotAccountDailyEntry struct {
+	AccountID int64  `json:"account_id"`
+	Date      string `json:"date"`
+	Count     int    `json:"count"`
+}
+
+// CopilotAccountsDailyStatsResult is the response for the all-accounts daily stats endpoint.
+type CopilotAccountsDailyStatsResult struct {
+	Accounts []CopilotAccountDailyAccountInfo `json:"accounts"`
+	Days     []CopilotAccountDailyEntry       `json:"days"`
+}
+
+// CopilotAccountDailyAccountInfo holds minimal account metadata for the chart legend.
+type CopilotAccountDailyAccountInfo struct {
+	AccountID int64  `json:"account_id"`
+	Name      string `json:"name"`
+}
+
+// GetAccountsDailyStats returns daily premium request counts for all Copilot accounts
+// over the past [days] days (default 30, max 90). Each row is (account_id, date, count).
+func (s *CopilotAnalyticsService) GetAccountsDailyStats(ctx context.Context, days int) (*CopilotAccountsDailyStatsResult, error) {
+	if days <= 0 {
+		days = 30
+	}
+	if days > 90 {
+		days = 90
+	}
+
+	now := time.Now()
+	rangeStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, -(days - 1))
+
+	query := `
+SELECT
+    ul.account_id,
+    a.name,
+    DATE(ul.created_at AT TIME ZONE 'UTC' AT TIME ZONE current_setting('TIMEZONE')) AS req_date,
+    COUNT(*) AS count
+FROM usage_logs ul
+JOIN accounts a ON a.id = ul.account_id
+WHERE ul.initiator = 'user'
+  AND ul.created_at >= $1
+  AND ul.account_id IN (SELECT id FROM accounts WHERE platform = 'copilot')
+GROUP BY ul.account_id, a.name, req_date
+ORDER BY ul.account_id, req_date
+`
+	rows, err := s.db.QueryContext(ctx, query, rangeStart)
+	if err != nil {
+		return nil, fmt.Errorf("copilot analytics: accounts daily stats query: %w", err)
+	}
+	defer rows.Close()
+
+	accountMap := make(map[int64]string)
+	var entries []CopilotAccountDailyEntry
+
+	for rows.Next() {
+		var accountID int64
+		var name string
+		var date time.Time
+		var count int
+		if err := rows.Scan(&accountID, &name, &date, &count); err != nil {
+			return nil, fmt.Errorf("copilot analytics: scan daily stats row: %w", err)
+		}
+		accountMap[accountID] = name
+		entries = append(entries, CopilotAccountDailyEntry{
+			AccountID: accountID,
+			Date:      date.Format("2006-01-02"),
+			Count:     count,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("copilot analytics: daily stats rows: %w", err)
+	}
+
+	accounts := make([]CopilotAccountDailyAccountInfo, 0, len(accountMap))
+	for id, name := range accountMap {
+		accounts = append(accounts, CopilotAccountDailyAccountInfo{AccountID: id, Name: name})
+	}
+
+	return &CopilotAccountsDailyStatsResult{
+		Accounts: accounts,
+		Days:     entries,
+	}, nil
+}
+
 // GetAccountHourlyStats returns 24-hour bucket stats for an account on a given date.
 func (s *CopilotAnalyticsService) GetAccountHourlyStats(ctx context.Context, accountID int64, date string) ([]CopilotHourlyBucket, error) {
 	day, err := time.ParseInLocation("2006-01-02", date, time.Local)

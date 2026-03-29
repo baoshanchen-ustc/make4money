@@ -587,6 +587,7 @@ func registerCopilotAnalyticsRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		accounts := copilot.Group("/accounts")
 		{
 			accounts.GET("/overview", h.Admin.CopilotAnalytics.GetAccountsOverview)
+			accounts.GET("/daily-stats", h.Admin.CopilotAnalytics.GetAccountsDailyStats)
 			accounts.GET("/:id/quota-trend", h.Admin.CopilotAnalytics.GetAccountQuotaTrend)
 			accounts.GET("/:id/hourly-stats", h.Admin.CopilotAnalytics.GetAccountHourlyStats)
 			accounts.POST("/:id/quota-refresh", h.Admin.CopilotAnalytics.QuotaRefresh)

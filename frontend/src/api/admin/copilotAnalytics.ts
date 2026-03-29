@@ -170,6 +170,29 @@ export async function getCopilotUserRequests(
 
 // 账户维度
 
+export interface CopilotAccountDailyEntry {
+  account_id: number
+  date: string
+  count: number
+}
+
+export interface CopilotAccountDailyAccountInfo {
+  account_id: number
+  name: string
+}
+
+export interface CopilotAccountsDailyStatsResult {
+  accounts: CopilotAccountDailyAccountInfo[]
+  days: CopilotAccountDailyEntry[]
+}
+
+export async function getCopilotAccountsDailyStats(
+  params: { days?: number } = {},
+): Promise<CopilotAccountsDailyStatsResult> {
+  const { data } = await apiClient.get(`${BASE}/accounts/daily-stats`, { params })
+  return data
+}
+
 export async function getCopilotAccountsOverview(): Promise<CopilotAccountsOverviewResult> {
   const { data } = await apiClient.get(`${BASE}/accounts/overview`)
   return data

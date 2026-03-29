@@ -131,6 +131,22 @@ func (h *CopilotAnalyticsHandler) GetUserRequests(c *gin.Context) {
 // 账户维度 API
 // ─────────────────────────────────────────────
 
+// GetAccountsDailyStats handles GET /api/v1/admin/copilot/accounts/daily-stats
+// Query params: days (default 30, max 90)
+func (h *CopilotAnalyticsHandler) GetAccountsDailyStats(c *gin.Context) {
+	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
+	if days < 1 || days > 90 {
+		days = 30
+	}
+
+	result, err := h.analyticsSvc.GetAccountsDailyStats(c.Request.Context(), days)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.Success(c, result)
+}
+
 // GetAccountsOverview handles GET /api/v1/admin/copilot/accounts/overview
 func (h *CopilotAnalyticsHandler) GetAccountsOverview(c *gin.Context) {
 	result, err := h.analyticsSvc.GetAccountsOverview(c.Request.Context())
