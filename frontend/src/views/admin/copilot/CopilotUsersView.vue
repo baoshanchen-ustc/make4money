@@ -68,8 +68,8 @@
           </div>
           <template v-else-if="topUser">
             <p class="mt-2 truncate text-lg font-bold text-gray-900 dark:text-white">{{ topUser.username }}</p>
-            <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ topUser.premiumRequests.toLocaleString() }}</p>
-            <p class="mt-0.5 text-xs text-gray-400">Premium 请求</p>
+            <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ topUser.totalRequests.toLocaleString() }}</p>
+            <p class="mt-0.5 text-xs text-gray-400">总请求数</p>
           </template>
           <template v-else>
             <p class="mt-2 text-sm text-gray-400">暂无活跃用户</p>
@@ -381,7 +381,7 @@ const kpiAvgRequests = computed(() => {
 const topUser = computed<UserRow | null>(() => {
   if (!aggregatedUsers.value.length) return null
   return aggregatedUsers.value.reduce((best, u) =>
-    u.premiumRequests > best.premiumRequests ? u : best,
+    u.totalRequests > best.totalRequests ? u : best,
   )
 })
 
