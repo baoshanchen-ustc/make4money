@@ -115,17 +115,6 @@
         </div>
       </div>
 
-      <!-- Cost Comparison Chart -->
-      <div v-if="!loading && overview && overview.accounts.length > 0" class="card p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <div>
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">账户成本对比</h2>
-            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">各账户月估算成本 · 基于套餐定价</p>
-          </div>
-        </div>
-        <Bar :data="costChartData" :options="costChartOptions" class="max-h-56" />
-      </div>
-
       <!-- Daily Requests Line Chart -->
       <div class="card p-5">
         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -465,15 +454,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bar } from 'vue-chartjs'
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Tooltip,
-  Legend,
-} from 'chart.js'
 import {
   getCopilotAccountsOverview,
   refreshCopilotAccountQuota,
@@ -490,8 +470,6 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import QuotaTrendChart from '@/components/admin/copilot/QuotaTrendChart.vue'
 import AccountsDailyChart from '@/components/admin/copilot/AccountsDailyChart.vue'
 import BudgetAlertDialog from '@/components/admin/copilot/BudgetAlertDialog.vue'
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
 const { t } = useI18n()
 
@@ -621,62 +599,8 @@ const AVATAR_COLORS = [
   'bg-rose-500', 'bg-cyan-500', 'bg-pink-500', 'bg-indigo-500',
 ]
 
-const CHART_COLORS = [
-  '#10b981', '#6366f1', '#f59e0b', '#3b82f6',
-  '#f43f5e', '#06b6d4', '#ec4899', '#8b5cf6',
-]
-
 function accountAvatarColor(id: number): string {
   return AVATAR_COLORS[id % AVATAR_COLORS.length]
-}
-
-const costChartData = computed(() => {
-  const accounts = overview.value?.accounts ?? []
-  return {
-    labels: accounts.map(a => a.name),
-    datasets: [
-      {
-        label: '月费用 ($)',
-        data: accounts.map(a => a.monthly_cost),
-        backgroundColor: accounts.map((_, i) => CHART_COLORS[i % CHART_COLORS.length] + 'CC'),
-        borderColor: accounts.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
-        borderWidth: 1.5,
-        borderRadius: 6,
-        borderSkipped: false,
-        yAxisID: 'y',
-      },
-    ],
-  }
-})
-
-const costChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  interaction: { mode: 'index' as const, intersect: false },
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      callbacks: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        label: (ctx: any) => `${ctx.dataset.label}: $${Number(ctx.parsed.y).toFixed(2)}`,
-      },
-    },
-  },
-  scales: {
-    x: {
-      grid: { display: false },
-      ticks: { font: { size: 11 } },
-    },
-    y: {
-      beginAtZero: true,
-      grid: { color: 'rgba(156,163,175,0.15)' },
-      ticks: {
-        font: { size: 10 },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        callback: (value: any) => `$${Number(value).toFixed(0)}`,
-      },
-    },
-  },
 }
 
 // ── Plan Helpers ──────────────────────────────────────────────────────────────
