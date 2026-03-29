@@ -282,6 +282,41 @@ func (h *CopilotAnalyticsHandler) UpsertBudgetAlert(c *gin.Context) {
 	response.Success(c, alert)
 }
 
+// GetUsersDailyStats handles GET /api/v1/admin/copilot/users/daily-stats
+// Query params: days (default 30, max 90)
+func (h *CopilotAnalyticsHandler) GetUsersDailyStats(c *gin.Context) {
+	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
+	if days < 1 || days > 90 {
+		days = 30
+	}
+
+	result, err := h.analyticsSvc.GetUsersDailyStats(c.Request.Context(), days)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.Success(c, result)
+}
+
+// GetUserSummary handles GET /api/v1/admin/copilot/users/:id/summary
+func (h *CopilotAnalyticsHandler) GetUserSummary(c *gin.Context) {
+	userID, ok := parseIDParam(c, "id")
+	if !ok {
+		return
+	}
+
+	result, err := h.analyticsSvc.GetUserSummary(c.Request.Context(), userID)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	if result == nil {
+		response.Error(c, 404, "user has no copilot usage records")
+		return
+	}
+	response.Success(c, result)
+}
+
 // ─────────────────────────────────────────────
 // 辅助函数
 // ─────────────────────────────────────────────

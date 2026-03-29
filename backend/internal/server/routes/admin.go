@@ -580,8 +580,10 @@ func registerCopilotAnalyticsRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		users := copilot.Group("/users")
 		{
 			users.GET("/stats", h.Admin.CopilotAnalytics.GetUserStats)
+			users.GET("/daily-stats", h.Admin.CopilotAnalytics.GetUsersDailyStats)
 			users.GET("/:id/timeline", h.Admin.CopilotAnalytics.GetUserTimeline)
 			users.GET("/:id/requests", h.Admin.CopilotAnalytics.GetUserRequests)
+			users.GET("/:id/summary", h.Admin.CopilotAnalytics.GetUserSummary)
 		}
 		// 账户维度
 		accounts := copilot.Group("/accounts")
