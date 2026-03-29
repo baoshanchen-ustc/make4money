@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import {
   Chart,
   LineController,
@@ -92,6 +92,10 @@ async function buildChart() {
       }
     })
 
+    // Show canvas before creating chart so chartRef is valid
+    loading.value = false
+    await nextTick()
+
     chart?.destroy()
     if (!chartRef.value) return
     chart = new Chart(chartRef.value, {
@@ -128,7 +132,6 @@ async function buildChart() {
     })
   } catch (e: unknown) {
     error.value = extractErrorMessage(e)
-  } finally {
     loading.value = false
   }
 }
