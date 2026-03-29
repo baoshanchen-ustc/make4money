@@ -970,7 +970,7 @@ func roundCostPrecise(v float64) float64 {
 }
 
 // pq_ArrayScan is a helper to scan a PostgreSQL array into a Go string slice.
-func pq_ArrayScan(dest *[]string) interface{} {
+func pq_ArrayScan(dest *[]string) any {
 	return &pqStringArray{dest: dest}
 }
 
@@ -980,7 +980,7 @@ type pqStringArray struct {
 }
 
 // Scan implements sql.Scanner.
-func (a *pqStringArray) Scan(src interface{}) error {
+func (a *pqStringArray) Scan(src any) error {
 	if src == nil {
 		*a.dest = nil
 		return nil
@@ -990,7 +990,7 @@ func (a *pqStringArray) Scan(src interface{}) error {
 
 // pqArrayScan decodes a PostgreSQL text array format like {"a","b","c"} into a []string.
 // This avoids importing pq directly in the service package.
-func pqArrayScan(src interface{}, dest *[]string) error {
+func pqArrayScan(src any, dest *[]string) error {
 	switch v := src.(type) {
 	case []byte:
 		return decodePostgresTextArray(string(v), dest)
