@@ -721,11 +721,13 @@ async function loadOverview() {
 
 async function doRefresh(account: CopilotAccountOverviewEntry) {
   refreshing.value.add(account.account_id)
+  const accountId = account.account_id
+  const systemMonthRequests = account.system_month_premium_requests
   try {
-    const updated = await refreshCopilotAccountQuota(account.account_id)
+    const updated = await refreshCopilotAccountQuota(accountId)
     // Patch only the affected row — avoids a full table re-render
     if (overview.value) {
-      const idx = overview.value.accounts.findIndex(a => a.account_id === account.account_id)
+      const idx = overview.value.accounts.findIndex(a => a.account_id === accountId)
       if (idx !== -1) {
         const pi = updated.QuotaInfo?.premium_interactions ?? null
         const newSnapshot: CopilotAccountQuotaSnapshot | null = pi
@@ -735,7 +737,7 @@ async function doRefresh(account: CopilotAccountOverviewEntry) {
               github_total_used: pi.used,
               overage: pi.overage_count,
               unlimited: pi.unlimited,
-              external_used: Math.max(0, pi.used - account.system_month_premium_requests),
+              external_used: Math.max(0, pi.used - (systemMonthRequests ?? 0)),
               cached_at: updated.CachedAt,
             }
           : null
@@ -749,7 +751,7 @@ async function doRefresh(account: CopilotAccountOverviewEntry) {
   } catch {
     showToast('error', t('admin.copilot.accounts.refreshFailed'))
   } finally {
-    refreshing.value.delete(account.account_id)
+    refreshing.value.delete(accountId)
   }
 }
 
