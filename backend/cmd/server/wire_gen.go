@@ -163,7 +163,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	proxyHandler := admin.NewProxyHandler(adminService)
 	adminRedeemHandler := admin.NewRedeemHandler(adminService, redeemService)
 	promoHandler := admin.NewPromoHandler(promoService)
-	opsRepository := repository.NewOpsRepository(db)
+	requestLogRepository := repository.NewRequestLogRepository(db)
+	anomalyService := service.NewAnomalyService(settingRepository, requestLogRepository)
+	_ = anomalyService // TODO: wire into handlers in Tasks 9 and 10
+	opsRepository := repository.NewOpsRepository(db, requestLogRepository)
 	pricingRemoteClient := repository.ProvidePricingRemoteClient(configConfig)
 	pricingService, err := service.ProvidePricingService(configConfig, pricingRemoteClient)
 	if err != nil {
