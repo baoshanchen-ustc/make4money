@@ -4,7 +4,7 @@
       <LoadingSpinner />
     </div>
     <div v-else-if="error" class="text-sm text-red-500">{{ error }}</div>
-    <div v-else>
+    <div v-else class="relative">
       <!-- 小时列标签 -->
       <div class="mb-1 grid grid-cols-[2rem_repeat(24,1fr)] gap-0.5 text-center">
         <span />
@@ -28,7 +28,8 @@
           :key="cell.hour"
           class="h-4 rounded-sm cursor-default transition-opacity hover:opacity-80"
           :style="{ backgroundColor: heatColor(cell.count, maxCount) }"
-          :title="`${row.date} ${cell.hour.toString().padStart(2,'0')}:00 — ${cell.count} 次`"
+          @mouseenter="(e) => showTooltip(e, row.date, cell)"
+          @mouseleave="hideTooltip"
         />
       </div>
       <!-- 图例 -->
@@ -37,12 +38,28 @@
         <div v-for="step in legendSteps" :key="step" class="h-3 w-5 rounded-sm" :style="{ backgroundColor: heatColor(step, 5) }" />
         <span class="text-[10px] text-gray-400">多</span>
       </div>
+
+      <!-- 自定义 Tooltip -->
+      <Teleport to="body">
+        <div
+          v-if="tooltip.visible"
+          class="pointer-events-none fixed z-[99999] rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+          :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
+        >
+          <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+            {{ tooltip.date }} {{ tooltip.hour.toString().padStart(2, '0') }}:00
+          </p>
+          <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            请求数：<span class="font-bold text-blue-600 dark:text-blue-400">{{ tooltip.count }}</span> 次
+          </p>
+        </div>
+      </Teleport>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { getCopilotUserTimeline } from '@/api/admin/copilotAnalytics'
 import { extractErrorMessage } from '@/api/client'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -60,6 +77,30 @@ const error = ref<string | null>(null)
 const rows = ref<HeatRow[]>([])
 const maxCount = ref(1)
 const legendSteps = [0, 1, 2, 3, 4, 5]
+
+const tooltip = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  date: '',
+  hour: 0,
+  count: 0,
+})
+
+function showTooltip(event: MouseEvent, date: string, cell: HeatCell) {
+  const rect = (event.target as HTMLElement).getBoundingClientRect()
+  // Position tooltip above the cell, centered
+  tooltip.x = rect.left + rect.width / 2 - 70
+  tooltip.y = rect.top - 60
+  tooltip.date = date
+  tooltip.hour = cell.hour
+  tooltip.count = cell.count
+  tooltip.visible = true
+}
+
+function hideTooltip() {
+  tooltip.visible = false
+}
 
 function localDateStr(offset: number): string {
   const d = new Date()
