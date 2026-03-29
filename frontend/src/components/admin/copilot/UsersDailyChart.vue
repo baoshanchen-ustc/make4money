@@ -59,7 +59,7 @@ async function buildChart() {
     for (let i = props.days - 1; i >= 0; i--) {
       const d = new Date(today)
       d.setDate(d.getDate() - i)
-      dates.push(d.toISOString().slice(0, 10))
+      dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
     }
 
     const countsByUser = new Map<number, Map<string, number>>()

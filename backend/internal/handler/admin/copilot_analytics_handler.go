@@ -260,7 +260,7 @@ func (h *CopilotAnalyticsHandler) UpsertBudgetAlert(c *gin.Context) {
 
 	// Verify that the account exists and is a Copilot account.
 	acc, err := h.adminSvc.GetAccount(c.Request.Context(), accountID)
-	if err != nil {
+	if err != nil || acc == nil {
 		response.NotFound(c, "account not found")
 		return
 	}
