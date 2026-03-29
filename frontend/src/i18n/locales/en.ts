@@ -3875,7 +3875,9 @@ export default {
           status: 'Status',
           requestId: 'Request ID',
           anomaly: 'Anomaly',
-          actions: 'Actions'
+          actions: 'Actions',
+          userKey: 'User / Key',
+          groupAccount: 'Group / Account'
         },
         detail: {
           stream: 'Stream',

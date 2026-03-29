@@ -133,6 +133,38 @@
                           }}
                         </span>
                       </td>
+                      <!-- 用户 / Key -->
+                      <td class="px-4 py-2">
+                        <div class="flex flex-col gap-0.5">
+                          <span
+                            v-if="row.user_name"
+                            class="max-w-[120px] truncate text-[11px] font-medium text-gray-800 dark:text-gray-200"
+                            :title="row.user_name"
+                          >{{ row.user_name }}</span>
+                          <span v-else class="text-[11px] text-gray-400">—</span>
+                          <span
+                            v-if="row.api_key_label"
+                            class="max-w-[120px] truncate font-mono text-[10px] text-gray-500 dark:text-gray-400"
+                            :title="row.api_key_label"
+                          >{{ row.api_key_label }}</span>
+                        </div>
+                      </td>
+                      <!-- 分组 / 账号 -->
+                      <td class="px-4 py-2">
+                        <div class="flex flex-col gap-0.5">
+                          <span
+                            v-if="row.group_name"
+                            class="max-w-[120px] truncate text-[11px] font-medium text-gray-800 dark:text-gray-200"
+                            :title="row.group_name"
+                          >{{ row.group_name }}</span>
+                          <span v-else class="text-[11px] text-gray-400">—</span>
+                          <span
+                            v-if="row.account_name"
+                            class="max-w-[120px] truncate text-[11px] text-gray-500 dark:text-gray-400"
+                            :title="row.account_name"
+                          >{{ row.account_name }}</span>
+                        </div>
+                      </td>
                       <td class="whitespace-nowrap px-4 py-2 text-xs font-medium text-gray-700 dark:text-gray-200">
                         <span
                           class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-600 dark:bg-dark-700 dark:text-gray-300"
@@ -265,6 +297,8 @@ const selectedRow = ref<OpsRequestDetail | null>(null)
 const tableCols = computed(() => [
   t('admin.ops.requestDetails.table.time'),
   t('admin.ops.requestDetails.table.kind'),
+  t('admin.ops.requestDetails.table.userKey'),
+  t('admin.ops.requestDetails.table.groupAccount'),
   t('admin.ops.requestDetails.table.platform'),
   t('admin.ops.requestDetails.table.model'),
   t('admin.ops.requestDetails.table.duration'),

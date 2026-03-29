@@ -4042,7 +4042,9 @@ export default {
           status: '状态码',
           requestId: '请求ID',
           anomaly: '异常',
-          actions: '操作'
+          actions: '操作',
+          userKey: '用户 / Key',
+          groupAccount: '分组 / 账号'
         },
         detail: {
           stream: '流式',
