@@ -301,18 +301,18 @@ function anomalyRowClass(row: OpsRequestDetail): string {
   if (!row.anomaly_types || row.anomaly_types.length === 0) {
     return 'hover:bg-gray-50/80 dark:hover:bg-dark-800/50'
   }
-  // Prioritize: timeout > slow_request > zero_token > error
+  // Prioritize by severity: timeout > error > slow_request > zero_token
   if (row.anomaly_types.includes('timeout')) {
     return 'bg-red-50/40 hover:bg-red-50/70 dark:bg-red-950/10 dark:hover:bg-red-950/20'
+  }
+  if (row.anomaly_types.includes('error')) {
+    return 'bg-rose-50/40 hover:bg-rose-50/70 dark:bg-rose-950/10 dark:hover:bg-rose-950/20'
   }
   if (row.anomaly_types.includes('slow_request')) {
     return 'bg-orange-50/40 hover:bg-orange-50/70 dark:bg-orange-950/10 dark:hover:bg-orange-950/20'
   }
-  if (row.anomaly_types.includes('zero_token')) {
-    return 'bg-amber-50/40 hover:bg-amber-50/70 dark:bg-amber-950/10 dark:hover:bg-amber-950/20'
-  }
-  // error anomaly
-  return 'bg-rose-50/40 hover:bg-rose-50/70 dark:bg-rose-950/10 dark:hover:bg-rose-950/20'
+  // zero_token
+  return 'bg-amber-50/40 hover:bg-amber-50/70 dark:bg-amber-950/10 dark:hover:bg-amber-950/20'
 }
 
 /** 成功行历史上可能无 status_code；与列表 SQL 中 success=200 对齐 */

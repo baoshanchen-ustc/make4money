@@ -4070,7 +4070,8 @@ export default {
         upstreamRequest: '上游请求体',
         upstreamResponse: '上游响应体',
         truncated: '请求体已截断（超过 1MB 限制）',
-        available: '有数据'
+        available: '有数据',
+        notSaved: '此请求已检测到异常，但原始数据未保存（请在异常检测设置中开启"保存原始请求/响应体"）'
       },
       anomalySettings: {
         title: '异常检测设置',

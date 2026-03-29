@@ -129,6 +129,9 @@ const DEFAULT_SETTINGS: AnomalySettings = {
 
 const loading = ref(false)
 const saving = ref(false)
+// Set to true when the initial settings fetch fails, so the form is locked
+// and a save cannot silently overwrite the real configuration with defaults.
+const loadError = ref(false)
 
 const form = reactive<AnomalySettings>({ ...DEFAULT_SETTINGS })
 
@@ -160,7 +163,7 @@ const fieldErrors = computed<Partial<Record<FieldName, string>>>(() => {
   return errors
 })
 
-const isFormValid = computed(() => Object.keys(fieldErrors.value).length === 0)
+const isFormValid = computed(() => !loadError.value && Object.keys(fieldErrors.value).length === 0)
 
 function applySettings(settings: AnomalySettings) {
   form.slow_request_threshold_ms = settings.slow_request_threshold_ms
@@ -176,12 +179,14 @@ function close() {
 async function loadSettings() {
   const seq = ++requestSeq
   loading.value = true
+  loadError.value = false
   try {
     const settings = await opsAPI.getAnomalySettings()
     if (seq !== requestSeq) return
     applySettings(settings)
   } catch (err: unknown) {
     if (seq !== requestSeq) return
+    loadError.value = true
     const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
     appStore.showError(msg || t('admin.ops.anomalySettings.loadFailed'))
   } finally {
@@ -217,6 +222,7 @@ watch(
       requestSeq += 1
       loading.value = false
       saving.value = false
+      loadError.value = false
       return
     }
     applySettings(DEFAULT_SETTINGS)

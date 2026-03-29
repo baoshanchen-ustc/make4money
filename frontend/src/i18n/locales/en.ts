@@ -3903,7 +3903,8 @@ export default {
         upstreamRequest: 'Upstream Request Body',
         upstreamResponse: 'Upstream Response Body',
         truncated: 'Body was truncated (exceeds 1 MB limit)',
-        available: 'Available'
+        available: 'Available',
+        notSaved: 'Anomaly detected, but raw bodies were not saved. Enable "Save Raw Request/Response Bodies" in anomaly detection settings.'
       },
       anomalySettings: {
         title: 'Anomaly Detection Settings',

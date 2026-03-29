@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="hasAnyBody"
+    v-if="hasAnomalyTypes"
     class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900"
   >
     <!-- Header -->
@@ -20,8 +20,8 @@
       </div>
     </div>
 
-    <!-- Accordion sections -->
-    <div class="divide-y divide-gray-100 dark:divide-dark-700">
+    <!-- Accordion sections (only when at least one body was saved) -->
+    <div v-if="hasAnyBody" class="divide-y divide-gray-100 dark:divide-dark-700">
       <section v-for="section in sections" :key="section.key" class="px-4 py-3">
         <!-- Section header -->
         <div class="flex items-center gap-3">
@@ -77,6 +77,14 @@
         </div>
       </section>
     </div>
+
+    <!-- When anomaly types exist but bodies were not saved (save_raw_data=false) -->
+    <div
+      v-if="!hasAnyBody"
+      class="px-4 py-5 text-sm text-gray-500 dark:text-gray-400"
+    >
+      {{ t('admin.ops.rawData.notSaved') }}
+    </div>
   </div>
 </template>
 
@@ -120,6 +128,7 @@ const sections = computed<SectionItem[]>(() => [
 ])
 
 const hasAnyBody = computed(() => sections.value.some((s) => hasBody(s.data)))
+const hasAnomalyTypes = computed(() => (props.anomalyTypes || []).length > 0)
 
 function hasBody(value: unknown): boolean {
   return value !== null && value !== undefined

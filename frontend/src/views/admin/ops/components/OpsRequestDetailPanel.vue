@@ -216,13 +216,15 @@
         :detail="usageInspect"
       />
 
-      <!-- Raw data accordion (success rows with anomalies that have saved bodies) -->
+      <!-- Raw data accordion — shown for success rows that have detected anomalies.
+           Uses row.anomaly_types as the authoritative source so the accordion renders
+           even when the request_logs entry has no bodies (save_raw_data disabled). -->
       <RawDataAccordion
-        v-if="row.kind === 'success' && usageInspect && !usageInspectLoading"
-        :request-body="usageInspect.request_body"
-        :upstream-request-body="usageInspect.upstream_request_body"
-        :upstream-response-body="usageInspect.upstream_response_body"
-        :anomaly-types="usageInspect.anomaly_types"
+        v-if="row.kind === 'success' && !usageInspectLoading && row.anomaly_types && row.anomaly_types.length > 0"
+        :request-body="usageInspect?.request_body"
+        :upstream-request-body="usageInspect?.upstream_request_body"
+        :upstream-response-body="usageInspect?.upstream_response_body"
+        :anomaly-types="row.anomaly_types"
       />
     </div>
   </div>
