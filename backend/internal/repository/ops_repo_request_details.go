@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.OpsRequestDetailFilter) ([]*service.OpsRequestDetail, int64, error) {
@@ -27,6 +28,14 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 	addCondition := func(condition string, values ...any) {
 		conditions = append(conditions, condition)
 		args = append(args, values...)
+	}
+
+	// Determine anomaly thresholds — used both in WHERE and in the computed column.
+	slowMs := int64(20000)
+	timeoutMs := int64(60000)
+	if filter != nil && filter.AnomalySettingsForFilter != nil {
+		slowMs = filter.AnomalySettingsForFilter.SlowRequestThresholdMs
+		timeoutMs = filter.AnomalySettingsForFilter.TimeoutThresholdMs
 	}
 
 	if filter != nil {
@@ -77,6 +86,28 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		if filter.MaxDurationMs != nil {
 			addCondition(fmt.Sprintf("duration_ms <= $%d", len(args)+1), *filter.MaxDurationMs)
 		}
+
+		// AnomalyTypes filter: rows must match at least one of the given anomaly types (OR logic).
+		if len(filter.AnomalyTypes) > 0 {
+			anomalyConditions := make([]string, 0, len(filter.AnomalyTypes))
+			for _, at := range filter.AnomalyTypes {
+				switch service.AnomalyType(at) {
+				case service.AnomalyZeroToken:
+					anomalyConditions = append(anomalyConditions, "(input_tokens = 0 AND output_tokens = 0)")
+				case service.AnomalySlowRequest:
+					anomalyConditions = append(anomalyConditions,
+						fmt.Sprintf("(duration_ms > %d AND duration_ms <= %d)", slowMs, timeoutMs))
+				case service.AnomalyTimeout:
+					anomalyConditions = append(anomalyConditions,
+						fmt.Sprintf("(duration_ms > %d)", timeoutMs))
+				case service.AnomalyError:
+					anomalyConditions = append(anomalyConditions, "(status_code >= 500)")
+				}
+			}
+			if len(anomalyConditions) > 0 {
+				conditions = append(conditions, "("+strings.Join(anomalyConditions, " OR ")+")")
+			}
+		}
 	}
 
 	where := ""
@@ -107,10 +138,18 @@ WITH combined AS (
     ul.auth_latency_ms AS auth_latency_ms,
     ul.routing_latency_ms AS routing_latency_ms,
     ul.upstream_latency_ms AS upstream_latency_ms,
-    ul.response_latency_ms AS response_latency_ms
+    ul.response_latency_ms AS response_latency_ms,
+    u.username AS user_name,
+    CASE WHEN ak.key IS NOT NULL THEN '***' || RIGHT(ak.key, 4) ELSE NULL END AS api_key_label,
+    COALESCE(g.name, '') AS group_name,
+    COALESCE(a.name, '') AS account_name,
+    COALESCE(ul.input_tokens, 0) AS input_tokens,
+    COALESCE(ul.output_tokens, 0) AS output_tokens
   FROM usage_logs ul
   LEFT JOIN groups g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
+  LEFT JOIN users u ON u.id = ul.user_id
+  LEFT JOIN api_keys ak ON ak.id = ul.api_key_id
   WHERE ul.created_at >= $1 AND ul.created_at < $2
 
   UNION ALL
@@ -136,10 +175,18 @@ WITH combined AS (
     NULL::INT AS auth_latency_ms,
     NULL::INT AS routing_latency_ms,
     NULL::INT AS upstream_latency_ms,
-    NULL::INT AS response_latency_ms
+    NULL::INT AS response_latency_ms,
+    u.username AS user_name,
+    CASE WHEN ak.key IS NOT NULL THEN '***' || RIGHT(ak.key, 4) ELSE NULL END AS api_key_label,
+    COALESCE(g.name, '') AS group_name,
+    COALESCE(a.name, '') AS account_name,
+    0 AS input_tokens,
+    0 AS output_tokens
   FROM ops_error_logs o
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
+  LEFT JOIN users u ON u.id = o.user_id
+  LEFT JOIN api_keys ak ON ak.id = o.api_key_id
   WHERE o.created_at >= $1 AND o.created_at < $2
     AND COALESCE(o.status_code, 0) >= 400
 )
@@ -190,12 +237,22 @@ SELECT
   auth_latency_ms,
   routing_latency_ms,
   upstream_latency_ms,
-  response_latency_ms
+  response_latency_ms,
+  user_name,
+  api_key_label,
+  group_name,
+  account_name,
+  ARRAY_REMOVE(ARRAY[
+    CASE WHEN input_tokens = 0 AND output_tokens = 0 THEN 'zero_token' ELSE NULL END,
+    CASE WHEN duration_ms > %d AND duration_ms <= %d THEN 'slow_request' ELSE NULL END,
+    CASE WHEN duration_ms > %d THEN 'timeout' ELSE NULL END,
+    CASE WHEN status_code >= 500 THEN 'error' ELSE NULL END
+  ], NULL) AS anomaly_types
 FROM combined
 %s
 %s
 LIMIT $%d OFFSET $%d
-`, cte, where, sort, len(args)+1, len(args)+2)
+`, cte, slowMs, timeoutMs, timeoutMs, where, sort, len(args)+1, len(args)+2)
 
 	listArgs := append(append([]any{}, args...), pageSize, offset)
 	rows, err := r.db.QueryContext(ctx, listQuery, listArgs...)
@@ -248,6 +305,12 @@ LIMIT $%d OFFSET $%d
 			routingLatencyMs  sql.NullInt64
 			upstreamLatencyMs sql.NullInt64
 			responseLatencyMs sql.NullInt64
+
+			userName       sql.NullString
+			apiKeyLabel    sql.NullString
+			groupNameStr   sql.NullString
+			accountNameStr sql.NullString
+			anomalyTypes   pq.StringArray
 		)
 
 		if err := rows.Scan(
@@ -272,6 +335,11 @@ LIMIT $%d OFFSET $%d
 			&routingLatencyMs,
 			&upstreamLatencyMs,
 			&responseLatencyMs,
+			&userName,
+			&apiKeyLabel,
+			&groupNameStr,
+			&accountNameStr,
+			&anomalyTypes,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -307,6 +375,26 @@ LIMIT $%d OFFSET $%d
 
 		if item.Platform == "" {
 			item.Platform = "unknown"
+		}
+
+		if userName.Valid && userName.String != "" {
+			s := userName.String
+			item.UserName = &s
+		}
+		if apiKeyLabel.Valid && apiKeyLabel.String != "" {
+			s := apiKeyLabel.String
+			item.APIKeyLabel = &s
+		}
+		if groupNameStr.Valid && groupNameStr.String != "" {
+			s := groupNameStr.String
+			item.GroupName = &s
+		}
+		if accountNameStr.Valid && accountNameStr.String != "" {
+			s := accountNameStr.String
+			item.AccountName = &s
+		}
+		if len(anomalyTypes) > 0 {
+			item.AnomalyTypes = []string(anomalyTypes)
 		}
 
 		out = append(out, item)

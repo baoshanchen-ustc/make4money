@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -48,10 +49,14 @@ SELECT
   ul.output_tokens,
   ul.service_tier,
   ul.reasoning_effort,
-  CASE WHEN ul.ip_address IS NULL THEN NULL ELSE ul.ip_address::text END AS ip_address
+  CASE WHEN ul.ip_address IS NULL THEN NULL ELSE ul.ip_address::text END AS ip_address,
+  u.username AS user_name,
+  CASE WHEN ak.key IS NOT NULL THEN '***' || RIGHT(ak.key, 4) ELSE NULL END AS api_key_label
 FROM usage_logs ul
 LEFT JOIN groups g ON g.id = ul.group_id
 LEFT JOIN accounts a ON a.id = ul.account_id
+LEFT JOIN users u ON u.id = ul.user_id
+LEFT JOIN api_keys ak ON ak.id = ul.api_key_id
 WHERE ul.request_id = $1
   AND ul.created_at >= $2 AND ul.created_at < $3
 ORDER BY ul.created_at DESC
@@ -72,6 +77,8 @@ LIMIT 1`
 	var serviceTier sql.NullString
 	var reasoningEffort sql.NullString
 	var ipAddr sql.NullString
+	var userName sql.NullString
+	var apiKeyLabel sql.NullString
 
 	err := r.db.QueryRowContext(
 		ctx,
@@ -106,6 +113,8 @@ LIMIT 1`
 		&serviceTier,
 		&reasoningEffort,
 		&ipAddr,
+		&userName,
+		&apiKeyLabel,
 	)
 	if err != nil {
 		return nil, err
@@ -166,6 +175,31 @@ LIMIT 1`
 	if ipAddr.Valid {
 		s := ipAddr.String
 		out.IPAddress = &s
+	}
+	if userName.Valid && userName.String != "" {
+		s := userName.String
+		out.UserName = &s
+	}
+	if apiKeyLabel.Valid && apiKeyLabel.String != "" {
+		s := apiKeyLabel.String
+		out.APIKeyLabel = &s
+	}
+
+	// Fetch raw anomaly data from request_logs (may not exist if save_raw_data was off).
+	if r.requestLogRepo != nil && out.RequestID != nil {
+		logData, err := r.requestLogRepo.GetByRequestID(ctx, *out.RequestID)
+		if err == nil && logData != nil {
+			out.AnomalyTypes = logData.AnomalyTypes
+			if logData.RequestBody != nil {
+				out.RequestBody = json.RawMessage(logData.RequestBody)
+			}
+			if logData.UpstreamRequestBody != nil {
+				out.UpstreamRequestBody = json.RawMessage(logData.UpstreamRequestBody)
+			}
+			if logData.UpstreamResponseBody != nil {
+				out.UpstreamResponseBody = json.RawMessage(logData.UpstreamResponseBody)
+			}
+		}
 	}
 
 	return &out, nil

@@ -13,7 +13,8 @@ import (
 )
 
 type opsRepository struct {
-	db *sql.DB
+	db             *sql.DB
+	requestLogRepo service.RequestLogRepository
 }
 
 const insertOpsErrorLogSQL = `
@@ -60,8 +61,8 @@ INSERT INTO ops_error_logs (
   $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
 )`
 
-func NewOpsRepository(db *sql.DB) service.OpsRepository {
-	return &opsRepository{db: db}
+func NewOpsRepository(db *sql.DB, requestLogRepo service.RequestLogRepository) service.OpsRepository {
+	return &opsRepository{db: db, requestLogRepo: requestLogRepo}
 }
 
 func (r *opsRepository) InsertErrorLog(ctx context.Context, input *service.OpsInsertErrorLogInput) (int64, error) {
