@@ -33,6 +33,7 @@ type OpenAIGatewayHandler struct {
 	usageRecordWorkerPool   *service.UsageRecordWorkerPool
 	errorPassthroughService *service.ErrorPassthroughService
 	concurrencyHelper       *ConcurrencyHelper
+	anomalyService          *service.AnomalyService
 	maxAccountSwitches      int
 	cfg                     *config.Config
 }
@@ -56,6 +57,7 @@ func NewOpenAIGatewayHandler(
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	cfg *config.Config,
+	anomalyService *service.AnomalyService,
 ) *OpenAIGatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
@@ -72,6 +74,7 @@ func NewOpenAIGatewayHandler(
 		usageRecordWorkerPool:   usageRecordWorkerPool,
 		errorPassthroughService: errorPassthroughService,
 		concurrencyHelper:       NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
+		anomalyService:          anomalyService,
 		maxAccountSwitches:      maxAccountSwitches,
 		cfg:                     cfg,
 	}
@@ -363,6 +366,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
+		capturedReqBody := body
+		capturedUpstreamReqBody, capturedUpstreamRespBody := service.GetOpsUpstreamBodies(c)
+		capturedRequestID := c.GetHeader("X-Request-ID")
+		capturedResult := result
+		capturedAccount := account
+		capturedInboundEndpoint := GetInboundEndpoint(c)
+		capturedUpstreamEndpoint := GetUpstreamEndpoint(c, capturedAccount.Platform)
+		capturedUserID := subject.UserID
+		capturedAPIKeyID := apiKey.ID
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		authLatencyMs := getContextLatencyMsPtr(c, service.OpsAuthLatencyMsKey)
@@ -372,13 +384,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-				Result:             result,
+				Result:             capturedResult,
 				APIKey:             apiKey,
 				User:               apiKey.User,
-				Account:            account,
+				Account:            capturedAccount,
 				Subscription:       subscription,
-				InboundEndpoint:    GetInboundEndpoint(c),
-				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
+				InboundEndpoint:    capturedInboundEndpoint,
+				UpstreamEndpoint:   capturedUpstreamEndpoint,
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
@@ -391,12 +403,32 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),
-					zap.Int64("user_id", subject.UserID),
-					zap.Int64("api_key_id", apiKey.ID),
+					zap.Int64("user_id", capturedUserID),
+					zap.Int64("api_key_id", capturedAPIKeyID),
 					zap.Any("group_id", apiKey.GroupID),
 					zap.String("model", reqModel),
-					zap.Int64("account_id", account.ID),
+					zap.Int64("account_id", capturedAccount.ID),
 				).Error("openai.record_usage_failed", zap.Error(err))
+			}
+			if h.anomalyService != nil && capturedResult != nil {
+				accountID := capturedAccount.ID
+				h.anomalyService.WriteAnomalyLog(
+					ctx,
+					capturedResult.Usage.InputTokens,
+					capturedResult.Usage.OutputTokens,
+					capturedResult.Duration.Milliseconds(),
+					200,
+					&service.RequestLogInput{
+						RequestID:            capturedRequestID,
+						UserID:               &capturedUserID,
+						APIKeyID:             &capturedAPIKeyID,
+						AccountID:            &accountID,
+						GroupID:              apiKey.GroupID,
+						RequestBody:          capturedReqBody,
+						UpstreamRequestBody:  capturedUpstreamReqBody,
+						UpstreamResponseBody: capturedUpstreamRespBody,
+					},
+				)
 			}
 		})
 		reqLog.Debug("openai.request_completed",
@@ -752,6 +784,15 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
+		capturedReqBody := body
+		capturedUpstreamReqBody, capturedUpstreamRespBody := service.GetOpsUpstreamBodies(c)
+		capturedRequestID := c.GetHeader("X-Request-ID")
+		capturedResult := result
+		capturedAccount := account
+		capturedInboundEndpoint := GetInboundEndpoint(c)
+		capturedUpstreamEndpoint := GetUpstreamEndpoint(c, capturedAccount.Platform)
+		capturedUserID := subject.UserID
+		capturedAPIKeyID := apiKey.ID
 
 		authLatencyMs := getContextLatencyMsPtr(c, service.OpsAuthLatencyMsKey)
 		routingLatencyMs := getContextLatencyMsPtr(c, service.OpsRoutingLatencyMsKey)
@@ -760,13 +801,13 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-				Result:             result,
+				Result:             capturedResult,
 				APIKey:             apiKey,
 				User:               apiKey.User,
-				Account:            account,
+				Account:            capturedAccount,
 				Subscription:       subscription,
-				InboundEndpoint:    GetInboundEndpoint(c),
-				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
+				InboundEndpoint:    capturedInboundEndpoint,
+				UpstreamEndpoint:   capturedUpstreamEndpoint,
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
@@ -779,12 +820,32 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.messages"),
-					zap.Int64("user_id", subject.UserID),
-					zap.Int64("api_key_id", apiKey.ID),
+					zap.Int64("user_id", capturedUserID),
+					zap.Int64("api_key_id", capturedAPIKeyID),
 					zap.Any("group_id", apiKey.GroupID),
 					zap.String("model", reqModel),
-					zap.Int64("account_id", account.ID),
+					zap.Int64("account_id", capturedAccount.ID),
 				).Error("openai_messages.record_usage_failed", zap.Error(err))
+			}
+			if h.anomalyService != nil && capturedResult != nil {
+				accountID := capturedAccount.ID
+				h.anomalyService.WriteAnomalyLog(
+					ctx,
+					capturedResult.Usage.InputTokens,
+					capturedResult.Usage.OutputTokens,
+					capturedResult.Duration.Milliseconds(),
+					200,
+					&service.RequestLogInput{
+						RequestID:            capturedRequestID,
+						UserID:               &capturedUserID,
+						APIKeyID:             &capturedAPIKeyID,
+						AccountID:            &accountID,
+						GroupID:              apiKey.GroupID,
+						RequestBody:          capturedReqBody,
+						UpstreamRequestBody:  capturedUpstreamReqBody,
+						UpstreamResponseBody: capturedUpstreamRespBody,
+					},
+				)
 			}
 		})
 		reqLog.Debug("openai_messages.request_completed",
