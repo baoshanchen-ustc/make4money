@@ -129,9 +129,9 @@ func TestAnomalyService_GetSettings_CacheHit(t *testing.T) {
 	repo := &fakeSettingRepo{
 		vals: map[string]string{
 			"ops.anomaly.slow_request_threshold_ms": "15000",
-			"ops.anomaly.timeout_threshold_ms":       "45000",
-			"ops.anomaly.detect_zero_token":           "true",
-			"ops.anomaly.save_raw_data":               "true",
+			"ops.anomaly.timeout_threshold_ms":      "45000",
+			"ops.anomaly.detect_zero_token":         "true",
+			"ops.anomaly.save_raw_data":             "true",
 		},
 	}
 	svc := NewAnomalyService(repo, nil)

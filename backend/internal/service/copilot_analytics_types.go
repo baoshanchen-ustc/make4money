@@ -20,12 +20,12 @@ type CopilotPlanConfig struct {
 // CopilotPlanConfigs maps plan type strings to their pricing and quota config.
 // Per-seat values: multiply by seat count for multi-seat plans.
 var CopilotPlanConfigs = map[string]CopilotPlanConfig{
-	"individual_free":    {MonthlyCostPerSeat: 0, PremiumQuotaPerSeat: 50},
-	"individual":         {MonthlyCostPerSeat: 10, PremiumQuotaPerSeat: 300}, // legacy alias for individual_pro
-	"individual_pro":     {MonthlyCostPerSeat: 10, PremiumQuotaPerSeat: 300},
+	"individual_free":     {MonthlyCostPerSeat: 0, PremiumQuotaPerSeat: 50},
+	"individual":          {MonthlyCostPerSeat: 10, PremiumQuotaPerSeat: 300}, // legacy alias for individual_pro
+	"individual_pro":      {MonthlyCostPerSeat: 10, PremiumQuotaPerSeat: 300},
 	"individual_pro_plus": {MonthlyCostPerSeat: 39, PremiumQuotaPerSeat: 1500},
-	"business":           {MonthlyCostPerSeat: 19, PremiumQuotaPerSeat: 300},
-	"enterprise":         {MonthlyCostPerSeat: 39, PremiumQuotaPerSeat: 1000},
+	"business":            {MonthlyCostPerSeat: 19, PremiumQuotaPerSeat: 300},
+	"enterprise":          {MonthlyCostPerSeat: 39, PremiumQuotaPerSeat: 1000},
 }
 
 // ─────────────────────────────────────────────
@@ -73,7 +73,7 @@ type CopilotBudgetAlert struct {
 	ID             int64
 	AccountID      int64
 	MonthlyBudget  float64
-	AlertThreshold int     // percentage (0-100)
+	AlertThreshold int // percentage (0-100)
 	Enabled        bool
 	LastAlertedAt  *time.Time
 	CreatedAt      time.Time

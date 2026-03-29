@@ -454,7 +454,7 @@ ORDER BY ul.user_id, req_date
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: users daily stats query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// seenUsers tracks insertion order so that the Users slice is stable.
 	seenUsers := make(map[int64]struct{})
@@ -538,7 +538,7 @@ LIMIT 10
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: user summary models query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	totalRequests := result.TotalPremiumRequests + result.TotalAgentRequests
 	result.TopModels = make([]CopilotUserModelStat, 0)
@@ -775,7 +775,7 @@ ORDER BY ul.account_id, req_date
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: accounts daily stats query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	accountMap := make(map[int64]string)
 	var entries []CopilotAccountDailyEntry
@@ -835,7 +835,7 @@ ORDER BY hour
 	if err != nil {
 		return nil, fmt.Errorf("copilot analytics: account hourly stats: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	hourly := make([]CopilotHourlyBucket, 24)
 	for i := range hourly {
@@ -882,7 +882,7 @@ GROUP BY account_id
 	if err != nil {
 		return nil, nil, fmt.Errorf("copilot analytics: account usage counts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	today = make(map[int64]int)
 	month = make(map[int64]int)
