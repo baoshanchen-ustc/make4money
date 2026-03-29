@@ -111,13 +111,12 @@
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">用户排行</h2>
             <p class="text-xs text-gray-400">共 {{ filteredUsers.length }} / {{ aggregatedUsers.length }} 位活跃用户</p>
           </div>
-          <div class="flex flex-col gap-2 sm:flex-row">
-            <select
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Select
               v-model="sortKey"
-              class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            >
-              <option v-for="s in SORT_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
-            </select>
+              :options="SORT_OPTIONS"
+              class="w-40"
+            />
             <input
               v-model="searchQuery"
               type="text"
@@ -221,6 +220,7 @@ import type {
 import { extractErrorMessage } from '@/api/client'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import Select from '@/components/common/Select.vue'
 import SummaryCard from '@/components/admin/copilot/CopilotSummaryCard.vue'
 import UsersDailyChart from '@/components/admin/copilot/UsersDailyChart.vue'
 import UserSparkline from '@/components/admin/copilot/UserSparkline.vue'

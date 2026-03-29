@@ -143,10 +143,10 @@
         <div class="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">请求日志</h2>
-            <input
-              v-model="selectedDate"
-              type="date"
-              class="rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            <DateRangePicker
+              :start-date="selectedDate"
+              :end-date="selectedDate"
+              @change="({ startDate }) => { selectedDate = startDate }"
             />
           </div>
           <div class="p-4">
@@ -177,6 +177,7 @@ import type { CopilotUserSummaryResult, CopilotUsersDailyStatsResult } from '@/a
 import { extractErrorMessage } from '@/api/client'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UserHeatmap from '@/components/admin/copilot/UserHeatmap.vue'
 import UserRequestTree from '@/components/admin/copilot/UserRequestTree.vue'
 
