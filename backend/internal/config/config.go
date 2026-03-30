@@ -700,6 +700,10 @@ type GatewaySchedulingConfig struct {
 
 	// 负载计算
 	LoadBatchEnabled bool `mapstructure:"load_batch_enabled"`
+	// 负载均衡时每次窗口化读取的候选账号数量。
+	CandidatePageSize int `mapstructure:"candidate_page_size"`
+	// 负载均衡时最多参与轮转采样的有序账号数量。
+	CandidateScanLimit int `mapstructure:"candidate_scan_limit"`
 
 	// 过期槽位清理周期（0 表示禁用）
 	SlotCleanupInterval time.Duration `mapstructure:"slot_cleanup_interval"`
@@ -1427,6 +1431,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
+	viper.SetDefault("gateway.scheduling.candidate_page_size", 256)
+	viper.SetDefault("gateway.scheduling.candidate_scan_limit", 8192)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)
 	viper.SetDefault("gateway.scheduling.db_fallback_timeout_seconds", 0)
@@ -2200,6 +2206,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Scheduling.FallbackMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.fallback_max_waiting must be positive")
+	}
+	if c.Gateway.Scheduling.CandidatePageSize <= 0 {
+		return fmt.Errorf("gateway.scheduling.candidate_page_size must be positive")
+	}
+	if c.Gateway.Scheduling.CandidateScanLimit <= 0 {
+		return fmt.Errorf("gateway.scheduling.candidate_scan_limit must be positive")
+	}
+	if c.Gateway.Scheduling.CandidateScanLimit < c.Gateway.Scheduling.CandidatePageSize {
+		return fmt.Errorf("gateway.scheduling.candidate_scan_limit must be >= candidate_page_size")
 	}
 	if c.Gateway.Scheduling.SlotCleanupInterval < 0 {
 		return fmt.Errorf("gateway.scheduling.slot_cleanup_interval must be non-negative")

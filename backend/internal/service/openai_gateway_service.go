@@ -1334,14 +1334,6 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		}, nil
 	}
 
-	accounts, err := s.listSchedulableAccounts(ctx, groupID)
-	if err != nil {
-		return nil, err
-	}
-	if len(accounts) == 0 {
-		return nil, ErrNoAvailableAccounts
-	}
-
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
 			return false
@@ -1395,24 +1387,24 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	// ============ Layer 2: Load-aware selection ============
-	candidates := make([]*Account, 0, len(accounts))
-	for i := range accounts {
-		acc := &accounts[i]
+	candidates, err := s.collectBoundedOpenAICandidates(ctx, groupID, sessionHash, requestedModel, func(acc *Account) bool {
 		if isExcluded(acc.ID) {
-			continue
+			return false
 		}
 		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
 		// re-check schedulability here so recently rate-limited/overloaded accounts
 		// are not selected again before the bucket is rebuilt.
 		if !acc.IsSchedulable() {
-			continue
+			return false
 		}
 		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
-			continue
+			return false
 		}
-		candidates = append(candidates, acc)
+		return true
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	if len(candidates) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
@@ -1544,6 +1536,121 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	return accounts, nil
 }
 
+func (s *OpenAIGatewayService) listSchedulableAccountsWindow(ctx context.Context, groupID *int64, offset, limit int) ([]Account, error) {
+	if limit <= 0 {
+		return s.listSchedulableAccounts(ctx, groupID)
+	}
+	if s.schedulerSnapshot != nil {
+		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccountsWindow(ctx, groupID, PlatformOpenAI, false, offset, limit)
+		return accounts, err
+	}
+	if loader, ok := s.accountRepo.(schedulableAccountWindowLoader); ok {
+		if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+			return loader.ListSchedulableByPlatformWindow(ctx, PlatformOpenAI, offset, limit)
+		}
+		if groupID != nil {
+			return loader.ListSchedulableByGroupIDAndPlatformWindow(ctx, *groupID, PlatformOpenAI, offset, limit)
+		}
+		return loader.ListSchedulableUngroupedByPlatformWindow(ctx, PlatformOpenAI, offset, limit)
+	}
+	accounts, err := s.listSchedulableAccounts(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	return sliceAccountsWindow(accounts, offset, limit), nil
+}
+
+func (s *OpenAIGatewayService) schedulingCandidatePageSize() int {
+	cfg := s.schedulingConfig()
+	if cfg.CandidatePageSize > 0 {
+		return cfg.CandidatePageSize
+	}
+	return 256
+}
+
+func (s *OpenAIGatewayService) schedulingCandidateScanLimit() int {
+	cfg := s.schedulingConfig()
+	if cfg.CandidateScanLimit > 0 {
+		return cfg.CandidateScanLimit
+	}
+	return 8192
+}
+
+func (s *OpenAIGatewayService) openAICandidateWindowPlan(groupID *int64, sessionHash string, requestedModel string) (pageSize int, pageCount int, startPage int) {
+	pageSize = s.schedulingCandidatePageSize()
+	scanLimit := s.schedulingCandidateScanLimit()
+	if pageSize <= 0 {
+		pageSize = 256
+	}
+	if scanLimit < pageSize {
+		scanLimit = pageSize
+	}
+	pageCount = (scanLimit + pageSize - 1) / pageSize
+	if pageCount <= 1 {
+		return pageSize, 1, 0
+	}
+
+	seed := sessionHash
+	if seed == "" {
+		seed = fmt.Sprintf("%d:%s:%d", derefGroupID(groupID), requestedModel, time.Now().UnixNano()/int64(time.Millisecond))
+	} else {
+		seed = fmt.Sprintf("%d:%s:%s", derefGroupID(groupID), requestedModel, sessionHash)
+	}
+	startPage = int(xxhash.Sum64String(seed) % uint64(pageCount))
+	return pageSize, pageCount, startPage
+}
+
+func (s *OpenAIGatewayService) collectBoundedOpenAICandidates(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	include func(*Account) bool,
+) ([]*Account, error) {
+	pageSize, pageCount, startPage := s.openAICandidateWindowPlan(groupID, sessionHash, requestedModel)
+	candidates := make([]*Account, 0, pageSize)
+	visitedPages := make(map[int]struct{}, pageCount)
+	currentPage := startPage
+	wrappedToHead := currentPage == 0
+
+	for len(candidates) < pageSize {
+		if _, seen := visitedPages[currentPage]; seen {
+			break
+		}
+		visitedPages[currentPage] = struct{}{}
+		offset := currentPage * pageSize
+		window, err := s.listSchedulableAccountsWindow(ctx, groupID, offset, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		if len(window) == 0 {
+			if currentPage != 0 && !wrappedToHead {
+				currentPage = 0
+				wrappedToHead = true
+				continue
+			}
+			break
+		}
+		for i := range window {
+			account := &window[i]
+			if !include(account) {
+				continue
+			}
+			candidates = append(candidates, account)
+			if len(candidates) >= pageSize {
+				break
+			}
+		}
+		currentPage++
+		if currentPage >= pageCount {
+			currentPage = 0
+			wrappedToHead = true
+		}
+	}
+
+	return candidates, nil
+}
+
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
@@ -1623,6 +1730,8 @@ func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig
 		FallbackWaitTimeout:      30 * time.Second,
 		FallbackMaxWaiting:       100,
 		LoadBatchEnabled:         true,
+		CandidatePageSize:        256,
+		CandidateScanLimit:       8192,
 		SlotCleanupInterval:      30 * time.Second,
 	}
 }

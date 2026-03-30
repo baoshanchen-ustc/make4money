@@ -87,6 +87,72 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 	return accounts, true, nil
 }
 
+func (c *schedulerCache) GetSnapshotWindow(ctx context.Context, bucket service.SchedulerBucket, offset, limit int) ([]*service.Account, bool, error) {
+	if limit <= 0 {
+		return c.GetSnapshot(ctx, bucket)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
+	readyVal, err := c.rdb.Get(ctx, readyKey).Result()
+	if err == redis.Nil {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if readyVal != "1" {
+		return nil, false, nil
+	}
+
+	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
+	activeVal, err := c.rdb.Get(ctx, activeKey).Result()
+	if err == redis.Nil {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+
+	snapshotKey := schedulerSnapshotKey(bucket, activeVal)
+	stop := int64(offset + limit - 1)
+	ids, err := c.rdb.ZRange(ctx, snapshotKey, int64(offset), stop).Result()
+	if err != nil {
+		return nil, false, err
+	}
+	if len(ids) == 0 {
+		if offset == 0 {
+			return nil, false, nil
+		}
+		return []*service.Account{}, true, nil
+	}
+
+	keys := make([]string, 0, len(ids))
+	for _, id := range ids {
+		keys = append(keys, schedulerAccountKey(id))
+	}
+	values, err := c.rdb.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, false, err
+	}
+
+	accounts := make([]*service.Account, 0, len(values))
+	for _, val := range values {
+		if val == nil {
+			return nil, false, nil
+		}
+		account, err := decodeCachedAccount(val)
+		if err != nil {
+			return nil, false, err
+		}
+		accounts = append(accounts, account)
+	}
+
+	return accounts, true, nil
+}
+
 func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, accounts []service.Account) error {
 	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
 	oldActive, _ := c.rdb.Get(ctx, activeKey).Result()
