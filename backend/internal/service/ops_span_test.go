@@ -54,3 +54,36 @@ func TestMarshalOpsSpans_Valid(t *testing.T) {
 		t.Errorf("parsed span mismatch: %+v", parsed)
 	}
 }
+
+func TestOpsSpan_EndSetsFields(t *testing.T) {
+	span := service.NewOpsSpan("token.fetch")
+	// Small sleep to ensure some time elapses
+	time.Sleep(1 * time.Millisecond)
+	span.End("ok")
+
+	if span.DurationMs <= 0 {
+		t.Errorf("expected DurationMs > 0, got %d", span.DurationMs)
+	}
+	if span.Status != "ok" {
+		t.Errorf("expected status 'ok', got %q", span.Status)
+	}
+}
+
+func TestAppendOpsSpan_Accumulates(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+
+	service.AppendOpsSpan(c, service.OpsSpan{Name: "routing.select", DurationMs: 5})
+	service.AppendOpsSpan(c, service.OpsSpan{Name: "token.fetch", DurationMs: 10})
+
+	spans := service.GetOpsSpans(c)
+	if len(spans) != 2 {
+		t.Fatalf("expected 2 spans, got %d", len(spans))
+	}
+	if spans[0].Name != "routing.select" {
+		t.Errorf("expected first span 'routing.select', got %q", spans[0].Name)
+	}
+	if spans[1].Name != "token.fetch" {
+		t.Errorf("expected second span 'token.fetch', got %q", spans[1].Name)
+	}
+}
