@@ -18,11 +18,11 @@
       />
 
       <!-- Show waterfall after error detail if spans are available -->
-      <div v-if="row.spans && row.spans.length > 0" class="border-t border-gray-100 px-6 py-4 dark:border-dark-700">
+      <div v-if="hasSpans" class="border-t border-gray-100 px-6 py-4 dark:border-dark-700">
         <div class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">请求瀑布图</div>
         <OpsWaterfallPanel :row="row" />
         <div class="mt-3">
-          <OpsSpanTree :spans="row.spans" />
+          <OpsSpanTree :spans="parsedSpans!" />
         </div>
       </div>
     </div>
@@ -238,7 +238,7 @@
       />
 
       <!-- Waterfall section -->
-      <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+      <div v-if="hasSpans" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
         <div class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
           请求瀑布图
         </div>
@@ -247,7 +247,7 @@
 
       <!-- Span tree section -->
       <div v-if="hasSpans" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
-        <OpsSpanTree :spans="parsedSpans" />
+        <OpsSpanTree :spans="parsedSpans!" />
       </div>
     </div>
   </div>
@@ -293,13 +293,13 @@ const hasIdentity = computed(() => {
   return !!(r?.user_name || r?.api_key_label || r?.group_name || r?.account_name)
 })
 
-const parsedSpans = computed((): OpsSpan[] => {
+const parsedSpans = computed((): OpsSpan[] | null => {
   const raw = props.row?.spans
-  if (!raw || raw.length === 0) return []
+  if (!raw || raw.length === 0) return null
   return raw
 })
 
-const hasSpans = computed(() => parsedSpans.value.length > 0)
+const hasSpans = computed(() => parsedSpans.value !== null)
 
 async function handleCopy(text: string) {
   const ok = await copyToClipboard(text, t('admin.ops.requestDetails.requestIdCopied'))
