@@ -163,6 +163,29 @@
           </div>
         </div>
 
+        <!-- Fault Owner Filter -->
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-xs font-bold uppercase tracking-wide text-gray-400 mr-1">责任方</span>
+          <button
+            v-for="opt in [
+              { value: 'all',      label: '全部'    },
+              { value: 'ok',       label: '正常'    },
+              { value: 'client',   label: '客户端'  },
+              { value: 'upstream', label: '上游'    },
+              { value: 'platform', label: 'sub2api' },
+            ]"
+            :key="opt.value"
+            type="button"
+            class="rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors"
+            :class="faultOwnerFilter === opt.value
+              ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600'"
+            @click="faultOwnerFilter = opt.value as FaultOwner | 'all'"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+
         <!-- 左右分栏：勿用含逗号的 Tailwind 任意 grid-cols，JIT 易解析失败而退回单列 -->
         <div class="ops-request-inspect-split">
           <div
@@ -195,7 +218,7 @@
                   </thead>
                   <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
                     <tr
-                      v-for="row in items"
+                      v-for="row in filteredItems"
                       :key="rowKey(row)"
                       :class="[
                         'group cursor-pointer transition-colors',
@@ -290,6 +313,10 @@
                       <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                         {{ displayListStatusCode(row) }}
                       </td>
+                      <!-- 责任方标签列 -->
+                      <td class="whitespace-nowrap px-4 py-2">
+                        <FaultOwnerTag :owner="computeFaultOwner(row)" />
+                      </td>
                       <!-- 异常标签列 -->
                       <td class="whitespace-nowrap px-4 py-2">
                         <div v-if="row.anomaly_types && row.anomaly_types.length > 0" class="flex flex-wrap gap-1">
@@ -352,7 +379,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAdminSettingsStore } from '@/stores'
-import { opsAPI, type AnomalyType, type OpsRequestDetail, type OpsRequestDetailsKind } from '@/api/admin/ops'
+import { opsAPI, computeFaultOwner, type AnomalyType, type FaultOwner, type OpsRequestDetail, type OpsRequestDetailsKind } from '@/api/admin/ops'
 import { searchUsers, type SimpleUser } from '@/api/admin/usage'
 import { formatDateTime, parseTimeRangeMinutes } from './utils/opsFormatters'
 import { formatBytes } from '@/utils/format'
@@ -360,6 +387,7 @@ import OpsRequestDetailPanel from './components/OpsRequestDetailPanel.vue'
 import DurationBadge from './components/DurationBadge.vue'
 import AnomalyBadge from './components/AnomalyBadge.vue'
 import AnomalySettingsModal from './components/AnomalySettingsModal.vue'
+import FaultOwnerTag from './components/FaultOwnerTag.vue'
 
 const { t } = useI18n()
 const adminSettingsStore = useAdminSettingsStore()
@@ -370,6 +398,7 @@ const timeRange = ref('24h')
 const kind = ref<OpsRequestDetailsKind>('all')
 const platform = ref('')
 const q = ref('')
+const faultOwnerFilter = ref<FaultOwner | 'all'>('all')
 
 // User search filter state
 const userFilterRef = ref<HTMLElement | null>(null)
@@ -400,6 +429,11 @@ const page = ref(1)
 const pageSize = ref(20)
 const selectedRow = ref<OpsRequestDetail | null>(null)
 
+const filteredItems = computed(() => {
+  if (faultOwnerFilter.value === 'all') return items.value
+  return items.value.filter(row => computeFaultOwner(row) === faultOwnerFilter.value)
+})
+
 const tableCols = computed(() => [
   t('admin.ops.requestDetails.table.time'),
   t('admin.ops.requestDetails.table.kind'),
@@ -414,6 +448,7 @@ const tableCols = computed(() => [
   t('admin.ops.requestDetails.table.responseLatency'),
   t('admin.ops.requestDetails.table.bodySize'),
   t('admin.ops.requestDetails.table.status'),
+  '责任方',
   t('admin.ops.requestDetails.table.anomaly')
 ])
 
