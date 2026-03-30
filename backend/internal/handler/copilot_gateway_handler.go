@@ -230,6 +230,24 @@ func (h *CopilotGatewayHandler) ChatCompletions(c *gin.Context) {
 			zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
+		if switchCount == 0 {
+			service.AppendOpsSpan(c, service.OpsSpan{
+				Name:        "routing.select",
+				StartUnixMs: routingStart.UnixMilli(),
+				DurationMs:  time.Since(routingStart).Milliseconds(),
+				Status:      "ok",
+				Attrs:       map[string]any{"account_id": account.ID, "platform": "copilot"},
+			})
+		} else {
+			service.AppendOpsSpan(c, service.OpsSpan{
+				Name:        "failover.select",
+				StartUnixMs: time.Now().UnixMilli(),
+				DurationMs:  0,
+				Status:      "ok",
+				Attrs:       map[string]any{"attempt": switchCount, "account_id": account.ID},
+			})
+		}
+
 		// Reject oversized request bodies before hitting the upstream.
 		if h.checkCopilotBodySize(c, body, account, false) {
 			return
@@ -646,6 +664,24 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 			zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
+		if switchCount == 0 {
+			service.AppendOpsSpan(c, service.OpsSpan{
+				Name:        "routing.select",
+				StartUnixMs: routingStartResponses.UnixMilli(),
+				DurationMs:  time.Since(routingStartResponses).Milliseconds(),
+				Status:      "ok",
+				Attrs:       map[string]any{"account_id": account.ID, "platform": "copilot"},
+			})
+		} else {
+			service.AppendOpsSpan(c, service.OpsSpan{
+				Name:        "failover.select",
+				StartUnixMs: time.Now().UnixMilli(),
+				DurationMs:  0,
+				Status:      "ok",
+				Attrs:       map[string]any{"attempt": switchCount, "account_id": account.ID},
+			})
+		}
+
 		// Reject oversized request bodies before hitting the upstream.
 		if h.checkCopilotBodySize(c, body, account, false) {
 			return
@@ -987,6 +1023,24 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 			zap.Int64("account_id", account.ID),
 			zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+
+		if switchCount == 0 {
+			service.AppendOpsSpan(c, service.OpsSpan{
+				Name:        "routing.select",
+				StartUnixMs: routingStartMessages.UnixMilli(),
+				DurationMs:  time.Since(routingStartMessages).Milliseconds(),
+				Status:      "ok",
+				Attrs:       map[string]any{"account_id": account.ID, "platform": "copilot"},
+			})
+		} else {
+			service.AppendOpsSpan(c, service.OpsSpan{
+				Name:        "failover.select",
+				StartUnixMs: time.Now().UnixMilli(),
+				DurationMs:  0,
+				Status:      "ok",
+				Attrs:       map[string]any{"attempt": switchCount, "account_id": account.ID},
+			})
+		}
 
 		// Truncate oversized request bodies before forwarding to the upstream.
 		// When the body exceeds the account limit we trim old conversation turns

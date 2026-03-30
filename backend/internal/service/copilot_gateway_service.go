@@ -117,6 +117,7 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 ) (*CopilotForwardResult, error) {
 	startTime := time.Now()
 
+	translateStart := time.Now()
 	// Normalize the OpenAI request body before forwarding:
 	// merge consecutive same-role messages so Copilot API doesn't reject with 400.
 	// Claude Code (via cc-switch OpenAI mode) sends adjacent user messages
@@ -126,9 +127,28 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 	body, logModel := rewriteCopilotUpstreamModel(body, account)
 	body = clampCopilotUpstreamMaxTokens(body, account)
 	upstreamSent := strings.TrimSpace(extractModelFromBody(body))
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "translate.req",
+		StartUnixMs: translateStart.UnixMilli(),
+		DurationMs:  time.Since(translateStart).Milliseconds(),
+		Status:      "ok",
+	})
 
 	// Get Copilot API token
+	tokenStart := time.Now()
 	token, err := s.tokenProvider.GetAccessToken(ctx, account)
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "token.fetch",
+		StartUnixMs: tokenStart.UnixMilli(),
+		DurationMs:  time.Since(tokenStart).Milliseconds(),
+		Status: func() string {
+			if err != nil {
+				return "error"
+			}
+			return "ok"
+		}(),
+		Attrs: map[string]any{"account_id": account.ID},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("copilot auth: %w", err)
 	}
@@ -179,10 +199,25 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 	// Send request
 	upstreamStart := time.Now()
 	resp, err := s.httpClient.Do(req) //nolint:gosec // URL is from trusted Copilot API config
+	upstreamDurationMs := time.Since(upstreamStart).Milliseconds()
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamDurationMs)
+	upstreamStatus := "ok"
+	if err != nil {
+		upstreamStatus = "error"
+	}
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "upstream.post",
+		StartUnixMs: upstreamStart.UnixMilli(),
+		DurationMs:  upstreamDurationMs,
+		Status:      upstreamStatus,
+		Attrs: map[string]any{
+			"account_id": account.ID,
+			"endpoint":   "chat/completions",
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("copilot: upstream request: %w", err)
 	}
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 
 	slog.Debug("copilot upstream response",
 		"account_id", account.ID,
@@ -767,7 +802,20 @@ func (s *CopilotGatewayService) ForwardResponses(
 ) (*CopilotForwardResult, error) {
 	startTime := time.Now()
 
+	tokenStart := time.Now()
 	token, err := s.tokenProvider.GetAccessToken(ctx, account)
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "token.fetch",
+		StartUnixMs: tokenStart.UnixMilli(),
+		DurationMs:  time.Since(tokenStart).Milliseconds(),
+		Status: func() string {
+			if err != nil {
+				return "error"
+			}
+			return "ok"
+		}(),
+		Attrs: map[string]any{"account_id": account.ID},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("copilot auth: %w", err)
 	}
@@ -779,6 +827,7 @@ func (s *CopilotGatewayService) ForwardResponses(
 	// the account's plan_type or base_url setting.
 	baseURL := copilot.CopilotAPIBase
 
+	translateStart := time.Now()
 	// Extract reasoning_effort before model rewrite (body still has original model).
 	// Uses the same gjson-based approach as extractOpenAIReasoningEffortFromBody.
 	reasoningEffort := extractCopilotReasoningEffort(body)
@@ -791,6 +840,12 @@ func (s *CopilotGatewayService) ForwardResponses(
 	}
 
 	isStream := detectStreamMode(body)
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "translate.req",
+		StartUnixMs: translateStart.UnixMilli(),
+		DurationMs:  time.Since(translateStart).Milliseconds(),
+		Status:      "ok",
+	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/responses", bytes.NewReader(body))
 	if err != nil {
@@ -809,10 +864,25 @@ func (s *CopilotGatewayService) ForwardResponses(
 
 	upstreamStartResponses := time.Now()
 	resp, err := s.httpClient.Do(req) //nolint:gosec // URL is from trusted Copilot API config
+	upstreamDurationMsResponses := time.Since(upstreamStartResponses).Milliseconds()
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamDurationMsResponses)
+	upstreamStatusResponses := "ok"
+	if err != nil {
+		upstreamStatusResponses = "error"
+	}
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "upstream.post",
+		StartUnixMs: upstreamStartResponses.UnixMilli(),
+		DurationMs:  upstreamDurationMsResponses,
+		Status:      upstreamStatusResponses,
+		Attrs: map[string]any{
+			"account_id": account.ID,
+			"endpoint":   "responses",
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("copilot responses: upstream request: %w", err)
 	}
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStartResponses).Milliseconds())
 
 	slog.Debug("copilot responses upstream response",
 		"account_id", account.ID,
@@ -896,6 +966,7 @@ func (s *CopilotGatewayService) ForwardMessages(
 
 	clientModel := strings.TrimSpace(gjson.GetBytes(anthropicBody, "model").String())
 
+	translateStart := time.Now()
 	// Translate Anthropic request → OpenAI format.
 	openAIBody, err := translateAnthropicToOpenAI(anthropicBody, nil)
 	if err != nil {
@@ -937,6 +1008,12 @@ func (s *CopilotGatewayService) ForwardMessages(
 	if model == "" {
 		model = extractModelFromBody(openAIBody)
 	}
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "translate.req",
+		StartUnixMs: translateStart.UnixMilli(),
+		DurationMs:  time.Since(translateStart).Milliseconds(),
+		Status:      "ok",
+	})
 
 	// DEBUG: log the full translated request body to diagnose 400 Bad Request
 	slog.Debug("copilot messages translated openai body",
@@ -946,7 +1023,20 @@ func (s *CopilotGatewayService) ForwardMessages(
 		"body", string(openAIBody))
 
 	// Get Copilot API token.
+	tokenStart := time.Now()
 	token, err := s.tokenProvider.GetAccessToken(ctx, account)
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "token.fetch",
+		StartUnixMs: tokenStart.UnixMilli(),
+		DurationMs:  time.Since(tokenStart).Milliseconds(),
+		Status: func() string {
+			if err != nil {
+				return "error"
+			}
+			return "ok"
+		}(),
+		Attrs: map[string]any{"account_id": account.ID},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("copilot messages: auth: %w", err)
 	}
@@ -998,10 +1088,25 @@ func (s *CopilotGatewayService) ForwardMessages(
 
 	upstreamStartMessages := time.Now()
 	resp, err := s.httpClient.Do(req) //nolint:gosec // URL is from trusted Copilot API config
+	upstreamDurationMsMessages := time.Since(upstreamStartMessages).Milliseconds()
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamDurationMsMessages)
+	upstreamStatusMessages := "ok"
+	if err != nil {
+		upstreamStatusMessages = "error"
+	}
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "upstream.post",
+		StartUnixMs: upstreamStartMessages.UnixMilli(),
+		DurationMs:  upstreamDurationMsMessages,
+		Status:      upstreamStatusMessages,
+		Attrs: map[string]any{
+			"account_id": account.ID,
+			"endpoint":   "chat/completions",
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("copilot messages: upstream request: %w", err)
 	}
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStartMessages).Milliseconds())
 
 	slog.Debug("copilot messages upstream response",
 		"account_id", account.ID,
@@ -1053,6 +1158,7 @@ func (s *CopilotGatewayService) forwardMessagesViaResponses(
 	startTime time.Time,
 	clientWantsStream bool,
 ) (*CopilotForwardResult, error) {
+	translateStartViaResp := time.Now()
 	// Translate Anthropic → Responses API format.
 	var anthropicReq apicompat.AnthropicRequest
 	if err := json.Unmarshal(anthropicBody, &anthropicReq); err != nil {
@@ -1071,6 +1177,12 @@ func (s *CopilotGatewayService) forwardMessagesViaResponses(
 	if err != nil {
 		return nil, fmt.Errorf("copilot messages via responses: marshal responses body: %w", err)
 	}
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "translate.req",
+		StartUnixMs: translateStartViaResp.UnixMilli(),
+		DurationMs:  time.Since(translateStartViaResp).Milliseconds(),
+		Status:      "ok",
+	})
 
 	slog.Debug("copilot messages via responses translated body",
 		"account_id", account.ID,
@@ -1097,10 +1209,25 @@ func (s *CopilotGatewayService) forwardMessagesViaResponses(
 
 	upstreamStart := time.Now()
 	resp, err := s.httpClient.Do(req) //nolint:gosec
+	upstreamDurationMsViaResp := time.Since(upstreamStart).Milliseconds()
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamDurationMsViaResp)
+	upstreamStatusViaResp := "ok"
+	if err != nil {
+		upstreamStatusViaResp = "error"
+	}
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "upstream.post",
+		StartUnixMs: upstreamStart.UnixMilli(),
+		DurationMs:  upstreamDurationMsViaResp,
+		Status:      upstreamStatusViaResp,
+		Attrs: map[string]any{
+			"account_id": account.ID,
+			"endpoint":   "responses",
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("copilot messages via responses: upstream request: %w", err)
 	}
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 
 	slog.Debug("copilot messages via responses upstream response",
 		"account_id", account.ID,
