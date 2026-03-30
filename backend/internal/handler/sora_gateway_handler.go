@@ -417,7 +417,7 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		h.submitUsageRecordTask(func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+			requestID, usageLogID, err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:             capturedResult,
 				APIKey:             apiKey,
 				User:               apiKey.User,
@@ -430,7 +430,8 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 				RequestPayloadHash: requestPayloadHash,
 				RequestBodyBytes:   intPtr(len(capturedReqBody)),
 				APIKeyService:      h.apiKeyService,
-			}); err != nil {
+			})
+			if err != nil {
 				logger.L().With(
 					zap.String("component", "handler.sora_gateway.chat_completions"),
 					zap.Int64("user_id", subject.UserID),
@@ -445,6 +446,10 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 				userID := apiKey.UserID
 				apiKeyID := apiKey.ID
 				accountID := capturedAccount.ID
+				var usageLogIDPtr *int64
+				if usageLogID != 0 {
+					usageLogIDPtr = &usageLogID
+				}
 				h.anomalyService.WriteAnomalyLog(
 					ctx,
 					capturedResult.Usage.InputTokens,
@@ -452,7 +457,8 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 					capturedResult.Duration.Milliseconds(),
 					200,
 					&service.RequestLogInput{
-						RequestID:            capturedResult.RequestID,
+						RequestID:            requestID,
+						UsageLogID:           usageLogIDPtr,
 						UserID:               &userID,
 						APIKeyID:             &apiKeyID,
 						AccountID:            &accountID,

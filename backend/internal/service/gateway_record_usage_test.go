@@ -84,7 +84,7 @@ func TestGatewayServiceRecordUsage_BillingUsesDetachedContext(t *testing.T) {
 	reqCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := svc.RecordUsage(reqCtx, &RecordUsageInput{
+	_, _, err := svc.RecordUsage(reqCtx, &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "gateway_detached_ctx",
 			Usage: ClaudeUsage{
@@ -117,7 +117,7 @@ func TestGatewayServiceRecordUsage_BillingFingerprintIncludesRequestPayloadHash(
 	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
 
 	payloadHash := HashUsageRequestPayload([]byte(`{"messages":[{"role":"user","content":"hello"}]}`))
-	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+	_, _, err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "gateway_payload_hash",
 			Usage: ClaudeUsage{
@@ -143,7 +143,7 @@ func TestGatewayServiceRecordUsage_BillingFingerprintFallsBackToContextRequestID
 	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
 
 	ctx := context.WithValue(context.Background(), ctxkey.RequestID, "req-local-123")
-	err := svc.RecordUsage(ctx, &RecordUsageInput{
+	_, _, err := svc.RecordUsage(ctx, &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "gateway_payload_fallback",
 			Usage: ClaudeUsage{
@@ -169,7 +169,7 @@ func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testi
 	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
 
-	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+	_, _, err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "gateway_not_persisted",
 			Usage: ClaudeUsage{
@@ -204,7 +204,7 @@ func TestGatewayServiceRecordUsageWithLongContext_BillingUsesDetachedContext(t *
 	reqCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := svc.RecordUsageWithLongContext(reqCtx, &RecordUsageLongContextInput{
+	_, _, err := svc.RecordUsageWithLongContext(reqCtx, &RecordUsageLongContextInput{
 		Result: &ForwardResult{
 			RequestID: "gateway_long_context_detached_ctx",
 			Usage: ClaudeUsage{
@@ -240,7 +240,7 @@ func TestGatewayServiceRecordUsage_UsesFallbackRequestIDForUsageLog(t *testing.T
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
 
 	ctx := context.WithValue(context.Background(), ctxkey.RequestID, "gateway-local-fallback")
-	err := svc.RecordUsage(ctx, &RecordUsageInput{
+	_, _, err := svc.RecordUsage(ctx, &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "",
 			Usage: ClaudeUsage{
@@ -267,7 +267,7 @@ func TestGatewayServiceRecordUsage_PrefersClientRequestIDOverUpstreamRequestID(t
 
 	ctx := context.WithValue(context.Background(), ctxkey.ClientRequestID, "client-stable-123")
 	ctx = context.WithValue(ctx, ctxkey.RequestID, "req-local-ignored")
-	err := svc.RecordUsage(ctx, &RecordUsageInput{
+	_, _, err := svc.RecordUsage(ctx, &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "upstream-volatile-456",
 			Usage: ClaudeUsage{
@@ -294,7 +294,7 @@ func TestGatewayServiceRecordUsage_GeneratesRequestIDWhenAllSourcesMissing(t *te
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
 	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
 
-	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+	_, _, err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "",
 			Usage: ClaudeUsage{
@@ -323,7 +323,7 @@ func TestGatewayServiceRecordUsage_DroppedUsageLogDoesNotSyncFallback(t *testing
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
 	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
 
-	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+	_, _, err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "gateway_drop_usage_log",
 			Usage: ClaudeUsage{
@@ -350,7 +350,7 @@ func TestGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) 
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo)
 
-	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+	_, _, err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "gateway_billing_fail",
 			Usage: ClaudeUsage{
@@ -375,7 +375,7 @@ func TestGatewayServiceRecordUsage_ReasoningEffortPersisted(t *testing.T) {
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
 
 	effort := "max"
-	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+	_, _, err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "effort_test",
 			Usage: ClaudeUsage{
@@ -401,7 +401,7 @@ func TestGatewayServiceRecordUsage_ReasoningEffortNil(t *testing.T) {
 	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
 
-	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+	_, _, err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
 			RequestID: "no_effort_test",
 			Usage: ClaudeUsage{

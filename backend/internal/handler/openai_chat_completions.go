@@ -255,7 +255,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		clientIP := ip.GetClientIP(c)
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+			if _, _, err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:           result,
 				APIKey:           apiKey,
 				User:             apiKey.User,

@@ -368,7 +368,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		capturedReqBody := body
 		capturedUpstreamReqBody, capturedUpstreamRespBody := service.GetOpsUpstreamBodies(c)
-		capturedRequestID := c.GetHeader("X-Request-ID")
 		capturedResult := result
 		capturedAccount := account
 		capturedInboundEndpoint := GetInboundEndpoint(c)
@@ -383,7 +382,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		responseLatencyMsVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+			requestID, usageLogID, err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             capturedResult,
 				APIKey:             apiKey,
 				User:               apiKey.User,
@@ -400,7 +399,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				RoutingLatencyMs:   routingLatencyMs,
 				UpstreamLatencyMs:  upstreamLatencyMsVal,
 				ResponseLatencyMs:  responseLatencyMsVal,
-			}); err != nil {
+			})
+			if err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),
 					zap.Int64("user_id", capturedUserID),
@@ -412,6 +412,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 			if h.anomalyService != nil && capturedResult != nil {
 				accountID := capturedAccount.ID
+				var usageLogIDPtr *int64
+				if usageLogID != 0 {
+					usageLogIDPtr = &usageLogID
+				}
 				h.anomalyService.WriteAnomalyLog(
 					ctx,
 					capturedResult.Usage.InputTokens,
@@ -419,7 +423,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					capturedResult.Duration.Milliseconds(),
 					200,
 					&service.RequestLogInput{
-						RequestID:            capturedRequestID,
+						RequestID:            requestID,
+						UsageLogID:           usageLogIDPtr,
 						UserID:               &capturedUserID,
 						APIKeyID:             &capturedAPIKeyID,
 						AccountID:            &accountID,
@@ -786,7 +791,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		capturedReqBody := body
 		capturedUpstreamReqBody, capturedUpstreamRespBody := service.GetOpsUpstreamBodies(c)
-		capturedRequestID := c.GetHeader("X-Request-ID")
 		capturedResult := result
 		capturedAccount := account
 		capturedInboundEndpoint := GetInboundEndpoint(c)
@@ -800,7 +804,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		responseLatencyMsVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+			requestID, usageLogID, err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             capturedResult,
 				APIKey:             apiKey,
 				User:               apiKey.User,
@@ -817,7 +821,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				RoutingLatencyMs:   routingLatencyMs,
 				UpstreamLatencyMs:  upstreamLatencyMsVal,
 				ResponseLatencyMs:  responseLatencyMsVal,
-			}); err != nil {
+			})
+			if err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.messages"),
 					zap.Int64("user_id", capturedUserID),
@@ -829,6 +834,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 			if h.anomalyService != nil && capturedResult != nil {
 				accountID := capturedAccount.ID
+				var usageLogIDPtr *int64
+				if usageLogID != 0 {
+					usageLogIDPtr = &usageLogID
+				}
 				h.anomalyService.WriteAnomalyLog(
 					ctx,
 					capturedResult.Usage.InputTokens,
@@ -836,7 +845,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					capturedResult.Duration.Milliseconds(),
 					200,
 					&service.RequestLogInput{
-						RequestID:            capturedRequestID,
+						RequestID:            requestID,
+						UsageLogID:           usageLogIDPtr,
 						UserID:               &capturedUserID,
 						APIKeyID:             &capturedAPIKeyID,
 						AccountID:            &accountID,
@@ -1336,7 +1346,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			turnDurationMs := intPtr(int(result.Duration.Milliseconds()))
 			wsUpstreamLatency := turnDurationMs
 			h.submitUsageRecordTask(func(taskCtx context.Context) {
-				if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
+				if _, _, err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 					Result:             result,
 					APIKey:             apiKey,
 					User:               apiKey.User,

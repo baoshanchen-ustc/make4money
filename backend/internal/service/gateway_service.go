@@ -7511,7 +7511,7 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 }
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
-func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
+func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) (string, int64, error) {
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
@@ -7675,7 +7675,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
-		return nil
+		return requestID, usageLog.ID, nil
 	}
 
 	billingErr := func() error {
@@ -7694,11 +7694,11 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	}()
 
 	if billingErr != nil {
-		return billingErr
+		return requestID, usageLog.ID, billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
-	return nil
+	return requestID, usageLog.ID, nil
 }
 
 // RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
@@ -7731,7 +7731,7 @@ type RecordUsageLongContextInput struct {
 }
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
-func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) error {
+func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) (string, int64, error) {
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
@@ -7873,7 +7873,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
-		return nil
+		return requestID, usageLog.ID, nil
 	}
 
 	billingErr := func() error {
@@ -7892,11 +7892,11 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	}()
 
 	if billingErr != nil {
-		return billingErr
+		return requestID, usageLog.ID, billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
-	return nil
+	return requestID, usageLog.ID, nil
 }
 
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
