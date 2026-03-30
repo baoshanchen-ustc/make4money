@@ -53,8 +53,8 @@ type OpsRequestDetail struct {
 	UpstreamLatencyMs *int `json:"upstream_latency_ms,omitempty"`
 	ResponseLatencyMs *int `json:"response_latency_ms,omitempty"`
 
-	// SpansJSON is the serialised JSON spans array for this request (if recorded).
-	SpansJSON *string `json:"spans,omitempty"`
+	// Spans is the parsed span trace for this request (if recorded).
+	Spans []*OpsSpan `json:"spans,omitempty"`
 
 	// Identity fields — populated via JOIN with users and api_keys tables.
 	UserName    *string `json:"user_name,omitempty"`

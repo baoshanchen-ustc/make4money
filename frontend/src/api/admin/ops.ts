@@ -60,6 +60,18 @@ export type OpsUpstreamErrorEvent = {
   detail?: string
 }
 
+/** A single timed phase within a gateway request. */
+export interface OpsSpan {
+  name: string
+  start_unix_ms: number
+  duration_ms: number
+  status?: 'ok' | 'error' | 'skipped'
+  attrs?: Record<string, string | number | boolean>
+}
+
+/** Computed fault owner for a request — determined from spans + status_code at query time. */
+export type FaultOwner = 'client' | 'upstream' | 'platform' | 'ok'
+
 export interface OpsRetryResult {
   attempt_id: number
   mode: OpsRetryMode
@@ -214,6 +226,18 @@ export interface OpsRequestDetail {
   routing_latency_ms?: number | null
   upstream_latency_ms?: number | null
   response_latency_ms?: number | null
+
+  /** Raw span trace for this request. Populated from spans JSONB column. */
+  spans?: OpsSpan[] | null
+
+  /**
+   * Computed fault owner.
+   * 'client'   — 4xx caused by client (bad auth, bad request)
+   * 'upstream' — upstream provider returned 5xx or timeout
+   * 'platform' — sub2api internal error (routing, internal)
+   * 'ok'       — successful request (status < 400)
+   */
+  fault_owner?: FaultOwner | null
 }
 
 export interface OpsRequestDetailsParams {
@@ -1294,6 +1318,19 @@ export async function listRequestErrorUpstreamErrors(
   if (options.include_detail) query.include_detail = '1'
   const { data } = await apiClient.get<PaginatedResponse<OpsErrorDetail>>(`/admin/ops/request-errors/${id}/upstream-errors`, { params: query })
   return data
+}
+
+/**
+ * Derive fault owner from request detail fields.
+ * This matches the backend classifyOpsErrorOwner logic.
+ */
+export function computeFaultOwner(row: OpsRequestDetail): FaultOwner {
+  if (!row.status_code || row.status_code < 400) return 'ok'
+  if (row.status_code === 499) return 'client' // client disconnected
+  if (row.phase === 'upstream') return 'upstream'
+  if (row.phase === 'auth' || row.phase === 'request') return 'client'
+  if (row.phase === 'routing' || row.phase === 'internal') return 'platform'
+  return 'platform'
 }
 
 export async function listRequestDetails(params: OpsRequestDetailsParams): Promise<OpsRequestDetailsResponse> {

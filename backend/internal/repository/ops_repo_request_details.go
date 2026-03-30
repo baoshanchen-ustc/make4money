@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -402,8 +403,10 @@ LIMIT $%d OFFSET $%d
 			item.AnomalyTypes = []string(anomalyTypes)
 		}
 		if spansJSON.Valid && spansJSON.String != "" {
-			s := spansJSON.String
-			item.SpansJSON = &s
+			var spans []*service.OpsSpan
+			if err := json.Unmarshal([]byte(spansJSON.String), &spans); err == nil {
+				item.Spans = spans
+			}
 		}
 
 		out = append(out, item)
