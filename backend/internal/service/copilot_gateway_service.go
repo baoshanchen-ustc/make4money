@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
@@ -32,7 +33,27 @@ import (
 type CopilotGatewayService struct {
 	tokenProvider *CopilotTokenProvider
 	httpClient    *http.Client
+
+	// modelEndpointsCacheMu protects modelEndpointsCache.
+	modelEndpointsCacheMu sync.RWMutex
+	// modelEndpointsCache maps accountID → per-model supported_endpoints, cached from /models.
+	modelEndpointsCache map[int64]*copilotModelEndpointsCacheEntry
 }
+
+// copilotModelEndpointsCacheEntry holds a per-account cache of model→supported_endpoints.
+type copilotModelEndpointsCacheEntry struct {
+	// endpointsByModel maps model ID → supported_endpoints slice from Copilot /models response.
+	endpointsByModel map[string][]string
+	cachedAt         time.Time
+	fromUpstream     bool // true = live data (long TTL); false = failed fetch (short retry TTL)
+}
+
+const (
+	// copilotModelEndpointsCacheTTL is how long to keep a successful /models fetch.
+	copilotModelEndpointsCacheTTL = 1 * time.Hour
+	// copilotModelEndpointsCacheFailedTTL is the retry window after a failed fetch.
+	copilotModelEndpointsCacheFailedTTL = 2 * time.Minute
+)
 
 // NewCopilotGatewayService creates a new CopilotGatewayService.
 func NewCopilotGatewayService(
@@ -64,6 +85,7 @@ func NewCopilotGatewayService(
 			Timeout:   5 * time.Minute, // long timeout for streaming
 			Transport: transport,
 		},
+		modelEndpointsCache: make(map[int64]*copilotModelEndpointsCacheEntry),
 	}
 }
 
@@ -641,6 +663,97 @@ func deduplicateModelsList(body []byte) []byte {
 // OpenAI Responses API gateway (Codex CLI)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// getModelEndpointsCache returns the cached endpoints map for the given account, if still valid.
+func (s *CopilotGatewayService) getModelEndpointsCache(accountID int64) (map[string][]string, bool) {
+	s.modelEndpointsCacheMu.RLock()
+	defer s.modelEndpointsCacheMu.RUnlock()
+	entry, ok := s.modelEndpointsCache[accountID]
+	if !ok || entry == nil {
+		return nil, false
+	}
+	ttl := copilotModelEndpointsCacheTTL
+	if !entry.fromUpstream {
+		ttl = copilotModelEndpointsCacheFailedTTL
+	}
+	if time.Since(entry.cachedAt) > ttl {
+		return nil, false
+	}
+	return entry.endpointsByModel, true
+}
+
+// setModelEndpointsCache stores an endpoints map for the given account.
+func (s *CopilotGatewayService) setModelEndpointsCache(accountID int64, endpointsByModel map[string][]string, fromUpstream bool) {
+	s.modelEndpointsCacheMu.Lock()
+	defer s.modelEndpointsCacheMu.Unlock()
+	s.modelEndpointsCache[accountID] = &copilotModelEndpointsCacheEntry{
+		endpointsByModel: endpointsByModel,
+		cachedAt:         time.Now(),
+		fromUpstream:     fromUpstream,
+	}
+}
+
+// getSupportedEndpointsForModel returns the supported_endpoints list for modelID from the
+// Copilot /models response.  Results are cached per account (1 hour TTL).
+// On any error it returns nil, nil so callers fall back to /chat/completions.
+func (s *CopilotGatewayService) getSupportedEndpointsForModel(ctx context.Context, account *Account, modelID string) ([]string, error) {
+	if account == nil || strings.TrimSpace(modelID) == "" {
+		return nil, nil
+	}
+	if cached, ok := s.getModelEndpointsCache(account.ID); ok {
+		return cached[modelID], nil
+	}
+	body, err := s.ListModels(ctx, account)
+	if err != nil {
+		s.setModelEndpointsCache(account.ID, map[string][]string{}, false)
+		return nil, err
+	}
+	endpointsByModel := parseModelEndpointsFromModelsResponse(body)
+	s.setModelEndpointsCache(account.ID, endpointsByModel, true)
+	return endpointsByModel[modelID], nil
+}
+
+// parseModelEndpointsFromModelsResponse extracts a modelID→supported_endpoints map from
+// the raw JSON returned by the Copilot /models endpoint.
+func parseModelEndpointsFromModelsResponse(body []byte) map[string][]string {
+	var resp struct {
+		Data []struct {
+			ID                 string   `json:"id"`
+			SupportedEndpoints []string `json:"supported_endpoints"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return map[string][]string{}
+	}
+	m := make(map[string][]string, len(resp.Data))
+	for _, item := range resp.Data {
+		if id := strings.TrimSpace(item.ID); id != "" {
+			m[id] = append([]string(nil), item.SupportedEndpoints...)
+		}
+	}
+	return m
+}
+
+// shouldUseResponsesEndpoint returns true when the model's supported_endpoints list
+// contains "/responses" but NOT "/chat/completions" — meaning the model is
+// responses-only and cannot be reached via the chat completions path.
+func shouldUseResponsesEndpoint(supportedEndpoints []string) bool {
+	if len(supportedEndpoints) == 0 {
+		return false
+	}
+	hasResponses := false
+	hasChatCompletions := false
+	for _, ep := range supportedEndpoints {
+		switch ep {
+		case "/responses":
+			hasResponses = true
+		case "/chat/completions":
+			hasChatCompletions = true
+		}
+	}
+	return hasResponses && !hasChatCompletions
+}
+
+
 // ForwardResponses forwards an OpenAI Responses API request to the Copilot API.
 //
 // Codex CLI uses wire_api = "responses" which sends requests to {base_url}/responses.
@@ -808,6 +921,17 @@ func (s *CopilotGatewayService) ForwardMessages(
 	upstreamSent := strings.TrimSpace(extractModelFromBody(openAIBody))
 	translatedBodyBytes := len(openAIBody)
 
+	// Determine which Copilot endpoint to use for this model.
+	// Models like gpt-5.4 only support /responses; fall back to /chat/completions on error.
+	supportedEndpoints, epErr := s.getSupportedEndpointsForModel(ctx, account, upstreamSent)
+	if epErr != nil {
+		slog.Warn("copilot messages: could not resolve supported endpoints, falling back to /chat/completions",
+			"account_id", account.ID,
+			"model", upstreamSent,
+			"error", epErr)
+	}
+	useResponses := shouldUseResponsesEndpoint(supportedEndpoints)
+
 	// Log / billing: preserve the client's Anthropic model id, not the Copilot wire id.
 	model := clientModel
 	if model == "" {
@@ -826,6 +950,15 @@ func (s *CopilotGatewayService) ForwardMessages(
 	if err != nil {
 		return nil, fmt.Errorf("copilot messages: auth: %w", err)
 	}
+
+	// When the model only supports /responses, translate the Anthropic request directly
+	// to Responses API format and forward via that endpoint.
+	// /responses is only available on the canonical CopilotAPIBase (not plan subdomains).
+	if useResponses {
+		return s.forwardMessagesViaResponses(ctx, c, account, token, anthropicBody, openAIBody, upstreamSent, model, startTime, clientWantsStream)
+	}
+
+	// Default path: /chat/completions.
 
 	// Determine base URL.
 	baseURL := copilot.CopilotAPIBase
@@ -898,8 +1031,287 @@ func (s *CopilotGatewayService) ForwardMessages(
 	return s.handleMessagesStreamToNonStreamingResponse(c, resp, model, upstreamSent, startTime)
 }
 
-// handleMessagesStreamingResponse reads the Copilot SSE stream, translates each
-// OpenAI chunk to Anthropic SSE events, and writes them to the client.
+// forwardMessagesViaResponses forwards a Claude Code /v1/messages request to the
+// Copilot /responses endpoint (OpenAI Responses API).
+//
+// Used when the target model's supported_endpoints contains "/responses" but not
+// "/chat/completions" (e.g. gpt-5.4, gpt-5.3-codex).
+//
+// Flow:
+//  1. Translate original Anthropic body → Responses API request format
+//  2. POST to CopilotAPIBase/responses (plan subdomains do not expose /responses)
+//  3. Translate streaming Responses API events back to Anthropic SSE or JSON
+func (s *CopilotGatewayService) forwardMessagesViaResponses(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	token string,
+	anthropicBody []byte,
+	openAIBody []byte, // translated OpenAI body used to compute X-Initiator header
+	upstreamModel string,
+	clientModel string,
+	startTime time.Time,
+	clientWantsStream bool,
+) (*CopilotForwardResult, error) {
+	// Translate Anthropic → Responses API format.
+	var anthropicReq apicompat.AnthropicRequest
+	if err := json.Unmarshal(anthropicBody, &anthropicReq); err != nil {
+		return nil, fmt.Errorf("copilot messages via responses: parse anthropic body: %w", err)
+	}
+	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
+	if err != nil {
+		return nil, fmt.Errorf("copilot messages via responses: translate to responses: %w", err)
+	}
+	// Override model with the already-normalized upstream model id (post mapping).
+	responsesReq.Model = upstreamModel
+	// Always stream upstream for reliability (same strategy as chat/completions path).
+	responsesReq.Stream = true
+
+	responsesBody, err := json.Marshal(responsesReq)
+	if err != nil {
+		return nil, fmt.Errorf("copilot messages via responses: marshal responses body: %w", err)
+	}
+
+	slog.Debug("copilot messages via responses translated body",
+		"account_id", account.ID,
+		"model", upstreamModel,
+		"body_bytes", len(responsesBody))
+
+	// /responses is only available on the canonical base URL.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, copilot.CopilotAPIBase+"/responses", bytes.NewReader(responsesBody))
+	if err != nil {
+		return nil, fmt.Errorf("copilot messages via responses: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	// Use the translated OpenAI body to determine X-Initiator (agent vs user),
+	// matching the same multi-turn detection logic as the /chat/completions path.
+	initiator := copilotInitiator(openAIBody)
+	for k, vals := range copilot.CopilotHeaders(initiator, containsImageBlock(anthropicBody)) {
+		for _, v := range vals {
+			req.Header.Set(k, v)
+		}
+	}
+
+	setOpsUpstreamRequestBody(c, responsesBody)
+
+	upstreamStart := time.Now()
+	resp, err := s.httpClient.Do(req) //nolint:gosec
+	if err != nil {
+		return nil, fmt.Errorf("copilot messages via responses: upstream request: %w", err)
+	}
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+
+	slog.Debug("copilot messages via responses upstream response",
+		"account_id", account.ID,
+		"model", upstreamModel,
+		"status", resp.StatusCode,
+		"latency_ms", time.Since(startTime).Milliseconds())
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusBadRequest {
+			slog.Warn("copilot messages via responses upstream 400",
+				"account_id", account.ID,
+				"model", upstreamModel,
+				"x_request_id", resp.Header.Get("x-request-id"),
+				"body_snip", truncateString(string(responsesBody), 2048))
+		}
+		return s.handleErrorResponse(c, resp, account)
+	}
+
+	if clientWantsStream {
+		return s.handleMessagesResponsesStreamingResponse(c, resp, clientModel, upstreamModel, startTime)
+	}
+	return s.handleMessagesResponsesStreamToNonStreamingResponse(c, resp, clientModel, upstreamModel, startTime)
+}
+
+// handleMessagesResponsesStreamingResponse translates a streaming Responses API response
+// from Copilot back into Anthropic SSE events and writes them to the client.
+func (s *CopilotGatewayService) handleMessagesResponsesStreamingResponse(
+	c *gin.Context,
+	resp *http.Response,
+	model string,
+	upstreamModel string,
+	startTime time.Time,
+) (*CopilotForwardResult, error) {
+	defer func() { _ = resp.Body.Close() }()
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(http.StatusOK)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return nil, fmt.Errorf("copilot messages responses stream: writer does not support flushing")
+	}
+
+	state := apicompat.NewResponsesEventToAnthropicState()
+	state.Model = model
+	usage := &CopilotUsage{}
+	var firstTokenMs *int
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
+
+	for scanner.Scan() {
+		if err := c.Request.Context().Err(); err != nil {
+			slog.Debug("copilot messages responses stream: client disconnected", "error", err)
+			return &CopilotForwardResult{
+				StatusCode: http.StatusOK, Model: model, UpstreamModel: upstreamModel,
+				Usage: usage, Duration: time.Since(startTime), FirstTokenMs: firstTokenMs,
+			}, nil
+		}
+
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+
+		var event apicompat.ResponsesStreamEvent
+		if err := json.Unmarshal([]byte(line[6:]), &event); err != nil {
+			slog.Debug("copilot messages responses stream: skip unparseable event", "data", line[6:])
+			continue
+		}
+
+		if firstTokenMs == nil {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+		}
+
+		// Capture usage from terminal events.
+		if event.Response != nil && event.Response.Usage != nil {
+			u := event.Response.Usage
+			usage.PromptTokens = u.InputTokens
+			usage.CompletionTokens = u.OutputTokens
+			usage.TotalTokens = u.InputTokens + u.OutputTokens
+		}
+
+		events := apicompat.ResponsesEventToAnthropicEvents(&event, state)
+		for _, evt := range events {
+			sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
+			if err != nil {
+				continue
+			}
+			if _, writeErr := fmt.Fprint(c.Writer, sse); writeErr != nil {
+				return &CopilotForwardResult{
+					StatusCode: http.StatusOK, Model: model, UpstreamModel: upstreamModel,
+					Usage: usage, Duration: time.Since(startTime), FirstTokenMs: firstTokenMs,
+				}, nil
+			}
+		}
+		if len(events) > 0 {
+			flusher.Flush()
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		slog.Warn("copilot messages responses stream: scanner error", "error", err)
+		s.emitStreamErrorEvent(c.Writer, flusher, "overloaded_error", "Upstream connection interrupted, please retry.")
+		return &CopilotForwardResult{
+			StatusCode: http.StatusOK, Model: model, UpstreamModel: upstreamModel,
+			Usage: usage, Duration: time.Since(startTime), FirstTokenMs: firstTokenMs,
+		}, nil
+	}
+
+	// Send any remaining Anthropic events (message_stop, etc.).
+	if finalEvents := apicompat.FinalizeResponsesAnthropicStream(state); len(finalEvents) > 0 {
+		for _, evt := range finalEvents {
+			sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
+			if err != nil {
+				continue
+			}
+			fmt.Fprint(c.Writer, sse) //nolint:errcheck
+		}
+		flusher.Flush()
+	}
+
+	return &CopilotForwardResult{
+		StatusCode: http.StatusOK, Model: model, UpstreamModel: upstreamModel,
+		Usage: usage, Duration: time.Since(startTime), FirstTokenMs: firstTokenMs,
+	}, nil
+}
+
+// handleMessagesResponsesStreamToNonStreamingResponse reads a streaming Responses API
+// response, collects the terminal event, translates it to Anthropic JSON, and writes
+// the full non-streaming Anthropic response.
+func (s *CopilotGatewayService) handleMessagesResponsesStreamToNonStreamingResponse(
+	c *gin.Context,
+	resp *http.Response,
+	model string,
+	upstreamModel string,
+	startTime time.Time,
+) (*CopilotForwardResult, error) {
+	defer func() { _ = resp.Body.Close() }()
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
+
+	var finalResponse *apicompat.ResponsesResponse
+	usage := &CopilotUsage{}
+	var firstTokenMs *int
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+
+		var event apicompat.ResponsesStreamEvent
+		if err := json.Unmarshal([]byte(line[6:]), &event); err != nil {
+			continue
+		}
+
+		if firstTokenMs == nil {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+		}
+
+		// The terminal event carries the full response object.
+		if event.Response != nil &&
+			(event.Type == "response.completed" || event.Type == "response.incomplete" || event.Type == "response.failed") {
+			finalResponse = event.Response
+			if event.Response.Usage != nil {
+				u := event.Response.Usage
+				usage.PromptTokens = u.InputTokens
+				usage.CompletionTokens = u.OutputTokens
+				usage.TotalTokens = u.InputTokens + u.OutputTokens
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		slog.Warn("copilot messages responses stream-to-nonstream: scanner error", "error", err)
+	}
+
+	if finalResponse == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "overloaded_error",
+				"message": "Upstream stream ended without a terminal response event, please retry.",
+			},
+		})
+		return &CopilotForwardResult{
+			StatusCode: http.StatusServiceUnavailable, Model: model, UpstreamModel: upstreamModel,
+			Usage: usage, Duration: time.Since(startTime), FirstTokenMs: firstTokenMs,
+		}, nil
+	}
+
+	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, model)
+	anthropicRespBody, err := json.Marshal(anthropicResp)
+	if err != nil {
+		return nil, fmt.Errorf("copilot messages via responses: marshal anthropic response: %w", err)
+	}
+
+	c.Data(http.StatusOK, "application/json", anthropicRespBody)
+	return &CopilotForwardResult{
+		StatusCode: http.StatusOK, Model: model, UpstreamModel: upstreamModel,
+		Usage: usage, Duration: time.Since(startTime), FirstTokenMs: firstTokenMs,
+	}, nil
+}
+
+
 func (s *CopilotGatewayService) handleMessagesStreamingResponse(
 	c *gin.Context,
 	resp *http.Response,
