@@ -144,7 +144,8 @@ WITH combined AS (
     COALESCE(g.name, '') AS group_name,
     COALESCE(a.name, '') AS account_name,
     COALESCE(ul.input_tokens, 0) AS input_tokens,
-    COALESCE(ul.output_tokens, 0) AS output_tokens
+    COALESCE(ul.output_tokens, 0) AS output_tokens,
+    ul.spans::TEXT AS spans_json
   FROM usage_logs ul
   LEFT JOIN groups g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
@@ -181,7 +182,8 @@ WITH combined AS (
     COALESCE(g.name, '') AS group_name,
     COALESCE(a.name, '') AS account_name,
     0 AS input_tokens,
-    0 AS output_tokens
+    0 AS output_tokens,
+    o.spans::TEXT AS spans_json
   FROM ops_error_logs o
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
@@ -247,7 +249,8 @@ SELECT
     CASE WHEN duration_ms > %d AND duration_ms <= %d THEN 'slow_request' ELSE NULL END,
     CASE WHEN duration_ms > %d THEN 'timeout' ELSE NULL END,
     CASE WHEN status_code >= 500 THEN 'error' ELSE NULL END
-  ], NULL) AS anomaly_types
+  ], NULL) AS anomaly_types,
+  spans_json
 FROM combined
 %s
 %s
@@ -311,6 +314,7 @@ LIMIT $%d OFFSET $%d
 			groupNameStr   sql.NullString
 			accountNameStr sql.NullString
 			anomalyTypes   pq.StringArray
+			spansJSON      sql.NullString
 		)
 
 		if err := rows.Scan(
@@ -340,6 +344,7 @@ LIMIT $%d OFFSET $%d
 			&groupNameStr,
 			&accountNameStr,
 			&anomalyTypes,
+			&spansJSON,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -395,6 +400,10 @@ LIMIT $%d OFFSET $%d
 		}
 		if len(anomalyTypes) > 0 {
 			item.AnomalyTypes = []string(anomalyTypes)
+		}
+		if spansJSON.Valid && spansJSON.String != "" {
+			s := spansJSON.String
+			item.SpansJSON = &s
 		}
 
 		out = append(out, item)
