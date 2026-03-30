@@ -150,6 +150,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewTLSFingerprintProfileHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
+	NewSoraClientHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,
