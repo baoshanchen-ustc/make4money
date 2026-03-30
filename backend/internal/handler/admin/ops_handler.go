@@ -693,6 +693,14 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 		filter.MaxDurationMs = &parsed
 	}
 
+	// Always load anomaly settings so that the slow_request / timeout computed columns
+	// in the list query use the user-configured thresholds rather than hard-coded defaults.
+	if h.anomalyService != nil {
+		filter.AnomalySettingsForFilter = h.anomalyService.GetSettings(c.Request.Context())
+	} else {
+		filter.AnomalySettingsForFilter = service.DefaultAnomalySettings()
+	}
+
 	// Anomaly type multi-select filter (OR logic).
 	// Query format: ?anomaly_types=slow_request,zero_token
 	if v := strings.TrimSpace(c.Query("anomaly_types")); v != "" {
@@ -717,12 +725,6 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 		}
 		if len(types) > 0 {
 			filter.AnomalyTypes = types
-			if h.anomalyService != nil {
-				settings := h.anomalyService.GetSettings(c.Request.Context())
-				filter.AnomalySettingsForFilter = settings
-			} else {
-				filter.AnomalySettingsForFilter = service.DefaultAnomalySettings()
-			}
 		}
 	}
 
