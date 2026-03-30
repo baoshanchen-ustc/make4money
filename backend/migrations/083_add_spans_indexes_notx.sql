@@ -1,4 +1,4 @@
--- 082_add_spans_indexes_notx.sql
+-- 083_add_spans_indexes_notx.sql
 -- Partial GIN indexes for spans JSONB columns.
 -- Only index rows that actually have spans data to avoid bloat
 -- from the majority of rows without span data.
