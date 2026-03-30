@@ -1082,6 +1082,10 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 			upstreamLatencyMsMsgVal := getContextLatencyMsPtr(c, service.OpsUpstreamLatencyMsKey)
 			responseLatencyMsMsgVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
 			capturedInitiatorMsg := service.CopilotInitiatorFromBody(body)
+			// Capture request-scoped values before entering goroutine (gin.Context not safe across goroutines).
+			capturedRequestIDMsg := c.GetHeader("X-Request-ID")
+			capturedReqBodyMsg := body
+			capturedUpstreamReqBodyMsg, capturedUpstreamRespBodyMsg := service.GetOpsUpstreamBodies(c)
 			go func() {
 				recordCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
@@ -1115,6 +1119,29 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 					Initiator:         capturedInitiatorMsg,
 				}); err != nil {
 					reqLog.Error("copilot.messages.record_usage_failed", zap.Error(err))
+				}
+				// Async anomaly detection — already in a goroutine, no extra go needed.
+				if h.anomalyService != nil {
+					userID := apiKey.UserID
+					apiKeyID := apiKey.ID
+					accountID := capturedAccount.ID
+					h.anomalyService.WriteAnomalyLog(
+						recordCtx,
+						capturedResult.Usage.PromptTokens,
+						capturedResult.Usage.CompletionTokens,
+						capturedResult.Duration.Milliseconds(),
+						200,
+						&service.RequestLogInput{
+							RequestID:            capturedRequestIDMsg,
+							UserID:               &userID,
+							APIKeyID:             &apiKeyID,
+							AccountID:            &accountID,
+							GroupID:              apiKey.GroupID,
+							RequestBody:          capturedReqBodyMsg,
+							UpstreamRequestBody:  capturedUpstreamReqBodyMsg,
+							UpstreamResponseBody: capturedUpstreamRespBodyMsg,
+						},
+					)
 				}
 			}()
 		}
