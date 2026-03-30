@@ -977,7 +977,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			spans
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*40)
+	args := make([]any, 0, len(preparedList)*46)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
