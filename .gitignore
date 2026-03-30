@@ -136,6 +136,8 @@ docs/*
 !docs/reports/**
 !docs/superpowers/
 !docs/superpowers/**
+!docs/cc-copilot-nonclause-models/
+!docs/cc-copilot-nonclause-models/**
 .serena/
 .codex/
 .superpowers/
