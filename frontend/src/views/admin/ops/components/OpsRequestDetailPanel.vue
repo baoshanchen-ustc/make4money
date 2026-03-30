@@ -9,13 +9,23 @@
     </div>
 
     <!-- 错误类型：直接内嵌错误详情面板 -->
-    <OpsErrorDetailPanel
-      v-else-if="row.kind === 'error' && row.error_id"
-      :show="true"
-      :error-id="row.error_id"
-      error-type="request"
-      class="h-full"
-    />
+    <div v-else-if="row.kind === 'error' && row.error_id" class="flex h-full flex-col">
+      <OpsErrorDetailPanel
+        :show="true"
+        :error-id="row.error_id"
+        error-type="request"
+        class="flex-1"
+      />
+
+      <!-- Show waterfall after error detail if spans are available -->
+      <div v-if="row.spans && row.spans.length > 0" class="border-t border-gray-100 px-6 py-4 dark:border-dark-700">
+        <div class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">请求瀑布图</div>
+        <OpsWaterfallPanel :row="row" />
+        <div class="mt-3">
+          <OpsSpanTree :spans="row.spans" />
+        </div>
+      </div>
+    </div>
 
     <!-- 成功类型 / 无 error_id：展示请求摘要 + usage 入库字段 -->
     <div v-else class="space-y-4 p-6">
@@ -226,6 +236,19 @@
         :upstream-response-body="usageInspect?.upstream_response_body"
         :anomaly-types="row.anomaly_types"
       />
+
+      <!-- Waterfall section -->
+      <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+        <div class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+          请求瀑布图
+        </div>
+        <OpsWaterfallPanel :row="row" />
+      </div>
+
+      <!-- Span tree section -->
+      <div v-if="hasSpans" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+        <OpsSpanTree :spans="parsedSpans" />
+      </div>
     </div>
   </div>
 </template>
@@ -242,6 +265,9 @@ import OpsErrorDetailPanel from './OpsErrorDetailPanel.vue'
 import OpsLatencyBreakdownCard from './OpsLatencyBreakdownCard.vue'
 import AnomalyBadge from './AnomalyBadge.vue'
 import RawDataAccordion from './RawDataAccordion.vue'
+import OpsWaterfallPanel from './OpsWaterfallPanel.vue'
+import OpsSpanTree from './OpsSpanTree.vue'
+import type { OpsSpan } from '@/api/admin/ops'
 
 interface Props {
   row: OpsRequestDetail | null
@@ -266,6 +292,14 @@ const hasIdentity = computed(() => {
   const r = props.row
   return !!(r?.user_name || r?.api_key_label || r?.group_name || r?.account_name)
 })
+
+const parsedSpans = computed((): OpsSpan[] => {
+  const raw = props.row?.spans
+  if (!raw || raw.length === 0) return []
+  return raw
+})
+
+const hasSpans = computed(() => parsedSpans.value.length > 0)
 
 async function handleCopy(text: string) {
   const ok = await copyToClipboard(text, t('admin.ops.requestDetails.requestIdCopied'))
