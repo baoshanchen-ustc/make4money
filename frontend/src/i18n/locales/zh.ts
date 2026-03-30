@@ -4054,7 +4054,8 @@ export default {
           severity: '级别',
           message: '错误信息',
           errorInfo: '错误信息'
-        }
+        },
+        waterfallTitle: '请求瀑布图'
       },
       anomaly: {
         types: {

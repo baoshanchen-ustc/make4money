@@ -3887,7 +3887,8 @@ export default {
           severity: 'Severity',
           message: 'Message',
           errorInfo: 'Error Info'
-        }
+        },
+        waterfallTitle: 'Request Waterfall'
       },
       anomaly: {
         types: {

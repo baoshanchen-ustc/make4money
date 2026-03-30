@@ -19,10 +19,10 @@
 
       <!-- Show waterfall after error detail if spans are available -->
       <div v-if="hasSpans" class="border-t border-gray-100 px-6 py-4 dark:border-dark-700">
-        <div class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">请求瀑布图</div>
+        <div class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.requestDetails.waterfallTitle') }}</div>
         <OpsWaterfallPanel :row="row" />
         <div class="mt-3">
-          <OpsSpanTree :spans="parsedSpans!" />
+          <OpsSpanTree :spans="parsedSpans ?? []" />
         </div>
       </div>
     </div>
@@ -237,17 +237,15 @@
         :anomaly-types="row.anomaly_types"
       />
 
-      <!-- Waterfall section -->
+      <!-- Waterfall + Span tree section -->
       <div v-if="hasSpans" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
         <div class="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
-          请求瀑布图
+          {{ t('admin.ops.requestDetails.waterfallTitle') }}
         </div>
         <OpsWaterfallPanel :row="row" />
-      </div>
-
-      <!-- Span tree section -->
-      <div v-if="hasSpans" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
-        <OpsSpanTree :spans="parsedSpans!" />
+        <div class="mt-3">
+          <OpsSpanTree :spans="parsedSpans ?? []" />
+        </div>
       </div>
     </div>
   </div>
