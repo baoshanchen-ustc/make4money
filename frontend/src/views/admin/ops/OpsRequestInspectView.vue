@@ -410,7 +410,7 @@ const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Anomaly type multi-select dropdown state
-const ALL_ANOMALY_TYPES: AnomalyType[] = ['zero_token', 'slow_request', 'timeout', 'error']
+const ALL_ANOMALY_TYPES: AnomalyType[] = ['zero_token', 'slow_request', 'timeout', 'error', 'quota_exhaustion_suspected']
 const anomalyFilterRef = ref<HTMLElement | null>(null)
 const anomalyTypes = ref<AnomalyType[]>([])
 const showAnomalyDropdown = ref(false)
@@ -476,7 +476,7 @@ function anomalyRowClass(row: OpsRequestDetail): string {
   if (!row.anomaly_types || row.anomaly_types.length === 0) {
     return 'hover:bg-gray-50/80 dark:hover:bg-dark-800/50'
   }
-  // Prioritize by severity: timeout > error > slow_request > zero_token
+  // Prioritize by severity: timeout > error > slow_request > quota_exhaustion_suspected > zero_token
   if (row.anomaly_types.includes('timeout')) {
     return 'bg-red-50/40 hover:bg-red-50/70 dark:bg-red-950/10 dark:hover:bg-red-950/20'
   }
@@ -485,6 +485,9 @@ function anomalyRowClass(row: OpsRequestDetail): string {
   }
   if (row.anomaly_types.includes('slow_request')) {
     return 'bg-orange-50/40 hover:bg-orange-50/70 dark:bg-orange-950/10 dark:hover:bg-orange-950/20'
+  }
+  if (row.anomaly_types.includes('quota_exhaustion_suspected')) {
+    return 'bg-violet-50/40 hover:bg-violet-50/70 dark:bg-violet-950/10 dark:hover:bg-violet-950/20'
   }
   // zero_token
   return 'bg-amber-50/40 hover:bg-amber-50/70 dark:bg-amber-950/10 dark:hover:bg-amber-950/20'

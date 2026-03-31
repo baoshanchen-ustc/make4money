@@ -40,7 +40,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const ALL_TYPES: AnomalyType[] = ['zero_token', 'slow_request', 'timeout', 'error']
+const ALL_TYPES: AnomalyType[] = ['zero_token', 'slow_request', 'timeout', 'error', 'quota_exhaustion_suspected']
 
 const filledClassMap: Record<AnomalyType, string> = {
   zero_token:
@@ -50,7 +50,9 @@ const filledClassMap: Record<AnomalyType, string> = {
   timeout:
     'bg-red-100 text-red-800 ring-red-600/20 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-200 dark:ring-red-500/30 dark:hover:bg-red-900/60',
   error:
-    'bg-rose-100 text-rose-800 ring-rose-600/20 hover:bg-rose-200 dark:bg-rose-900/40 dark:text-rose-200 dark:ring-rose-500/30 dark:hover:bg-rose-900/60'
+    'bg-rose-100 text-rose-800 ring-rose-600/20 hover:bg-rose-200 dark:bg-rose-900/40 dark:text-rose-200 dark:ring-rose-500/30 dark:hover:bg-rose-900/60',
+  quota_exhaustion_suspected:
+    'bg-violet-100 text-violet-800 ring-violet-600/20 hover:bg-violet-200 dark:bg-violet-900/40 dark:text-violet-200 dark:ring-violet-500/30 dark:hover:bg-violet-900/60'
 }
 
 const outlinedClassMap: Record<AnomalyType, string> = {
@@ -61,7 +63,9 @@ const outlinedClassMap: Record<AnomalyType, string> = {
   timeout:
     'bg-transparent text-red-700 ring-red-200 hover:bg-red-50 dark:text-red-300 dark:ring-red-800/60 dark:hover:bg-red-900/20',
   error:
-    'bg-transparent text-rose-700 ring-rose-200 hover:bg-rose-50 dark:text-rose-300 dark:ring-rose-800/60 dark:hover:bg-rose-900/20'
+    'bg-transparent text-rose-700 ring-rose-200 hover:bg-rose-50 dark:text-rose-300 dark:ring-rose-800/60 dark:hover:bg-rose-900/20',
+  quota_exhaustion_suspected:
+    'bg-transparent text-violet-700 ring-violet-200 hover:bg-violet-50 dark:text-violet-300 dark:ring-violet-800/60 dark:hover:bg-violet-900/20'
 }
 
 const hasSelection = computed(() => (props.modelValue || []).length > 0)

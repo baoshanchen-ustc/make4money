@@ -103,6 +103,10 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 						fmt.Sprintf("(duration_ms > %d)", timeoutMs))
 				case service.AnomalyError:
 					anomalyConditions = append(anomalyConditions, "(status_code >= 500)")
+				case service.AnomalyQuotaExhaustionSuspected:
+					// Quota exhaustion: zero tokens AND upstream replied fast (< 1s) — Copilot rejected immediately.
+					anomalyConditions = append(anomalyConditions,
+						"(input_tokens = 0 AND output_tokens = 0 AND upstream_latency_ms IS NOT NULL AND upstream_latency_ms < 1000)")
 				}
 			}
 			if len(anomalyConditions) > 0 {
@@ -253,7 +257,8 @@ SELECT
   group_name,
   account_name,
   ARRAY_REMOVE(ARRAY[
-    CASE WHEN input_tokens = 0 AND output_tokens = 0 THEN 'zero_token' ELSE NULL END,
+    CASE WHEN input_tokens = 0 AND output_tokens = 0 AND upstream_latency_ms IS NOT NULL AND upstream_latency_ms < 1000 THEN 'quota_exhaustion_suspected' ELSE NULL END,
+    CASE WHEN input_tokens = 0 AND output_tokens = 0 AND NOT (upstream_latency_ms IS NOT NULL AND upstream_latency_ms < 1000) THEN 'zero_token' ELSE NULL END,
     CASE WHEN duration_ms > %d AND duration_ms <= %d THEN 'slow_request' ELSE NULL END,
     CASE WHEN duration_ms > %d THEN 'timeout' ELSE NULL END,
     CASE WHEN status_code >= 500 THEN 'error' ELSE NULL END

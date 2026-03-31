@@ -4062,7 +4062,8 @@ export default {
           zero_token: '零 Token',
           slow_request: '慢请求',
           timeout: '超时',
-          error: '错误'
+          error: '错误',
+          quota_exhaustion_suspected: '配额耗尽（疑似）'
         },
         clearFilter: '清除筛选'
       },

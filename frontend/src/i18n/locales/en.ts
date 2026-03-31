@@ -3895,7 +3895,8 @@ export default {
           zero_token: 'Zero Token',
           slow_request: 'Slow Request',
           timeout: 'Timeout',
-          error: 'Error'
+          error: 'Error',
+          quota_exhaustion_suspected: 'Quota Exhausted'
         },
         clearFilter: 'Clear filter'
       },

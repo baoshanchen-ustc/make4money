@@ -178,7 +178,7 @@ export type OpsRequestDetailsKind = OpsRequestKind | 'all'
 export type OpsRequestDetailsSort = 'created_at_desc' | 'duration_desc'
 
 /** Anomaly type identifiers matching backend AnomalyType constants. */
-export type AnomalyType = 'zero_token' | 'slow_request' | 'timeout' | 'error'
+export type AnomalyType = 'zero_token' | 'slow_request' | 'timeout' | 'error' | 'quota_exhaustion_suspected'
 
 /** Admin-configurable thresholds for anomaly detection. */
 export interface AnomalySettings {
