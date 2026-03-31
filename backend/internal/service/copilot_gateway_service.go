@@ -810,7 +810,6 @@ func shouldUseResponsesEndpoint(supportedEndpoints []string) bool {
 	return hasResponses && !hasChatCompletions
 }
 
-
 // ForwardResponses forwards an OpenAI Responses API request to the Copilot API.
 //
 // Codex CLI uses wire_api = "responses" which sends requests to {base_url}/responses.
@@ -1465,7 +1464,6 @@ func (s *CopilotGatewayService) handleMessagesResponsesStreamToNonStreamingRespo
 		Usage: usage, Duration: time.Since(startTime), FirstTokenMs: firstTokenMs,
 	}, nil
 }
-
 
 func (s *CopilotGatewayService) handleMessagesStreamingResponse(
 	c *gin.Context,

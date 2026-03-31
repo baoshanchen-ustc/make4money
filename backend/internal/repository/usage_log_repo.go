@@ -1253,7 +1253,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			nullInt(log.RequestBodyBytes),
 			log.Initiator,
 			createdAt,
-			func() interface{} {
+			func() any {
 				if log.Spans == nil {
 					return nil
 				}

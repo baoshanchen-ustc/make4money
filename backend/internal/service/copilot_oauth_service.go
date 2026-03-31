@@ -167,7 +167,7 @@ func (s *CopilotOAuthService) PollDeviceFlow(ctx context.Context, sessionID stri
 	}
 
 	// Verify the token can actually be used for Copilot (exchange test)
-	_, exchangeErr := copilot.ExchangeToken(s.httpClient, tokenResp.AccessToken)
+	_, exchangeErr := copilot.ExchangeTokenWithContext(ctx, s.httpClient, tokenResp.AccessToken)
 	if exchangeErr != nil {
 		slog.Error("copilot exchange token failed after device oauth",
 			"error", exchangeErr,

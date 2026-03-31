@@ -90,4 +90,3 @@ func ExchangeTokenWithContext(ctx context.Context, httpClient *http.Client, gith
 func ExchangeToken(httpClient *http.Client, githubToken string) (*CopilotToken, error) {
 	return ExchangeTokenWithContext(context.Background(), httpClient, githubToken)
 }
-
