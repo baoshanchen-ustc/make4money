@@ -266,6 +266,7 @@ type AccountUsageService struct {
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	accountFailurePolicy    *AccountFailurePolicyService
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -289,6 +290,10 @@ func NewAccountUsageService(
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
 	}
+}
+
+func (s *AccountUsageService) SetAccountFailurePolicy(policy *AccountFailurePolicyService) {
+	s.accountFailurePolicy = policy
 }
 
 // GetUsage 获取账号使用量
@@ -371,6 +376,9 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 				}
 				resp, fetchErr := s.fetchOAuthUsageRaw(ctx, account)
 				if fetchErr != nil {
+					if s.accountFailurePolicy != nil && isAccountUsageUnauthorizedError(fetchErr) {
+						_ = s.accountFailurePolicy.HandleUpstream401(ctx, account, "account_usage_service_anthropic")
+					}
 					// 负缓存：缓存错误响应，防止后续请求重复触发 429
 					s.cache.apiCache.Store(accountID, &apiUsageCache{
 						err:       fetchErr,
@@ -818,6 +826,9 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 		proxyURL := s.antigravityQuotaFetcher.GetProxyURL(fetchCtx, account)
 		fetchResult, err := s.antigravityQuotaFetcher.FetchQuota(fetchCtx, account, proxyURL)
 		if err != nil {
+			if s.accountFailurePolicy != nil && isAccountUsageUnauthorizedError(err) {
+				_ = s.accountFailurePolicy.HandleUpstream401(fetchCtx, account, "account_usage_service_antigravity")
+			}
 			degraded := buildAntigravityDegradedUsage(err)
 			enrichUsageWithAccountError(degraded, account)
 			s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
@@ -1173,6 +1184,18 @@ func (s *AccountUsageService) fetchOAuthUsageRaw(ctx context.Context, account *A
 	}
 
 	return s.usageFetcher.FetchUsageWithOptions(ctx, opts)
+}
+
+func isAccountUsageUnauthorizedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(errStr, "status 401") ||
+		strings.Contains(errStr, "http 401") ||
+		strings.Contains(errStr, "unauthorized") ||
+		strings.Contains(errStr, "invalid_grant") ||
+		strings.Contains(errStr, "unauthenticated")
 }
 
 // parseTime 尝试多种格式解析时间

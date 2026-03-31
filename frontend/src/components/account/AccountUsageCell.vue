@@ -454,11 +454,13 @@ const props = withDefaults(
     todayStats?: WindowStats | null
     todayStatsLoading?: boolean
     manualRefreshToken?: number
+    autoFetchEnabled?: boolean
   }>(),
   {
     todayStats: null,
     todayStatsLoading: false,
-    manualRefreshToken: 0
+    manualRefreshToken: 0,
+    autoFetchEnabled: true
   }
 )
 
@@ -511,7 +513,7 @@ const hasOpenAIUsageFallback = computed(() => {
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 
 const shouldAutoLoadUsageOnMount = computed(() => {
-  return shouldFetchUsage.value
+  return shouldFetchUsage.value && props.autoFetchEnabled
 })
 
 // Antigravity quota types (用于 API 返回的数据)
@@ -1046,6 +1048,7 @@ onMounted(() => {
 })
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
+  if (!props.autoFetchEnabled) return
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
@@ -1057,6 +1060,7 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
 watch(
   () => props.manualRefreshToken,
   (nextToken, prevToken) => {
+    if (!props.autoFetchEnabled) return
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
 

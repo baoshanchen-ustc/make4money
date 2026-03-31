@@ -186,7 +186,63 @@ type StreamTimeoutSettings struct {
 	ThresholdWindowMinutes int    `json:"threshold_window_minutes"`
 }
 
+// ExtremePerformanceAdminSettings 极致性能模式后台轻量化配置 DTO
+type ExtremePerformanceAdminSettings struct {
+	DisableAutoUsageFetch      bool `json:"disable_auto_usage_fetch"`
+	DisableAutoTodayStatsFetch bool `json:"disable_auto_today_stats_fetch"`
+	AllowManualUsageFetch      bool `json:"allow_manual_usage_fetch"`
+}
+
+// ExtremePerformancePlatformLimits 极致性能模式热池平台上限 DTO
+type ExtremePerformancePlatformLimits struct {
+	OpenAI    int `json:"openai"`
+	Gemini    int `json:"gemini"`
+	Anthropic int `json:"anthropic"`
+}
+
+// ExtremePerformancePoolSettings 极致性能模式热池配置 DTO
+type ExtremePerformancePoolSettings struct {
+	PlatformLimits   ExtremePerformancePlatformLimits `json:"platform_limits"`
+	RefillTriggerGap int                              `json:"refill_trigger_gap"`
+	RefillBatchSize  int                              `json:"refill_batch_size"`
+	SelectionOrder   string                           `json:"selection_order"`
+}
+
+// ExtremePerformanceAccountPolicySettings 极致性能模式账号策略配置 DTO
+type ExtremePerformanceAccountPolicySettings struct {
+	DeleteOnAnyUpstream401               bool `json:"delete_on_any_upstream_401"`
+	CooldownOn429Minutes                 int  `json:"cooldown_on_429_minutes"`
+	CooldownOn5xxMinutes                 int  `json:"cooldown_on_5xx_minutes"`
+	RemoveFromHotPoolOnOverload          bool `json:"remove_from_hot_pool_on_overload"`
+	RemoveFromHotPoolOnTempUnschedulable bool `json:"remove_from_hot_pool_on_temp_unschedulable"`
+}
+
+// ExtremePerformanceSettings 极致性能模式配置 DTO
+type ExtremePerformanceSettings struct {
+	Enabled       bool                                    `json:"enabled"`
+	Admin         ExtremePerformanceAdminSettings         `json:"admin"`
+	Pool          ExtremePerformancePoolSettings          `json:"pool"`
+	AccountPolicy ExtremePerformanceAccountPolicySettings `json:"account_policy"`
+}
+
+// ExtremePerformancePlatformStatus 极致性能模式平台运行态 DTO
+type ExtremePerformancePlatformStatus struct {
+	Platform       string `json:"platform"`
+	TargetSize     int    `json:"target_size"`
+	CurrentSize    int    `json:"current_size"`
+	ColdCandidates int    `json:"cold_candidates,omitempty"`
+	LastRefillAt   string `json:"last_refill_at,omitempty"`
+	LastRebuildAt  string `json:"last_rebuild_at,omitempty"`
+	Version        int64  `json:"version"`
+}
+
+// ExtremePerformanceStatus 极致性能模式运行态 DTO
+type ExtremePerformanceStatus struct {
+	Platforms []ExtremePerformancePlatformStatus `json:"platforms"`
+}
+
 // RectifierSettings 请求整流器配置 DTO
+
 type RectifierSettings struct {
 	Enabled                  bool     `json:"enabled"`
 	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"`

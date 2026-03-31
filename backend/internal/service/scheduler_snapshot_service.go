@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,17 +22,19 @@ var (
 const outboxEventTimeout = 2 * time.Minute
 
 type SchedulerSnapshotService struct {
-	cache         SchedulerCache
-	outboxRepo    SchedulerOutboxRepository
-	accountRepo   AccountRepository
-	groupRepo     GroupRepository
-	cfg           *config.Config
-	stopCh        chan struct{}
-	stopOnce      sync.Once
-	wg            sync.WaitGroup
-	fallbackLimit *fallbackLimiter
-	lagMu         sync.Mutex
-	lagFailures   int
+	cache                   SchedulerCache
+	outboxRepo              SchedulerOutboxRepository
+	accountRepo             AccountRepository
+	groupRepo               GroupRepository
+	cfg                     *config.Config
+	extremeSettingsResolver func(context.Context) (*ExtremePerformanceSettings, error)
+	hotPoolService          *HotPoolService
+	stopCh                  chan struct{}
+	stopOnce                sync.Once
+	wg                      sync.WaitGroup
+	fallbackLimit           *fallbackLimiter
+	lagMu                   sync.Mutex
+	lagFailures             int
 }
 
 func NewSchedulerSnapshotService(
@@ -54,6 +57,14 @@ func NewSchedulerSnapshotService(
 		stopCh:        make(chan struct{}),
 		fallbackLimit: newFallbackLimiter(maxQPS),
 	}
+}
+
+func (s *SchedulerSnapshotService) SetExtremePerformanceResolver(resolver func(context.Context) (*ExtremePerformanceSettings, error)) {
+	s.extremeSettingsResolver = resolver
+}
+
+func (s *SchedulerSnapshotService) SetHotPoolService(hotPoolService *HotPoolService) {
+	s.hotPoolService = hotPoolService
 }
 
 func (s *SchedulerSnapshotService) Start() {
@@ -106,7 +117,12 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache read failed: bucket=%s err=%v", bucket.String(), err)
 		} else if hit {
-			return derefAccounts(cached), useMixed, nil
+			accounts := derefAccounts(cached)
+			filtered, filterErr := s.filterDeadAccounts(ctx, accounts)
+			if filterErr != nil {
+				return nil, useMixed, filterErr
+			}
+			return filtered, useMixed, nil
 		}
 	}
 
@@ -118,6 +134,10 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	defer cancel()
 
 	accounts, err := s.loadAccountsFromDB(fallbackCtx, bucket, useMixed)
+	if err != nil {
+		return nil, useMixed, err
+	}
+	accounts, err = s.filterDeadAccounts(fallbackCtx, accounts)
 	if err != nil {
 		return nil, useMixed, err
 	}
@@ -140,16 +160,37 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] account cache read failed: id=%d err=%v", accountID, err)
 		} else if account != nil {
+			dead, deadErr := s.isDeadAccount(ctx, account.ID)
+			if deadErr != nil {
+				return nil, deadErr
+			}
+			if dead {
+				return nil, nil
+			}
 			return account, nil
 		}
 	}
 
+	if s.accountRepo == nil {
+		return nil, nil
+	}
 	if err := s.guardFallback(ctx); err != nil {
 		return nil, err
 	}
 	fallbackCtx, cancel := s.withFallbackTimeout(ctx)
 	defer cancel()
-	return s.accountRepo.GetByID(fallbackCtx, accountID)
+	account, err := s.accountRepo.GetByID(fallbackCtx, accountID)
+	if err != nil || account == nil {
+		return account, err
+	}
+	dead, deadErr := s.isDeadAccount(fallbackCtx, account.ID)
+	if deadErr != nil {
+		return nil, deadErr
+	}
+	if dead {
+		return nil, nil
+	}
+	return account, nil
 }
 
 // UpdateAccountInCache 立即更新 Redis 中单个账号的数据（用于模型限流后立即生效）
@@ -158,6 +199,14 @@ func (s *SchedulerSnapshotService) UpdateAccountInCache(ctx context.Context, acc
 		return nil
 	}
 	return s.cache.SetAccount(ctx, account)
+}
+
+// DeleteAccountFromCache 删除单账号缓存，供终结失效策略在异步删库前立即生效。
+func (s *SchedulerSnapshotService) DeleteAccountFromCache(ctx context.Context, accountID int64) error {
+	if s == nil || s.cache == nil || accountID <= 0 {
+		return nil
+	}
+	return s.cache.DeleteAccount(ctx, accountID)
 }
 
 func (s *SchedulerSnapshotService) runInitialRebuild() {
@@ -521,6 +570,35 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 	return nil
 }
 
+func (s *SchedulerSnapshotService) RebuildPlatformBucket(ctx context.Context, platform string) error {
+	if s == nil || s.cache == nil || strings.TrimSpace(platform) == "" {
+		return nil
+	}
+	buckets, err := s.cache.ListBuckets(ctx)
+	if err != nil {
+		return err
+	}
+	if len(buckets) == 0 {
+		buckets, err = s.defaultBuckets(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	filtered := make([]SchedulerBucket, 0, len(buckets))
+	for _, bucket := range buckets {
+		if bucket.Platform == platform {
+			filtered = append(filtered, bucket)
+		}
+	}
+	if len(filtered) == 0 {
+		filtered = append(filtered, SchedulerBucket{GroupID: 0, Platform: platform, Mode: SchedulerModeSingle})
+		if platform == PlatformAnthropic || platform == PlatformGemini {
+			filtered = append(filtered, SchedulerBucket{GroupID: 0, Platform: platform, Mode: SchedulerModeMixed})
+		}
+	}
+	return s.rebuildBuckets(ctx, filtered, "hot_pool_changed")
+}
+
 func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) error {
 	if s.cache == nil {
 		return ErrSchedulerCacheNotReady
@@ -594,6 +672,15 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 	if s.accountRepo == nil {
 		return nil, ErrSchedulerCacheNotReady
 	}
+	if !useMixed {
+		if _, ok := s.extremePerformanceSettings(ctx); ok && s.hotPoolService != nil {
+			accounts, err := s.loadAccountsFromHotPool(ctx, bucket, useMixed)
+			if err != nil {
+				return nil, err
+			}
+			return accounts, nil
+		}
+	}
 	groupID := bucket.GroupID
 	if s.isRunModeSimple() {
 		groupID = 0
@@ -630,6 +717,106 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
 	}
 	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
+}
+
+func (s *SchedulerSnapshotService) loadAccountsFromHotPool(ctx context.Context, bucket SchedulerBucket, useMixed bool) ([]Account, error) {
+	if s.hotPoolService == nil || s.accountRepo == nil {
+		return nil, ErrSchedulerCacheNotReady
+	}
+	ids, err := s.hotPoolService.ListMembers(ctx, bucket.Platform)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []Account{}, nil
+	}
+	accountsByID, err := s.accountRepo.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	accounts := make([]Account, 0, len(accountsByID))
+	for _, account := range accountsByID {
+		if account == nil {
+			continue
+		}
+		dead, deadErr := s.isDeadAccount(ctx, account.ID)
+		if deadErr != nil {
+			return nil, deadErr
+		}
+		if dead {
+			continue
+		}
+		if account.Platform != bucket.Platform {
+			continue
+		}
+		if !account.IsSchedulable() {
+			continue
+		}
+		if bucket.GroupID > 0 {
+			if !containsGroupID(account.GroupIDs, bucket.GroupID) {
+				continue
+			}
+		} else if !s.isRunModeSimple() && len(account.GroupIDs) > 0 {
+			continue
+		}
+		accounts = append(accounts, *account)
+	}
+	if useMixed {
+		filtered := make([]Account, 0, len(accounts))
+		for _, acc := range accounts {
+			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+				continue
+			}
+			filtered = append(filtered, acc)
+		}
+		accounts = filtered
+	}
+	return accounts, nil
+}
+
+func (s *SchedulerSnapshotService) extremePerformanceSettings(ctx context.Context) (*ExtremePerformanceSettings, bool) {
+	if s == nil || s.extremeSettingsResolver == nil {
+		return nil, false
+	}
+	settings, err := s.extremeSettingsResolver(ctx)
+	if err != nil || settings == nil || !settings.Enabled {
+		return nil, false
+	}
+	return settings, true
+}
+
+func (s *SchedulerSnapshotService) isDeadAccount(ctx context.Context, accountID int64) (bool, error) {
+	if s == nil || s.hotPoolService == nil || accountID <= 0 {
+		return false, nil
+	}
+	return s.hotPoolService.IsDeadAccount(ctx, accountID)
+}
+
+func (s *SchedulerSnapshotService) filterDeadAccounts(ctx context.Context, accounts []Account) ([]Account, error) {
+	if len(accounts) == 0 {
+		return accounts, nil
+	}
+	filtered := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		dead, err := s.isDeadAccount(ctx, account.ID)
+		if err != nil {
+			return nil, err
+		}
+		if dead {
+			continue
+		}
+		filtered = append(filtered, account)
+	}
+	return filtered, nil
+}
+
+func containsGroupID(values []int64, target int64) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {

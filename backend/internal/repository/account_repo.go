@@ -893,6 +893,62 @@ func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, plat
 	return r.accountsToService(ctx, accounts)
 }
 
+// ListColdCandidatesByPlatform 返回某个平台可作为热池补位候选的账号，按先导入优先排序。
+// 排序规则：created_at ASC, id ASC。
+func (r *accountRepository) ListColdCandidatesByPlatform(ctx context.Context, platform string, limit int, excludeIDs []int64) ([]service.Account, error) {
+	if strings.TrimSpace(platform) == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+
+	now := time.Now()
+	query := r.client.Account.Query().Where(
+		dbaccount.PlatformEQ(platform),
+		dbaccount.StatusEQ(service.StatusActive),
+		dbaccount.SchedulableEQ(true),
+		tempUnschedulablePredicate(),
+		notExpiredPredicate(now),
+		dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+		dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+	)
+	if len(excludeIDs) > 0 {
+		query = query.Where(dbaccount.Not(dbaccount.IDIn(excludeIDs...)))
+	}
+
+	accounts, err := query.
+		Order(dbent.Asc(dbaccount.FieldCreatedAt), dbent.Asc(dbaccount.FieldID)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return r.accountsToService(ctx, accounts)
+}
+
+// CountColdCandidatesByPlatform 返回某个平台当前符合热池补位条件的冷池候选数量。
+func (r *accountRepository) CountColdCandidatesByPlatform(ctx context.Context, platform string, excludeIDs []int64) (int, error) {
+	if strings.TrimSpace(platform) == "" {
+		return 0, nil
+	}
+	now := time.Now()
+	query := r.client.Account.Query().Where(
+		dbaccount.PlatformEQ(platform),
+		dbaccount.StatusEQ(service.StatusActive),
+		dbaccount.SchedulableEQ(true),
+		tempUnschedulablePredicate(),
+		notExpiredPredicate(now),
+		dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+		dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+	)
+	if len(excludeIDs) > 0 {
+		query = query.Where(dbaccount.Not(dbaccount.IDIn(excludeIDs...)))
+	}
+	count, err := query.Count(ctx)
+	return count, err
+}
+
 func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	now := time.Now()
 	accounts, err := r.client.Account.Query().

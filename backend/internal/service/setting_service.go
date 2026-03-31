@@ -1584,6 +1584,53 @@ func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings 
 	return s.settingRepo.Set(ctx, SettingKeyStreamTimeoutSettings, string(data))
 }
 
+// GetExtremePerformanceSettings 获取极致性能模式配置
+func (s *SettingService) GetExtremePerformanceSettings(ctx context.Context) (*ExtremePerformanceSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyExtremePerformanceSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultExtremePerformanceSettings(), nil
+		}
+		return nil, fmt.Errorf("get extreme performance settings: %w", err)
+	}
+	if strings.TrimSpace(value) == "" {
+		return DefaultExtremePerformanceSettings(), nil
+	}
+
+	settings := *DefaultExtremePerformanceSettings()
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultExtremePerformanceSettings(), nil
+	}
+
+	return normalizeExtremePerformanceSettings(&settings), nil
+}
+
+// SetExtremePerformanceSettings 设置极致性能模式配置
+func (s *SettingService) SetExtremePerformanceSettings(ctx context.Context, settings *ExtremePerformanceSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+
+	normalized := *settings
+	normalized.Pool.SelectionOrder = strings.ToLower(strings.TrimSpace(normalized.Pool.SelectionOrder))
+	if err := ValidateExtremePerformanceSettings(&normalized); err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(&normalized)
+	if err != nil {
+		return fmt.Errorf("marshal extreme performance settings: %w", err)
+	}
+
+	if err := s.settingRepo.Set(ctx, SettingKeyExtremePerformanceSettings, string(data)); err != nil {
+		return err
+	}
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return nil
+}
+
 type soraS3ProfilesStore struct {
 	ActiveProfileID string                   `json:"active_profile_id"`
 	Items           []soraS3ProfileStoreItem `json:"items"`

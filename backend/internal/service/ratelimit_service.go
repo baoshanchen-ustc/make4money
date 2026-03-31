@@ -25,6 +25,7 @@ type RateLimitService struct {
 	timeoutCounterCache   TimeoutCounterCache
 	settingService        *SettingService
 	tokenCacheInvalidator TokenCacheInvalidator
+	accountFailurePolicy  *AccountFailurePolicyService
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
 }
@@ -77,6 +78,11 @@ func (s *RateLimitService) SetSettingService(settingService *SettingService) {
 // SetTokenCacheInvalidator 设置 token 缓存清理器（可选依赖）
 func (s *RateLimitService) SetTokenCacheInvalidator(invalidator TokenCacheInvalidator) {
 	s.tokenCacheInvalidator = invalidator
+}
+
+// SetAccountFailurePolicy 设置账号终结失败策略（可选依赖）
+func (s *RateLimitService) SetAccountFailurePolicy(policy *AccountFailurePolicyService) {
+	s.accountFailurePolicy = policy
 }
 
 // ErrorPolicyResult 表示错误策略检查的结果
@@ -138,6 +144,12 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 	if upstreamMsg != "" {
 		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
+	}
+
+	if statusCode == http.StatusUnauthorized && s.accountFailurePolicy != nil {
+		if err := s.accountFailurePolicy.HandleUpstream401(ctx, account, "rate_limit_service"); err == nil && s.accountFailurePolicy.ShouldDeleteOnAnyUpstream401(ctx) {
+			return true
+		}
 	}
 
 	switch statusCode {

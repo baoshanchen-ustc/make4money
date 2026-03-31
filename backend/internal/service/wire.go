@@ -197,8 +197,25 @@ func ProvideSchedulerSnapshotService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
 	cfg *config.Config,
+	settingService *SettingService,
+	hotPoolService *HotPoolService,
 ) *SchedulerSnapshotService {
 	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, cfg)
+	if settingService != nil {
+		svc.SetExtremePerformanceResolver(settingService.GetExtremePerformanceSettings)
+	}
+	if hotPoolService != nil {
+		svc.SetHotPoolService(hotPoolService)
+		if settingService != nil {
+			hotPoolService.SetOnPlatformChanged(func(ctx context.Context, platform string) error {
+				settings, err := settingService.GetExtremePerformanceSettings(ctx)
+				if err != nil || settings == nil || !settings.Enabled {
+					return err
+				}
+				return svc.RebuildPlatformBucket(ctx, platform)
+			})
+		}
+	}
 	svc.Start()
 	return svc
 }

@@ -18,6 +18,45 @@ type openAISnapshotCacheStub struct {
 	accountsByID     map[int64]*Account
 }
 
+type openAIHotPoolCacheStub struct {
+	dead map[int64]bool
+}
+
+func (s *openAIHotPoolCacheStub) ListMembers(ctx context.Context, platform string) ([]int64, error) {
+	return nil, nil
+}
+func (s *openAIHotPoolCacheStub) AddMembers(ctx context.Context, platform string, ids []int64) error {
+	return nil
+}
+func (s *openAIHotPoolCacheStub) ReplaceMembers(ctx context.Context, platform string, ids []int64) error {
+	return nil
+}
+func (s *openAIHotPoolCacheStub) RemoveMember(ctx context.Context, platform string, accountID int64) error {
+	return nil
+}
+func (s *openAIHotPoolCacheStub) CountMembers(ctx context.Context, platform string) (int, error) {
+	return 0, nil
+}
+func (s *openAIHotPoolCacheStub) GetMeta(ctx context.Context, platform string) (*HotPoolPlatformMeta, error) {
+	return nil, nil
+}
+func (s *openAIHotPoolCacheStub) SetMeta(ctx context.Context, platform string, meta *HotPoolPlatformMeta) error {
+	return nil
+}
+func (s *openAIHotPoolCacheStub) MarkDeadAccount(ctx context.Context, accountID int64, ttl time.Duration) error {
+	if s.dead == nil {
+		s.dead = map[int64]bool{}
+	}
+	s.dead[accountID] = true
+	return nil
+}
+func (s *openAIHotPoolCacheStub) IsDeadAccount(ctx context.Context, accountID int64) (bool, error) {
+	return s.dead[accountID], nil
+}
+func (s *openAIHotPoolCacheStub) TryAcquireRefillLock(ctx context.Context, platform string, ttl time.Duration) (bool, error) {
+	return true, nil
+}
+
 func (s *openAISnapshotCacheStub) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
 	if len(s.snapshotAccounts) == 0 {
 		return nil, false, nil
@@ -114,17 +153,37 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyDBRuntimeR
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
 
-func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_DBRuntimeRecheckSkipsStaleCachedCandidate(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_DeadAccountBlacklistBeatsStaleSnapshot(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10104)
-	rateLimitedUntil := time.Now().Add(30 * time.Minute)
 	stalePrimary := &Account{ID: 34001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0}
 	staleSecondary := &Account{ID: 34002, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
-	dbPrimary := Account{ID: 34001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, RateLimitResetAt: &rateLimitedUntil}
-	dbSecondary := Account{ID: 34002, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	snapshotCache := &openAISnapshotCacheStub{snapshotAccounts: []*Account{stalePrimary, staleSecondary}, accountsByID: map[int64]*Account{34001: stalePrimary, 34002: staleSecondary}}
+	hotCache := &openAIHotPoolCacheStub{dead: map[int64]bool{34001: true}}
+	hotPoolService := NewHotPoolService(hotCache, nil)
+	snapshotService := &SchedulerSnapshotService{cache: snapshotCache}
+	snapshotService.SetHotPoolService(hotPoolService)
+	svc := &OpenAIGatewayService{accountRepo: stubOpenAIAccountRepo{accounts: []Account{*stalePrimary, *staleSecondary}}, cfg: &config.Config{}, schedulerSnapshot: snapshotService, concurrencyService: NewConcurrencyService(stubConcurrencyCache{})}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_dead_blacklist", "gpt-5.1", nil, OpenAIUpstreamTransportAny)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(34002), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+}
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_DBRuntimeRecheckSkipsStaleCachedCandidate(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10105)
+	rateLimitedUntil := time.Now().Add(30 * time.Minute)
+	stalePrimary := &Account{ID: 35001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0}
+	staleSecondary := &Account{ID: 35002, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	dbPrimary := Account{ID: 35001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, RateLimitResetAt: &rateLimitedUntil}
+	dbSecondary := Account{ID: 35002, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
 	snapshotCache := &openAISnapshotCacheStub{
 		snapshotAccounts: []*Account{stalePrimary, staleSecondary},
-		accountsByID:     map[int64]*Account{34001: stalePrimary, 34002: staleSecondary},
+		accountsByID:     map[int64]*Account{35001: stalePrimary, 35002: staleSecondary},
 	}
 	snapshotService := &SchedulerSnapshotService{cache: snapshotCache}
 	svc := &OpenAIGatewayService{
@@ -136,9 +195,8 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_DBRuntimeReche
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "gpt-5.1", nil)
 	require.NoError(t, err)
 	require.NotNil(t, account)
-	require.Equal(t, int64(34002), account.ID)
+	require.Equal(t, int64(35002), account.ID)
 }
-
 func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(9)

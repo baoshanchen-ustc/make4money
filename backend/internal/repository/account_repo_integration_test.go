@@ -366,6 +366,41 @@ func (s *AccountRepoSuite) TestListByPlatform() {
 	s.Require().Equal(service.PlatformAnthropic, accounts[0].Platform)
 }
 
+func (s *AccountRepoSuite) TestListColdCandidatesByPlatform() {
+	now := time.Now().UTC()
+	excluded := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:      "cold-excluded",
+		Platform:  service.PlatformOpenAI,
+		Status:    service.StatusActive,
+		CreatedAt: now,
+	})
+	oldest := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:      "cold-oldest",
+		Platform:  service.PlatformOpenAI,
+		Status:    service.StatusActive,
+		CreatedAt: now.Add(time.Minute),
+	})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:             "cold-rate-limited",
+		Platform:         service.PlatformOpenAI,
+		Status:           service.StatusActive,
+		RateLimitResetAt: ptrTime(now.Add(30 * time.Minute)),
+		CreatedAt:        now.Add(2 * time.Minute),
+	})
+	second := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:      "cold-second",
+		Platform:  service.PlatformOpenAI,
+		Status:    service.StatusActive,
+		CreatedAt: now.Add(3 * time.Minute),
+	})
+
+	accounts, err := s.repo.ListColdCandidatesByPlatform(s.ctx, service.PlatformOpenAI, 10, []int64{excluded.ID})
+	s.Require().NoError(err, "ListColdCandidatesByPlatform")
+	s.Require().Len(accounts, 2)
+	s.Require().Equal(oldest.ID, accounts[0].ID)
+	s.Require().Equal(second.ID, accounts[1].ID)
+}
+
 // --- Preload and VirtualFields ---
 
 func (s *AccountRepoSuite) TestPreload_And_VirtualFields() {

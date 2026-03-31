@@ -42,16 +42,18 @@ type SettingHandler struct {
 	turnstileService *service.TurnstileService
 	opsService       *service.OpsService
 	soraS3Storage    *service.SoraS3Storage
+	hotPoolService   *service.HotPoolService
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, soraS3Storage *service.SoraS3Storage) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, soraS3Storage *service.SoraS3Storage, hotPoolService *service.HotPoolService) *SettingHandler {
 	return &SettingHandler{
 		settingService:   settingService,
 		emailService:     emailService,
 		turnstileService: turnstileService,
 		opsService:       opsService,
 		soraS3Storage:    soraS3Storage,
+		hotPoolService:   hotPoolService,
 	}
 }
 
@@ -1205,6 +1207,188 @@ func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {
 		ThresholdCount:         settings.ThresholdCount,
 		ThresholdWindowMinutes: settings.ThresholdWindowMinutes,
 	})
+}
+
+func toExtremePerformanceSettingsDTO(settings *service.ExtremePerformanceSettings) dto.ExtremePerformanceSettings {
+	if settings == nil {
+		settings = service.DefaultExtremePerformanceSettings()
+	}
+	return dto.ExtremePerformanceSettings{
+		Enabled: settings.Enabled,
+		Admin: dto.ExtremePerformanceAdminSettings{
+			DisableAutoUsageFetch:      settings.Admin.DisableAutoUsageFetch,
+			DisableAutoTodayStatsFetch: settings.Admin.DisableAutoTodayStatsFetch,
+			AllowManualUsageFetch:      settings.Admin.AllowManualUsageFetch,
+		},
+		Pool: dto.ExtremePerformancePoolSettings{
+			PlatformLimits: dto.ExtremePerformancePlatformLimits{
+				OpenAI:    settings.Pool.PlatformLimits.OpenAI,
+				Gemini:    settings.Pool.PlatformLimits.Gemini,
+				Anthropic: settings.Pool.PlatformLimits.Anthropic,
+			},
+			RefillTriggerGap: settings.Pool.RefillTriggerGap,
+			RefillBatchSize:  settings.Pool.RefillBatchSize,
+			SelectionOrder:   settings.Pool.SelectionOrder,
+		},
+		AccountPolicy: dto.ExtremePerformanceAccountPolicySettings{
+			DeleteOnAnyUpstream401:               settings.AccountPolicy.DeleteOnAnyUpstream401,
+			CooldownOn429Minutes:                 settings.AccountPolicy.CooldownOn429Minutes,
+			CooldownOn5xxMinutes:                 settings.AccountPolicy.CooldownOn5xxMinutes,
+			RemoveFromHotPoolOnOverload:          settings.AccountPolicy.RemoveFromHotPoolOnOverload,
+			RemoveFromHotPoolOnTempUnschedulable: settings.AccountPolicy.RemoveFromHotPoolOnTempUnschedulable,
+		},
+	}
+}
+
+func toExtremePerformanceSettingsModel(settings dto.ExtremePerformanceSettings) *service.ExtremePerformanceSettings {
+	return &service.ExtremePerformanceSettings{
+		Enabled: settings.Enabled,
+		Admin: service.ExtremePerformanceAdminSettings{
+			DisableAutoUsageFetch:      settings.Admin.DisableAutoUsageFetch,
+			DisableAutoTodayStatsFetch: settings.Admin.DisableAutoTodayStatsFetch,
+			AllowManualUsageFetch:      settings.Admin.AllowManualUsageFetch,
+		},
+		Pool: service.ExtremePerformancePoolSettings{
+			PlatformLimits: service.ExtremePerformancePlatformLimits{
+				OpenAI:    settings.Pool.PlatformLimits.OpenAI,
+				Gemini:    settings.Pool.PlatformLimits.Gemini,
+				Anthropic: settings.Pool.PlatformLimits.Anthropic,
+			},
+			RefillTriggerGap: settings.Pool.RefillTriggerGap,
+			RefillBatchSize:  settings.Pool.RefillBatchSize,
+			SelectionOrder:   strings.TrimSpace(settings.Pool.SelectionOrder),
+		},
+		AccountPolicy: service.ExtremePerformanceAccountPolicySettings{
+			DeleteOnAnyUpstream401:               settings.AccountPolicy.DeleteOnAnyUpstream401,
+			CooldownOn429Minutes:                 settings.AccountPolicy.CooldownOn429Minutes,
+			CooldownOn5xxMinutes:                 settings.AccountPolicy.CooldownOn5xxMinutes,
+			RemoveFromHotPoolOnOverload:          settings.AccountPolicy.RemoveFromHotPoolOnOverload,
+			RemoveFromHotPoolOnTempUnschedulable: settings.AccountPolicy.RemoveFromHotPoolOnTempUnschedulable,
+		},
+	}
+}
+
+// GetExtremePerformanceSettings 获取极致性能模式配置
+// GET /api/v1/admin/settings/extreme-performance
+func (h *SettingHandler) GetExtremePerformanceSettings(c *gin.Context) {
+	settings, err := h.settingService.GetExtremePerformanceSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, toExtremePerformanceSettingsDTO(settings))
+}
+
+// UpdateExtremePerformanceSettings 更新极致性能模式配置
+// PUT /api/v1/admin/settings/extreme-performance
+func (h *SettingHandler) UpdateExtremePerformanceSettings(c *gin.Context) {
+	var req dto.ExtremePerformanceSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := toExtremePerformanceSettingsModel(req)
+	if err := service.ValidateExtremePerformanceSettings(settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if err := h.settingService.SetExtremePerformanceSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetExtremePerformanceSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, toExtremePerformanceSettingsDTO(updatedSettings))
+}
+
+func toExtremePerformancePlatformStatusDTO(status *service.HotPoolPlatformStatus) dto.ExtremePerformancePlatformStatus {
+	if status == nil {
+		return dto.ExtremePerformancePlatformStatus{}
+	}
+	result := dto.ExtremePerformancePlatformStatus{
+		Platform:       status.Platform,
+		TargetSize:     status.TargetSize,
+		CurrentSize:    status.CurrentSize,
+		ColdCandidates: status.ColdCandidates,
+		Version:        status.Version,
+	}
+	if status.LastRefillAt != nil {
+		result.LastRefillAt = status.LastRefillAt.UTC().Format(time.RFC3339)
+	}
+	if status.LastRebuildAt != nil {
+		result.LastRebuildAt = status.LastRebuildAt.UTC().Format(time.RFC3339)
+	}
+	return result
+}
+
+// GetExtremePerformanceStatus 获取极致性能模式运行态
+// GET /api/v1/admin/settings/extreme-performance/status
+func (h *SettingHandler) GetExtremePerformanceStatus(c *gin.Context) {
+	settings, err := h.settingService.GetExtremePerformanceSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if h.hotPoolService == nil {
+		response.Success(c, dto.ExtremePerformanceStatus{})
+		return
+	}
+	items := make([]dto.ExtremePerformancePlatformStatus, 0, 3)
+	for _, platform := range []string{service.PlatformOpenAI, service.PlatformGemini, service.PlatformAnthropic} {
+		status, statusErr := h.hotPoolService.GetPlatformStatus(c.Request.Context(), settings, platform)
+		if statusErr != nil {
+			response.ErrorFrom(c, statusErr)
+			return
+		}
+		items = append(items, toExtremePerformancePlatformStatusDTO(status))
+	}
+	response.Success(c, dto.ExtremePerformanceStatus{Platforms: items})
+}
+
+// TriggerExtremePerformanceRefill 手动触发热池补位
+// POST /api/v1/admin/settings/extreme-performance/refill
+func (h *SettingHandler) TriggerExtremePerformanceRefill(c *gin.Context) {
+	settings, err := h.settingService.GetExtremePerformanceSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if h.hotPoolService != nil {
+		for _, platform := range []string{service.PlatformOpenAI, service.PlatformGemini, service.PlatformAnthropic} {
+			if refillErr := h.hotPoolService.RefillPlatform(c.Request.Context(), settings, platform); refillErr != nil {
+				response.ErrorFrom(c, refillErr)
+				return
+			}
+		}
+	}
+	response.Success(c, gin.H{"message": "Extreme performance refill triggered"})
+}
+
+// TriggerExtremePerformanceRebuild 手动触发热池重建
+// POST /api/v1/admin/settings/extreme-performance/rebuild
+func (h *SettingHandler) TriggerExtremePerformanceRebuild(c *gin.Context) {
+	settings, err := h.settingService.GetExtremePerformanceSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if h.hotPoolService != nil {
+		for _, platform := range []string{service.PlatformOpenAI, service.PlatformGemini, service.PlatformAnthropic} {
+			if rebuildErr := h.hotPoolService.RebuildPlatform(c.Request.Context(), settings, platform); rebuildErr != nil {
+				response.ErrorFrom(c, rebuildErr)
+				return
+			}
+		}
+	}
+	response.Success(c, gin.H{"message": "Extreme performance rebuild triggered"})
 }
 
 func toSoraS3SettingsDTO(settings *service.SoraS3Settings) dto.SoraS3Settings {

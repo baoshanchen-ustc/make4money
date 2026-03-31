@@ -48,6 +48,10 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   const opsMonitoringEnabled = ref(readCachedBool('ops_monitoring_enabled_cached', true))
   const opsRealtimeMonitoringEnabled = ref(readCachedBool('ops_realtime_monitoring_enabled_cached', true))
   const opsQueryModeDefault = ref(readCachedString('ops_query_mode_default_cached', 'auto'))
+  const extremeModeEnabled = ref(readCachedBool('extreme_mode_enabled_cached', false))
+  const disableAutoUsageFetch = ref(readCachedBool('extreme_disable_auto_usage_fetch_cached', true))
+  const disableAutoTodayStatsFetch = ref(readCachedBool('extreme_disable_auto_today_stats_fetch_cached', true))
+  const allowManualUsageFetch = ref(readCachedBool('extreme_allow_manual_usage_fetch_cached', true))
   const customMenuItems = ref<CustomMenuItem[]>([])
 
   async function fetch(force = false): Promise<void> {
@@ -56,7 +60,10 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
 
     loading.value = true
     try {
-      const settings = await adminAPI.settings.getSettings()
+      const [settings, extreme] = await Promise.all([
+        adminAPI.settings.getSettings(),
+        adminAPI.settings.getExtremePerformanceSettings()
+      ])
       opsMonitoringEnabled.value = settings.ops_monitoring_enabled ?? true
       writeCachedBool('ops_monitoring_enabled_cached', opsMonitoringEnabled.value)
 
@@ -65,6 +72,18 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
 
       opsQueryModeDefault.value = settings.ops_query_mode_default || 'auto'
       writeCachedString('ops_query_mode_default_cached', opsQueryModeDefault.value)
+
+      extremeModeEnabled.value = extreme.enabled ?? false
+      writeCachedBool('extreme_mode_enabled_cached', extremeModeEnabled.value)
+
+      disableAutoUsageFetch.value = extreme.admin?.disable_auto_usage_fetch ?? true
+      writeCachedBool('extreme_disable_auto_usage_fetch_cached', disableAutoUsageFetch.value)
+
+      disableAutoTodayStatsFetch.value = extreme.admin?.disable_auto_today_stats_fetch ?? true
+      writeCachedBool('extreme_disable_auto_today_stats_fetch_cached', disableAutoTodayStatsFetch.value)
+
+      allowManualUsageFetch.value = extreme.admin?.allow_manual_usage_fetch ?? true
+      writeCachedBool('extreme_allow_manual_usage_fetch_cached', allowManualUsageFetch.value)
 
       customMenuItems.value = Array.isArray(settings.custom_menu_items) ? settings.custom_menu_items : []
 
@@ -126,6 +145,10 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     opsMonitoringEnabled,
     opsRealtimeMonitoringEnabled,
     opsQueryModeDefault,
+    extremeModeEnabled,
+    disableAutoUsageFetch,
+    disableAutoTodayStatsFetch,
+    allowManualUsageFetch,
     customMenuItems,
     fetch,
     setOpsMonitoringEnabledLocal,
