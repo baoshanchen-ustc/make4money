@@ -171,6 +171,176 @@
         <!-- Tab: Gateway -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
 
+        <!-- Extreme Performance Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.extremePerformance.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.extremePerformance.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div v-if="extremePerformanceLoading" class="flex items-center gap-2 text-gray-500">
+              <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+              {{ t('common.loading') }}
+            </div>
+
+            <template v-else>
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t('admin.settings.extremePerformance.enabled')
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.extremePerformance.enabledHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="extremePerformanceForm.enabled" />
+              </div>
+
+              <div class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+                      t('admin.settings.extremePerformance.disableAutoUsageFetch')
+                    }}</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.extremePerformance.disableAutoUsageFetchHint') }}
+                    </p>
+                  </div>
+                  <Toggle v-model="extremePerformanceForm.admin.disable_auto_usage_fetch" />
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+                      t('admin.settings.extremePerformance.disableAutoTodayStatsFetch')
+                    }}</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.extremePerformance.disableAutoTodayStatsFetchHint') }}
+                    </p>
+                  </div>
+                  <Toggle v-model="extremePerformanceForm.admin.disable_auto_today_stats_fetch" />
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+                      t('admin.settings.extremePerformance.allowManualUsageFetch')
+                    }}</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.extremePerformance.allowManualUsageFetchHint') }}
+                    </p>
+                  </div>
+                  <Toggle v-model="extremePerformanceForm.admin.allow_manual_usage_fetch" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 md:grid-cols-3 dark:border-dark-700">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.extremePerformance.openaiHotPool') }}
+                  </label>
+                  <input
+                    v-model.number="extremePerformanceForm.pool.platform_limits.openai"
+                    type="number"
+                    min="1"
+                    max="100000"
+                    class="input"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.extremePerformance.geminiHotPool') }}
+                  </label>
+                  <input
+                    v-model.number="extremePerformanceForm.pool.platform_limits.gemini"
+                    type="number"
+                    min="1"
+                    max="100000"
+                    class="input"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.extremePerformance.anthropicHotPool') }}
+                  </label>
+                  <input
+                    v-model.number="extremePerformanceForm.pool.platform_limits.anthropic"
+                    type="number"
+                    min="1"
+                    max="100000"
+                    class="input"
+                  />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 md:grid-cols-2 dark:border-dark-700">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.extremePerformance.refillTriggerGap') }}
+                  </label>
+                  <input
+                    v-model.number="extremePerformanceForm.pool.refill_trigger_gap"
+                    type="number"
+                    min="1"
+                    max="10000"
+                    class="input"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.extremePerformance.refillBatchSize') }}
+                  </label>
+                  <input
+                    v-model.number="extremePerformanceForm.pool.refill_batch_size"
+                    type="number"
+                    min="1"
+                    max="10000"
+                    class="input"
+                  />
+                </div>
+              </div>
+
+              <div class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+                      t('admin.settings.extremePerformance.deleteOn401')
+                    }}</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.extremePerformance.deleteOn401Hint') }}
+                    </p>
+                  </div>
+                  <Toggle v-model="extremePerformanceForm.account_policy.delete_on_any_upstream_401" />
+                </div>
+              </div>
+
+              <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+                <button
+                  type="button"
+                  @click="saveExtremePerformanceSettings"
+                  :disabled="extremePerformanceSaving"
+                  class="btn btn-primary btn-sm"
+                >
+                  <svg
+                    v-if="extremePerformanceSaving"
+                    class="mr-1 h-4 w-4 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {{ extremePerformanceSaving ? t('common.saving') : t('common.save') }}
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+
         <!-- Overload Cooldown (529) Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -2051,6 +2221,35 @@ const adminApiKeyOperating = ref(false)
 const newAdminApiKey = ref('')
 const subscriptionGroups = ref<AdminGroup[]>([])
 
+// Extreme Performance 状态
+const extremePerformanceLoading = ref(true)
+const extremePerformanceSaving = ref(false)
+const extremePerformanceForm = reactive({
+  enabled: false,
+  admin: {
+    disable_auto_usage_fetch: true,
+    disable_auto_today_stats_fetch: true,
+    allow_manual_usage_fetch: true
+  },
+  pool: {
+    platform_limits: {
+      openai: 2000,
+      gemini: 300,
+      anthropic: 100
+    },
+    refill_trigger_gap: 50,
+    refill_batch_size: 100,
+    selection_order: 'imported_first' as 'imported_first' | string
+  },
+  account_policy: {
+    delete_on_any_upstream_401: true,
+    cooldown_on_429_minutes: 5,
+    cooldown_on_5xx_minutes: 1,
+    remove_from_hot_pool_on_overload: true,
+    remove_from_hot_pool_on_temp_unschedulable: true
+  }
+})
+
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true)
 const overloadCooldownSaving = ref(false)
@@ -2623,6 +2822,59 @@ function copyNewKey() {
     })
 }
 
+// Extreme Performance 方法
+async function loadExtremePerformanceSettings() {
+  extremePerformanceLoading.value = true
+  try {
+    const settings = await adminAPI.settings.getExtremePerformanceSettings()
+    Object.assign(extremePerformanceForm, settings)
+  } catch (error: any) {
+    console.error('Failed to load extreme performance settings:', error)
+  } finally {
+    extremePerformanceLoading.value = false
+  }
+}
+
+async function saveExtremePerformanceSettings() {
+  extremePerformanceSaving.value = true
+  try {
+    const updated = await adminAPI.settings.updateExtremePerformanceSettings({
+      enabled: extremePerformanceForm.enabled,
+      admin: {
+        disable_auto_usage_fetch: extremePerformanceForm.admin.disable_auto_usage_fetch,
+        disable_auto_today_stats_fetch: extremePerformanceForm.admin.disable_auto_today_stats_fetch,
+        allow_manual_usage_fetch: extremePerformanceForm.admin.allow_manual_usage_fetch
+      },
+      pool: {
+        platform_limits: {
+          openai: extremePerformanceForm.pool.platform_limits.openai,
+          gemini: extremePerformanceForm.pool.platform_limits.gemini,
+          anthropic: extremePerformanceForm.pool.platform_limits.anthropic
+        },
+        refill_trigger_gap: extremePerformanceForm.pool.refill_trigger_gap,
+        refill_batch_size: extremePerformanceForm.pool.refill_batch_size,
+        selection_order: extremePerformanceForm.pool.selection_order
+      },
+      account_policy: {
+        delete_on_any_upstream_401: extremePerformanceForm.account_policy.delete_on_any_upstream_401,
+        cooldown_on_429_minutes: extremePerformanceForm.account_policy.cooldown_on_429_minutes,
+        cooldown_on_5xx_minutes: extremePerformanceForm.account_policy.cooldown_on_5xx_minutes,
+        remove_from_hot_pool_on_overload: extremePerformanceForm.account_policy.remove_from_hot_pool_on_overload,
+        remove_from_hot_pool_on_temp_unschedulable: extremePerformanceForm.account_policy.remove_from_hot_pool_on_temp_unschedulable
+      }
+    })
+    Object.assign(extremePerformanceForm, updated)
+    await adminSettingsStore.fetch(true)
+    appStore.showSuccess(t('admin.settings.extremePerformance.saved'))
+  } catch (error: any) {
+    appStore.showError(
+      t('admin.settings.extremePerformance.saveFailed') + ': ' + (error.message || t('common.unknownError'))
+    )
+  } finally {
+    extremePerformanceSaving.value = false
+  }
+}
+
 // Overload Cooldown 方法
 async function loadOverloadCooldownSettings() {
   overloadCooldownLoading.value = true
@@ -2787,6 +3039,7 @@ onMounted(() => {
   loadSettings()
   loadSubscriptionGroups()
   loadAdminApiKey()
+  loadExtremePerformanceSettings()
   loadOverloadCooldownSettings()
   loadStreamTimeoutSettings()
   loadRectifierSettings()

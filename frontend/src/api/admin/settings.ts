@@ -257,6 +257,52 @@ export async function deleteAdminApiKey(): Promise<{ message: string }> {
 /**
  * Overload cooldown settings interface (529 handling)
  */
+export interface ExtremePerformanceSettings {
+  enabled: boolean
+  admin: {
+    disable_auto_usage_fetch: boolean
+    disable_auto_today_stats_fetch: boolean
+    allow_manual_usage_fetch: boolean
+  }
+  pool: {
+    platform_limits: {
+      openai: number
+      gemini: number
+      anthropic: number
+    }
+    refill_trigger_gap: number
+    refill_batch_size: number
+    selection_order: 'imported_first' | string
+  }
+  account_policy: {
+    delete_on_any_upstream_401: boolean
+    cooldown_on_429_minutes: number
+    cooldown_on_5xx_minutes: number
+    remove_from_hot_pool_on_overload: boolean
+    remove_from_hot_pool_on_temp_unschedulable: boolean
+  }
+}
+
+export async function getExtremePerformanceSettings(): Promise<ExtremePerformanceSettings> {
+  const { data } = await apiClient.get<ExtremePerformanceSettings>('/admin/settings/extreme-performance')
+  return data
+}
+
+export async function updateExtremePerformanceSettings(
+  settings: ExtremePerformanceSettings
+): Promise<ExtremePerformanceSettings> {
+  const { data } = await apiClient.put<ExtremePerformanceSettings>(
+    '/admin/settings/extreme-performance',
+    settings
+  )
+  return data
+}
+
+// ==================== Overload Cooldown Settings ====================
+
+/**
+ * Overload cooldown settings interface (529 handling)
+ */
 export interface OverloadCooldownSettings {
   enabled: boolean
   cooldown_minutes: number
@@ -538,6 +584,8 @@ export const settingsAPI = {
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,
+  getExtremePerformanceSettings,
+  updateExtremePerformanceSettings,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
   getStreamTimeoutSettings,

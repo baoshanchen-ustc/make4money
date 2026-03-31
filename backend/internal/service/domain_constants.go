@@ -186,6 +186,13 @@ const (
 	SettingKeyStreamTimeoutSettings = "stream_timeout_settings"
 
 	// =========================
+	// Extreme Performance Mode
+	// =========================
+
+	// SettingKeyExtremePerformanceSettings stores JSON config for extreme performance mode.
+	SettingKeyExtremePerformanceSettings = "extreme_performance_settings"
+
+	// =========================
 	// Request Rectifier (请求整流器)
 	// =========================
 

@@ -1207,6 +1207,106 @@ func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {
 	})
 }
 
+func toExtremePerformanceSettingsDTO(settings *service.ExtremePerformanceSettings) dto.ExtremePerformanceSettings {
+	if settings == nil {
+		settings = service.DefaultExtremePerformanceSettings()
+	}
+	return dto.ExtremePerformanceSettings{
+		Enabled: settings.Enabled,
+		Admin: dto.ExtremePerformanceAdminSettings{
+			DisableAutoUsageFetch:      settings.Admin.DisableAutoUsageFetch,
+			DisableAutoTodayStatsFetch: settings.Admin.DisableAutoTodayStatsFetch,
+			AllowManualUsageFetch:      settings.Admin.AllowManualUsageFetch,
+		},
+		Pool: dto.ExtremePerformancePoolSettings{
+			PlatformLimits: dto.ExtremePerformancePlatformLimits{
+				OpenAI:    settings.Pool.PlatformLimits.OpenAI,
+				Gemini:    settings.Pool.PlatformLimits.Gemini,
+				Anthropic: settings.Pool.PlatformLimits.Anthropic,
+			},
+			RefillTriggerGap: settings.Pool.RefillTriggerGap,
+			RefillBatchSize:  settings.Pool.RefillBatchSize,
+			SelectionOrder:   settings.Pool.SelectionOrder,
+		},
+		AccountPolicy: dto.ExtremePerformanceAccountPolicySettings{
+			DeleteOnAnyUpstream401:               settings.AccountPolicy.DeleteOnAnyUpstream401,
+			CooldownOn429Minutes:                 settings.AccountPolicy.CooldownOn429Minutes,
+			CooldownOn5xxMinutes:                 settings.AccountPolicy.CooldownOn5xxMinutes,
+			RemoveFromHotPoolOnOverload:          settings.AccountPolicy.RemoveFromHotPoolOnOverload,
+			RemoveFromHotPoolOnTempUnschedulable: settings.AccountPolicy.RemoveFromHotPoolOnTempUnschedulable,
+		},
+	}
+}
+
+func toExtremePerformanceSettingsModel(settings dto.ExtremePerformanceSettings) *service.ExtremePerformanceSettings {
+	return &service.ExtremePerformanceSettings{
+		Enabled: settings.Enabled,
+		Admin: service.ExtremePerformanceAdminSettings{
+			DisableAutoUsageFetch:      settings.Admin.DisableAutoUsageFetch,
+			DisableAutoTodayStatsFetch: settings.Admin.DisableAutoTodayStatsFetch,
+			AllowManualUsageFetch:      settings.Admin.AllowManualUsageFetch,
+		},
+		Pool: service.ExtremePerformancePoolSettings{
+			PlatformLimits: service.ExtremePerformancePlatformLimits{
+				OpenAI:    settings.Pool.PlatformLimits.OpenAI,
+				Gemini:    settings.Pool.PlatformLimits.Gemini,
+				Anthropic: settings.Pool.PlatformLimits.Anthropic,
+			},
+			RefillTriggerGap: settings.Pool.RefillTriggerGap,
+			RefillBatchSize:  settings.Pool.RefillBatchSize,
+			SelectionOrder:   strings.TrimSpace(settings.Pool.SelectionOrder),
+		},
+		AccountPolicy: service.ExtremePerformanceAccountPolicySettings{
+			DeleteOnAnyUpstream401:               settings.AccountPolicy.DeleteOnAnyUpstream401,
+			CooldownOn429Minutes:                 settings.AccountPolicy.CooldownOn429Minutes,
+			CooldownOn5xxMinutes:                 settings.AccountPolicy.CooldownOn5xxMinutes,
+			RemoveFromHotPoolOnOverload:          settings.AccountPolicy.RemoveFromHotPoolOnOverload,
+			RemoveFromHotPoolOnTempUnschedulable: settings.AccountPolicy.RemoveFromHotPoolOnTempUnschedulable,
+		},
+	}
+}
+
+// GetExtremePerformanceSettings 获取极致性能模式配置
+// GET /api/v1/admin/settings/extreme-performance
+func (h *SettingHandler) GetExtremePerformanceSettings(c *gin.Context) {
+	settings, err := h.settingService.GetExtremePerformanceSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, toExtremePerformanceSettingsDTO(settings))
+}
+
+// UpdateExtremePerformanceSettings 更新极致性能模式配置
+// PUT /api/v1/admin/settings/extreme-performance
+func (h *SettingHandler) UpdateExtremePerformanceSettings(c *gin.Context) {
+	var req dto.ExtremePerformanceSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := toExtremePerformanceSettingsModel(req)
+	if err := service.ValidateExtremePerformanceSettings(settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if err := h.settingService.SetExtremePerformanceSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetExtremePerformanceSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, toExtremePerformanceSettingsDTO(updatedSettings))
+}
+
 func toSoraS3SettingsDTO(settings *service.SoraS3Settings) dto.SoraS3Settings {
 	if settings == nil {
 		return dto.SoraS3Settings{}

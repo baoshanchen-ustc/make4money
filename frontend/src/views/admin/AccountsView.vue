@@ -18,6 +18,12 @@
             @create="showCreate = true"
           >
             <template #after>
+              <div
+                v-if="adminSettingsStore.extremeModeEnabled && (!usageAutoFetchEnabled || !todayStatsAutoFetchEnabled)"
+                class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+              >
+                {{ t('admin.settings.extremePerformance.disableAutoUsageFetchHint') }}
+              </div>
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
                 <button
@@ -218,6 +224,7 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              :auto-fetch-enabled="usageAutoFetchEnabled"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -309,6 +316,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
@@ -345,6 +353,7 @@ import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, Admi
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const adminSettingsStore = useAdminSettingsStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
@@ -421,6 +430,12 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+const usageAutoFetchEnabled = computed(() => {
+  return !(adminSettingsStore.extremeModeEnabled && adminSettingsStore.disableAutoUsageFetch)
+})
+const todayStatsAutoFetchEnabled = computed(() => {
+  return !(adminSettingsStore.extremeModeEnabled && adminSettingsStore.disableAutoTodayStatsFetch)
+})
 
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
@@ -431,6 +446,12 @@ const buildDefaultTodayStats = (): WindowStats => ({
 })
 
 const refreshTodayStatsBatch = async () => {
+  if (!todayStatsAutoFetchEnabled.value) {
+    todayStatsLoading.value = false
+    todayStatsError.value = null
+    return
+  }
+
   // Why this checks both columns:
   // - today_stats column shows dedicated today's metrics.
   // - usage column also embeds today's stats for Key/Bedrock rows.
@@ -799,15 +820,19 @@ const refreshAccountsIncrementally = async () => {
 
 const handleManualRefresh = async () => {
   await load()
-  // Force usage cells to refetch /usage on explicit user refresh.
-  usageManualRefreshToken.value += 1
+  // Force usage cells to refetch /usage on explicit user refresh only when auto usage fetch is enabled.
+  if (usageAutoFetchEnabled.value) {
+    usageManualRefreshToken.value += 1
+  }
 }
 
 const syncPendingListChanges = async () => {
   hasPendingListSync.value = false
   await load()
   // Keep behavior consistent with manual refresh.
-  usageManualRefreshToken.value += 1
+  if (usageAutoFetchEnabled.value) {
+    usageManualRefreshToken.value += 1
+  }
 }
 
 const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
@@ -1325,6 +1350,11 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 onMounted(async () => {
+  try {
+    await adminSettingsStore.fetch()
+  } catch (error) {
+    console.error('Failed to load admin settings:', error)
+  }
   load()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
