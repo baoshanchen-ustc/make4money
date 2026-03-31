@@ -1840,6 +1840,33 @@ func forceStreamTrue(body []byte) []byte {
 	return out
 }
 
+// ensureStreamIncludeUsage injects "stream_options":{"include_usage":true} when stream=true.
+// This causes the Copilot API to append a usage-summary SSE chunk at the end of the stream,
+// enabling accurate token count recording. No-op when stream is absent or false.
+func ensureStreamIncludeUsage(body []byte) []byte {
+	if !gjson.GetBytes(body, "stream").Bool() {
+		return body
+	}
+	out, err := sjson.SetBytes(body, "stream_options.include_usage", true)
+	if err != nil {
+		slog.Warn("copilot: failed to inject stream_options.include_usage", "error", err)
+		return body
+	}
+	return out
+}
+
+// isUsageOnlyChunk reports whether a decoded SSE data string is the trailing
+// usage-summary chunk that Copilot appends when stream_options.include_usage=true.
+// These chunks have a "usage" field but no non-empty "choices" array.
+// Used to filter the chunk from the downstream stream when the client did not request it.
+func isUsageOnlyChunk(data string) bool {
+	if !gjson.Get(data, "usage").Exists() {
+		return false
+	}
+	choices := gjson.Get(data, "choices")
+	return !choices.Exists() || (choices.IsArray() && len(choices.Array()) == 0)
+}
+
 // extractEventType reads the "type" field from a JSON event object for the SSE
 // event name (e.g. "message_start", "content_block_delta", …).
 func extractEventType(jsonStr string) string {

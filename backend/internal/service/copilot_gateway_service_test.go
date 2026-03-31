@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func TestCopilotInitiator(t *testing.T) {
@@ -714,6 +715,68 @@ func TestContainsImageBlock(t *testing.T) {
 			got := containsImageBlock([]byte(tt.body))
 			if got != tt.want {
 				t.Errorf("containsImageBlock() = %v, want %v\nbody: %s", got, tt.want, tt.body)
+			}
+		})
+	}
+}
+
+func TestEnsureStreamIncludeUsage(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantVal string // gjson raw of stream_options.include_usage; "" = absent
+	}{
+		{"no stream_options, stream true",
+			`{"model":"gpt-4o","stream":true}`, "true"},
+		{"stream_options empty",
+			`{"model":"gpt-4o","stream":true,"stream_options":{}}`, "true"},
+		{"include_usage already true",
+			`{"model":"gpt-4o","stream":true,"stream_options":{"include_usage":true}}`, "true"},
+		{"include_usage false → set true",
+			`{"model":"gpt-4o","stream":true,"stream_options":{"include_usage":false}}`, "true"},
+		{"stream false → no injection",
+			`{"model":"gpt-4o","stream":false}`, ""},
+		{"stream absent → no injection",
+			`{"model":"gpt-4o"}`, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ensureStreamIncludeUsage([]byte(tc.input))
+			val := gjson.GetBytes(got, "stream_options.include_usage")
+			if tc.wantVal == "" {
+				if val.Exists() {
+					t.Errorf("want absent, got %s", val.Raw)
+				}
+				return
+			}
+			if !val.Exists() || val.Raw != tc.wantVal {
+				t.Errorf("want include_usage=%s, got %q; body=%s", tc.wantVal, val.Raw, got)
+			}
+		})
+	}
+}
+
+func TestIsUsageOnlyChunk(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want bool
+	}{
+		{"usage chunk, no choices",
+			`{"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`, true},
+		{"usage chunk, empty choices array",
+			`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}`, true},
+		{"content chunk with choices",
+			`{"choices":[{"delta":{"content":"hi"}}]}`, false},
+		{"content chunk with both choices and usage",
+			`{"choices":[{"delta":{"content":"hi"}}],"usage":{"prompt_tokens":10}}`, false},
+		{"empty object",
+			`{}`, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isUsageOnlyChunk(tc.data); got != tc.want {
+				t.Errorf("isUsageOnlyChunk(%q) = %v, want %v", tc.data, got, tc.want)
 			}
 		})
 	}
