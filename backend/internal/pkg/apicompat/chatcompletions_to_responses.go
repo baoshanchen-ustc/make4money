@@ -118,29 +118,13 @@ func chatMessageToResponsesItems(m ChatMessage) ([]ResponsesInputItem, error) {
 
 // chatSystemToResponses converts a system message.
 func chatSystemToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
-	parsed, err := parseChatMessageContent(m.Content)
-	if err != nil {
-		return nil, err
-	}
-	content, err := marshalChatInputContent(parsed)
-	if err != nil {
-		return nil, err
-	}
-	return []ResponsesInputItem{{Role: "system", Content: content}}, nil
+	return chatRoleContentToResponses("system", m.Content)
 }
 
 // chatUserToResponses converts a user message, handling both plain strings and
 // multi-modal content arrays.
 func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
-	parsed, err := parseChatMessageContent(m.Content)
-	if err != nil {
-		return nil, fmt.Errorf("parse user content: %w", err)
-	}
-	content, err := marshalChatInputContent(parsed)
-	if err != nil {
-		return nil, err
-	}
-	return []ResponsesInputItem{{Role: "user", Content: content}}, nil
+	return chatRoleContentToResponses("user", m.Content)
 }
 
 // chatAssistantToResponses converts an assistant message. If there is both
@@ -312,12 +296,24 @@ func parseChatMessageContent(raw json.RawMessage) (chatMessageContent, error) {
 		return chatMessageContent{Text: &s}, nil
 	}
 
-	var parts []ChatContentPart
-	if err := json.Unmarshal(raw, &parts); err == nil {
+	parts, err := parseChatTypedContent(raw)
+	if err == nil {
 		return chatMessageContent{Parts: parts}, nil
 	}
 
-	return chatMessageContent{}, fmt.Errorf("parse content as string or parts array")
+	return chatMessageContent{}, fmt.Errorf("parse content: %w", err)
+}
+
+func chatRoleContentToResponses(role string, raw json.RawMessage) ([]ResponsesInputItem, error) {
+	parsed, err := parseChatMessageContent(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s content: %w", role, err)
+	}
+	content, err := marshalChatInputContent(parsed)
+	if err != nil {
+		return nil, err
+	}
+	return []ResponsesInputItem{{Role: role, Content: content}}, nil
 }
 
 func marshalChatInputContent(content chatMessageContent) (json.RawMessage, error) {
@@ -362,6 +358,14 @@ func flattenChatContentParts(parts []ChatContentPart) string {
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func parseChatTypedContent(raw json.RawMessage) ([]ChatContentPart, error) {
+	var parts []ChatContentPart
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return nil, err
+	}
+	return parts, nil
 }
 
 // convertChatToolsToResponses maps Chat Completions tool definitions and legacy

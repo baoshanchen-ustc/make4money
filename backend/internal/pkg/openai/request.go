@@ -12,6 +12,7 @@ var CodexCLIUserAgentPrefixes = []string{
 // CodexOfficialClientUserAgentPrefixes matches Codex 官方客户端家族 User-Agent 前缀。
 // 该列表仅用于 OpenAI OAuth `codex_cli_only` 访问限制判定。
 var CodexOfficialClientUserAgentPrefixes = []string{
+	"openai/",
 	"codex_cli_rs/",
 	"codex_vscode/",
 	"codex_app/",

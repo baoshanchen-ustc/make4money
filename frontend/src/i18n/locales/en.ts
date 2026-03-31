@@ -219,8 +219,10 @@ export default {
       password: 'Password',
       confirmPassword: 'Confirm Password',
       passwordPlaceholder: 'Min 8 characters',
+      passwordHint: 'Password must be at least 8 characters long',
       confirmPasswordPlaceholder: 'Confirm password',
-      passwordMismatch: 'Passwords do not match'
+      passwordMismatch: 'Passwords do not match',
+      passwordTooShort: 'Password must be at least 8 characters long'
     },
     ready: {
       title: 'Ready to Install',
@@ -1297,6 +1299,7 @@ export default {
       searchUsers: 'Search by email, username, notes, or API key...',
       allRoles: 'All Roles',
       allStatus: 'All Status',
+      allPlanTypes: 'All Plans',
       allGroups: 'All Groups',
       searchGroups: 'Search groups...',
       fuzzySearch: 'Fuzzy search',
@@ -1905,6 +1908,7 @@ export default {
       allPlatforms: 'All Platforms',
       allTypes: 'All Types',
       allStatus: 'All Status',
+      allPlanTypes: 'All Plans',
       allGroups: 'All Groups',
       ungroupedGroup: 'Ungrouped',
       oauthType: 'OAuth',
@@ -2401,7 +2405,7 @@ export default {
       // Upstream type
       upstream: {
         baseUrl: 'Upstream Base URL',
-        baseUrlHint: 'The address of the upstream Antigravity service, e.g., https://cloudcode-pa.googleapis.com',
+        baseUrlHint: 'Use your actual Antigravity-compatible gateway URL. https://cloudcode-pa.googleapis.com is OAuth-only and should not be used for API key tests.',
         apiKey: 'Upstream API Key',
         apiKeyHint: 'API Key for the upstream service',
         pleaseEnterBaseUrl: 'Please enter upstream Base URL',

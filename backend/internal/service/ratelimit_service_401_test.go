@@ -100,6 +100,48 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 		require.Equal(t, 0, repo.tempCalls)
 		require.Empty(t, invalidator.accounts)
 	})
+
+	t.Run("permanent_openai_401_uses_SetError", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{}
+		invalidator := &tokenCacheInvalidatorRecorder{}
+		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		service.SetTokenCacheInvalidator(invalidator)
+		account := &Account{
+			ID:       100,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+		}
+
+		body := []byte(`{"error":{"message":"Your OpenAI account has been deactivated","code":"account_deactivated"}}`)
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 1, repo.setErrorCalls)
+		require.Equal(t, 0, repo.tempCalls)
+		require.Empty(t, invalidator.accounts)
+		require.Contains(t, repo.lastErrorMsg, "deactivated")
+	})
+
+	t.Run("token_invalidated_uses_SetError", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{}
+		invalidator := &tokenCacheInvalidatorRecorder{}
+		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		service.SetTokenCacheInvalidator(invalidator)
+		account := &Account{
+			ID:       101,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+		}
+
+		body := []byte(`{"error":{"message":"Your authentication token has been invalidated and can no longer be used.","code":"token_invalidated"}}`)
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 1, repo.setErrorCalls)
+		require.Equal(t, 0, repo.tempCalls)
+		require.Empty(t, invalidator.accounts)
+		require.Contains(t, repo.lastErrorMsg, "invalidated")
+	})
 }
 
 func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testing.T) {

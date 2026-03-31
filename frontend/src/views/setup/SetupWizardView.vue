@@ -320,6 +320,10 @@
               class="input"
               :placeholder="t('setup.admin.passwordPlaceholder')"
             />
+            <p class="input-hint">{{ t('setup.admin.passwordHint') }}</p>
+            <p v-if="formData.admin.password && formData.admin.password.length < 8" class="input-error-text">
+              {{ t('setup.admin.passwordTooShort') }}
+            </p>
           </div>
 
           <div>

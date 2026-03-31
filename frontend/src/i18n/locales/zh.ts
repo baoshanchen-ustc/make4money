@@ -219,8 +219,10 @@ export default {
       password: '密码',
       confirmPassword: '确认密码',
       passwordPlaceholder: '至少 8 个字符',
+      passwordHint: '密码至少需要 8 个字符',
       confirmPasswordPlaceholder: '确认密码',
-      passwordMismatch: '密码不匹配'
+      passwordMismatch: '密码不匹配',
+      passwordTooShort: '密码至少需要 8 个字符'
     },
     ready: {
       title: '准备安装',
@@ -1322,6 +1324,7 @@ export default {
       roleFilter: '角色筛选',
       allRoles: '全部角色',
       allStatus: '全部状态',
+      allPlanTypes: '全部套餐',
       allGroups: '全部分组',
       searchGroups: '搜索分组...',
       fuzzySearch: '模糊搜索',
@@ -1987,6 +1990,7 @@ export default {
       allPlatforms: '全部平台',
       allTypes: '全部类型',
       allStatus: '全部状态',
+      allPlanTypes: '全部套餐',
       allGroups: '全部分组',
       ungroupedGroup: '未分配分组',
       oauthType: 'OAuth',
@@ -2545,7 +2549,7 @@ export default {
       // Upstream type
       upstream: {
         baseUrl: '上游 Base URL',
-        baseUrlHint: '上游 Antigravity 服务的地址，例如：https://cloudcode-pa.googleapis.com',
+        baseUrlHint: '填写实际的 Antigravity 兼容网关地址。https://cloudcode-pa.googleapis.com 仅适用于 OAuth 账号，不适用于 API Key 测试。',
         apiKey: '上游 API Key',
         apiKeyHint: '上游服务的 API Key',
         pleaseEnterBaseUrl: '请输入上游 Base URL',

@@ -51,6 +51,30 @@ func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	assert.Equal(t, "user", items[1].Role)
 }
 
+func TestChatCompletionsToResponses_SystemArrayContentPreserved(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"policy"},{"type":"text","text":" guard"}]`)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	assert.Equal(t, "system", items[0].Role)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "policy", parts[0].Text)
+	assert.Equal(t, " guard", parts[1].Text)
+}
+
 func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -111,6 +135,29 @@ func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
 	require.Len(t, resp.Tools, 1)
 	assert.Equal(t, "function", resp.Tools[0].Type)
 	assert.Equal(t, "ping", resp.Tools[0].Name)
+}
+
+func TestChatCompletionsToResponses_ToolArrayContentJoinsTextOnly(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{
+				Role:       "tool",
+				ToolCallID: "call_1",
+				Content:    json.RawMessage(`[{"type":"text","text":"part-a"},{"type":"image_url","image_url":{"url":"https://example.com/a.png"}},{"type":"text","text":" part-b"}]`),
+			},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	assert.Equal(t, "function_call_output", items[0].Type)
+	assert.Equal(t, "call_1", items[0].CallID)
+	assert.Equal(t, "part-a part-b", items[0].Output)
 }
 
 func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {

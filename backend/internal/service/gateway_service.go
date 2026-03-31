@@ -4184,6 +4184,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// 强制执行 cache_control 块数量限制（最多 4 个）
 	body = enforceCacheControlLimit(body)
+	body = normalizeAnthropicToolSchemas(body)
 
 	// 应用模型映射：
 	// - APIKey 账号：使用账号级别的显式映射（如果配置），否则透传原始模型名
@@ -5911,6 +5912,131 @@ func requestNeedsBetaFeatures(body []byte) bool {
 	return false
 }
 
+func normalizeAnthropicToolSchemas(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		return body
+	}
+
+	changed := false
+	for i, rawTool := range tools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if normalized, toolChanged := normalizeAnthropicToolSchemaMap(tool); toolChanged {
+			tools[i] = normalized
+			changed = true
+		}
+	}
+
+	if !changed {
+		return body
+	}
+
+	payload["tools"] = tools
+	normalizedBody, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return normalizedBody
+}
+
+func normalizeAnthropicToolSchemaMap(tool map[string]any) (map[string]any, bool) {
+	changed := false
+
+	if schema, ok := tool["input_schema"]; ok {
+		if normalized, schemaChanged := normalizeObjectSchemaProperties(schema); schemaChanged {
+			tool["input_schema"] = normalized
+			changed = true
+		}
+	}
+
+	if custom, ok := tool["custom"].(map[string]any); ok {
+		if schema, ok := custom["input_schema"]; ok {
+			if normalized, schemaChanged := normalizeObjectSchemaProperties(schema); schemaChanged {
+				custom["input_schema"] = normalized
+				tool["custom"] = custom
+				changed = true
+			}
+		}
+	}
+
+	return tool, changed
+}
+
+func normalizeObjectSchemaProperties(value any) (any, bool) {
+	switch node := value.(type) {
+	case map[string]any:
+		changed := false
+
+		if typ, _ := node["type"].(string); typ == "object" {
+			if _, exists := node["properties"]; !exists {
+				node["properties"] = map[string]any{}
+				changed = true
+			}
+		}
+
+		for _, key := range []string{"properties", "patternProperties"} {
+			if children, ok := node[key].(map[string]any); ok {
+				for childKey, childValue := range children {
+					normalizedChild, childChanged := normalizeObjectSchemaProperties(childValue)
+					if childChanged {
+						children[childKey] = normalizedChild
+						changed = true
+					}
+				}
+			}
+		}
+
+		for _, key := range []string{"items", "additionalProperties", "not", "if", "then", "else"} {
+			if childValue, ok := node[key]; ok {
+				normalizedChild, childChanged := normalizeObjectSchemaProperties(childValue)
+				if childChanged {
+					node[key] = normalizedChild
+					changed = true
+				}
+			}
+		}
+
+		for _, key := range []string{"allOf", "anyOf", "oneOf", "prefixItems"} {
+			if children, ok := node[key].([]any); ok {
+				for idx, childValue := range children {
+					normalizedChild, childChanged := normalizeObjectSchemaProperties(childValue)
+					if childChanged {
+						children[idx] = normalizedChild
+						changed = true
+					}
+				}
+			}
+		}
+
+		return node, changed
+	case []any:
+		changed := false
+		for idx, childValue := range node {
+			normalizedChild, childChanged := normalizeObjectSchemaProperties(childValue)
+			if childChanged {
+				node[idx] = normalizedChild
+				changed = true
+			}
+		}
+		return node, changed
+	default:
+		return value, false
+	}
+}
+
 func defaultAPIKeyBetaHeader(body []byte) string {
 	modelID := gjson.GetBytes(body, "model").String()
 	if strings.Contains(strings.ToLower(modelID), "haiku") {
@@ -7452,11 +7578,11 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 
 	// 1. 订阅 / 余额扣费
 	if p.IsSubscriptionBill {
-		if cost.TotalCost > 0 {
-			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.TotalCost); err != nil {
+		if cost.ActualCost > 0 {
+			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
 				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
 			}
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, cost.TotalCost)
+			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, cost.ActualCost)
 		}
 	} else {
 		if cost.ActualCost > 0 {
@@ -7557,9 +7683,9 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		}
 	}
 
-	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
+	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.ActualCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
-		cmd.SubscriptionCost = p.Cost.TotalCost
+		cmd.SubscriptionCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
@@ -7618,8 +7744,8 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps) {
 	}
 
 	if p.IsSubscriptionBill {
-		if p.Cost.TotalCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.TotalCost)
+		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
 		deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)

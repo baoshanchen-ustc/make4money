@@ -3,10 +3,14 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -25,10 +29,31 @@ func (s *availableModelsAdminService) GetAccount(_ context.Context, id int64) (*
 	return s.stubAdminService.GetAccount(context.Background(), id)
 }
 
-func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
+type availableModelsUpstreamStub struct {
+	response *http.Response
+	err      error
+}
+
+func (s *availableModelsUpstreamStub) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.response == nil {
+		return nil, io.EOF
+	}
+	resp := *s.response
+	return &resp, nil
+}
+
+func (s *availableModelsUpstreamStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	_ = profile
+	return s.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func setupAvailableModelsRouter(adminSvc service.AdminService, geminiCompatSvc *service.GeminiMessagesCompatService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, geminiCompatSvc, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
 	return router
 }
@@ -49,7 +74,7 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t 
 			},
 		},
 	}
-	router := setupAvailableModelsRouter(svc)
+	router := setupAvailableModelsRouter(svc, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/42/models", nil)
@@ -86,7 +111,7 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefau
 			},
 		},
 	}
-	router := setupAvailableModelsRouter(svc)
+	router := setupAvailableModelsRouter(svc, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/43/models", nil)
@@ -102,4 +127,45 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefau
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotEmpty(t, resp.Data)
 	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
+}
+
+func TestAccountHandlerGetAvailableModels_GeminiOAuthUsesUpstreamModels(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       44,
+			Name:     "gemini-oauth",
+			Platform: service.PlatformGemini,
+			Type:     service.AccountTypeOAuth,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"access_token": "token",
+			},
+		},
+	}
+	upstream := &availableModelsUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"models":[{"name":"models/gemini-2.5-flash","displayName":"Gemini 2.5 Flash"},{"name":"models/gemini-2.5-flash-image","displayName":"Gemini 2.5 Flash Image"}]}`)),
+		},
+	}
+	geminiCompatSvc := service.NewGeminiMessagesCompatService(nil, nil, nil, nil, &service.GeminiTokenProvider{}, nil, upstream, nil, &config.Config{})
+	router := setupAvailableModelsRouter(svc, geminiCompatSvc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/44/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 2)
+	require.Equal(t, "gemini-2.5-flash", resp.Data[0].ID)
+	require.Equal(t, "gemini-2.5-flash-image", resp.Data[1].ID)
 }

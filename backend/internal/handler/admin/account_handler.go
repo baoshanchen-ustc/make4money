@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -53,6 +54,7 @@ type AccountHandler struct {
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
 	accountTestService      *service.AccountTestService
+	geminiCompatService     *service.GeminiMessagesCompatService
 	concurrencyService      *service.ConcurrencyService
 	crsSyncService          *service.CRSSyncService
 	sessionLimitCache       service.SessionLimitCache
@@ -70,6 +72,7 @@ func NewAccountHandler(
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
+	geminiCompatService *service.GeminiMessagesCompatService,
 	concurrencyService *service.ConcurrencyService,
 	crsSyncService *service.CRSSyncService,
 	sessionLimitCache service.SessionLimitCache,
@@ -85,6 +88,7 @@ func NewAccountHandler(
 		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
 		accountTestService:      accountTestService,
+		geminiCompatService:     geminiCompatService,
 		concurrencyService:      concurrencyService,
 		crsSyncService:          crsSyncService,
 		sessionLimitCache:       sessionLimitCache,
@@ -219,6 +223,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	platform := c.Query("platform")
 	accountType := c.Query("type")
 	status := c.Query("status")
+	planType := strings.TrimSpace(c.Query("plan_type"))
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
 	// 标准化和验证 search 参数
@@ -246,7 +251,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, planType, privacyMode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1831,9 +1836,9 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 	// Handle Gemini accounts
 	if account.IsGemini() {
-		// For OAuth accounts: return default Gemini models
+		// For OAuth accounts: prefer the real upstream model list for this account.
 		if account.IsOAuth() {
-			response.Success(c, geminicli.DefaultModels)
+			response.Success(c, h.listGeminiOAuthModels(c.Request.Context(), account))
 			return
 		}
 
@@ -1919,6 +1924,58 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	}
 
 	response.Success(c, models)
+}
+
+func (h *AccountHandler) listGeminiOAuthModels(ctx context.Context, account *service.Account) []geminicli.Model {
+	if account == nil || h.geminiCompatService == nil {
+		return geminicli.DefaultModels
+	}
+
+	res, err := h.geminiCompatService.ForwardAIStudioGET(ctx, account, "/v1beta/models")
+	if err != nil || shouldFallbackAdminGeminiModels(res) || res == nil || res.StatusCode != http.StatusOK {
+		return geminicli.DefaultModels
+	}
+
+	var upstream gemini.ModelsListResponse
+	if err := json.Unmarshal(res.Body, &upstream); err != nil || len(upstream.Models) == 0 {
+		return geminicli.DefaultModels
+	}
+
+	models := make([]geminicli.Model, 0, len(upstream.Models))
+	for _, model := range upstream.Models {
+		id := strings.TrimSpace(strings.TrimPrefix(model.Name, "models/"))
+		if id == "" {
+			continue
+		}
+		displayName := strings.TrimSpace(model.DisplayName)
+		if displayName == "" {
+			displayName = id
+		}
+		models = append(models, geminicli.Model{
+			ID:          id,
+			Type:        "model",
+			DisplayName: displayName,
+			CreatedAt:   "",
+		})
+	}
+	if len(models) == 0 {
+		return geminicli.DefaultModels
+	}
+	return models
+}
+
+func shouldFallbackAdminGeminiModels(res *service.UpstreamHTTPResult) bool {
+	if res == nil {
+		return true
+	}
+	if res.StatusCode != http.StatusUnauthorized && res.StatusCode != http.StatusForbidden {
+		return false
+	}
+	authenticate := strings.ToLower(res.Headers.Get("Www-Authenticate"))
+	body := strings.ToLower(string(res.Body))
+	return strings.Contains(authenticate, "insufficient_scope") ||
+		strings.Contains(body, "insufficient authentication scopes") ||
+		strings.Contains(body, "access_token_scope_insufficient")
 }
 
 // SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account
@@ -2034,7 +2091,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "")
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

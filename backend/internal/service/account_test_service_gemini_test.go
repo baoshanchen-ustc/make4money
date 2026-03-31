@@ -57,3 +57,40 @@ func TestProcessGeminiStream_EmitsImageEvent(t *testing.T) {
 	require.Contains(t, body, "\"image_url\":\"data:image/png;base64,QUJD\"")
 	require.Contains(t, body, "\"mime_type\":\"image/png\"")
 }
+
+func TestProcessGeminiResponse_EmitsImageEvent(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	ctx, recorder := newSoraTestContext()
+	svc := &AccountTestService{}
+
+	resp := strings.NewReader("{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"},{\"inlineData\":{\"mimeType\":\"image/png\",\"data\":\"QUJD\"}}]}}]}")
+
+	err := svc.processGeminiResponse(ctx, resp)
+	require.NoError(t, err)
+
+	body := recorder.Body.String()
+	require.Contains(t, body, "\"type\":\"content\"")
+	require.Contains(t, body, "\"text\":\"ok\"")
+	require.Contains(t, body, "\"type\":\"image\"")
+	require.Contains(t, body, "\"image_url\":\"data:image/png;base64,QUJD\"")
+	require.Contains(t, body, "\"mime_type\":\"image/png\"")
+	require.Contains(t, body, "\"type\":\"test_complete\"")
+}
+
+func TestNormalizeGeminiNativeTestModelID_LegacyAliases(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "gemini-3.1-flash-image-preview", normalizeGeminiNativeTestModelID("gemini-3.1-flash-image"))
+	require.Equal(t, "gemini-3-pro-image-preview", normalizeGeminiNativeTestModelID("gemini-3-pro-image"))
+	require.Equal(t, "gemini-2.5-flash-image", normalizeGeminiNativeTestModelID("gemini-2.5-flash-image"))
+}
+
+func TestShouldForceGeminiCodeAssistStream(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, shouldForceGeminiCodeAssistStream("gemini-2.5-pro"))
+	require.False(t, shouldForceGeminiCodeAssistStream("gemini-2.5-flash-image"))
+	require.False(t, shouldForceGeminiCodeAssistStream("gemini-3.1-flash-image-preview"))
+}

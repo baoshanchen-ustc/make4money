@@ -34,6 +34,7 @@ export async function list(
     platform?: string
     type?: string
     status?: string
+    plan_type?: string
     group?: string
     search?: string
     privacy_mode?: string
@@ -67,6 +68,7 @@ export async function listWithEtag(
     platform?: string
     type?: string
     status?: string
+    plan_type?: string
     group?: string
     search?: string
     privacy_mode?: string
@@ -500,6 +502,7 @@ export async function exportData(options?: {
     platform?: string
     type?: string
     status?: string
+    plan_type?: string
     search?: string
   }
   includeProxies?: boolean
@@ -508,10 +511,11 @@ export async function exportData(options?: {
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { platform, type, status, search } = options.filters
+    const { platform, type, status, plan_type, search } = options.filters
     if (platform) params.platform = platform
     if (type) params.type = type
     if (status) params.status = status
+    if (plan_type) params.plan_type = plan_type
     if (search) params.search = search
   }
   if (options?.includeProxies === false) {

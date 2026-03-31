@@ -150,12 +150,10 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
-		// OpenAI: token_invalidated / token_revoked 表示 token 被永久作废（非过期），直接标记 error
-		openai401Code := extractUpstreamErrorCode(responseBody)
-		if account.Platform == PlatformOpenAI && (openai401Code == "token_invalidated" || openai401Code == "token_revoked") {
-			msg := "Token revoked (401): account authentication permanently revoked"
+		if isPermanent401AuthFailure(extractUpstreamErrorCode(responseBody), upstreamMsg) {
+			msg := "Authentication failed (401): account is permanently unavailable"
 			if upstreamMsg != "" {
-				msg = "Token revoked (401): " + upstreamMsg
+				msg = "Authentication failed (401): " + upstreamMsg
 			}
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true
@@ -254,6 +252,36 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	}
 
 	return shouldDisable
+}
+
+func isPermanent401AuthFailure(upstreamCode, upstreamMsg string) bool {
+	code := strings.ToLower(strings.TrimSpace(upstreamCode))
+	msg := strings.ToLower(strings.TrimSpace(upstreamMsg))
+
+	switch code {
+	case "account_deactivated", "organization_deactivated", "account_suspended", "token_invalidated", "token_revoked":
+		return true
+	}
+
+	permanentMarkers := []string{
+		"account has been deactivated",
+		"organization has been deactivated",
+		"account is deactivated",
+		"account suspended",
+		"account has been suspended",
+		"account disabled",
+		"organization disabled",
+		"authentication token has been invalidated",
+		"token has been invalidated",
+		"token revoked",
+		"token has been revoked",
+	}
+	for _, marker := range permanentMarkers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // PreCheckUsage proactively checks local quota before dispatching a request.

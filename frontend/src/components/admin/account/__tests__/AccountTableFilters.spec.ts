@@ -14,7 +14,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('AccountTableFilters', () => {
-  it('renders privacy mode options and emits privacy_mode updates', async () => {
+  it('renders plan type and privacy mode options', async () => {
     const wrapper = mount(AccountTableFilters, {
       props: {
         searchQuery: '',
@@ -22,6 +22,7 @@ describe('AccountTableFilters', () => {
           platform: '',
           type: '',
           status: '',
+          plan_type: '',
           group: '',
           privacy_mode: ''
         },
@@ -42,9 +43,18 @@ describe('AccountTableFilters', () => {
     })
 
     const selects = wrapper.findAll('.select-stub')
-    expect(selects).toHaveLength(5)
+    expect(selects).toHaveLength(6)
 
-    const privacyOptions = JSON.parse(selects[3].attributes('data-options'))
+    const planOptions = JSON.parse(selects[3].attributes('data-options'))
+    expect(planOptions).toEqual([
+      { value: '', label: 'admin.accounts.allPlanTypes' },
+      { value: 'free', label: 'Free' },
+      { value: 'plus', label: 'Plus' },
+      { value: 'pro', label: 'Pro' },
+      { value: 'team', label: 'Team' }
+    ])
+
+    const privacyOptions = JSON.parse(selects[4].attributes('data-options'))
     expect(privacyOptions).toEqual([
       { value: '', label: 'admin.accounts.allPrivacyModes' },
       { value: '__unset__', label: 'admin.accounts.privacyUnset' },

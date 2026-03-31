@@ -7,7 +7,7 @@
       </div>
 
       <!-- Settings Form -->
-      <form v-else @submit.prevent="saveSettings" class="space-y-6" novalidate>
+      <form v-else novalidate @submit.prevent="saveSettings" class="space-y-6">
         <!-- Tab Navigation -->
         <div class="sticky top-0 z-10 overflow-x-auto settings-tabs-scroll">
           <nav class="settings-tabs">
@@ -2376,6 +2376,21 @@ function removeDefaultSubscription(index: number) {
   form.default_subscriptions.splice(index, 1)
 }
 
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function normalizeOptionalHttpUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  return isValidHttpUrl(trimmed) ? trimmed : ''
+}
+
 async function saveSettings() {
   saving.value = true
   try {
@@ -2403,33 +2418,19 @@ async function saveSettings() {
       return
     }
 
-    // Validate URL fields — novalidate disables browser-native checks, so we validate here
-    const isValidHttpUrl = (url: string): boolean => {
-      if (!url) return true
-      try {
-        const u = new URL(url)
-        return u.protocol === 'http:' || u.protocol === 'https:'
-      } catch {
-        return false
-      }
-    }
-    // Optional URL fields: auto-clear invalid values so they don't cause backend 400 errors
-    if (!isValidHttpUrl(form.frontend_url)) form.frontend_url = ''
-    if (!isValidHttpUrl(form.doc_url)) form.doc_url = ''
-    // Purchase URL: required when enabled; auto-clear when disabled to avoid backend rejection
+    const frontendUrl = normalizeOptionalHttpUrl(form.frontend_url)
+    const docUrl = normalizeOptionalHttpUrl(form.doc_url)
+    let purchaseSubscriptionURL = form.purchase_subscription_url.trim()
+
     if (form.purchase_subscription_enabled) {
-      if (!form.purchase_subscription_url) {
-        appStore.showError(t('admin.settings.purchase.url') + ': URL is required when purchase is enabled')
-        saving.value = false
+      if (!purchaseSubscriptionURL || !isValidHttpUrl(purchaseSubscriptionURL)) {
+        appStore.showError(
+          `${t('admin.settings.purchase.url')}: ${t('admin.settings.purchase.urlHint')}`
+        )
         return
       }
-      if (!isValidHttpUrl(form.purchase_subscription_url)) {
-        appStore.showError(t('admin.settings.purchase.url') + ': must be an absolute http(s) URL (e.g. https://example.com)')
-        saving.value = false
-        return
-      }
-    } else if (!isValidHttpUrl(form.purchase_subscription_url)) {
-      form.purchase_subscription_url = ''
+    } else {
+      purchaseSubscriptionURL = ''
     }
 
     const payload: UpdateSettingsRequest = {
@@ -2450,16 +2451,17 @@ async function saveSettings() {
       site_subtitle: form.site_subtitle,
       api_base_url: form.api_base_url,
       contact_info: form.contact_info,
-      doc_url: form.doc_url,
+      doc_url: docUrl,
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
       purchase_subscription_enabled: form.purchase_subscription_enabled,
-      purchase_subscription_url: form.purchase_subscription_url,
+      purchase_subscription_url: purchaseSubscriptionURL,
       sora_client_enabled: form.sora_client_enabled,
       custom_menu_items: form.custom_menu_items,
+      frontend_url: frontendUrl,
       custom_endpoints: form.custom_endpoints,
-      frontend_url: form.frontend_url,
+      frontend_url: frontendUrl,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
