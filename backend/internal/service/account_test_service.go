@@ -550,6 +550,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		if isOAuth && resp.StatusCode == http.StatusUnauthorized && s.accountFailurePolicy != nil {
+			_ = s.accountFailurePolicy.HandleUpstream401(ctx, account, "account_test_service_openai_oauth")
+		}
 		if isOAuth && s.accountRepo != nil {
 			if resetAt := (&RateLimitService{}).calculateOpenAI429ResetTime(resp.Header); resetAt != nil {
 				_ = s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt)

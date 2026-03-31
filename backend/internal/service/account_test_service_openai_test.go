@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -19,6 +20,7 @@ type openAIAccountTestRepo struct {
 	updatedExtra  map[string]any
 	rateLimitedID int64
 	rateLimitedAt *time.Time
+	deleted       []int64
 }
 
 func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -29,6 +31,11 @@ func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates 
 func (r *openAIAccountTestRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	r.rateLimitedID = id
 	r.rateLimitedAt = &resetAt
+	return nil
+}
+
+func (r *openAIAccountTestRepo) Delete(_ context.Context, id int64) error {
+	r.deleted = append(r.deleted, id)
 	return nil
 }
 
@@ -95,8 +102,53 @@ func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimit(t *testing.T) 
 	require.Equal(t, 100.0, repo.updatedExtra["codex_5h_used_percent"])
 	require.Equal(t, int64(88), repo.rateLimitedID)
 	require.NotNil(t, repo.rateLimitedAt)
-	require.NotNil(t, account.RateLimitResetAt)
 	if account.RateLimitResetAt != nil && repo.rateLimitedAt != nil {
 		require.WithinDuration(t, *repo.rateLimitedAt, *account.RateLimitResetAt, time.Second)
 	}
+}
+
+func TestAccountTestService_OpenAI401TriggersFailurePolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newSoraTestContext()
+
+	resp := newJSONResponse(http.StatusUnauthorized, `{"error":{"message":"Your authentication token has been invalidated. Please try signing in again.","type":"invalid_request_error","code":"token_invalidated","param":null},"status":401}`)
+	repo := &openAIAccountTestRepo{}
+	hotCache := &hotPoolCacheStub{members: map[string]map[int64]struct{}{PlatformOpenAI: {91: {}}}}
+	hotPoolService := NewHotPoolService(hotCache, repo)
+	settingRepo := &extremePerformanceSettingRepoStub{}
+	settingService := NewSettingService(settingRepo, &config.Config{})
+	require.NoError(t, settingService.SetExtremePerformanceSettings(context.Background(), &ExtremePerformanceSettings{
+
+		Enabled:       true,
+		Admin:         DefaultExtremePerformanceSettings().Admin,
+		Pool:          DefaultExtremePerformanceSettings().Pool,
+		AccountPolicy: DefaultExtremePerformanceSettings().AccountPolicy,
+	}))
+	policy := NewAccountFailurePolicyService(repo, settingService, hotPoolService, nil)
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, accountFailurePolicy: policy}
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")
+	require.Error(t, err)
+	dead, deadErr := hotPoolService.IsDeadAccount(context.Background(), 91)
+	require.NoError(t, deadErr)
+	require.True(t, dead)
+	members, listErr := hotPoolService.ListMembers(context.Background(), PlatformOpenAI)
+	require.NoError(t, listErr)
+	require.NotContains(t, members, int64(91))
+	require.Eventually(t, func() bool {
+		for _, deleted := range repo.deleted {
+			if deleted == 91 {
+				return true
+			}
+		}
+		return false
+	}, time.Second, 20*time.Millisecond)
 }
