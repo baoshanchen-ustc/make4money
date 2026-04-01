@@ -473,6 +473,38 @@ func TestOpenAIGatewayService_GetSchedulableAccount_ExhaustedCodexExtraSetsRateL
 	}
 }
 
+func TestOpenAIGatewayService_GetSchedulableAccount_PoolModeExhaustedCodexExtraDoesNotSetRateLimit(t *testing.T) {
+	resetAt := time.Now().Add(6 * 24 * time.Hour)
+	account := Account{
+		ID:          711,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":   "sk-test",
+			"pool_mode": true,
+		},
+		Extra: map[string]any{
+			"codex_7d_used_percent": 100.0,
+			"codex_7d_reset_at":     resetAt.UTC().Format(time.RFC3339),
+		},
+	}
+	repo := &openAICodexExtraListRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}, rateLimitCh: make(chan time.Time, 1)}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+
+	fresh, err := svc.getSchedulableAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.NotNil(t, fresh)
+	require.Nil(t, fresh.RateLimitResetAt)
+	select {
+	case persisted := <-repo.rateLimitCh:
+		t.Fatalf("unexpected synced rate limit reset at: %v", persisted)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
 func TestAdminService_ListAccounts_ExhaustedCodexExtraReturnsRateLimitedAccount(t *testing.T) {
 	resetAt := time.Now().Add(4 * 24 * time.Hour)
 	repo := &openAICodexExtraListRepo{
@@ -503,6 +535,41 @@ func TestAdminService_ListAccounts_ExhaustedCodexExtraReturnsRateLimitedAccount(
 		require.WithinDuration(t, resetAt.UTC(), persisted, time.Second)
 	case <-time.After(2 * time.Second):
 		t.Fatal("等待列表补写限流状态超时")
+	}
+}
+
+func TestAdminService_ListAccounts_PoolModeExhaustedCodexExtraDoesNotSetRateLimit(t *testing.T) {
+	resetAt := time.Now().Add(4 * 24 * time.Hour)
+	repo := &openAICodexExtraListRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{{
+			ID:          712,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"api_key":   "sk-test",
+				"pool_mode": true,
+			},
+			Extra: map[string]any{
+				"codex_7d_used_percent": 100.0,
+				"codex_7d_reset_at":     resetAt.UTC().Format(time.RFC3339),
+			},
+		}}},
+		rateLimitCh: make(chan time.Time, 1),
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeAPIKey, "", "", 0, "")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, accounts, 1)
+	require.Nil(t, accounts[0].RateLimitResetAt)
+	select {
+	case persisted := <-repo.rateLimitCh:
+		t.Fatalf("unexpected synced rate limit reset at: %v", persisted)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
