@@ -412,6 +412,11 @@ type GatewayConfig struct {
 	StreamKeepaliveInterval int `mapstructure:"stream_keepalive_interval"`
 	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
 	MaxLineSize int `mapstructure:"max_line_size"`
+	// CancelStreamOnClientDisconnect: 客户端断开时是否立即取消上游流式请求
+	// 启用后，客户端断开将直接终止上游请求，不再继续 drain 上游以收集用量数据
+	// 适用于自用部署场景，可减少不必要的上游资源消耗
+	// 注意：启用后将无法获取完整的 token 用量数据，影响计费准确性
+	CancelStreamOnClientDisconnect bool `mapstructure:"cancel_stream_on_client_disconnect"`
 
 	// 是否记录上游错误响应体摘要（避免输出请求内容）
 	LogUpstreamErrorBody bool `mapstructure:"log_upstream_error_body"`
@@ -1421,6 +1426,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.max_line_size", 500*1024*1024)
+	viper.SetDefault("gateway.cancel_stream_on_client_disconnect", false)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)

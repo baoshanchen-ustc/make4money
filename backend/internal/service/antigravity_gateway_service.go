@@ -921,6 +921,10 @@ func (s *AntigravityGatewayService) getLogConfig() (logBody bool, maxBytes int) 
 	return cfg.LogUpstreamErrorBody, maxBytes
 }
 
+func (s *AntigravityGatewayService) cancelStreamOnDisconnect() bool {
+	return s != nil && s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.CancelStreamOnClientDisconnect
+}
+
 // getUpstreamErrorDetail 获取上游错误详情（用于日志记录）
 func (s *AntigravityGatewayService) getUpstreamErrorDetail(body []byte) string {
 	logBody, maxBytes := s.getLogConfig()
@@ -2978,10 +2982,11 @@ type antigravityClientWriter struct {
 	flusher      http.Flusher
 	disconnected bool
 	prefix       string // 日志前缀，标识来源方法
+	cancelStream bool
 }
 
-func newAntigravityClientWriter(w gin.ResponseWriter, flusher http.Flusher, prefix string) *antigravityClientWriter {
-	return &antigravityClientWriter{w: w, flusher: flusher, prefix: prefix}
+func newAntigravityClientWriter(w gin.ResponseWriter, flusher http.Flusher, prefix string, cancelStream bool) *antigravityClientWriter {
+	return &antigravityClientWriter{w: w, flusher: flusher, prefix: prefix, cancelStream: cancelStream}
 }
 
 // Write 写入数据到客户端，写入失败时标记断开并返回 false
@@ -3014,6 +3019,10 @@ func (cw *antigravityClientWriter) Disconnected() bool { return cw.disconnected 
 
 func (cw *antigravityClientWriter) markDisconnected() {
 	cw.disconnected = true
+	if cw.cancelStream {
+		logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected, canceling upstream stream (%s)", cw.prefix)
+		return
+	}
 	logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected during streaming (%s), continuing to drain upstream for billing", cw.prefix)
 }
 
@@ -3032,6 +3041,8 @@ func handleStreamReadError(err error, clientDisconnected bool, prefix string) (d
 }
 
 func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*antigravityStreamResult, error) {
+	cancelOnDisconnect := s.cancelStreamOnDisconnect()
+
 	c.Status(resp.StatusCode)
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -3122,7 +3133,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	}
 	lastDataAt := time.Now()
 
-	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity gemini")
+	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity gemini", cancelOnDisconnect)
 
 	// 仅发送一次错误事件，避免多次写入导致协议混乱
 	errorEventSent := false
@@ -3162,6 +3173,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 				if payload == "" || payload == "[DONE]" {
 					cw.Fprintf("%s\n", line)
+					if cancelOnDisconnect && cw.Disconnected() {
+						return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+					}
 					continue
 				}
 
@@ -3198,10 +3212,16 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				}
 
 				cw.Fprintf("data: %s\n\n", payload)
+				if cancelOnDisconnect && cw.Disconnected() {
+					return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+				}
 				continue
 			}
 
 			cw.Fprintf("%s\n", line)
+			if cancelOnDisconnect && cw.Disconnected() {
+				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+			}
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
@@ -3225,6 +3245,10 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 			}
 			// SSE ping/keepalive：保持连接活跃防止 Cloudflare Tunnel 等代理断开
 			if !cw.Fprintf(":\n\n") {
+				if cancelOnDisconnect {
+					logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected, canceling upstream stream (antigravity gemini)")
+					return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+				}
 				logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected during keepalive ping (antigravity gemini), continuing to drain upstream for billing")
 				continue
 			}
@@ -3872,6 +3896,8 @@ returnResponse:
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
 func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
+	cancelOnDisconnect := s.cancelStreamOnDisconnect()
+
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -3969,7 +3995,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	}
 	lastDataAt := time.Now()
 
-	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity claude")
+	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity claude", cancelOnDisconnect)
 
 	// 仅发送一次错误事件，避免多次写入导致协议混乱
 	errorEventSent := false
@@ -4031,6 +4057,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 					firstTokenMs = &ms
 				}
 				cw.Write(claudeEvents)
+				if cancelOnDisconnect && cw.Disconnected() {
+					return &antigravityStreamResult{usage: finishUsage(), firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+				}
 			}
 
 		case <-intervalCh:
@@ -4056,6 +4085,10 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 			// SSE ping 事件：Anthropic 原生格式，客户端会正确处理，
 			// 同时保持连接活跃防止 Cloudflare Tunnel 等代理断开
 			if !cw.Fprintf("event: ping\ndata: {\"type\": \"ping\"}\n\n") {
+				if cancelOnDisconnect {
+					logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected, canceling upstream stream (antigravity claude)")
+					return &antigravityStreamResult{usage: finishUsage(), firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+				}
 				logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected during keepalive ping (antigravity claude), continuing to drain upstream for billing")
 				continue
 			}
@@ -4335,6 +4368,8 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 
 // streamUpstreamResponse 透传上游 SSE 流并提取 Claude usage
 func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp *http.Response, startTime time.Time) *antigravityStreamResult {
+	cancelOnDisconnect := s.cancelStreamOnDisconnect()
+
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
 
@@ -4406,7 +4441,7 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 	lastDataAt := time.Now()
 
 	flusher, _ := c.Writer.(http.Flusher)
-	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity upstream")
+	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity upstream", cancelOnDisconnect)
 
 	for {
 		select {
@@ -4437,6 +4472,9 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 
 			// 透传行
 			cw.Fprintf("%s\n", line)
+			if cancelOnDisconnect && cw.Disconnected() {
+				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}
+			}
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
@@ -4460,6 +4498,10 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 			// SSE ping 事件：Anthropic 原生格式，客户端会正确处理，
 			// 同时保持连接活跃防止 Cloudflare Tunnel 等代理断开
 			if !cw.Fprintf("event: ping\ndata: {\"type\": \"ping\"}\n\n") {
+				if cancelOnDisconnect {
+					logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected, canceling upstream stream (antigravity upstream)")
+					return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}
+				}
 				logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected during keepalive ping (antigravity upstream), continuing to drain upstream for billing")
 				continue
 			}
