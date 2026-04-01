@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -97,11 +98,8 @@ func TestMarshalAccountForCache_StripsGroupObjects(t *testing.T) {
 	}
 
 	// GroupID must still be present for routing.
-	if !contains(s, `"GroupID":7`) && !contains(s, `"group_id":7`) {
-		// Check both possible JSON key styles.
-		if !contains(s, "7") {
-			t.Error("expected GroupID to be preserved in AccountGroups")
-		}
+	if !strings.Contains(s, `"GroupID":7`) && !strings.Contains(s, `"group_id":7`) {
+		t.Error("expected GroupID to be preserved in AccountGroups")
 	}
 }
 
@@ -147,21 +145,7 @@ func TestMarshalAccountForCache_DoesNotMutateOriginal(t *testing.T) {
 	}
 }
 
-// containsKey is a simple helper that checks if a JSON string contains a key.
-func containsKey(json, key string) bool {
-	return len(json) > 0 && len(key) > 0 &&
-		contains(json, `"`+key+`"`)
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+// containsKey checks if a JSON string contains a "key": pattern.
+func containsKey(jsonStr, key string) bool {
+	return strings.Contains(jsonStr, `"`+key+`"`)
 }
