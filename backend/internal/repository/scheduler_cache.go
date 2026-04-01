@@ -101,12 +101,12 @@ func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.Schedul
 	snapshotKey := schedulerSnapshotKey(bucket, versionStr)
 
 	pipe := c.rdb.Pipeline()
-	for _, account := range accounts {
-		payload, err := json.Marshal(account)
+	for i := range accounts {
+		payload, err := marshalAccountForCache(&accounts[i])
 		if err != nil {
 			return err
 		}
-		pipe.Set(ctx, schedulerAccountKey(strconv.FormatInt(account.ID, 10)), payload, 0)
+		pipe.Set(ctx, schedulerAccountKey(strconv.FormatInt(accounts[i].ID, 10)), payload, 0)
 	}
 	if len(accounts) > 0 {
 		// 使用序号作为 score，保持数据库返回的排序语义。
@@ -151,7 +151,7 @@ func (c *schedulerCache) SetAccount(ctx context.Context, account *service.Accoun
 	if account == nil || account.ID <= 0 {
 		return nil
 	}
-	payload, err := json.Marshal(account)
+	payload, err := marshalAccountForCache(account)
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 			return err
 		}
 		account.LastUsedAt = ptrTime(updates[ids[i]])
-		updated, err := json.Marshal(account)
+		updated, err := marshalAccountForCache(account)
 		if err != nil {
 			return err
 		}
@@ -258,6 +258,34 @@ func schedulerAccountKey(id string) string {
 
 func ptrTime(t time.Time) *time.Time {
 	return &t
+}
+
+// schedulerCacheCredentialDenyList lists credential keys that are excluded from
+// the scheduler cache to reduce Redis bandwidth. The gateway request path only
+// needs access_token / api_key; id_token and refresh_token are consumed
+// exclusively by background token-refresh services that read from the database.
+var schedulerCacheCredentialDenyList = []string{"id_token", "refresh_token"}
+
+// marshalAccountForCache serialises an Account for the scheduler cache while
+// stripping large credential fields that are not needed for scheduling or
+// request forwarding. The caller's Account is never mutated.
+func marshalAccountForCache(account *service.Account) ([]byte, error) {
+	if account == nil {
+		return nil, nil
+	}
+	if len(account.Credentials) == 0 {
+		return json.Marshal(account)
+	}
+	stripped := *account
+	creds := make(map[string]any, len(stripped.Credentials))
+	for k, v := range stripped.Credentials {
+		creds[k] = v
+	}
+	for _, key := range schedulerCacheCredentialDenyList {
+		delete(creds, key)
+	}
+	stripped.Credentials = creds
+	return json.Marshal(&stripped)
 }
 
 func decodeCachedAccount(val any) (*service.Account, error) {
