@@ -5836,14 +5836,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
-			}
-		}
-	}
+	ensureClaudeCodeSessionHeader(req, body)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
@@ -5949,6 +5942,21 @@ func applyClaudeOAuthHeaderDefaults(req *http.Request) {
 			setHeaderRaw(req.Header, resolveWireCasing(key), value)
 		}
 	}
+}
+
+func ensureClaudeCodeSessionHeader(req *http.Request, body []byte) {
+	if req == nil || len(body) == 0 {
+		return
+	}
+	uid := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
+	if uid == "" {
+		return
+	}
+	parsed := ParseMetadataUserID(uid)
+	if parsed == nil || strings.TrimSpace(parsed.SessionID) == "" {
+		return
+	}
+	setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 }
 
 func mergeAnthropicBeta(required []string, incoming string) string {
@@ -8561,14 +8569,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		}
 	}
 
-	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
-			}
-		}
-	}
+	ensureClaudeCodeSessionHeader(req, body)
 
 	if c != nil && tokenType == "oauth" {
 		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
