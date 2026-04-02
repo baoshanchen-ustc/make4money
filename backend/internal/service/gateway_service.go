@@ -268,7 +268,6 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 		"x-api-key",
 		"content-type",
 		"accept",
-		"x-stainless-helper-method",
 	}
 
 	h := make([]string, 0, len(interesting))
@@ -359,7 +358,6 @@ var allowedHeaders = map[string]bool{
 	"x-stainless-arch":                          true,
 	"x-stainless-runtime":                       true,
 	"x-stainless-runtime-version":               true,
-	"x-stainless-helper-method":                 true,
 	"anthropic-dangerous-direct-browser-access": true,
 	"anthropic-version":                         true,
 	"x-app":                                     true,
@@ -6244,21 +6242,18 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 	if req == nil {
 		return
 	}
-	// Start with the standard defaults (fill missing).
 	applyClaudeOAuthHeaderDefaults(req)
-	// Then force key headers to match Claude Code fingerprint regardless of what the client sent.
-	// 使用 resolveWireCasing 确保 key 与真实 wire format 一致（如 "x-app" 而非 "X-App"）
 	for key, value := range claude.DefaultHeaders {
 		if value == "" {
 			continue
 		}
-		setHeaderRaw(req.Header, resolveWireCasing(key), value)
+		if getHeaderRaw(req.Header, key) == "" {
+			setHeaderRaw(req.Header, resolveWireCasing(key), value)
+		}
 	}
 	// Real Claude CLI uses Accept: application/json (even for streaming).
 	setHeaderRaw(req.Header, "Accept", "application/json")
-	if isStream {
-		setHeaderRaw(req.Header, "x-stainless-helper-method", "stream")
-	}
+	_ = isStream
 }
 
 func truncateForLog(b []byte, maxBytes int) string {
