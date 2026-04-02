@@ -401,7 +401,7 @@ gateway:
   # Long-lived Node sidecar daemon
   # 长驻 Node sidecar daemon
   sidecar_daemon:
-    enabled: false
+    enabled: true
     socket_path: "/tmp/sub2api-node-sidecar.sock"
     startup_timeout_seconds: 5
 

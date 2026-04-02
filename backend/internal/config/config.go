@@ -1493,7 +1493,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.messages_node_sidecar.timeout_seconds", 30)
 	viper.SetDefault("gateway.messages_node_sidecar.allow_go_fallback", true)
 	viper.SetDefault("gateway.messages_node_sidecar.enable_streaming", true)
-	viper.SetDefault("gateway.sidecar_daemon.enabled", false)
+	viper.SetDefault("gateway.sidecar_daemon.enabled", true)
 	viper.SetDefault("gateway.sidecar_daemon.socket_path", "/tmp/sub2api-node-sidecar.sock")
 	viper.SetDefault("gateway.sidecar_daemon.startup_timeout_seconds", 5)
 	viper.SetDefault("concurrency.ping_interval", 10)

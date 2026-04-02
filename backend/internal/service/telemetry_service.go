@@ -325,6 +325,19 @@ func NewTelemetryService(cfg ...*config.Config) *TelemetryService {
 	return svc
 }
 
+func (s *TelemetryService) SidecarDaemonHealth(ctx context.Context) (string, string) {
+	if s == nil || s.cfg == nil || !s.cfg.Gateway.SidecarDaemon.Enabled {
+		return "disabled", ""
+	}
+	if s.sidecarDaemonClient == nil {
+		return "unavailable", "daemon client not initialized"
+	}
+	if err := s.sidecarDaemonClient.Health(ctx); err != nil {
+		return "error", err.Error()
+	}
+	return "ready", ""
+}
+
 func (s *TelemetryService) GenerateShadowDeviceID(accountOrOrgUUID string, originalDeviceID string) string {
 	seed := strings.TrimSpace(accountOrOrgUUID)
 	if seed == "" {

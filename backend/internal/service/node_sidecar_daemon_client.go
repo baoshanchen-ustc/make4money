@@ -30,6 +30,18 @@ type nodeSidecarDaemonClient struct {
 	cmd *exec.Cmd
 }
 
+func (c *nodeSidecarDaemonClient) Health(ctx context.Context) error {
+	if c == nil {
+		return errors.New("sidecar daemon client is nil")
+	}
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return err
+	}
+	_ = conn.Close()
+	return nil
+}
+
 type sidecarDaemonRequest struct {
 	ClientMode    string              `json:"client_mode,omitempty"`
 	Method        string              `json:"method"`

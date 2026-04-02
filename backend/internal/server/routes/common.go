@@ -11,13 +11,22 @@ import (
 
 // RegisterCommonRoutes 注册通用路由（健康检查、状态等）
 func RegisterCommonRoutes(r *gin.Engine, cfg *config.Config) {
-	// 健康检查
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
-
 	// Claude Code 遥测日志：接管、清洗、异步放行
 	telemetrySvc := service.NewTelemetryService(cfg)
+
+	// 健康检查
+	r.GET("/health", func(c *gin.Context) {
+		daemonStatus, daemonError := telemetrySvc.SidecarDaemonHealth(c.Request.Context())
+		resp := gin.H{
+			"status":         "ok",
+			"sidecar_daemon": daemonStatus,
+		}
+		if daemonError != "" {
+			resp["sidecar_daemon_error"] = daemonError
+		}
+		c.JSON(http.StatusOK, resp)
+	})
+
 	r.POST("/api/event_logging/batch", func(c *gin.Context) {
 		token := c.GetHeader("x-api-key")
 
