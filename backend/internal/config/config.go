@@ -457,6 +457,8 @@ type GatewayConfig struct {
 	TLSFingerprint TLSFingerprintConfig `mapstructure:"tls_fingerprint"`
 	// MessagesNodeSidecar: /v1/messages 转发可选 Node sidecar（用于更贴近 Node 网络栈）
 	MessagesNodeSidecar GatewayMessagesNodeSidecarConfig `mapstructure:"messages_node_sidecar"`
+	// SidecarDaemon: 长驻 Node sidecar daemon 配置
+	SidecarDaemon GatewaySidecarDaemonConfig `mapstructure:"sidecar_daemon"`
 
 	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
 	UsageRecord GatewayUsageRecordConfig `mapstructure:"usage_record"`
@@ -505,6 +507,13 @@ type GatewayMessagesNodeSidecarConfig struct {
 	AllowGoFallback bool `mapstructure:"allow_go_fallback"`
 	// EnableStreaming: 是否允许 stream=true 请求走 sidecar（默认 false）
 	EnableStreaming bool `mapstructure:"enable_streaming"`
+}
+
+// GatewaySidecarDaemonConfig 长驻 Node sidecar daemon 配置
+type GatewaySidecarDaemonConfig struct {
+	Enabled               bool   `mapstructure:"enabled"`
+	SocketPath            string `mapstructure:"socket_path"`
+	StartupTimeoutSeconds int    `mapstructure:"startup_timeout_seconds"`
 }
 
 // WaitTimeout 返回等待超时的 time.Duration
@@ -1484,6 +1493,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.messages_node_sidecar.timeout_seconds", 30)
 	viper.SetDefault("gateway.messages_node_sidecar.allow_go_fallback", true)
 	viper.SetDefault("gateway.messages_node_sidecar.enable_streaming", true)
+	viper.SetDefault("gateway.sidecar_daemon.enabled", false)
+	viper.SetDefault("gateway.sidecar_daemon.socket_path", "/tmp/sub2api-node-sidecar.sock")
+	viper.SetDefault("gateway.sidecar_daemon.startup_timeout_seconds", 5)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// Sora 直连配置
@@ -1914,6 +1926,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.MessagesNodeSidecar.TimeoutSeconds < 0 {
 		return fmt.Errorf("gateway.messages_node_sidecar.timeout_seconds must be non-negative")
+	}
+	if c.Gateway.SidecarDaemon.StartupTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.sidecar_daemon.startup_timeout_seconds must be non-negative")
 	}
 	if mode := strings.TrimSpace(strings.ToLower(c.Gateway.SoraStreamMode)); mode != "" {
 		switch mode {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -18,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -307,10 +309,20 @@ var telemetrySalt = func() string {
 	return "_sub2api_telemetry_salt_v1"
 }()
 
-type TelemetryService struct{}
+type TelemetryService struct {
+	cfg                 *config.Config
+	sidecarDaemonClient *nodeSidecarDaemonClient
+}
 
-func NewTelemetryService() *TelemetryService {
-	return &TelemetryService{}
+func NewTelemetryService(cfg ...*config.Config) *TelemetryService {
+	svc := &TelemetryService{}
+	if len(cfg) > 0 {
+		svc.cfg = cfg[0]
+		if daemonClient, err := newNodeSidecarDaemonClient(cfg[0]); err == nil {
+			svc.sidecarDaemonClient = daemonClient
+		}
+	}
+	return svc
 }
 
 func (s *TelemetryService) GenerateShadowDeviceID(accountOrOrgUUID string, originalDeviceID string) string {
@@ -562,6 +574,26 @@ func (s *TelemetryService) forwardWithGoClient(cleanedBody []byte, originalAuthT
 }
 
 func (s *TelemetryService) forwardWithNodeSidecar(cleanedBody []byte, originalAuthToken, endpoint, version string) error {
+	if s != nil && s.sidecarDaemonClient != nil {
+		resp, err := s.sidecarDaemonClient.roundTripBuffered(context.Background(), sidecarDaemonRequest{
+			ClientMode:    "telemetry",
+			Method:        http.MethodPost,
+			Endpoint:      endpoint,
+			Headers:       map[string][]string{"Content-Type": {"application/json"}, "User-Agent": {telemetryUserAgent(version)}, "x-service-name": {"claude-code"}, "x-api-key": {originalAuthToken}},
+			PayloadBase64: base64.StdEncoding.EncodeToString(cleanedBody),
+			TimeoutMS:     10000,
+			AcceptNon2xx:  true,
+			ReturnRaw:     true,
+		}, nil)
+		if err != nil {
+			return err
+		}
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil
+	}
+
 	scriptPath, err := findTelemetrySidecarScript()
 	if err != nil {
 		return err

@@ -390,16 +390,16 @@ function createSocksUndiciDispatcher(undici, proxy, timeoutMs) {
   });
 }
 
-function writeStdoutChunk(chunk) {
+function writeChunk(output, chunk) {
   return new Promise((resolve, reject) => {
-    const ok = process.stdout.write(chunk, (err) => {
+    const ok = output.write(chunk, (err) => {
       if (err) reject(err);
     });
     if (ok) {
       resolve();
       return;
     }
-    process.stdout.once('drain', resolve);
+    output.once('drain', resolve);
   });
 }
 
@@ -445,15 +445,21 @@ function createTimeoutController(timeoutMs) {
   };
 }
 
-async function main() {
-  const raw = await readStdin();
-  const input = JSON.parse(raw);
-  const clientMode = typeof input.client_mode === 'string' ? input.client_mode : 'messages';
-  const undici = await loadUndici();
-  if (!undici || typeof undici.fetch !== 'function') {
-    throw new Error('undici runtime not found for telemetry sidecar');
+function buildAxiosTransportOptions(endpoint, proxyCfg, timeoutMs) {
+  if (!proxyCfg) return {};
+  const endpointProtocol = new URL(endpoint).protocol;
+  if (proxyCfg.protocol === 'http' || proxyCfg.protocol === 'https') {
+    return { proxy: proxyCfg };
   }
-  const axios = clientMode === 'telemetry' ? await loadAxios() : null;
+  const agent = createSocksAgent(proxyCfg, endpointProtocol, timeoutMs);
+  if (endpointProtocol === 'https:') {
+    return { proxy: false, httpsAgent: agent };
+  }
+  return { proxy: false, httpAgent: agent };
+}
+
+export async function handleSidecarRequest(input, output = process.stdout) {
+  const clientMode = typeof input.client_mode === 'string' ? input.client_mode : 'messages';
   const headers = sanitizeHeaders(input.headers);
   const payload = Buffer.from(input.payload_base64 ?? '', 'base64');
   const method = typeof input.method === 'string' && input.method !== '' ? input.method : 'POST';
@@ -461,10 +467,9 @@ async function main() {
   const streamResponse = input.stream_response === true;
   const proxyCfg = parseProxyURL(input.proxy_url);
   const timeoutMs = input.timeout_ms ?? 10000;
-  const timeoutCtl = createTimeoutController(timeoutMs);
-  const fetchOptions = buildFetchOptions(undici, input.endpoint, proxyCfg, timeoutMs);
 
   if (clientMode === 'telemetry') {
+    const axios = await loadAxios();
     if (!axios) {
       throw new Error('axios runtime not found for telemetry sidecar');
     }
@@ -474,6 +479,7 @@ async function main() {
       data: payload,
       timeout: timeoutMs,
       headers,
+      ...buildAxiosTransportOptions(input.endpoint, proxyCfg, timeoutMs),
       validateStatus: () => true,
     });
     const rawBody = returnRawBytes
@@ -484,7 +490,7 @@ async function main() {
             : JSON.stringify(response.data ?? null),
           'utf8',
         );
-    process.stdout.write(JSON.stringify({
+    output.write(JSON.stringify({
       status: response.status,
       data: returnRawBytes ? undefined : response.data,
       headers: normalizeResponseHeaders(response.headers ?? {}),
@@ -493,10 +499,17 @@ async function main() {
     return;
   }
 
+  const undici = await loadUndici();
+  if (!undici || typeof undici.fetch !== 'function') {
+    throw new Error('undici runtime not found for telemetry sidecar');
+  }
+  const timeoutCtl = createTimeoutController(timeoutMs);
+  const fetchOptions = buildFetchOptions(undici, input.endpoint, proxyCfg, timeoutMs);
   const response = await undici.fetch(input.endpoint, {
     method,
     headers,
     body: payload,
+    duplex: 'half',
     signal: timeoutCtl.signal,
     ...fetchOptions,
   });
@@ -507,11 +520,11 @@ async function main() {
         status: response.status || 0,
         headers: normalizeResponseHeaders(Object.fromEntries(response.headers.entries())),
       }) + '\n';
-      await writeStdoutChunk(meta);
+      await writeChunk(output, meta);
       timeoutCtl.refreshIdle();
       for await (const chunk of response.body ?? []) {
         timeoutCtl.refreshIdle();
-        await writeStdoutChunk(Buffer.from(chunk));
+        await writeChunk(output, Buffer.from(chunk));
       }
       timeoutCtl.clear();
       return;
@@ -523,7 +536,7 @@ async function main() {
 
   const rawBody = Buffer.from(await response.arrayBuffer());
   timeoutCtl.clear();
-  process.stdout.write(JSON.stringify({
+  output.write(JSON.stringify({
     status: response.status,
     data: returnRawBytes ? undefined : rawBody.toString('utf8'),
     headers: normalizeResponseHeaders(Object.fromEntries(response.headers.entries())),
@@ -531,10 +544,19 @@ async function main() {
   }));
 }
 
-main().catch((error) => {
-  process.stdout.write(JSON.stringify({
-    status: 0,
-    error: error instanceof Error ? error.message : String(error),
-  }));
-  process.exitCode = 1;
-});
+async function main() {
+  const raw = await readStdin();
+  const input = JSON.parse(raw);
+  await handleSidecarRequest(input, process.stdout);
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((error) => {
+    process.stdout.write(JSON.stringify({
+      status: 0,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    process.exitCode = 1;
+  });
+}

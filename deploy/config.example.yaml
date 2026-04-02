@@ -398,6 +398,13 @@ gateway:
     # 是否允许 stream=true 请求走 sidecar
     enable_streaming: true
 
+  # Long-lived Node sidecar daemon
+  # 长驻 Node sidecar daemon
+  sidecar_daemon:
+    enabled: false
+    socket_path: "/tmp/sub2api-node-sidecar.sock"
+    startup_timeout_seconds: 5
+
 # =============================================================================
 # Logging Configuration
 # 日志配置

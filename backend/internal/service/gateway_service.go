@@ -570,6 +570,7 @@ type GatewayService struct {
 	debugClaudeMimic      atomic.Bool
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
+	sidecarDaemonClient   *nodeSidecarDaemonClient
 }
 
 // NewGatewayService creates a new GatewayService
@@ -629,6 +630,9 @@ func NewGatewayService(
 		modelsListCacheTTL:   modelsListTTL,
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:  tlsFPProfileService,
+	}
+	if daemonClient, err := newNodeSidecarDaemonClient(cfg); err == nil {
+		svc.sidecarDaemonClient = daemonClient
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,

@@ -246,6 +246,25 @@ func (s *GatewayService) doMessagesRequestWithNodeSidecar(
 		return nil, fmt.Errorf("marshal sidecar payload: %w", err)
 	}
 
+	if s.sidecarDaemonClient != nil {
+		reqData := sidecarDaemonRequest{
+			ClientMode:    "messages",
+			Method:        req.Method,
+			Endpoint:      req.URL.String(),
+			Headers:       cloneHeaderValues(req.Header),
+			PayloadBase64: base64.StdEncoding.EncodeToString(requestBody),
+			TimeoutMS:     int(timeout / time.Millisecond),
+			AcceptNon2xx:  true,
+			ReturnRaw:     true,
+			ProxyURL:      strings.TrimSpace(proxyURL),
+			Stream:        reqStream,
+		}
+		if reqStream {
+			return s.sidecarDaemonClient.roundTripStream(ctx, reqData, req)
+		}
+		return s.sidecarDaemonClient.roundTripBuffered(ctx, reqData, req)
+	}
+
 	if reqStream {
 		return s.doStreamingMessagesRequestWithNodeSidecar(ctx, req, scriptPath, payload)
 	}
