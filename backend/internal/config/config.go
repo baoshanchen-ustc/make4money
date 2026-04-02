@@ -1483,7 +1483,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.messages_node_sidecar.script", "")
 	viper.SetDefault("gateway.messages_node_sidecar.timeout_seconds", 30)
 	viper.SetDefault("gateway.messages_node_sidecar.allow_go_fallback", true)
-	viper.SetDefault("gateway.messages_node_sidecar.enable_streaming", false)
+	viper.SetDefault("gateway.messages_node_sidecar.enable_streaming", true)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// Sora 直连配置

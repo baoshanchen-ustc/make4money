@@ -4228,7 +4228,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
 	doUpstream := func(upstreamReq *http.Request) (*http.Response, error) {
 		if s.shouldUseMessagesNodeSidecar(account, reqStream) {
-			sidecarResp, sidecarErr := s.doMessagesRequestWithNodeSidecar(ctx, upstreamReq, s.messagesNodeSidecarTimeout(), proxyURL)
+			sidecarResp, sidecarErr := s.doMessagesRequestWithNodeSidecar(ctx, upstreamReq, s.messagesNodeSidecarTimeout(), proxyURL, reqStream)
 			if sidecarErr == nil {
 				return sidecarResp, nil
 			}

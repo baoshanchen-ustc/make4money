@@ -396,6 +396,56 @@ function requestWithNodeHttp(input) {
   });
 }
 
+function writeStdoutChunk(chunk) {
+  return new Promise((resolve, reject) => {
+    const ok = process.stdout.write(chunk, (err) => {
+      if (err) reject(err);
+    });
+    if (ok) {
+      resolve();
+      return;
+    }
+    process.stdout.once('drain', resolve);
+  });
+}
+
+function requestWithNodeHttpStream(input) {
+  return new Promise((resolve, reject) => {
+    const endpoint = new URL(input.endpoint);
+    const isHttps = endpoint.protocol === 'https:';
+    const lib = isHttps ? https : http;
+    const req = lib.request({
+      protocol: endpoint.protocol,
+      hostname: endpoint.hostname,
+      port: endpoint.port || (isHttps ? 443 : 80),
+      path: `${endpoint.pathname}${endpoint.search}`,
+      method: input.method,
+      headers: input.headers,
+      agent: input.agent,
+      timeout: input.timeoutMs > 0 ? input.timeoutMs : undefined,
+      servername: endpoint.hostname,
+    }, async (res) => {
+      try {
+        const meta = JSON.stringify({
+          status: res.statusCode || 0,
+          headers: normalizeResponseHeaders(res.headers || {}),
+        }) + '\n';
+        await writeStdoutChunk(meta);
+        for await (const chunk of res) {
+          await writeStdoutChunk(chunk);
+        }
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('timeout', () => req.destroy(new Error('request timeout')));
+    req.on('error', reject);
+    if (input.payload && input.payload.length > 0) req.write(input.payload);
+    req.end();
+  });
+}
+
 async function main() {
   const raw = await readStdin();
   const input = JSON.parse(raw);
@@ -405,9 +455,24 @@ async function main() {
   const method = typeof input.method === 'string' && input.method !== '' ? input.method : 'POST';
   const acceptNon2xx = input.accept_non_2xx === true;
   const returnRawBytes = input.return_raw_bytes === true;
+  const streamResponse = input.stream_response === true;
   const proxyCfg = parseProxyURL(input.proxy_url);
   const timeoutMs = input.timeout_ms ?? 10000;
   const transportOptions = buildTransportOptions(input.endpoint, proxyCfg, timeoutMs);
+  const nodeAgent = transportOptions.nodeAgentKind ? transportOptions[transportOptions.nodeAgentKind] : undefined;
+
+  if (streamResponse) {
+    await requestWithNodeHttpStream({
+      method,
+      endpoint: input.endpoint,
+      headers,
+      payload,
+      timeoutMs,
+      agent: nodeAgent,
+    });
+    return;
+  }
+
   if (axios) {
     const response = await axios.request({
       method,
@@ -439,7 +504,6 @@ async function main() {
     return;
   }
 
-  const nodeAgent = transportOptions.nodeAgentKind ? transportOptions[transportOptions.nodeAgentKind] : undefined;
   const nodeResp = await requestWithNodeHttp({
     method,
     endpoint: input.endpoint,

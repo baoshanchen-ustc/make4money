@@ -396,7 +396,7 @@ gateway:
     allow_go_fallback: true
     # Whether stream=true requests can use sidecar
     # 是否允许 stream=true 请求走 sidecar
-    enable_streaming: false
+    enable_streaming: true
 
 # =============================================================================
 # Logging Configuration

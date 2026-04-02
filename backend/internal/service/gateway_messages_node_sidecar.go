@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -27,6 +28,52 @@ type messagesNodeSidecarResponse struct {
 	Error      string              `json:"error"`
 	Headers    map[string][]string `json:"headers"`
 	BodyBase64 string              `json:"body_base64"`
+}
+
+type messagesNodeSidecarStreamBody struct {
+	reader  *bufio.Reader
+	stdout  io.Closer
+	cancel  context.CancelFunc
+	waitCh  chan error
+	waitErr error
+	waited  bool
+}
+
+func (b *messagesNodeSidecarStreamBody) wait() error {
+	if b == nil || b.waited {
+		return b.waitErr
+	}
+	b.waited = true
+	if b.waitCh != nil {
+		b.waitErr = <-b.waitCh
+	}
+	return b.waitErr
+}
+
+func (b *messagesNodeSidecarStreamBody) Read(p []byte) (int, error) {
+	if b == nil || b.reader == nil {
+		return 0, io.EOF
+	}
+	n, err := b.reader.Read(p)
+	if err == io.EOF {
+		if waitErr := b.wait(); waitErr != nil {
+			return n, waitErr
+		}
+	}
+	return n, err
+}
+
+func (b *messagesNodeSidecarStreamBody) Close() error {
+	if b == nil {
+		return nil
+	}
+	if b.cancel != nil {
+		b.cancel()
+	}
+	if b.stdout != nil {
+		_ = b.stdout.Close()
+	}
+	return b.wait()
 }
 
 func (s *GatewayService) shouldUseMessagesNodeSidecar(account *Account, reqStream bool) bool {
@@ -138,6 +185,7 @@ func (s *GatewayService) doMessagesRequestWithNodeSidecar(
 	req *http.Request,
 	timeout time.Duration,
 	proxyURL string,
+	reqStream bool,
 ) (*http.Response, error) {
 	if req == nil || req.URL == nil {
 		return nil, errors.New("invalid upstream request")
@@ -154,19 +202,47 @@ func (s *GatewayService) doMessagesRequestWithNodeSidecar(
 	}
 
 	payload, err := json.Marshal(map[string]any{
-		"method":           req.Method,
-		"endpoint":         req.URL.String(),
-		"headers":          cloneHeaderValues(req.Header),
-		"payload_base64":   base64.StdEncoding.EncodeToString(requestBody),
-		"timeout_ms":       int(timeout / time.Millisecond),
+		"method":         req.Method,
+		"endpoint":       req.URL.String(),
+		"headers":        cloneHeaderValues(req.Header),
+		"payload_base64": base64.StdEncoding.EncodeToString(requestBody),
+		"timeout_ms": func() int {
+			if reqStream {
+				return 0
+			}
+			return int(timeout / time.Millisecond)
+		}(),
 		"accept_non_2xx":   true,
 		"return_raw_bytes": true,
 		"proxy_url":        strings.TrimSpace(proxyURL),
+		"stream_response":  reqStream,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal sidecar payload: %w", err)
 	}
 
+	if reqStream {
+		return s.doStreamingMessagesRequestWithNodeSidecar(ctx, req, scriptPath, payload)
+	}
+	return s.doBufferedMessagesRequestWithNodeSidecar(ctx, req, scriptPath, payload, timeout)
+}
+
+func (s *GatewayService) logMessagesSidecarFallback(account *Account, err error) {
+	if account == nil {
+		logger.LegacyPrintf("service.gateway", "[Warn] messages node sidecar failed, fallback to Go transport: %v", err)
+		return
+	}
+	logger.LegacyPrintf("service.gateway", "[Warn] messages node sidecar failed (account=%d, platform=%s), fallback to Go transport: %v",
+		account.ID, account.Platform, err)
+}
+
+func (s *GatewayService) doBufferedMessagesRequestWithNodeSidecar(
+	ctx context.Context,
+	req *http.Request,
+	scriptPath string,
+	payload []byte,
+	timeout time.Duration,
+) (*http.Response, error) {
 	execCtx, cancel := context.WithTimeout(ctx, timeout+2*time.Second)
 	defer cancel()
 
@@ -207,11 +283,95 @@ func (s *GatewayService) doMessagesRequestWithNodeSidecar(
 	return resp, nil
 }
 
-func (s *GatewayService) logMessagesSidecarFallback(account *Account, err error) {
-	if account == nil {
-		logger.LegacyPrintf("service.gateway", "[Warn] messages node sidecar failed, fallback to Go transport: %v", err)
-		return
+func (s *GatewayService) doStreamingMessagesRequestWithNodeSidecar(
+	ctx context.Context,
+	req *http.Request,
+	scriptPath string,
+	payload []byte,
+) (*http.Response, error) {
+	execCtx, cancel := context.WithCancel(ctx)
+	cmd := exec.CommandContext(execCtx, "node", scriptPath)
+	cmd.Stdin = bytes.NewReader(payload)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("open messages sidecar stdout: %w", err)
 	}
-	logger.LegacyPrintf("service.gateway", "[Warn] messages node sidecar failed (account=%d, platform=%s), fallback to Go transport: %v",
-		account.ID, account.Platform, err)
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("open messages sidecar stderr: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return nil, fmt.Errorf("start messages sidecar: %w", err)
+	}
+
+	stderrBuf := new(bytes.Buffer)
+	stderrDone := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(stderrBuf, stderr)
+		close(stderrDone)
+	}()
+
+	waitCh := make(chan error, 1)
+	go func() {
+		err := cmd.Wait()
+		<-stderrDone
+		if err != nil && strings.TrimSpace(stderrBuf.String()) != "" {
+			err = fmt.Errorf("%w (%s)", err, strings.TrimSpace(stderrBuf.String()))
+		}
+		waitCh <- err
+		close(waitCh)
+	}()
+
+	reader := bufio.NewReader(stdout)
+	metaLine, err := reader.ReadString('\n')
+	if err != nil {
+		cancel()
+		_ = stdout.Close()
+		waitErr := <-waitCh
+		if waitErr != nil {
+			return nil, fmt.Errorf("read messages sidecar stream header: %w", waitErr)
+		}
+		return nil, fmt.Errorf("read messages sidecar stream header: %w", err)
+	}
+
+	var decoded messagesNodeSidecarResponse
+	if err := json.Unmarshal([]byte(strings.TrimSpace(metaLine)), &decoded); err != nil {
+		cancel()
+		_ = stdout.Close()
+		_ = <-waitCh
+		return nil, fmt.Errorf("decode messages sidecar stream header: %w", err)
+	}
+	if decoded.Error != "" {
+		cancel()
+		_ = stdout.Close()
+		_ = <-waitCh
+		return nil, errors.New(decoded.Error)
+	}
+	if decoded.Status <= 0 {
+		cancel()
+		_ = stdout.Close()
+		_ = <-waitCh
+		return nil, errors.New("invalid sidecar stream response status")
+	}
+
+	resp := &http.Response{
+		StatusCode: decoded.Status,
+		Header:     make(http.Header),
+		Body: &messagesNodeSidecarStreamBody{
+			reader: reader,
+			stdout: stdout,
+			cancel: cancel,
+			waitCh: waitCh,
+		},
+		Request: req,
+	}
+	for key, values := range decoded.Headers {
+		for _, value := range values {
+			resp.Header.Add(key, value)
+		}
+	}
+	return resp, nil
 }
