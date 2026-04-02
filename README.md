@@ -526,6 +526,19 @@ In Claude Code, Plan Mode cannot exit automatically. (Normally when using the na
 
 ---
 
+
+## Security & Anti-Detection Warning
+
+To prevent Claude Code's built-in Datadog telemetry SDK from bypassing the proxy gateway and leaking your real local `device_id` (which leads to account ban risks), it is **highly recommended** to add the following proxy rules to your system proxy software (like Clash, V2Ray) to reject probe data uploads:
+
+```yaml
+# Clash Rule Example
+rules:
+  - DOMAIN-SUFFIX,datadoghq.com,REJECT
+  - DOMAIN-KEYWORD,datadoghq,REJECT
+```
+If you are not using proxy networking software locally, you can map `127.0.0.1 browser-intake-datadoghq.com` directly in your system's `/etc/hosts` file.
+
 ## Project Structure
 
 ```

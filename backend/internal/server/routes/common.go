@@ -15,25 +15,26 @@ func RegisterCommonRoutes(r *gin.Engine) {
 	})
 
 	// Claude Code 遥测日志：接管、清洗、异步放行
+	telemetrySvc := service.NewTelemetryService()
 	r.POST("/api/event_logging/batch", func(c *gin.Context) {
-		// 1. 提取原始凭证
 		token := c.GetHeader("x-api-key")
 
-		// 2. 读取原始 payload
 		bodyBytes, err := c.GetRawData()
-		if err == nil && len(bodyBytes) > 0 {
-			// 3. 进入拦截清洗协程（不阻塞给客户端返回 200）
-			go func(body []byte, clientToken string) {
-				importService := service.NewTelemetryService()
-				// shadowDeviceID 现在由 DeepScrubPayload 在解析时根据原生 device_id 动态生成
-				cleanedBytes, err := importService.DeepScrubPayload(body)
-				if err == nil {
-					importService.ForwardBackground(cleanedBytes, clientToken)
-				}
-			}(bodyBytes, token)
+		if err != nil {
+			c.Status(http.StatusOK)
+			return
+		}
+		if len(bodyBytes) == 0 {
+			c.Status(http.StatusOK)
+			return
 		}
 
-		// 秒级放行，保证客户端侧无感
+		// 同步清洗（微秒级），异步转发（ForwardBackground 内部管理 goroutine）
+		cleanedBytes, err := telemetrySvc.DeepScrubPayload(bodyBytes)
+		if err == nil {
+			telemetrySvc.ForwardBackground(cleanedBytes, token)
+		}
+
 		c.Status(http.StatusOK)
 	})
 

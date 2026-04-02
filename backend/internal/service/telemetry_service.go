@@ -4,22 +4,25 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
 
 // =========================================================================
-// Persona Profile — 每个底层账号对应的虚拟设备环境画像
-// 所有经过 sub2api 网关的遥测数据，环境信息都会被统一涂抹为此画像。
-// 目的：让官方看到的永远是「一个高级 Mac 开发者在多窗口高频使用」。
+// Persona Profile
 // =========================================================================
 
-// PersonaProfile 描述一台虚拟设备的完整环境指纹
 type PersonaProfile struct {
 	Platform              string `json:"platform"`
 	PlatformRaw           string `json:"platform_raw"`
@@ -30,11 +33,10 @@ type PersonaProfile struct {
 	Runtimes              string `json:"runtimes"`
 	IsRunningWithBun      bool   `json:"is_running_with_bun"`
 	DeploymentEnvironment string `json:"deployment_environment"`
-	Version               string `json:"version"`       // claude-code 版本号
-	VersionBase           string `json:"version_base"`   // 版本基线
+	Version               string `json:"version"`
+	VersionBase           string `json:"version_base"`
 }
 
-// defaultPersona 硬编码的默认虚拟设备画像：一台典型的 macOS 高级开发者工作站
 var defaultPersona = PersonaProfile{
 	Platform:              "darwin",
 	PlatformRaw:           "darwin",
@@ -49,242 +51,280 @@ var defaultPersona = PersonaProfile{
 	VersionBase:           "2.2.17",
 }
 
-// TelemetryService 处理独立于模型的打点遥测和审计机制拦截与清洗
+// 转发 goroutine 限流 channel：最多 64 个并发转发
+var forwardSem = make(chan struct{}, 64)
+
+var forwardClient *http.Client
+
+func init() {
+	dialer := tlsfingerprint.NewDialer(nil, nil)
+	tr := &http.Transport{
+		DialTLSContext:    dialer.DialTLSContext,
+		ForceAttemptHTTP2: false,
+		MaxIdleConns:      100,
+		IdleConnTimeout:   90 * time.Second,
+	}
+	forwardClient = &http.Client{
+		Transport: tr,
+		Timeout:   10 * time.Second,
+	}
+}
+
+var telemetrySalt = func() string {
+	if salt := os.Getenv("TELEMETRY_SALT"); salt != "" {
+		return salt
+	}
+	return "_sub2api_telemetry_salt_v1"
+}()
+
 type TelemetryService struct{}
 
 func NewTelemetryService() *TelemetryService {
 	return &TelemetryService{}
 }
 
-// GenerateShadowDeviceID 基于底层账号的 accountUUID（优先）或原始 device_id 生成稳定影子 ID。
-// 同一个底层账号 → 同一个 ShadowDeviceID，无论背后有多少个真实终端。
-func (s *TelemetryService) GenerateShadowDeviceID(seed string) string {
+func (s *TelemetryService) GenerateShadowDeviceID(accountUUID string, originalDeviceID string) string {
+	seed := accountUUID
+	if originalDeviceID != "" {
+		seed += "|" + originalDeviceID
+	}
 	if seed == "" {
 		seed = "anonymous"
 	}
-	hash := sha256.Sum256([]byte(seed + "_sub2api_telemetry_salt"))
+	hash := sha256.Sum256([]byte(seed + telemetrySalt))
 	hexHash := fmt.Sprintf("%x", hash)
-	// 生成 UUIDv4 形态
+	variantByte := hexHash[16:20]
+	variantRune := []byte(variantByte)
+	switch variantRune[0] {
+	case '0', '1', '2', '3', '4', '5', '6', '7':
+		variantRune[0] = '8'
+	case 'c', 'd', 'e', 'f':
+		variantRune[0] = 'a'
+	}
 	return fmt.Sprintf("%s-%s-4%s-%s-%s",
 		hexHash[0:8],
 		hexHash[8:12],
 		hexHash[13:16],
-		hexHash[16:20],
+		string(variantRune),
 		hexHash[20:32],
 	)
 }
 
-// DeepScrubPayload 核心消杀引擎。
-// 对 /api/event_logging/batch 的 JSON 包体执行三层手术：
-//  1. PII 剔除（email, githubActionsMetadata, apiBaseUrlHost, baseUrl, gateway）
-//  2. 设备身份统一（device_id → 基于 accountUUID 的稳定影子 ID）
-//  3. 环境指纹涂抹（platform, arch, nodeVersion 等 → 统一虚拟画像）
+func (s *TelemetryService) GenerateMappedUUID(shadowDeviceID, originalID string) string {
+	hash := sha256.Sum256([]byte(shadowDeviceID + originalID + telemetrySalt))
+	hexHash := fmt.Sprintf("%x", hash)
+	variantByte := hexHash[16:20]
+	variantRune := []byte(variantByte)
+	switch variantRune[0] {
+	case '0', '1', '2', '3', '4', '5', '6', '7':
+		variantRune[0] = '8'
+	case 'c', 'd', 'e', 'f':
+		variantRune[0] = 'a'
+	}
+	return fmt.Sprintf("%s-%s-4%s-%s-%s",
+		hexHash[0:8],
+		hexHash[8:12],
+		hexHash[13:16],
+		string(variantRune),
+		hexHash[20:32],
+	)
+}
+
+// GenerateDynamicPersona 从 deviceID 派生稳定的噪音，增加指纹混乱度
+func (s *TelemetryService) GenerateDynamicPersona(shadowDeviceID string) PersonaProfile {
+	persona := defaultPersona
+	// 使用 hash 保证单个设备稳定
+	hash := sha256.Sum256([]byte(shadowDeviceID + "persona"))
+	
+	val := int(hash[0])
+	
+	// 偶尔变更终端
+	if val%10 < 3 {
+		persona.Terminal = "Terminal.app"
+	} else if val%10 < 5 {
+		persona.Terminal = "vscode"
+	} else if val%10 < 7 {
+		persona.Terminal = "tmux"
+	}
+	
+	// 偶尔变更 Node 修正版本
+	minor := val % 5
+	persona.NodeVersion = fmt.Sprintf("v22.13.%d", minor)
+
+	// OS 系统可以有 x64 和 aarch64
+	if (val/10)%10 < 2 {
+		persona.Arch = "x64"
+	}
+	
+	return persona
+}
+
 func (s *TelemetryService) DeepScrubPayload(bodyBytes []byte) ([]byte, error) {
-	var payload map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
-		return nil, err
-	}
-
-	eventsData, ok := payload["events"]
-	if !ok {
+	if !gjson.ValidBytes(bodyBytes) {
 		return bodyBytes, nil
 	}
 
-	events, ok := eventsData.([]interface{})
-	if !ok {
+	eventsRes := gjson.GetBytes(bodyBytes, "events")
+	if !eventsRes.Exists() || !eventsRes.IsArray() {
 		return bodyBytes, nil
 	}
 
-	for i, ev := range events {
-		eventMap, ok := ev.(map[string]interface{})
-		if !ok {
-			continue
-		}
+	resultBytes := bodyBytes
 
-		eventType, _ := eventMap["event_type"].(string)
-		eventData, ok := eventMap["event_data"].(map[string]interface{})
-		if !ok {
-			continue
-		}
+	for i, ev := range eventsRes.Array() {
+		basePath := fmt.Sprintf("events.%d", i)
+		eventType := ev.Get("event_type").String()
 
-		// ——————————————————————————————————————————————
-		// Step 1: 确定影子设备 ID 的种子
-		// 优先用 accountUUID（保证同一底层号 → 同一台虚拟机器）
-		// 否则回退到原始 device_id（保证单用户稳定）
-		// ——————————————————————————————————————————————
-		var idSeed string
+		var accountUUID string
+		var origDevID string
 
-		// 尝试从 Growthbook user_attributes 提取 accountUUID
 		if eventType == "GrowthbookExperimentEvent" {
-			if userAttrStr, ok := eventData["user_attributes"].(string); ok {
-				var tmpAttrs map[string]interface{}
-				if json.Unmarshal([]byte(userAttrStr), &tmpAttrs) == nil {
-					if uuid, ok := tmpAttrs["accountUUID"].(string); ok && uuid != "" {
-						idSeed = uuid
-					}
-				}
+			userAttrStr := ev.Get("event_data.user_attributes").String()
+			if userAttrStr != "" {
+				accountUUID = gjson.Get(userAttrStr, "accountUUID").String()
 			}
 		}
-
-		// 尝试从 ClaudeCodeInternalEvent 顶层提取
-		if idSeed == "" {
-			if uuid, ok := eventData["accountUUID"].(string); ok && uuid != "" {
-				idSeed = uuid
-			}
+		if accountUUID == "" {
+			accountUUID = ev.Get("event_data.accountUUID").String()
 		}
 
-		// 最终兜底：用原始 device_id
-		if idSeed == "" {
-			if devID, ok := eventData["device_id"].(string); ok {
-				idSeed = devID
-			} else if devID, ok := eventMap["device_id"].(string); ok {
-				idSeed = devID
-			}
+		origDevID = ev.Get("event_data.device_id").String()
+		if origDevID == "" {
+			origDevID = ev.Get("device_id").String()
 		}
 
-		shadowDeviceID := s.GenerateShadowDeviceID(idSeed)
-
-		// ——————————————————————————————————————————————
-		// Step 2: 全局替换最外层 device_id
-		// ——————————————————————————————————————————————
-		if _, has := eventMap["device_id"]; has {
-			eventMap["device_id"] = shadowDeviceID
+		shadowDeviceID := s.GenerateShadowDeviceID(accountUUID, origDevID)
+		
+		if ev.Get("device_id").Exists() {
+			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".device_id", shadowDeviceID)
+		}
+		if ev.Get("event_data.device_id").Exists() {
+			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.device_id", shadowDeviceID)
 		}
 
-		// ——————————————————————————————————————————————
-		// GrowthbookExperimentEvent 处理
-		// ——————————————————————————————————————————————
+		// Rewrite Session & Event IDs to prevent correlation leakage
+		origSessionID := ev.Get("event_data.session_id").String()
+		if origSessionID != "" {
+			newSessionID := s.GenerateMappedUUID(shadowDeviceID, origSessionID)
+			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.session_id", newSessionID)
+		}
+
+		origParentSessionID := ev.Get("event_data.parent_session_id").String()
+		if origParentSessionID != "" {
+			newParentSessionID := s.GenerateMappedUUID(shadowDeviceID, origParentSessionID)
+			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.parent_session_id", newParentSessionID)
+		}
+
+		newEventID := uuid.New().String()
+		if ev.Get("event_data.event_id").Exists() {
+			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.event_id", newEventID)
+		}
+		if ev.Get("event_id").Exists() {
+			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_id", newEventID)
+		}
+		
+		persona := s.GenerateDynamicPersona(shadowDeviceID)
+
 		if eventType == "GrowthbookExperimentEvent" {
-			if _, has := eventData["device_id"]; has {
-				eventData["device_id"] = shadowDeviceID
-			}
-
-			// 拆解 user_attributes JSON 字符串
-			if userAttrStr, ok := eventData["user_attributes"].(string); ok {
-				var attrMap map[string]interface{}
-				if err := json.Unmarshal([]byte(userAttrStr), &attrMap); err == nil {
-					// 致命 PII 清除
-					delete(attrMap, "apiBaseUrlHost")
-					delete(attrMap, "email")
-					delete(attrMap, "githubActionsMetadata")
-
-					// 身份统一
-					if _, has := attrMap["id"]; has {
-						attrMap["id"] = shadowDeviceID
-					}
-					if _, has := attrMap["deviceID"]; has {
-						attrMap["deviceID"] = shadowDeviceID
-					}
-
-					// 环境涂抹
-					attrMap["platform"] = defaultPersona.Platform
-
-					// 回写
-					if newAttrBytes, err := json.Marshal(attrMap); err == nil {
-						eventData["user_attributes"] = string(newAttrBytes)
-					}
+			userAttrStr := ev.Get("event_data.user_attributes").String()
+			if userAttrStr != "" {
+				userAttrRaw := []byte(userAttrStr)
+				userAttrRaw, _ = sjson.DeleteBytes(userAttrRaw, "apiBaseUrlHost")
+				userAttrRaw, _ = sjson.DeleteBytes(userAttrRaw, "email")
+				userAttrRaw, _ = sjson.DeleteBytes(userAttrRaw, "githubActionsMetadata")
+				if gjson.GetBytes(userAttrRaw, "id").Exists() {
+					userAttrRaw, _ = sjson.SetBytes(userAttrRaw, "id", shadowDeviceID)
 				}
+				if gjson.GetBytes(userAttrRaw, "deviceID").Exists() {
+					userAttrRaw, _ = sjson.SetBytes(userAttrRaw, "deviceID", shadowDeviceID)
+				}
+				userAttrRaw, _ = sjson.SetBytes(userAttrRaw, "platform", persona.Platform)
+				
+				resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.user_attributes", string(userAttrRaw))
 			}
-
-		// ——————————————————————————————————————————————
-		// ClaudeCodeInternalEvent 处理
-		// ——————————————————————————————————————————————
 		} else if eventType == "ClaudeCodeInternalEvent" {
-			// 顶层身份处理
-			if _, has := eventData["device_id"]; has {
-				eventData["device_id"] = shadowDeviceID
-			}
-			delete(eventData, "email") // git config user.email 致命泄露
+			resultBytes, _ = sjson.DeleteBytes(resultBytes, basePath+".event_data.email")
 
-			// 解析 additional_metadata (Base64 → JSON)
-			if b64Meta, ok := eventData["additional_metadata"].(string); ok {
+			b64Meta := ev.Get("event_data.additional_metadata").String()
+			if b64Meta != "" {
 				decodedMeta, err := base64.StdEncoding.DecodeString(b64Meta)
 				if err == nil {
-					var metaMap map[string]interface{}
-					if err := json.Unmarshal(decodedMeta, &metaMap); err == nil {
-						// 剥离代理网关特征
-						delete(metaMap, "baseUrl")
-						delete(metaMap, "gateway")
+					decodedMeta, _ = sjson.DeleteBytes(decodedMeta, "baseUrl")
+					decodedMeta, _ = sjson.DeleteBytes(decodedMeta, "gateway")
 
-						// ——————————————————————————————
-						// 环境指纹涂抹：覆写 env 子对象
-						// ——————————————————————————————
-						s.overwriteEnvBlock(metaMap)
+					decodedMeta = s.overwriteEnvBlockSJSON(decodedMeta, persona)
 
-						// 回装 Base64
-						if newMetaBytes, err := json.Marshal(metaMap); err == nil {
-							eventData["additional_metadata"] = base64.StdEncoding.EncodeToString(newMetaBytes)
-						}
-					}
+					newB64Meta := base64.StdEncoding.EncodeToString(decodedMeta)
+					resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.additional_metadata", newB64Meta)
 				}
 			}
 		}
-
-		// 写回
-		eventMap["event_data"] = eventData
-		events[i] = eventMap
 	}
 
-	payload["events"] = events
-	return json.Marshal(payload)
+	return resultBytes, nil
 }
 
-// overwriteEnvBlock 对 additional_metadata 解码后的 JSON 中的 env 子对象执行环境涂抹。
-// 如果 env 不存在则创建，确保发出去的数据环境指纹 100% 一致。
-func (s *TelemetryService) overwriteEnvBlock(metaMap map[string]interface{}) {
-	envBlock, ok := metaMap["env"].(map[string]interface{})
-	if !ok {
-		envBlock = make(map[string]interface{})
+func (s *TelemetryService) overwriteEnvBlockSJSON(metaBytes []byte, persona PersonaProfile) []byte {
+	
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.platform", persona.Platform)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.platform_raw", persona.PlatformRaw)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.arch", persona.Arch)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.node_version", persona.NodeVersion)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.terminal", persona.Terminal)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.package_managers", persona.PackageManagers)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.runtimes", persona.Runtimes)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.is_running_with_bun", persona.IsRunningWithBun)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.deployment_environment", persona.DeploymentEnvironment)
+
+	if persona.Version != "" {
+		metaBytes, _ = sjson.SetBytes(metaBytes, "env.version", persona.Version)
+	}
+	if persona.VersionBase != "" {
+		metaBytes, _ = sjson.SetBytes(metaBytes, "env.version_base", persona.VersionBase)
 	}
 
-	// 强制覆写核心环境字段
-	envBlock["platform"] = defaultPersona.Platform
-	envBlock["platform_raw"] = defaultPersona.PlatformRaw
-	envBlock["arch"] = defaultPersona.Arch
-	envBlock["node_version"] = defaultPersona.NodeVersion
-	envBlock["terminal"] = defaultPersona.Terminal
-	envBlock["package_managers"] = defaultPersona.PackageManagers
-	envBlock["runtimes"] = defaultPersona.Runtimes
-	envBlock["is_running_with_bun"] = defaultPersona.IsRunningWithBun
-	envBlock["deployment_environment"] = defaultPersona.DeploymentEnvironment
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.wsl_version")
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.linux_distro_id")
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.linux_distro_version")
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.linux_kernel")
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.github_actions_metadata")
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.github_event_name")
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.github_actions_runner_environment")
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.github_actions_runner_os")
+	metaBytes, _ = sjson.DeleteBytes(metaBytes, "env.github_action_ref")
 
-	// 版本号可选覆写（如果画像里配了的话）
-	if defaultPersona.Version != "" {
-		envBlock["version"] = defaultPersona.Version
-	}
-	if defaultPersona.VersionBase != "" {
-		envBlock["version_base"] = defaultPersona.VersionBase
-	}
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.is_ci", false)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.is_github_action", false)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.is_claude_code_action", false)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.is_claude_code_remote", false)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.is_local_agent_mode", false)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.is_conductor", false)
+	metaBytes, _ = sjson.SetBytes(metaBytes, "env.is_claubbit", false)
 
-	// 清除可能暴露真实物理环境的可选字段
-	delete(envBlock, "wsl_version")
-	delete(envBlock, "linux_distro_id")
-	delete(envBlock, "linux_distro_version")
-	delete(envBlock, "linux_kernel")
-	delete(envBlock, "github_actions_metadata")
-	delete(envBlock, "github_event_name")
-	delete(envBlock, "github_actions_runner_environment")
-	delete(envBlock, "github_actions_runner_os")
-	delete(envBlock, "github_action_ref")
-
-	// 统一标记为非 CI / 非远程 / 非容器
-	envBlock["is_ci"] = false
-	envBlock["is_github_action"] = false
-	envBlock["is_claude_code_action"] = false
-	envBlock["is_claude_code_remote"] = false
-	envBlock["is_local_agent_mode"] = false
-	envBlock["is_conductor"] = false
-	envBlock["is_claubbit"] = false
-
-	metaMap["env"] = envBlock
+	return metaBytes
 }
 
-// ForwardBackground 异步转发清洗后的遥测数据至官方端点。
-// 加入随机延迟（0~3秒），防止同一底层账号在同一毫秒内收到多个设备的并发包。
 func (s *TelemetryService) ForwardBackground(cleanedBody []byte, originalAuthToken string) {
+	select {
+	case forwardSem <- struct{}{}:
+	default:
+		logger.LegacyPrintf("service.telemetry", "[Warn] forward queue full, dropping telemetry batch")
+		return
+	}
+
 	go func() {
-		// 随机延迟 0~3000ms，打散时间指纹
-		jitter := time.Duration(rand.Intn(3000)) * time.Millisecond
+		defer func() { <-forwardSem }()
+
+		// 泊松/指数分布延迟 (Mean 1500ms)
+		u := rand.Float64()
+		if u == 0 {
+			u = 0.0001
+		}
+		jitterMs := int(-1500 * math.Log(u))
+		if jitterMs > 10000 {
+			jitterMs = 10000
+		}
+		jitter := time.Duration(jitterMs) * time.Millisecond
 		time.Sleep(jitter)
 
 		endpoint := "https://api.anthropic.com/api/event_logging/batch"
@@ -301,8 +341,7 @@ func (s *TelemetryService) ForwardBackground(cleanedBody []byte, originalAuthTok
 		}
 		req.Header.Set("User-Agent", "claude-cli")
 
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
+		resp, err := forwardClient.Do(req)
 		if err != nil {
 			logger.LegacyPrintf("service.telemetry", "[Error] failed to send shadow telemetry: %v", err)
 			return

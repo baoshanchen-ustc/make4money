@@ -222,3 +222,155 @@ func TestDeepScrubPayload_FullPersona(t *testing.T) {
 		t.Errorf("FATAL: Original device_id leaked in output!")
 	}
 }
+
+// TestDeepScrubPayload_EmptyAndMalformed 边界情况测试
+func TestDeepScrubPayload_EmptyAndMalformed(t *testing.T) {
+	svc := NewTelemetryService()
+
+	tests := []struct {
+		name      string
+		input     string
+		wantErr   bool
+		wantSame  bool // 期望返回原始 bytes（无 events 字段时）
+	}{
+		{
+			name:    "malformed JSON",
+			input:   `{not valid json`,
+			wantErr: true,
+		},
+		{
+			name:     "no events field",
+			input:    `{"foo":"bar"}`,
+			wantSame: true,
+		},
+		{
+			name:     "events is not array",
+			input:    `{"events":"not_an_array"}`,
+			wantSame: true,
+		},
+		{
+			name:  "empty events array",
+			input: `{"events":[]}`,
+		},
+		{
+			name:  "event without event_data",
+			input: `{"events":[{"event_type":"GrowthbookExperimentEvent"}]}`,
+		},
+		{
+			name:  "event with non-object event_data",
+			input: `{"events":[{"event_type":"GrowthbookExperimentEvent","event_data":"string_not_map"}]}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := svc.DeepScrubPayload([]byte(tt.input))
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantSame {
+				// 无 events 时应返回原始内容
+				var orig, got map[string]interface{}
+				json.Unmarshal([]byte(tt.input), &orig)
+				json.Unmarshal(result, &got)
+				origBytes, _ := json.Marshal(orig)
+				gotBytes, _ := json.Marshal(got)
+				if string(origBytes) != string(gotBytes) {
+					t.Errorf("expected unchanged payload, got diff")
+				}
+			}
+		})
+	}
+}
+
+// TestDeepScrubPayload_InvalidBase64Metadata Base64 格式异常不应 panic
+func TestDeepScrubPayload_InvalidBase64Metadata(t *testing.T) {
+	svc := NewTelemetryService()
+	payload := `{
+		"events": [{
+			"event_type": "ClaudeCodeInternalEvent",
+			"event_data": {
+				"device_id": "dev-123",
+				"additional_metadata": "NOT_VALID_BASE64!!!"
+			}
+		}]
+	}`
+
+	result, err := svc.DeepScrubPayload([]byte(payload))
+	if err != nil {
+		t.Fatalf("should not error on invalid base64: %v", err)
+	}
+
+	// device_id 应该仍被替换
+	if strings.Contains(string(result), "dev-123") {
+		t.Errorf("original device_id leaked despite bad metadata")
+	}
+}
+
+// TestDeepScrubPayload_InvalidUserAttributes user_attributes 非法 JSON 不应 panic
+func TestDeepScrubPayload_InvalidUserAttributes(t *testing.T) {
+	svc := NewTelemetryService()
+	payload := `{
+		"events": [{
+			"event_type": "GrowthbookExperimentEvent",
+			"event_data": {
+				"device_id": "dev-456",
+				"user_attributes": "this is {not} valid json"
+			}
+		}]
+	}`
+
+	result, err := svc.DeepScrubPayload([]byte(payload))
+	if err != nil {
+		t.Fatalf("should not error on invalid user_attributes JSON: %v", err)
+	}
+
+	if strings.Contains(string(result), "dev-456") {
+		t.Errorf("original device_id leaked despite bad user_attributes")
+	}
+}
+
+// TestGenerateShadowDeviceID_UUIDFormat 验证生成的 ID 是合法 UUIDv4
+func TestGenerateShadowDeviceID_UUIDFormat(t *testing.T) {
+	svc := NewTelemetryService()
+
+	seeds := []string{"test-uuid-1", "another-seed", "", "shared-account-uuid-001"}
+	for _, seed := range seeds {
+		id := svc.GenerateShadowDeviceID(seed, "")
+
+		// 格式: 8-4-4-4-12
+		parts := strings.Split(id, "-")
+		if len(parts) != 5 {
+			t.Errorf("seed=%q: expected 5 parts, got %d: %s", seed, len(parts), id)
+			continue
+		}
+		if len(parts[0]) != 8 || len(parts[1]) != 4 || len(parts[2]) != 4 || len(parts[3]) != 4 || len(parts[4]) != 12 {
+			t.Errorf("seed=%q: wrong part lengths in %s", seed, id)
+			continue
+		}
+
+		// version nibble = 4
+		if parts[2][0] != '4' {
+			t.Errorf("seed=%q: version nibble should be '4', got '%c' in %s", seed, parts[2][0], id)
+		}
+
+		// variant nibble ∈ {8,9,a,b}
+		v := parts[3][0]
+		if v != '8' && v != '9' && v != 'a' && v != 'b' {
+			t.Errorf("seed=%q: variant nibble should be 8/9/a/b, got '%c' in %s", seed, v, id)
+		}
+	}
+
+	// 幂等性：同 seed → 同 ID
+	id1 := svc.GenerateShadowDeviceID("stable-seed", "")
+	id2 := svc.GenerateShadowDeviceID("stable-seed", "")
+	if id1 != id2 {
+		t.Errorf("same seed produced different IDs: %s vs %s", id1, id2)
+	}
+}
