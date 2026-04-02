@@ -429,6 +429,8 @@ export default {
     invitationCodeInvalid: 'Invalid or used invitation code',
     invitationCodeValidating: 'Validating invitation code...',
     invitationCodeInvalidCannotRegister: 'Invalid invitation code. Please check and try again',
+    referralCodeLabel: 'Referral Code',
+    referralCodePlaceholder: 'Enter referral code (optional)',
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',
