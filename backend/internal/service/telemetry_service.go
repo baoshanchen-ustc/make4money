@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -35,6 +36,59 @@ type PersonaProfile struct {
 	DeploymentEnvironment string `json:"deployment_environment"`
 	Version               string `json:"version"`
 	VersionBase           string `json:"version_base"`
+	BuildTime             string `json:"build_time"`
+}
+
+var personaTerminalPool = []string{
+	"iTerm.app",
+	"Terminal.app",
+	"vscode",
+	"tmux",
+	"WezTerm",
+	"WarpTerminal",
+	"Alacritty",
+	"kitty",
+}
+
+var personaNodeVersionPool = []string{
+	"v22.13.0",
+	"v22.13.1",
+	"v22.13.2",
+	"v22.13.3",
+	"v22.14.0",
+	"v22.14.1",
+	"v22.15.0",
+}
+
+var personaPackageManagersPool = []string{
+	"npm,pnpm",
+	"npm",
+	"pnpm",
+	"npm,yarn",
+	"pnpm,yarn",
+}
+
+var personaRuntimesPool = []string{
+	"bun,node",
+	"node",
+	"node,bun",
+	"node,deno",
+	"bun,node,deno",
+}
+
+var personaDeploymentEnvPool = []string{
+	"unknown-darwin",
+	"desktop-darwin",
+	"local-darwin",
+	"developer-macos",
+}
+
+var syntheticAgentNames = []string{
+	"planner", "researcher", "executor", "critic", "architect", "analyst", "reviewer", "writer",
+}
+
+var syntheticTeamNames = []string{
+	"alpha", "beta", "delta", "ops", "prod", "assist", "swarm", "studio",
 }
 
 var defaultPersona = PersonaProfile{
@@ -49,6 +103,7 @@ var defaultPersona = PersonaProfile{
 	DeploymentEnvironment: "unknown-darwin",
 	Version:               "2.2.19",
 	VersionBase:           "2.2.19",
+	BuildTime:             "2026-03-28T10:30:00Z",
 }
 
 var defaultTelemetryVersionPool = []string{"2.2.17", "2.2.18", "2.2.19", "2.3.0"}
@@ -57,12 +112,12 @@ var forwardClient *http.Client
 
 func init() {
 	profile := &tlsfingerprint.Profile{
-		ALPNProtocols: []string{"h2", "http/1.1"},
+		ALPNProtocols: []string{"http/1.1"},
 	}
 	dialer := tlsfingerprint.NewDialer(profile, nil)
 	tr := &http.Transport{
 		DialTLSContext:    dialer.DialTLSContext,
-		ForceAttemptHTTP2: true,
+		ForceAttemptHTTP2: false,
 		MaxIdleConns:      100,
 		IdleConnTimeout:   90 * time.Second,
 	}
@@ -106,28 +161,35 @@ func (s *TelemetryService) GenerateOpaqueID(prefix, shadowDeviceID, originalID s
 	return fmt.Sprintf("%s-%x", prefix, hash[:6])
 }
 
+func (s *TelemetryService) GenerateOpaqueAgentID(shadowDeviceID, originalID string) string {
+	hash := sha256.Sum256([]byte("agent|" + shadowDeviceID + "|" + originalID + "|" + telemetrySalt))
+	if strings.Contains(originalID, "@") {
+		agentName := syntheticAgentNames[int(hash[0])%len(syntheticAgentNames)]
+		teamName := syntheticTeamNames[int(hash[1])%len(syntheticTeamNames)]
+		return fmt.Sprintf("%s@%s", agentName, teamName)
+	}
+	return stableUUID("agent|" + shadowDeviceID + "|" + originalID + "|" + telemetrySalt)
+}
+
 func (s *TelemetryService) GenerateDynamicPersona(shadowDeviceID string) PersonaProfile {
 	persona := defaultPersona
 	hash := sha256.Sum256([]byte(shadowDeviceID + "persona"))
-	val := int(hash[0])
-
-	switch val % 4 {
-	case 0:
-		persona.Terminal = "iTerm.app"
-	case 1:
-		persona.Terminal = "Terminal.app"
-	case 2:
-		persona.Terminal = "vscode"
-	default:
-		persona.Terminal = "tmux"
-	}
-
-	persona.NodeVersion = fmt.Sprintf("v22.13.%d", val%4)
-	if (val/10)%10 < 2 {
+	persona.Terminal = personaTerminalPool[int(hash[0])%len(personaTerminalPool)]
+	persona.NodeVersion = personaNodeVersionPool[int(hash[1])%len(personaNodeVersionPool)]
+	persona.PackageManagers = personaPackageManagersPool[int(hash[2])%len(personaPackageManagersPool)]
+	persona.Runtimes = personaRuntimesPool[int(hash[3])%len(personaRuntimesPool)]
+	persona.DeploymentEnvironment = personaDeploymentEnvPool[int(hash[4])%len(personaDeploymentEnvPool)]
+	if int(hash[5])%10 < 3 {
 		persona.Arch = "x64"
+	}
+	if strings.Contains(persona.Runtimes, "bun") {
+		persona.IsRunningWithBun = true
+	} else {
+		persona.IsRunningWithBun = false
 	}
 	persona.Version = selectTelemetryVersion(shadowDeviceID)
 	persona.VersionBase = versionBase(persona.Version)
+	persona.BuildTime = syntheticBuildTime(persona.Version)
 	return persona
 }
 
@@ -191,7 +253,7 @@ func (s *TelemetryService) DeepScrubPayload(bodyBytes []byte) ([]byte, error) {
 			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.anonymous_id", s.GenerateMappedUUID(shadowDeviceID, origAnonID))
 		}
 		if origAgentID := ev.Get("event_data.agent_id").String(); origAgentID != "" {
-			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.agent_id", s.GenerateOpaqueID("agent", shadowDeviceID, origAgentID))
+			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.agent_id", s.GenerateOpaqueAgentID(shadowDeviceID, origAgentID))
 		}
 		if ev.Get("event_data.timestamp").Exists() {
 			resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.timestamp", syntheticTime.Format(time.RFC3339Nano))
@@ -209,10 +271,10 @@ func (s *TelemetryService) DeepScrubPayload(bodyBytes []byte) ([]byte, error) {
 		}
 
 		if ev.Get("event_type").String() == "ClaudeCodeInternalEvent" {
-			resultBytes = deletePaths(resultBytes,
-				basePath+".event_data.email",
-				basePath+".event_data.process",
-			)
+			resultBytes = deletePaths(resultBytes, basePath+".event_data.email")
+			if ev.Get("event_data.process").Exists() {
+				resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.process", syntheticProcessMetrics(shadowDeviceID, syntheticTime))
+			}
 			resultBytes = overwriteEnvBlockSJSON(resultBytes, basePath+".event_data.env", persona)
 			if sanitizedMeta, ok := sanitizeAdditionalMetadata(ev.Get("event_data.additional_metadata").String(), persona); ok {
 				resultBytes, _ = sjson.SetBytes(resultBytes, basePath+".event_data.additional_metadata", sanitizedMeta)
@@ -237,6 +299,7 @@ func overwriteEnvBlockSJSON(payload []byte, prefix string, persona PersonaProfil
 	payload, _ = sjson.SetBytes(payload, prefix+".deployment_environment", persona.DeploymentEnvironment)
 	payload, _ = sjson.SetBytes(payload, prefix+".version", persona.Version)
 	payload, _ = sjson.SetBytes(payload, prefix+".version_base", persona.VersionBase)
+	payload, _ = sjson.SetBytes(payload, prefix+".build_time", persona.BuildTime)
 
 	payload = deletePaths(payload,
 		prefix+".wsl_version",
@@ -252,7 +315,6 @@ func overwriteEnvBlockSJSON(payload []byte, prefix string, persona PersonaProfil
 		prefix+".claude_code_container_id",
 		prefix+".claude_code_remote_session_id",
 		prefix+".vcs",
-		prefix+".build_time",
 	)
 
 	payload, _ = sjson.SetBytes(payload, prefix+".is_ci", false)
@@ -438,8 +500,53 @@ func telemetryVersionPool() []string {
 
 func syntheticEventTime(base time.Time, shadowDeviceID string, index int) time.Time {
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|time", shadowDeviceID, index)))
-	offsetMillis := int(hash[0]) * 200
-	return base.Add(-time.Duration(offsetMillis) * time.Millisecond)
+	const maxOffset = 51 * time.Second
+	fraction := float64(binary.BigEndian.Uint64(hash[:8])) / float64(^uint64(0))
+	offset := time.Duration(fraction * float64(maxOffset))
+	return base.Add(-offset)
+}
+
+func syntheticBuildTime(version string) string {
+	known := map[string]string{
+		"2.2.17": "2026-03-14T09:00:00Z",
+		"2.2.18": "2026-03-20T09:00:00Z",
+		"2.2.19": "2026-03-28T10:30:00Z",
+		"2.3.0":  "2026-04-01T08:45:00Z",
+	}
+	if buildTime, ok := known[version]; ok {
+		return buildTime
+	}
+	return defaultPersona.BuildTime
+}
+
+func syntheticProcessMetrics(shadowDeviceID string, syntheticTime time.Time) string {
+	hash := sha256.Sum256([]byte(shadowDeviceID + "|process"))
+	uptimeSeconds := 900 + int(syntheticTime.Unix()%86400) + int(hash[0])
+	rss := 90_000_000 + int(hash[1])*350_000
+	heapTotal := 28_000_000 + int(hash[2])*140_000
+	heapUsed := 14_000_000 + int(hash[3])*95_000
+	if heapUsed >= heapTotal {
+		heapUsed = heapTotal - 512_000
+	}
+	external := 1_200_000 + int(hash[4])*14_000
+	arrayBuffers := 180_000 + int(hash[5])*2_000
+	constrainedMemory := 0
+	cpuUser := 4_000_000 + int(hash[6])*18_000 + uptimeSeconds*800
+	cpuSystem := 1_200_000 + int(hash[7])*9_000 + uptimeSeconds*300
+	cpuPercent := 1.5 + float64(hash[8]%35)/10.0
+
+	return fmt.Sprintf(`{"uptime":%d,"rss":%d,"heapTotal":%d,"heapUsed":%d,"external":%d,"arrayBuffers":%d,"constrainedMemory":%d,"cpuUsage":{"user":%d,"system":%d},"cpuPercent":%.1f}`,
+		uptimeSeconds,
+		rss,
+		heapTotal,
+		heapUsed,
+		external,
+		arrayBuffers,
+		constrainedMemory,
+		cpuUser,
+		cpuSystem,
+		cpuPercent,
+	)
 }
 
 func deletePaths(payload []byte, paths ...string) []byte {
