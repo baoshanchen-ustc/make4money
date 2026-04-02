@@ -16,13 +16,12 @@ import (
 
 // Beta header 常量
 const (
-	BetaOAuth                    = "oauth-2025-04-20"
-	BetaClaudeCode               = "claude-code-20250219"
-	BetaInterleavedThinking      = "interleaved-thinking-2025-05-14"
-	BetaFineGrainedToolStreaming = "fine-grained-tool-streaming-2025-05-14"
-	BetaTokenCounting            = "token-counting-2024-11-01"
-	BetaContext1M                = "context-1m-2025-08-07"
-	BetaFastMode                 = "fast-mode-2026-02-01"
+	BetaOAuth               = "oauth-2025-04-20"
+	BetaClaudeCode          = "claude-code-20250219"
+	BetaInterleavedThinking = "interleaved-thinking-2025-05-14"
+	BetaTokenCounting       = "token-counting-2024-11-01"
+	BetaContext1M           = "context-1m-2025-08-07"
+	BetaFastMode            = "fast-mode-2026-02-01"
 )
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
@@ -30,7 +29,7 @@ const (
 var DroppedBetas = []string{}
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
-const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
+const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
 
 // MessageBetaHeaderNoTools /v1/messages 在无工具时的 beta header
 //
@@ -50,7 +49,7 @@ const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInter
 const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
 
 // APIKeyBetaHeader API-key 账号建议使用的 anthropic-beta header（不包含 oauth）
-const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
+const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking
 
 // APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下使用的 anthropic-beta header（不包含 oauth / claude-code）
 const APIKeyHaikuBetaHeader = BetaInterleavedThinking

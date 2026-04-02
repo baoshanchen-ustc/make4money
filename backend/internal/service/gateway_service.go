@@ -887,21 +887,7 @@ type claudeOAuthNormalizeOptions struct {
 	stripSystemCacheControl bool
 }
 
-// sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
-// We intentionally avoid broad keyword replacement in system prompts to prevent
-// accidentally changing user-provided instructions.
 func sanitizeSystemText(text string) string {
-	if text == "" {
-		return text
-	}
-	// Some clients include a fixed OpenCode identity sentence. Anthropic may treat
-	// this as a non-Claude-Code fingerprint, so rewrite it to the canonical
-	// Claude Code banner before generic "OpenCode"/"opencode" replacements.
-	text = strings.ReplaceAll(
-		text,
-		"You are OpenCode, the best coding agent on the planet.",
-		strings.TrimSpace(claudeCodeSystemPrompt),
-	)
 	return text
 }
 
@@ -1082,19 +1068,6 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 
 	if opts.injectMetadata && opts.metadataUserID != "" {
 		if next, changed := ensureClaudeOAuthMetadataUserID(out, opts.metadataUserID); changed {
-			out = next
-			modified = true
-		}
-	}
-
-	if gjson.GetBytes(out, "temperature").Exists() {
-		if next, ok := deleteJSONPathBytes(out, "temperature"); ok {
-			out = next
-			modified = true
-		}
-	}
-	if gjson.GetBytes(out, "tool_choice").Exists() {
-		if next, ok := deleteJSONPathBytes(out, "tool_choice"); ok {
 			out = next
 			modified = true
 		}
@@ -3873,11 +3846,6 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to build Claude Code prompt block: %v", err)
 		return body
 	}
-	// Opencode plugin applies an extra safeguard: it not only prepends the Claude Code
-	// banner, it also prefixes the next system instruction with the same banner plus
-	// a blank line. This helps when upstream concatenates system instructions.
-	claudeCodePrefix := strings.TrimSpace(claudeCodeSystemPrompt)
-
 	var items [][]byte
 
 	switch v := system.(type) {
@@ -3888,15 +3856,9 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 		if strings.TrimSpace(v) == "" || strings.TrimSpace(v) == strings.TrimSpace(claudeCodeSystemPrompt) {
 			items = [][]byte{claudeCodeBlock}
 		} else {
-			// Mirror opencode behavior: keep the banner as a separate system entry,
-			// but also prefix the next system text with the banner.
-			merged := v
-			if !strings.HasPrefix(v, claudeCodePrefix) {
-				merged = claudeCodePrefix + "\n\n" + v
-			}
-			nextBlock, buildErr := marshalAnthropicSystemTextBlock(merged, false)
+			nextBlock, buildErr := marshalAnthropicSystemTextBlock(v, false)
 			if buildErr != nil {
-				logger.LegacyPrintf("service.gateway", "Warning: failed to build prefixed Claude Code system block: %v", buildErr)
+				logger.LegacyPrintf("service.gateway", "Warning: failed to build Claude Code system block: %v", buildErr)
 				return body
 			}
 			items = [][]byte{claudeCodeBlock, nextBlock}
@@ -3904,7 +3866,6 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 	case []any:
 		items = make([][]byte, 0, len(v)+1)
 		items = append(items, claudeCodeBlock)
-		prefixedNext := false
 		systemResult := gjson.GetBytes(body, "system")
 		if systemResult.IsArray() {
 			systemResult.ForEach(func(_, item gjson.Result) bool {
@@ -3915,17 +3876,6 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 				}
 
 				raw := []byte(item.Raw)
-				// Prefix the first subsequent text system block once.
-				if !prefixedNext && item.Get("type").String() == "text" && textResult.Exists() && textResult.Type == gjson.String {
-					text := textResult.String()
-					if strings.TrimSpace(text) != "" && !strings.HasPrefix(text, claudeCodePrefix) {
-						next, setErr := sjson.SetBytes(raw, "text", claudeCodePrefix+"\n\n"+text)
-						if setErr == nil {
-							raw = next
-							prefixedNext = true
-						}
-					}
-				}
 				items = append(items, raw)
 				return true
 			})
@@ -3941,14 +3891,6 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 				}
 				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) == strings.TrimSpace(claudeCodeSystemPrompt) {
 					continue
-				}
-				if !prefixedNext {
-					if blockType, _ := m["type"].(string); blockType == "text" {
-						if text, ok := m["text"].(string); ok && strings.TrimSpace(text) != "" && !strings.HasPrefix(text, claudeCodePrefix) {
-							m["text"] = claudeCodePrefix + "\n\n" + text
-							prefixedNext = true
-						}
-					}
 				}
 				raw, marshalErr := json.Marshal(m)
 				if marshalErr == nil {
