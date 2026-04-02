@@ -5942,6 +5942,9 @@ func applyClaudeOAuthHeaderDefaults(req *http.Request) {
 			setHeaderRaw(req.Header, resolveWireCasing(key), value)
 		}
 	}
+	if getHeaderRaw(req.Header, "x-client-request-id") == "" {
+		setHeaderRaw(req.Header, "x-client-request-id", uuid.NewString())
+	}
 }
 
 func ensureClaudeCodeSessionHeader(req *http.Request, body []byte) {
