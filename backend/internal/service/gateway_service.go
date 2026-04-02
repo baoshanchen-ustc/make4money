@@ -4253,29 +4253,27 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						break
 					}
-					logger.LegacyPrintf("service.gateway", "[warn] Account %d: thinking blocks have invalid signature, retrying with filtered blocks", account.ID)
+					logger.LegacyPrintf("service.gateway", "[warn] Account %d: thinking blocks have invalid signature, retrying with a single rectified payload", account.ID)
 
-					// Conservative two-stage fallback:
-					// 1) Disable thinking + thinking->text (preserve content)
-					// 2) Only if upstream still errors AND error message points to tool/function signature issues:
-					//    also downgrade tool_use/tool_result blocks to text.
-
-					filteredBody := FilterThinkingBlocksForRetry(body)
+					rectifiedBody := FilterThinkingBlocksForRetry(body)
+					if looksLikeToolSignatureError(extractUpstreamErrorMessage(respBody)) {
+						rectifiedBody = FilterSignatureSensitiveBlocksForRetry(body)
+					}
 					retryCtx, releaseRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
-					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
 						retryResp, retryErr := doUpstream(retryReq)
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
-								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
+								logger.LegacyPrintf("service.gateway", "Account %d: signature rectifier retry succeeded", account.ID)
 								resp = retryResp
 								break
 							}
 
 							retryRespBody, retryReadErr := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
 							_ = retryResp.Body.Close()
-							if retryReadErr == nil && retryResp.StatusCode == 400 && s.isSignatureErrorPattern(ctx, account, retryRespBody) {
+							if retryReadErr == nil && retryResp.StatusCode == 400 {
 								appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 									Platform:           account.Platform,
 									AccountID:          account.ID,
@@ -4283,7 +4281,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									UpstreamStatusCode: retryResp.StatusCode,
 									UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
 									UpstreamURL:        safeUpstreamURL(retryReq.URL.String()),
-									Kind:               "signature_retry_thinking",
+									Kind:               "signature_retry_single",
 									Message:            extractUpstreamErrorMessage(retryRespBody),
 									Detail: func() string {
 										if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -4292,36 +4290,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 										return ""
 									}(),
 								})
-								msg2 := extractUpstreamErrorMessage(retryRespBody)
-								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
-									logger.LegacyPrintf("service.gateway", "Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
-									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
-									retryCtx2, releaseRetryCtx2 := detachStreamUpstreamContext(ctx, reqStream)
-									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
-									releaseRetryCtx2()
-									if buildErr2 == nil {
-										retryResp2, retryErr2 := doUpstream(retryReq2)
-										if retryErr2 == nil {
-											resp = retryResp2
-											break
-										}
-										if retryResp2 != nil && retryResp2.Body != nil {
-											_ = retryResp2.Body.Close()
-										}
-										appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-											Platform:           account.Platform,
-											AccountID:          account.ID,
-											AccountName:        account.Name,
-											UpstreamStatusCode: 0,
-											UpstreamURL:        safeUpstreamURL(retryReq2.URL.String()),
-											Kind:               "signature_retry_tools_request_error",
-											Message:            sanitizeUpstreamErrorMessage(retryErr2.Error()),
-										})
-										logger.LegacyPrintf("service.gateway", "Account %d: tool-downgrade signature retry failed: %v", account.ID, retryErr2)
-									} else {
-										logger.LegacyPrintf("service.gateway", "Account %d: tool-downgrade signature retry build failed: %v", account.ID, buildErr2)
-									}
-								}
 							}
 
 							// Fall back to the original retry response context.
@@ -4366,7 +4334,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 					rectifiedBody, applied := RectifyThinkingBudget(body)
 					if applied && time.Since(retryStart) < maxRetryElapsed {
-						logger.LegacyPrintf("service.gateway", "Account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, BudgetRectifyBudgetTokens, BudgetRectifyMaxTokens)
+						rectifiedBudget := gjson.GetBytes(rectifiedBody, "thinking.budget_tokens").Int()
+						rectifiedMax := gjson.GetBytes(rectifiedBody, "max_tokens").Int()
+						logger.LegacyPrintf("service.gateway", "Account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, rectifiedBudget, rectifiedMax)
 						budgetRetryCtx, releaseBudgetRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
 						budgetRetryReq, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 						releaseBudgetRetryCtx()

@@ -1604,16 +1604,21 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 				if claudeReq.Thinking == nil || claudeReq.Thinking.Type != "adaptive" {
 					retryClaudeReq := claudeReq
 					retryClaudeReq.Messages = append([]antigravity.ClaudeMessage(nil), claudeReq.Messages...)
+					currentBudget := int64(0)
+					if claudeReq.Thinking != nil {
+						currentBudget = int64(claudeReq.Thinking.BudgetTokens)
+					}
+					targetBudget, targetMaxTokens := RecommendRectifiedThinkingBudget(currentBudget, int64(retryClaudeReq.MaxTokens))
 					// 创建新的 ThinkingConfig 避免修改原始 claudeReq.Thinking 指针
 					retryClaudeReq.Thinking = &antigravity.ThinkingConfig{
 						Type:         "enabled",
-						BudgetTokens: BudgetRectifyBudgetTokens,
+						BudgetTokens: int(targetBudget),
 					}
-					if retryClaudeReq.MaxTokens < BudgetRectifyMinMaxTokens {
-						retryClaudeReq.MaxTokens = BudgetRectifyMaxTokens
+					if int64(retryClaudeReq.MaxTokens) != targetMaxTokens {
+						retryClaudeReq.MaxTokens = int(targetMaxTokens)
 					}
 
-					logger.LegacyPrintf("service.antigravity_gateway", "Antigravity account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, BudgetRectifyBudgetTokens, BudgetRectifyMaxTokens)
+					logger.LegacyPrintf("service.antigravity_gateway", "Antigravity account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, targetBudget, targetMaxTokens)
 
 					retryGeminiBody, txErr := antigravity.TransformClaudeToGeminiWithOptions(&retryClaudeReq, projectID, mappedModel, transformOpts)
 					if txErr == nil {

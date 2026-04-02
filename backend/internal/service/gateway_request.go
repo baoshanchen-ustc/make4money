@@ -971,13 +971,24 @@ func NormalizeClaudeOutputEffort(raw string) *string {
 // =========================
 
 const (
-	// BudgetRectifyBudgetTokens is the budget_tokens value to set when rectifying.
-	BudgetRectifyBudgetTokens = 32000
-	// BudgetRectifyMaxTokens is the max_tokens value to set when rectifying.
-	BudgetRectifyMaxTokens = 64000
-	// BudgetRectifyMinMaxTokens is the minimum max_tokens that must exceed budget_tokens.
-	BudgetRectifyMinMaxTokens = 32001
+	// BudgetRectifyMinBudgetTokens is the minimum valid budget_tokens required by upstream.
+	BudgetRectifyMinBudgetTokens = 1024
+	// BudgetRectifySafetyMargin ensures max_tokens remains strictly greater than budget_tokens.
+	BudgetRectifySafetyMargin = 1
 )
+
+func RecommendRectifiedThinkingBudget(currentBudget, maxTokens int64) (budgetTokens int64, targetMaxTokens int64) {
+	budgetTokens = currentBudget
+	if budgetTokens < BudgetRectifyMinBudgetTokens {
+		budgetTokens = BudgetRectifyMinBudgetTokens
+	}
+	targetMaxTokens = maxTokens
+	minRequiredMax := budgetTokens + BudgetRectifySafetyMargin
+	if targetMaxTokens < minRequiredMax {
+		targetMaxTokens = minRequiredMax
+	}
+	return budgetTokens, targetMaxTokens
+}
 
 // isThinkingBudgetConstraintError detects whether an upstream error message indicates
 // a budget_tokens constraint violation (e.g. "budget_tokens >= 1024").
@@ -1011,8 +1022,8 @@ func isThinkingBudgetConstraintError(errMsg string) bool {
 }
 
 // RectifyThinkingBudget modifies the request body to fix budget_tokens constraint errors.
-// It sets thinking.budget_tokens = 32000, thinking.type = "enabled" (unless adaptive),
-// and ensures max_tokens >= 32001.
+// It preserves the caller's existing scale where possible, only raising budget_tokens to
+// the minimum valid threshold and ensuring max_tokens remains strictly greater.
 // Returns (modified body, true) if changes were applied, or (original body, false) if not.
 func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 	// If thinking type is "adaptive", skip rectification entirely
@@ -1032,19 +1043,20 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 		}
 	}
 
-	// Set thinking.budget_tokens = 32000
+	// Raise thinking.budget_tokens to the minimum valid threshold if needed.
 	currentBudget := gjson.GetBytes(modified, "thinking.budget_tokens").Int()
-	if currentBudget != BudgetRectifyBudgetTokens {
-		if result, err := sjson.SetBytes(modified, "thinking.budget_tokens", BudgetRectifyBudgetTokens); err == nil {
+	targetBudget, targetMaxTokens := RecommendRectifiedThinkingBudget(currentBudget, gjson.GetBytes(modified, "max_tokens").Int())
+	if currentBudget != targetBudget {
+		if result, err := sjson.SetBytes(modified, "thinking.budget_tokens", targetBudget); err == nil {
 			modified = result
 			changed = true
 		}
 	}
 
-	// Ensure max_tokens >= BudgetRectifyMinMaxTokens
+	// Ensure max_tokens > budget_tokens
 	maxTokens := gjson.GetBytes(modified, "max_tokens").Int()
-	if maxTokens < int64(BudgetRectifyMinMaxTokens) {
-		if result, err := sjson.SetBytes(modified, "max_tokens", BudgetRectifyMaxTokens); err == nil {
+	if maxTokens != targetMaxTokens {
+		if result, err := sjson.SetBytes(modified, "max_tokens", targetMaxTokens); err == nil {
 			modified = result
 			changed = true
 		}
