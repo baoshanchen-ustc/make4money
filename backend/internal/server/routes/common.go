@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -13,8 +14,26 @@ func RegisterCommonRoutes(r *gin.Engine) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Claude Code 遥测日志（忽略，直接返回200）
+	// Claude Code 遥测日志：接管、清洗、异步放行
 	r.POST("/api/event_logging/batch", func(c *gin.Context) {
+		// 1. 提取原始凭证
+		token := c.GetHeader("x-api-key")
+
+		// 2. 读取原始 payload
+		bodyBytes, err := c.GetRawData()
+		if err == nil && len(bodyBytes) > 0 {
+			// 3. 进入拦截清洗协程（不阻塞给客户端返回 200）
+			go func(body []byte, clientToken string) {
+				importService := service.NewTelemetryService()
+				// shadowDeviceID 现在由 DeepScrubPayload 在解析时根据原生 device_id 动态生成
+				cleanedBytes, err := importService.DeepScrubPayload(body)
+				if err == nil {
+					importService.ForwardBackground(cleanedBytes, clientToken)
+				}
+			}(bodyBytes, token)
+		}
+
+		// 秒级放行，保证客户端侧无感
 		c.Status(http.StatusOK)
 	})
 
