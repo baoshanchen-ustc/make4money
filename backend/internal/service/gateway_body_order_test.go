@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,11 +39,11 @@ func TestNormalizeClaudeOAuthRequestBody_PreservesTopLevelFieldOrder(t *testing.
 	})
 	resultStr := string(result)
 
-	require.Equal(t, claude.NormalizeModelID("claude-3-5-sonnet-latest"), modelID)
-	assertJSONTokenOrder(t, resultStr, `"alpha"`, `"model"`, `"system"`, `"messages"`, `"omega"`, `"tools"`, `"metadata"`)
-	require.NotContains(t, resultStr, `"temperature"`)
-	require.NotContains(t, resultStr, `"tool_choice"`)
-	require.Contains(t, resultStr, `"system":"`+claudeCodeSystemPrompt+`"`)
+	require.Equal(t, "claude-3-5-sonnet-latest", modelID)
+	assertJSONTokenOrder(t, resultStr, `"alpha"`, `"model"`, `"temperature"`, `"system"`, `"messages"`, `"tool_choice"`, `"omega"`, `"tools"`, `"metadata"`)
+	require.Contains(t, resultStr, `"temperature":0.2`)
+	require.Contains(t, resultStr, `"tool_choice":{"type":"auto"}`)
+	require.Contains(t, resultStr, `"system":"You are OpenCode, the best coding agent on the planet."`)
 	require.Contains(t, resultStr, `"tools":[]`)
 	require.Contains(t, resultStr, `"metadata":{"user_id":"user-1"}`)
 }
@@ -58,7 +57,7 @@ func TestInjectClaudeCodePrompt_PreservesFieldOrder(t *testing.T) {
 	resultStr := string(result)
 
 	assertJSONTokenOrder(t, resultStr, `"alpha"`, `"system"`, `"messages"`, `"omega"`)
-	require.Contains(t, resultStr, `{"id":"block-1","type":"text","text":"`+claudeCodeSystemPrompt+`\n\nCustom"}`)
+	require.Contains(t, resultStr, `{"id":"block-1","type":"text","text":"Custom"}`)
 }
 
 func TestEnforceCacheControlLimit_PreservesTopLevelFieldOrder(t *testing.T) {
