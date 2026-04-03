@@ -77,12 +77,10 @@ const (
 	FieldSortOrder = "sort_order"
 	// FieldAllowMessagesDispatch holds the string denoting the allow_messages_dispatch field in the database.
 	FieldAllowMessagesDispatch = "allow_messages_dispatch"
-	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
-	FieldRequireOauthOnly = "require_oauth_only"
-	// FieldRequirePrivacySet holds the string denoting the require_privacy_set field in the database.
-	FieldRequirePrivacySet = "require_privacy_set"
 	// FieldDefaultMappedModel holds the string denoting the default_mapped_model field in the database.
 	FieldDefaultMappedModel = "default_mapped_model"
+	// FieldSimulateClaudeMaxEnabled holds the string denoting the simulate_claude_max_enabled field in the database.
+	FieldSimulateClaudeMaxEnabled = "simulate_claude_max_enabled"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -189,9 +187,8 @@ var Columns = []string{
 	FieldSupportedModelScopes,
 	FieldSortOrder,
 	FieldAllowMessagesDispatch,
-	FieldRequireOauthOnly,
-	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
+	FieldSimulateClaudeMaxEnabled,
 }
 
 var (
@@ -261,14 +258,12 @@ var (
 	DefaultSortOrder int
 	// DefaultAllowMessagesDispatch holds the default value on creation for the "allow_messages_dispatch" field.
 	DefaultAllowMessagesDispatch bool
-	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
-	DefaultRequireOauthOnly bool
-	// DefaultRequirePrivacySet holds the default value on creation for the "require_privacy_set" field.
-	DefaultRequirePrivacySet bool
 	// DefaultDefaultMappedModel holds the default value on creation for the "default_mapped_model" field.
 	DefaultDefaultMappedModel string
 	// DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
 	DefaultMappedModelValidator func(string) error
+	// DefaultSimulateClaudeMaxEnabled holds the default value on creation for the "simulate_claude_max_enabled" field.
+	DefaultSimulateClaudeMaxEnabled bool
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -424,19 +419,14 @@ func ByAllowMessagesDispatch(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowMessagesDispatch, opts...).ToFunc()
 }
 
-// ByRequireOauthOnly orders the results by the require_oauth_only field.
-func ByRequireOauthOnly(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRequireOauthOnly, opts...).ToFunc()
-}
-
-// ByRequirePrivacySet orders the results by the require_privacy_set field.
-func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRequirePrivacySet, opts...).ToFunc()
-}
-
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// BySimulateClaudeMaxEnabled orders the results by the simulate_claude_max_enabled field.
+func BySimulateClaudeMaxEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSimulateClaudeMaxEnabled, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

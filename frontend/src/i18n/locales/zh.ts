@@ -335,10 +335,10 @@ export default {
     profile: '个人资料',
     users: '用户管理',
     groups: '分组管理',
+    channels: '渠道管理',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
-    channels: '渠道管理',
     redeemCodes: '兑换码',
     ops: '运维监控',
     promoCodes: '优惠码',
@@ -1800,7 +1800,7 @@ export default {
       }
     },
 
-    // Channels
+    // Channel Management
     channels: {
       title: '渠道管理',
       description: '管理渠道和自定义模型定价',
@@ -2128,7 +2128,6 @@ export default {
       privacyAntigravityFailed: '隐私设置失败',
       setPrivacy: '设置隐私',
       subscriptionAbnormal: '异常',
-      subscriptionExpires: '到期',
       // 容量状态提示
       capacity: {
         windowCost: {
@@ -2240,8 +2239,8 @@ export default {
         rateLimitedAutoResume: '{time} 自动恢复',
         modelRateLimitedUntil: '{model} 限流至 {time}',
         modelCreditOveragesUntil: '{model} 正在使用 AI Credits，至 {time}',
-        creditsExhausted: '积分已用尽',
-        creditsExhaustedUntil: 'AI Credits 已用尽，预计 {time} 恢复',
+        creditsExhausted: 'AICredits',
+        creditsExhaustedUntil: 'AICredits, recovery at {time}',
         overloadedUntil: '负载过重，重置时间：{time}',
         viewTempUnschedDetails: '查看临时不可调度详情'
       },
@@ -2507,7 +2506,7 @@ export default {
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',
-        hint: '配置费用窗口、会话限制、客户端亲和等调度控制。',
+        hint: '配置亲和配置（用户亲和、客户端亲和）、费用窗口、会话限制等调度控制。',
         windowCost: {
           label: '5h窗口费用控制',
           hint: '限制账号在5小时窗口内的费用使用',
@@ -2575,12 +2574,15 @@ export default {
           hint: '启用后，新会话会优先调度到该客户端之前使用过的账号，避免频繁切换账号'
         }
       },
+      affinityConfigTitle: '亲和配置',
+      affinityConfigHint: '在配额控制下配置用户亲和与客户端亲和调度规则。',
       affinityNoClients: '无亲和客户端',
-      affinityClients: '{count} 个亲和客户端：',
+      affinityClients: '{count} 个客户端亲和',
+      affinityClientCountLabel: '{count} 个客户端',
       affinitySection: '客户端亲和',
       affinitySectionHint: '控制客户端在账号间的分布。通过配置区域阈值来平衡负载。',
-      affinityToggle: '启用客户端亲和',
-      affinityToggleHint: '新会话优先调度到该客户端之前使用过的账号',
+      affinityToggle: '启用亲和调度',
+      affinityToggleHint: '启用后，新会话会优先命中用户亲和与客户端亲和规则',
       affinityBase: '基础限额（绿区）',
       affinityBasePlaceholder: '留空表示不限制',
       affinityBaseHint: '绿区最大客户端数量（完整优先级调度）',
@@ -2589,6 +2591,28 @@ export default {
       affinityBufferPlaceholder: '例如 3',
       affinityBufferHint: '黄区允许的额外客户端数量（降级优先级调度）',
       affinityBufferInfinite: '不限制',
+      affinityAllowSwitch: '允许切换',
+      affinityAllowSwitchHint: '亲和账号不可用时允许调度到其他账号',
+      affinityAllowSwitchWarning: '关闭后，亲和账号不可用将直接返回错误',
+      affinityUserSection: '用户亲和',
+      affinityUserSectionHint: '配置用户维度的亲和容量与调度规则',
+      affinityUserBase: '基础限额（绿区）',
+      affinityUserBaseHint: '绿区最大用户数量（完整优先级调度）',
+      affinityUserBuffer: '缓冲区（黄区）',
+      affinityUserBufferHint: '黄区允许的额外用户数量（降级优先级调度）',
+      affinityClientSection: '客户端亲和',
+      affinityClientSectionHint: '配置客户端维度的亲和容量与调度规则',
+      affinityPerUserLimit: '每用户客户端限制',
+      affinityPerUserLimitHint: '限制每个用户可使用的不同客户端数量',
+      affinityPerUserMax: '最大客户端数',
+      affinityPinnedUsers: '指定亲和用户',
+      affinityPinnedUsersHint: '预先绑定的用户将自动创建亲和缓存，占用用户亲和名额',
+      affinityPinnedUsersSearch: '搜索用户邮箱或用户名...',
+      affinityPinnedUsersEmpty: '未指定亲和用户',
+      affinityUsers: '{count} 个用户亲和',
+      affinityNoUsers: '无亲和用户',
+      affinityDetailTitle: '亲和详情',
+      affinityPinnedLabel: '指定',
       expired: '已过期',
       proxy: '代理',
       noProxy: '无代理',
@@ -3519,6 +3543,11 @@ export default {
       allBillingTypes: '全部计费类型',
       billingTypeBalance: '钱包余额',
       billingTypeSubscription: '订阅套餐',
+      billingMode: '计费模式',
+      billingModeToken: '按量',
+      billingModePerRequest: '按次',
+      billingModeImage: '按次(图片)',
+      allBillingModes: '全部计费模式',
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
@@ -4618,7 +4647,7 @@ export default {
       },
       soraS3: {
         title: 'Sora 存储配置',
-        description: '以多配置列表管理 Sora 媒体存储，支持 S3 和 Google Drive',
+        description: '以多配置列表管理 Sora 媒体存储，支持 S3',
         newProfile: '新建配置',
         reloadProfiles: '刷新列表',
         empty: '暂无存储配置，请先创建',
@@ -4626,7 +4655,6 @@ export default {
         editTitle: '编辑存储配置',
         selectProvider: '选择存储类型',
         providerS3Desc: 'S3 兼容对象存储',
-        providerGDriveDesc: 'Google Drive 云盘',
         profileID: '配置 ID',
         profileName: '配置名称',
         setActive: '创建后设为生效',
@@ -4684,29 +4712,7 @@ export default {
         testSuccess: '连接测试成功',
         testFailed: '连接测试失败',
         saved: '存储设置保存成功',
-        saveFailed: '保存存储设置失败',
-        gdrive: {
-          authType: '认证方式',
-          serviceAccount: '服务账号',
-          clientId: 'Client ID',
-          clientSecret: 'Client Secret',
-          clientSecretConfigured: '(已配置，留空保持不变)',
-          refreshToken: 'Refresh Token',
-          refreshTokenConfigured: '(已配置，留空保持不变)',
-          serviceAccountJson: '服务账号 JSON',
-          serviceAccountConfigured: '(已配置，留空保持不变)',
-          folderId: 'Folder ID（可选）',
-          authorize: '授权 Google Drive',
-          authorizeHint: '通过 OAuth2 获取 Refresh Token',
-          oauthFieldsRequired: '请先填写 Client ID 和 Client Secret',
-          oauthSuccess: 'Google Drive 授权成功',
-          oauthFailed: 'Google Drive 授权失败',
-          closeWindow: '此窗口将自动关闭',
-          processing: '正在处理授权...',
-          testStorage: '测试存储',
-          testSuccess: 'Google Drive 存储测试成功（上传、访问、删除均正常）',
-          testFailed: 'Google Drive 存储测试失败'
-        }
+        saveFailed: '保存存储设置失败'
       },
       overloadCooldown: {
         title: '529 过载冷却',

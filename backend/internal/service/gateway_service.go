@@ -42,7 +42,7 @@ import (
 const (
 	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
-	stickySessionTTL        = time.Hour // 粘性会话TTL
+	stickySessionTTL        = time.Hour      // 粘性会话TTL
 	defaultMaxLineSize      = 500 * 1024 * 1024
 	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
 	// to match real Claude CLI traffic as closely as possible. When we need a visual
@@ -60,14 +60,22 @@ const (
 	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
 )
 
+// MediaType 媒体类型常量
+const (
+	MediaTypeImage  = "image"
+	MediaTypeVideo  = "video"
+	MediaTypePrompt = "prompt"
+)
+
+
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{}
 
 // accountWithLoad 账号与负载信息的组合，用于负载感知调度
 type accountWithLoad struct {
-	account  *Account
-	loadInfo *AccountLoadInfo
+	account       *Account
+	loadInfo      *AccountLoadInfo
 }
 
 var ForceCacheBillingContextKey = forceCacheBillingKeyType{}
@@ -331,6 +339,7 @@ var (
 	sseDataRe            = regexp.MustCompile(`^data:\s*`)
 	claudeCliUserAgentRe = regexp.MustCompile(`^claude-cli/\d+\.\d+\.\d+`)
 
+
 	// claudeCodePromptPrefixes 用于检测 Claude Code 系统提示词的前缀列表
 	// 支持多种变体：标准版、Agent SDK 版、Explore Agent 版、Compact 版等
 	// 注意：前缀之间不应存在包含关系，否则会导致冗余匹配
@@ -347,6 +356,7 @@ var ErrNoAvailableAccounts = errors.New("no available accounts")
 
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
+
 
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
@@ -391,7 +401,9 @@ type GatewayCache interface {
 	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
+
 }
+
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
 func derefGroupID(groupID *int64) int64 {
@@ -461,6 +473,7 @@ func shouldClearStickySession(account *Account, requestedModel string) bool {
 	return false
 }
 
+
 type AccountWaitPlan struct {
 	AccountID      int64
 	MaxConcurrency int
@@ -483,6 +496,7 @@ type ClaudeUsage struct {
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
+	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 }
 
 // ForwardResult 转发结果
@@ -568,6 +582,8 @@ type GatewayService struct {
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	debugModelRouting     atomic.Bool
 	debugClaudeMimic      atomic.Bool
+	channelService        *ChannelService
+	resolver              *ModelPricingResolver
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 }
@@ -597,6 +613,8 @@ func NewGatewayService(
 	digestStore *DigestSessionStore,
 	settingService *SettingService,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	channelService *ChannelService,
+	resolver *ModelPricingResolver,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -629,6 +647,8 @@ func NewGatewayService(
 		modelsListCacheTTL:   modelsListTTL,
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:  tlsFPProfileService,
+		channelService:       channelService,
+		resolver:             resolver,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -866,17 +886,7 @@ type anthropicMetadataPayload struct {
 // replaceModelInBody 替换请求体中的model字段
 // 优先使用定点修改，尽量保持客户端原始字段顺序。
 func (s *GatewayService) replaceModelInBody(body []byte, newModel string) []byte {
-	if len(body) == 0 {
-		return body
-	}
-	if current := gjson.GetBytes(body, "model"); current.Exists() && current.String() == newModel {
-		return body
-	}
-	newBody, err := sjson.SetBytes(body, "model", newModel)
-	if err != nil {
-		return body
-	}
-	return newBody
+	return ReplaceModelInBody(body, newModel)
 }
 
 type claudeOAuthNormalizeOptions struct {
@@ -1186,6 +1196,15 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		platform = PlatformAnthropic
 	}
 
+	// Claude Code 限制可能已将 groupID 解析为 fallback group，
+	// 渠道限制预检查必须使用解析后的分组。
+	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+		slog.Warn("channel pricing restriction blocked request",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel)
+		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+	}
+
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
 	// 注意：强制平台模式不走混合调度
 	if (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform {
@@ -1198,8 +1217,10 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 }
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
-// metadataUserID: 已废弃参数，会话限制现在统一使用 sessionHash
-func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string) (*AccountSelectionResult, error) {
+// 调度流程文档见 docs/ACCOUNT_SCHEDULING_FLOW.md 。
+// metadataUserID: 用于客户端亲和调度，从中提取客户端 ID
+// sub2apiUserID: 系统用户 ID，用于二维亲和调度
+func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -1220,6 +1241,15 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 	ctx = s.withGroupContext(ctx, group)
 
+	// Claude Code 限制可能已将 groupID 解析为 fallback group，
+	// 渠道限制预检查必须使用解析后的分组。
+	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+		slog.Warn("channel pricing restriction blocked request",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel)
+		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+	}
+
 	var stickyAccountID int64
 	if prefetch := prefetchedStickyAccountIDFromContext(ctx, groupID); prefetch > 0 {
 		stickyAccountID = prefetch
@@ -1228,6 +1258,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			stickyAccountID = accountID
 		}
 	}
+
+	// 提取客户端 ID（用于客户端亲和调度）
 
 	if s.debugModelRoutingEnabled() && requestedModel != "" {
 		groupPlatform := ""
@@ -1317,18 +1349,17 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
+	// 提前构建 accountByID（供 Layer 1 和 Layer 1.5 使用）
+	accountByID := make(map[int64]*Account, len(accounts))
+	for i := range accounts {
+		accountByID[accounts[i].ID] = &accounts[i]
+	}
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
 			return false
 		}
 		_, excluded := excludedIDs[accountID]
 		return excluded
-	}
-
-	// 提前构建 accountByID（供 Layer 1 和 Layer 1.5 使用）
-	accountByID := make(map[int64]*Account, len(accounts))
-	for i := range accounts {
-		accountByID[accounts[i].ID] = &accounts[i]
 	}
 
 	// 获取模型路由配置（仅 anthropic 平台）
@@ -1418,24 +1449,19 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) {
 					// 粘性账号在路由列表中，优先使用
 					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
-						var stickyCacheMissReason string
-
-						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
+						if s.isAccountSchedulableForSelection(stickyAccount) &&
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
 							s.isAccountSchedulableForQuota(stickyAccount) &&
-							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
+							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) &&
 
-						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
-
-						if rpmPass { // 粘性会话窗口费用+RPM 检查
+							s.isAccountSchedulableForRPM(ctx, stickyAccount, true) { // 粘性会话窗口费用+RPM 检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
 								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
 									result.ReleaseFunc() // 释放槽位
-									stickyCacheMissReason = "session_limit"
 									// 继续到负载感知选择
 								} else {
 									if s.debugModelRoutingEnabled() {
@@ -1449,49 +1475,27 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 								}
 							}
 
-							if stickyCacheMissReason == "" {
-								waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
-								if waitingCount < cfg.StickySessionMaxWaiting {
-									// 会话数量限制检查（等待计划也需要占用会话配额）
-									if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
-										stickyCacheMissReason = "session_limit"
-										// 会话限制已满，继续到负载感知选择
-									} else {
-										return &AccountSelectionResult{
-											Account: stickyAccount,
-											WaitPlan: &AccountWaitPlan{
-												AccountID:      stickyAccountID,
-												MaxConcurrency: stickyAccount.Concurrency,
-												Timeout:        cfg.StickySessionWaitTimeout,
-												MaxWaiting:     cfg.StickySessionMaxWaiting,
-											},
-										}, nil
-									}
+							waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
+							if waitingCount < cfg.StickySessionMaxWaiting {
+								// 会话数量限制检查（等待计划也需要占用会话配额）
+								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
+									// 会话限制已满，继续到负载感知选择
 								} else {
-									stickyCacheMissReason = "wait_queue_full"
+									return &AccountSelectionResult{
+										Account: stickyAccount,
+										WaitPlan: &AccountWaitPlan{
+											AccountID:      stickyAccountID,
+											MaxConcurrency: stickyAccount.Concurrency,
+											Timeout:        cfg.StickySessionWaitTimeout,
+											MaxWaiting:     cfg.StickySessionMaxWaiting,
+										},
+									}, nil
 								}
 							}
 							// 粘性账号槽位满且等待队列已满，继续使用负载感知选择
-						} else if !gatePass {
-							stickyCacheMissReason = "gate_check"
-						} else {
-							stickyCacheMissReason = "rpm_red"
-						}
-
-						// 记录粘性缓存未命中的结构化日志
-						if stickyCacheMissReason != "" {
-							baseRPM := stickyAccount.GetBaseRPM()
-							var currentRPM int
-							if count, ok := rpmFromPrefetchContext(ctx, stickyAccount.ID); ok {
-								currentRPM = count
-							}
-							logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=%s account_id=%d session=%s current_rpm=%d base_rpm=%d",
-								stickyCacheMissReason, stickyAccountID, shortSessionHash(sessionHash), currentRPM, baseRPM)
 						}
 					} else {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
-						logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=account_cleared account_id=%d session=%s current_rpm=0 base_rpm=0",
-							stickyAccountID, shortSessionHash(sessionHash))
 					}
 				}
 			}
@@ -1519,7 +1523,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 
 			if len(routingAvailable) > 0 {
-				// 排序：优先级 > 负载率 > 最后使用时间
+
+				// 排序：优先级 > 负载率 > 亲和客户端数 > 最后使用时间
 				sort.SliceStable(routingAvailable, func(i, j int) bool {
 					a, b := routingAvailable[i], routingAvailable[j]
 					if a.account.Priority != b.account.Priority {
@@ -1590,14 +1595,17 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 	}
 
-	// ============ Layer 1.5: 粘性会话（仅在无模型路由配置时生效） ============
+	// ============ Layer 1.3: 用户亲和预处理（pinned_users 自动注入） ============
+
+	// ============ Layer 1.4: 客户端亲和调度（优先于粘性会话） ============
+
+	// ============ Layer 1.5: 粘性会话（仅在无模型路由配置 且 亲和未命中时生效） ============
 	if len(routingAccountIDs) == 0 && sessionHash != "" && stickyAccountID > 0 && !isExcluded(stickyAccountID) {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
 			account, ok := accountByID[accountID]
 			if ok {
 				// 检查账户是否需要清理粘性会话绑定
-				// Check if the account needs sticky session cleanup
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
 					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
@@ -1613,7 +1621,6 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
-						// Session count limit check
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							result.ReleaseFunc() // 释放槽位，继续到 Layer 2
 						} else {
@@ -1628,10 +1635,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
 					if waitingCount < cfg.StickySessionMaxWaiting {
 						// 会话数量限制检查（等待计划也需要占用会话配额）
-						// Session count limit check (wait plan also requires session quota)
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							// 会话限制已满，继续到 Layer 2
-							// Session limit full, continue to Layer 2
 						} else {
 							return &AccountSelectionResult{
 								Account: account,
@@ -1718,13 +1723,15 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 分层过滤选择：优先级 → 负载率 → LRU
+
+		// 分层过滤选择：优先级 → 亲和三区 → 负载率 → 亲和客户端数 → LRU
 		for len(available) > 0 {
 			// 1. 取优先级最小的集合
 			candidates := filterByMinPriority(available)
-			// 2. 取负载率最低的集合
+			// 2. 按亲和三区过滤：绿区优先 → 黄区降级 → 红区移除（在同优先级内）
+			// 3. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
-			// 3. LRU 选择最久未用的账号
+			// 4. LRU 选择最久未用的账号
 			selected := selectByLRU(candidates, preferOAuth)
 			if selected == nil {
 				break
@@ -1739,6 +1746,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
 					}
+					// 更新亲和关系
 					return &AccountSelectionResult{
 						Account:     selected.account,
 						Acquired:    true,
@@ -2496,6 +2504,7 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 	return s.accountRepo.GetByID(ctx, accountID)
 }
 
+
 // filterByMinPriority 过滤出优先级最小的账号集合
 func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 	if len(accounts) == 0 {
@@ -2535,6 +2544,8 @@ func filterByMinLoadRate(accounts []accountWithLoad) []accountWithLoad {
 	}
 	return result
 }
+
+
 
 // selectByLRU 从集合中选择最久未用的账号
 // 如果有多个账号具有相同的最小 LastUsedAt，则随机选择一个
@@ -2771,12 +2782,6 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	preferOAuth := platform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
 
-	// require_privacy_set: 获取分组信息
-	var schedGroup *Group
-	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
-	}
-
 	var accounts []Account
 	accountsLoaded := false
 
@@ -2800,7 +2805,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -2846,12 +2851,6 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
 			if !s.isAccountSchedulableForSelection(acc) {
-				continue
-			}
-			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
-			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
-				_ = s.accountRepo.SetError(ctx, acc.ID,
-					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 				continue
 			}
 			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
@@ -2945,6 +2944,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持）
+	// needsUpstreamCheck 仅在主选择循环中使用；粘性会话命中时跳过此检查，
+	// 因为粘性会话优先保持连接一致性，且 upstream 计费基准极少使用。
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
@@ -2956,13 +2958,10 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 		}
-		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
-		if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
-			_ = s.accountRepo.SetError(ctx, acc.ID,
-				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
 			continue
 		}
-		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel) {
 			continue
 		}
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
@@ -3024,12 +3023,6 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, nativePlatform string) (*Account, error) {
 	preferOAuth := nativePlatform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, nativePlatform)
-
-	// require_privacy_set: 获取分组信息
-	var schedGroup *Group
-	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
-	}
 
 	var accounts []Account
 	accountsLoaded := false
@@ -3096,12 +3089,6 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
 			if !s.isAccountSchedulableForSelection(acc) {
-				continue
-			}
-			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
-			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
-				_ = s.accountRepo.SetError(ctx, acc.ID,
-					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 				continue
 			}
 			// 过滤：原生平台直接通过，antigravity 需要启用混合调度
@@ -3173,7 +3160,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							return account, nil
 						}
@@ -3197,6 +3184,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
@@ -3208,17 +3196,14 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 		}
-		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
-		if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
-			_ = s.accountRepo.SetError(ctx, acc.ID,
-				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
-			continue
-		}
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
 		if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
 			continue
 		}
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			continue
+		}
+		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel) {
 			continue
 		}
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
@@ -3544,6 +3529,10 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
+	}
+	// OpenAI 透传模式：仅替换认证，允许所有模型
+	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
+		return true
 	}
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
@@ -7332,6 +7321,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 	}
 
+
 	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类
 	if account.IsCacheTTLOverrideEnabled() {
 		overrideTarget := account.GetCacheTTLOverrideTarget()
@@ -7399,6 +7389,7 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
 	Result             *ForwardResult
+	ParsedRequest      *ParsedRequest
 	APIKey             *APIKey
 	User               *User
 	Account            *Account
@@ -7410,6 +7401,8 @@ type RecordUsageInput struct {
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
+
+	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
 
 // APIKeyQuotaUpdater defines the interface for updating API Key quota and rate limit usage
@@ -7437,6 +7430,18 @@ type postUsageBillingParams struct {
 	IsSubscriptionBill    bool
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
+}
+
+func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
+	return p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil
+}
+
+func (p *postUsageBillingParams) shouldUpdateRateLimits() bool {
+	return p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil
+}
+
+func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
+	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
 }
 
 // postUsageBilling 统一处理使用量记录后的扣费逻辑：
@@ -7468,21 +7473,21 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	}
 
 	// 2. API Key 配额
-	if cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil {
+	if p.shouldDeductAPIKeyQuota() {
 		if err := p.APIKeyService.UpdateQuotaUsed(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key quota failed", "api_key_id", p.APIKey.ID, "error", err)
 		}
 	}
 
 	// 3. API Key 限速用量
-	if cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil {
+	if p.shouldUpdateRateLimits() {
 		if err := p.APIKeyService.UpdateRateLimitUsage(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key rate limit usage failed", "api_key_id", p.APIKey.ID, "error", err)
 		}
 	}
 
 	// 4. 账号配额用量（账号口径：TotalCost × 账号计费倍率）
-	if cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit() {
+	if p.shouldUpdateAccountQuota() {
 		accountCost := cost.TotalCost * p.AccountRateMultiplier
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
 			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
@@ -7564,13 +7569,13 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
 
-	if p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil {
+	if p.shouldDeductAPIKeyQuota() {
 		cmd.APIKeyQuotaCost = p.Cost.ActualCost
 	}
-	if p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil {
+	if p.shouldUpdateRateLimits() {
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
-	if p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit() {
+	if p.shouldUpdateAccountQuota() {
 		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
 	}
 
@@ -7694,191 +7699,42 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	}
 }
 
+// recordUsageOpts 内部选项，参数化 RecordUsage 与 RecordUsageWithLongContext 的差异点。
+type recordUsageOpts struct {
+	// Claude Max 策略所需的 ParsedRequest（可选，仅 Claude 路径传入）
+	ParsedRequest *ParsedRequest
+
+	// EnableClaudePath 启用 Claude 路径特有逻辑：
+	// - Claude Max 缓存计费策略
+	// - Sora 媒体类型分支（image/video/prompt）
+	// - MediaType 字段写入使用日志
+	EnableClaudePath bool
+
+	// 长上下文计费（仅 Gemini 路径需要）
+	LongContextThreshold  int
+	LongContextMultiplier float64
+}
+
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
-	result := input.Result
-	apiKey := input.APIKey
-	user := input.User
-	account := input.Account
-	subscription := input.Subscription
-
-	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
-	// 用于粘性会话切换时的特殊计费处理
-	if input.ForceCacheBilling && result.Usage.InputTokens > 0 {
-		logger.LegacyPrintf("service.gateway", "force_cache_billing: %d input_tokens → cache_read_input_tokens (account=%d)",
-			result.Usage.InputTokens, account.ID)
-		result.Usage.CacheReadInputTokens += result.Usage.InputTokens
-		result.Usage.InputTokens = 0
-	}
-
-	// Cache TTL Override: 确保计费时 token 分类与账号设置一致
-	cacheTTLOverridden := false
-	if account.IsCacheTTLOverrideEnabled() {
-		applyCacheTTLOverride(&result.Usage, account.GetCacheTTLOverrideTarget())
-		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
-	}
-
-	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
-	multiplier := 1.0
-	if s.cfg != nil {
-		multiplier = s.cfg.Default.RateMultiplier
-	}
-	if apiKey.GroupID != nil && apiKey.Group != nil {
-		groupDefault := apiKey.Group.RateMultiplier
-		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
-	}
-
-	var cost *CostBreakdown
-	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-
-	// 根据请求类型选择计费方式
-	if result.MediaType == "image" || result.MediaType == "video" {
-		var soraConfig *SoraPriceConfig
-		if apiKey.Group != nil {
-			soraConfig = &SoraPriceConfig{
-				ImagePrice360:          apiKey.Group.SoraImagePrice360,
-				ImagePrice540:          apiKey.Group.SoraImagePrice540,
-				VideoPricePerRequest:   apiKey.Group.SoraVideoPricePerRequest,
-				VideoPricePerRequestHD: apiKey.Group.SoraVideoPricePerRequestHD,
-			}
-		}
-		if result.MediaType == "image" {
-			cost = s.billingService.CalculateSoraImageCost(result.ImageSize, result.ImageCount, soraConfig, multiplier)
-		} else {
-			cost = s.billingService.CalculateSoraVideoCost(billingModel, soraConfig, multiplier)
-		}
-	} else if result.MediaType == "prompt" {
-		cost = &CostBreakdown{}
-	} else if result.ImageCount > 0 {
-		// 图片生成计费
-		var groupConfig *ImagePriceConfig
-		if apiKey.Group != nil {
-			groupConfig = &ImagePriceConfig{
-				Price1K: apiKey.Group.ImagePrice1K,
-				Price2K: apiKey.Group.ImagePrice2K,
-				Price4K: apiKey.Group.ImagePrice4K,
-			}
-		}
-		cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
-	} else {
-		// Token 计费
-		tokens := UsageTokens{
-			InputTokens:           result.Usage.InputTokens,
-			OutputTokens:          result.Usage.OutputTokens,
-			CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-			CacheReadTokens:       result.Usage.CacheReadInputTokens,
-			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-		}
-		var err error
-		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
-		if err != nil {
-			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
-			cost = &CostBreakdown{ActualCost: 0}
-		}
-	}
-
-	// 判断计费方式：订阅模式 vs 余额模式
-	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
-	billingType := BillingTypeBalance
-	if isSubscriptionBilling {
-		billingType = BillingTypeSubscription
-	}
-
-	// 创建使用日志
-	durationMs := int(result.Duration.Milliseconds())
-	var imageSize *string
-	if result.ImageSize != "" {
-		imageSize = &result.ImageSize
-	}
-	var mediaType *string
-	if strings.TrimSpace(result.MediaType) != "" {
-		mediaType = &result.MediaType
-	}
-	accountRateMultiplier := account.BillingRateMultiplier()
-	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
-	usageLog := &UsageLog{
-		UserID:                user.ID,
-		APIKeyID:              apiKey.ID,
-		AccountID:             account.ID,
-		RequestID:             requestID,
-		Model:                 result.Model,
-		RequestedModel:        result.Model,
-		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
-		ReasoningEffort:       result.ReasoningEffort,
-		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
-		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:           result.Usage.InputTokens,
-		OutputTokens:          result.Usage.OutputTokens,
-		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:       result.Usage.CacheReadInputTokens,
-		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-		InputCost:             cost.InputCost,
-		OutputCost:            cost.OutputCost,
-		CacheCreationCost:     cost.CacheCreationCost,
-		CacheReadCost:         cost.CacheReadCost,
-		TotalCost:             cost.TotalCost,
-		ActualCost:            cost.ActualCost,
-		RateMultiplier:        multiplier,
-		AccountRateMultiplier: &accountRateMultiplier,
-		BillingType:           billingType,
-		Stream:                result.Stream,
-		DurationMs:            &durationMs,
-		FirstTokenMs:          result.FirstTokenMs,
-		ImageCount:            result.ImageCount,
-		ImageSize:             imageSize,
-		MediaType:             mediaType,
-		CacheTTLOverridden:    cacheTTLOverridden,
-		CreatedAt:             time.Now(),
-	}
-
-	// 添加 UserAgent
-	if input.UserAgent != "" {
-		usageLog.UserAgent = &input.UserAgent
-	}
-
-	// 添加 IPAddress
-	if input.IPAddress != "" {
-		usageLog.IPAddress = &input.IPAddress
-	}
-
-	// 添加分组和订阅关联
-	if apiKey.GroupID != nil {
-		usageLog.GroupID = apiKey.GroupID
-	}
-	if subscription != nil {
-		usageLog.SubscriptionID = &subscription.ID
-	}
-
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
-		return nil
-	}
-
-	billingErr := func() error {
-		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-			Cost:                  cost,
-			User:                  user,
-			APIKey:                apiKey,
-			Account:               account,
-			Subscription:          subscription,
-			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-			IsSubscriptionBill:    isSubscriptionBilling,
-			AccountRateMultiplier: accountRateMultiplier,
-			APIKeyService:         input.APIKeyService,
-		}, s.billingDeps(), s.usageBillingRepo)
-		return err
-	}()
-
-	if billingErr != nil {
-		return billingErr
-	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-
-	return nil
+	return s.recordUsageCore(ctx, &recordUsageCoreInput{
+		Result:             input.Result,
+		APIKey:             input.APIKey,
+		User:               input.User,
+		Account:            input.Account,
+		Subscription:       input.Subscription,
+		InboundEndpoint:    input.InboundEndpoint,
+		UpstreamEndpoint:   input.UpstreamEndpoint,
+		UserAgent:          input.UserAgent,
+		IPAddress:          input.IPAddress,
+		RequestPayloadHash: input.RequestPayloadHash,
+		ForceCacheBilling:  input.ForceCacheBilling,
+		APIKeyService:      input.APIKeyService,
+		ChannelUsageFields: input.ChannelUsageFields,
+	}, &recordUsageOpts{
+		ParsedRequest:    input.ParsedRequest,
+		EnableClaudePath: true,
+	})
 }
 
 // RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
@@ -7897,10 +7753,55 @@ type RecordUsageLongContextInput struct {
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
 	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService         APIKeyQuotaUpdater // API Key 配额服务（可选）
+
+	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
 func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) error {
+	return s.recordUsageCore(ctx, &recordUsageCoreInput{
+		Result:             input.Result,
+		APIKey:             input.APIKey,
+		User:               input.User,
+		Account:            input.Account,
+		Subscription:       input.Subscription,
+		InboundEndpoint:    input.InboundEndpoint,
+		UpstreamEndpoint:   input.UpstreamEndpoint,
+		UserAgent:          input.UserAgent,
+		IPAddress:          input.IPAddress,
+		RequestPayloadHash: input.RequestPayloadHash,
+		ForceCacheBilling:  input.ForceCacheBilling,
+		APIKeyService:      input.APIKeyService,
+		ChannelUsageFields: input.ChannelUsageFields,
+	}, &recordUsageOpts{
+		LongContextThreshold:  input.LongContextThreshold,
+		LongContextMultiplier: input.LongContextMultiplier,
+	})
+}
+
+// recordUsageCoreInput 是 recordUsageCore 的公共输入字段，从两种输入结构体中提取。
+type recordUsageCoreInput struct {
+	Result             *ForwardResult
+	APIKey             *APIKey
+	User               *User
+	Account            *Account
+	Subscription       *UserSubscription
+	InboundEndpoint    string
+	UpstreamEndpoint   string
+	UserAgent          string
+	IPAddress          string
+	RequestPayloadHash string
+	ForceCacheBilling  bool
+	APIKeyService      APIKeyQuotaUpdater
+	ChannelUsageFields
+}
+
+// recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
+// opts 中的字段控制两者之间的差异行为：
+// - ParsedRequest != nil → 启用 Claude Max 缓存计费策略
+// - EnableSoraMedia → 启用 Sora MediaType 分支（image/video/prompt）
+// - LongContextThreshold > 0 → Token 计费回退走 CalculateCostWithLongContext
+func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
@@ -7933,38 +7834,23 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
 
-	var cost *CostBreakdown
+	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-
-	// 根据请求类型选择计费方式
-	if result.ImageCount > 0 {
-		// 图片生成计费
-		var groupConfig *ImagePriceConfig
-		if apiKey.Group != nil {
-			groupConfig = &ImagePriceConfig{
-				Price1K: apiKey.Group.ImagePrice1K,
-				Price2K: apiKey.Group.ImagePrice2K,
-				Price4K: apiKey.Group.ImagePrice4K,
-			}
-		}
-		cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
-	} else {
-		// Token 计费（使用长上下文计费方法）
-		tokens := UsageTokens{
-			InputTokens:           result.Usage.InputTokens,
-			OutputTokens:          result.Usage.OutputTokens,
-			CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-			CacheReadTokens:       result.Usage.CacheReadInputTokens,
-			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-		}
-		var err error
-		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
-		if err != nil {
-			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
-			cost = &CostBreakdown{ActualCost: 0}
-		}
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+		billingModel = input.ChannelMappedModel
 	}
+	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
+		billingModel = input.OriginalModel
+	}
+
+	// 确定 RequestedModel（渠道映射前的原始模型）
+	requestedModel := result.Model
+	if input.OriginalModel != "" {
+		requestedModel = input.OriginalModel
+	}
+
+	// 计算费用
+	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, opts)
 
 	// 判断计费方式：订阅模式 vs 余额模式
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -7974,12 +7860,212 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	}
 
 	// 创建使用日志
-	durationMs := int(result.Duration.Milliseconds())
-	var imageSize *string
-	if result.ImageSize != "" {
-		imageSize = &result.ImageSize
-	}
 	accountRateMultiplier := account.BillingRateMultiplier()
+	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
+		requestedModel, multiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
+
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		return nil
+	}
+
+	requestID := usageLog.RequestID
+	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
+		Cost:                  cost,
+		User:                  user,
+		APIKey:                apiKey,
+		Account:               account,
+		Subscription:          subscription,
+		RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+		IsSubscriptionBill:    isSubscriptionBilling,
+		AccountRateMultiplier: accountRateMultiplier,
+		APIKeyService:         input.APIKeyService,
+	}, s.billingDeps(), s.usageBillingRepo)
+
+	if billingErr != nil {
+		return billingErr
+	}
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+
+	return nil
+}
+
+// calculateRecordUsageCost 根据请求类型和选项计算费用。
+func (s *GatewayService) calculateRecordUsageCost(
+	ctx context.Context,
+	result *ForwardResult,
+	apiKey *APIKey,
+	billingModel string,
+	multiplier float64,
+	opts *recordUsageOpts,
+) *CostBreakdown {
+	// Sora 媒体类型分支（仅 Claude 路径启用）
+	if opts.EnableClaudePath {
+		if result.MediaType == MediaTypeImage || result.MediaType == MediaTypeVideo {
+			return s.calculateSoraMediaCost(result, apiKey, billingModel, multiplier)
+		}
+		if result.MediaType == MediaTypePrompt {
+			return &CostBreakdown{}
+		}
+	}
+
+	// 图片生成计费
+	if result.ImageCount > 0 {
+		return s.calculateImageCost(ctx, result, apiKey, billingModel, multiplier)
+	}
+
+	// Token 计费
+	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
+}
+
+// calculateSoraMediaCost 计算 Sora 图片/视频的费用。
+func (s *GatewayService) calculateSoraMediaCost(
+	result *ForwardResult,
+	apiKey *APIKey,
+	billingModel string,
+	multiplier float64,
+) *CostBreakdown {
+	var soraConfig *SoraPriceConfig
+	if apiKey.Group != nil {
+		soraConfig = &SoraPriceConfig{
+			ImagePrice360:          apiKey.Group.SoraImagePrice360,
+			ImagePrice540:          apiKey.Group.SoraImagePrice540,
+			VideoPricePerRequest:   apiKey.Group.SoraVideoPricePerRequest,
+			VideoPricePerRequestHD: apiKey.Group.SoraVideoPricePerRequestHD,
+		}
+	}
+	if result.MediaType == MediaTypeImage {
+		return s.billingService.CalculateSoraImageCost(result.ImageSize, result.ImageCount, soraConfig, multiplier)
+	}
+	return s.billingService.CalculateSoraVideoCost(billingModel, soraConfig, multiplier)
+}
+
+// resolveChannelPricing 检查指定模型是否存在渠道级别定价。
+// 返回非 nil 的 ResolvedPricing 表示有渠道定价，nil 表示走默认定价路径。
+func (s *GatewayService) resolveChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {
+	if s.resolver == nil || apiKey.Group == nil {
+		return nil
+	}
+	gid := apiKey.Group.ID
+	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
+	if resolved.Source == PricingSourceChannel {
+		return resolved
+	}
+	return nil
+}
+
+// calculateImageCost 计算图片生成费用：渠道级别定价优先，否则走按次计费。
+func (s *GatewayService) calculateImageCost(
+	ctx context.Context,
+	result *ForwardResult,
+	apiKey *APIKey,
+	billingModel string,
+	multiplier float64,
+) *CostBreakdown {
+	if s.resolveChannelPricing(ctx, billingModel, apiKey) != nil {
+		tokens := UsageTokens{
+			InputTokens:       result.Usage.InputTokens,
+			OutputTokens:      result.Usage.OutputTokens,
+			ImageOutputTokens: result.Usage.ImageOutputTokens,
+		}
+		gid := apiKey.Group.ID
+		cost, err := s.billingService.CalculateCostUnified(CostInput{
+			Ctx:            ctx,
+			Model:          billingModel,
+			GroupID:        &gid,
+			Tokens:         tokens,
+			RequestCount:   1,
+			RateMultiplier: multiplier,
+			Resolver:       s.resolver,
+		})
+		if err != nil {
+			logger.LegacyPrintf("service.gateway", "Calculate image token cost failed: %v", err)
+			return &CostBreakdown{ActualCost: 0}
+		}
+		return cost
+	}
+
+	var groupConfig *ImagePriceConfig
+	if apiKey.Group != nil {
+		groupConfig = &ImagePriceConfig{
+			Price1K: apiKey.Group.ImagePrice1K,
+			Price2K: apiKey.Group.ImagePrice2K,
+			Price4K: apiKey.Group.ImagePrice4K,
+		}
+	}
+	return s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+}
+
+// calculateTokenCost 计算 Token 计费：根据 opts 决定走普通/长上下文/渠道统一计费。
+func (s *GatewayService) calculateTokenCost(
+	ctx context.Context,
+	result *ForwardResult,
+	apiKey *APIKey,
+	billingModel string,
+	multiplier float64,
+	opts *recordUsageOpts,
+) *CostBreakdown {
+	tokens := UsageTokens{
+		InputTokens:           result.Usage.InputTokens,
+		OutputTokens:          result.Usage.OutputTokens,
+		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:       result.Usage.CacheReadInputTokens,
+		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
+		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+		ImageOutputTokens:     result.Usage.ImageOutputTokens,
+	}
+
+	var cost *CostBreakdown
+	var err error
+
+	// 优先尝试渠道定价 → CalculateCostUnified
+	if s.resolveChannelPricing(ctx, billingModel, apiKey) != nil {
+		gid := apiKey.Group.ID
+		cost, err = s.billingService.CalculateCostUnified(CostInput{
+			Ctx:            ctx,
+			Model:          billingModel,
+			GroupID:        &gid,
+			Tokens:         tokens,
+			RequestCount:   1,
+			RateMultiplier: multiplier,
+			Resolver:       s.resolver,
+		})
+	} else if opts.LongContextThreshold > 0 {
+		// 长上下文双倍计费（如 Gemini 200K 阈值）
+		cost, err = s.billingService.CalculateCostWithLongContext(
+			billingModel, tokens, multiplier,
+			opts.LongContextThreshold, opts.LongContextMultiplier,
+		)
+	} else {
+		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
+	}
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
+		return &CostBreakdown{ActualCost: 0}
+	}
+	return cost
+}
+
+// buildRecordUsageLog 构建使用日志并设置计费模式。
+func (s *GatewayService) buildRecordUsageLog(
+	ctx context.Context,
+	input *recordUsageCoreInput,
+	result *ForwardResult,
+	apiKey *APIKey,
+	user *User,
+	account *Account,
+	subscription *UserSubscription,
+	requestedModel string,
+	multiplier float64,
+	accountRateMultiplier float64,
+	billingType int8,
+	cacheTTLOverridden bool,
+	cost *CostBreakdown,
+	opts *recordUsageOpts,
+) *UsageLog {
+	durationMs := int(result.Duration.Milliseconds())
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageLog := &UsageLog{
 		UserID:                user.ID,
@@ -7987,7 +8073,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
-		RequestedModel:        result.Model,
+		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
@@ -7998,70 +8084,181 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		CacheReadTokens:       result.Usage.CacheReadInputTokens,
 		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-		InputCost:             cost.InputCost,
-		OutputCost:            cost.OutputCost,
-		CacheCreationCost:     cost.CacheCreationCost,
-		CacheReadCost:         cost.CacheReadCost,
-		TotalCost:             cost.TotalCost,
-		ActualCost:            cost.ActualCost,
+		ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		RateMultiplier:        multiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           billingType,
+		BillingMode:           resolveBillingMode(opts, result, cost),
 		Stream:                result.Stream,
 		DurationMs:            &durationMs,
 		FirstTokenMs:          result.FirstTokenMs,
 		ImageCount:            result.ImageCount,
-		ImageSize:             imageSize,
+		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
+		MediaType:             resolveMediaType(opts, result),
 		CacheTTLOverridden:    cacheTTLOverridden,
+		ChannelID:             optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
+		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
+		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
+		GroupID:               apiKey.GroupID,
+		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),
 	}
-
-	// 添加 UserAgent
-	if input.UserAgent != "" {
-		usageLog.UserAgent = &input.UserAgent
+	if cost != nil {
+		usageLog.InputCost = cost.InputCost
+		usageLog.OutputCost = cost.OutputCost
+		usageLog.ImageOutputCost = cost.ImageOutputCost
+		usageLog.CacheCreationCost = cost.CacheCreationCost
+		usageLog.CacheReadCost = cost.CacheReadCost
+		usageLog.TotalCost = cost.TotalCost
+		usageLog.ActualCost = cost.ActualCost
 	}
 
-	// 添加 IPAddress
-	if input.IPAddress != "" {
-		usageLog.IPAddress = &input.IPAddress
-	}
+	return usageLog
+}
 
-	// 添加分组和订阅关联
-	if apiKey.GroupID != nil {
-		usageLog.GroupID = apiKey.GroupID
-	}
-	if subscription != nil {
-		usageLog.SubscriptionID = &subscription.ID
-	}
-
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+// resolveBillingMode 根据计费结果和请求类型确定计费模式。
+// Sora 媒体类型自身已确定计费模式（由上游处理），返回 nil 跳过。
+func resolveBillingMode(opts *recordUsageOpts, result *ForwardResult, cost *CostBreakdown) *string {
+	isSoraMedia := opts.EnableClaudePath &&
+		(result.MediaType == MediaTypeImage || result.MediaType == MediaTypeVideo || result.MediaType == MediaTypePrompt)
+	if isSoraMedia {
 		return nil
 	}
-
-	billingErr := func() error {
-		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-			Cost:                  cost,
-			User:                  user,
-			APIKey:                apiKey,
-			Account:               account,
-			Subscription:          subscription,
-			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-			IsSubscriptionBill:    isSubscriptionBilling,
-			AccountRateMultiplier: accountRateMultiplier,
-			APIKeyService:         input.APIKeyService,
-		}, s.billingDeps(), s.usageBillingRepo)
-		return err
-	}()
-
-	if billingErr != nil {
-		return billingErr
+	var mode string
+	switch {
+	case cost != nil && cost.BillingMode != "":
+		mode = cost.BillingMode
+	case result.ImageCount > 0:
+		mode = string(BillingModeImage)
+	default:
+		mode = string(BillingModeToken)
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	return &mode
+}
 
+func resolveMediaType(opts *recordUsageOpts, result *ForwardResult) *string {
+	if opts.EnableClaudePath && strings.TrimSpace(result.MediaType) != "" {
+		return &result.MediaType
+	}
 	return nil
+}
+
+func optionalSubscriptionID(subscription *UserSubscription) *int64 {
+	if subscription != nil {
+		return &subscription.ID
+	}
+	return nil
+}
+
+// ResolveChannelMapping 委托渠道服务解析模型映射
+func (s *GatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
+	if s.channelService == nil {
+		return ChannelMappingResult{MappedModel: model}
+	}
+	return s.channelService.ResolveChannelMapping(ctx, groupID, model)
+}
+
+// ReplaceModelInBody 替换请求体中的模型名（导出供 handler 使用）
+func (s *GatewayService) ReplaceModelInBody(body []byte, newModel string) []byte {
+	return ReplaceModelInBody(body, newModel)
+}
+
+// IsModelRestricted 检查模型是否被渠道限制
+func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
+	if s.channelService == nil {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, groupID, model)
+}
+
+// ResolveChannelMappingAndRestrict 解析渠道映射。
+// 模型限制检查已移至调度阶段（checkChannelPricingRestriction），restricted 始终返回 false。
+func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
+	if s.channelService == nil {
+		return ChannelMappingResult{MappedModel: model}, false
+	}
+	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+}
+
+// checkChannelPricingRestriction 根据渠道计费基准检查模型是否受定价列表限制。
+// 供调度阶段预检查（requested / channel_mapped）。
+// upstream 需逐账号检查，此处返回 false。
+func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
+	if groupID == nil || s.channelService == nil || requestedModel == "" {
+		return false
+	}
+	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	billingModel := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
+	if billingModel == "" {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, *groupID, billingModel)
+}
+
+// billingModelForRestriction 根据计费基准确定限制检查使用的模型。
+// upstream 返回空（需逐账号检查）。
+func billingModelForRestriction(source, requestedModel, channelMappedModel string) string {
+	switch source {
+	case BillingModelSourceRequested:
+		return requestedModel
+	case BillingModelSourceUpstream:
+		return ""
+	case BillingModelSourceChannelMapped:
+		return channelMappedModel
+	default:
+		return channelMappedModel
+	}
+}
+
+// isUpstreamModelRestrictedByChannel 检查账号映射后的上游模型是否受渠道定价限制。
+// 仅在 BillingModelSource="upstream" 且 RestrictModels=true 时由调度循环调用。
+func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string) bool {
+	if s.channelService == nil {
+		return false
+	}
+	upstreamModel := resolveAccountUpstreamModel(account, requestedModel)
+	if upstreamModel == "" {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
+}
+
+// resolveAccountUpstreamModel 确定账号将请求模型映射为什么上游模型。
+func resolveAccountUpstreamModel(account *Account, requestedModel string) string {
+	if account.Platform == PlatformAntigravity {
+		return mapAntigravityModel(account, requestedModel)
+	}
+	return account.GetMappedModel(requestedModel)
+}
+
+// needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。
+func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
+	if groupID == nil || s.channelService == nil {
+		return false
+	}
+	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
+	if err != nil {
+		slog.Warn("failed to check channel upstream restriction", "group_id", *groupID, "error", err)
+		return false
+	}
+	if ch == nil || !ch.RestrictModels {
+		return false
+	}
+	return ch.BillingModelSource == BillingModelSourceUpstream
+}
+
+// isStickyAccountUpstreamRestricted 检查粘性会话命中的账号是否受 upstream 渠道限制。
+// 合并 needsUpstreamChannelRestrictionCheck + isUpstreamModelRestrictedByChannel 两步调用，
+// 供 sticky session 条件链使用，避免内联多个函数调用导致行过长。
+func (s *GatewayService) isStickyAccountUpstreamRestricted(ctx context.Context, groupID *int64, account *Account, requestedModel string) bool {
+	if groupID == nil {
+		return false
+	}
+	if !s.needsUpstreamChannelRestrictionCheck(ctx, groupID) {
+		return false
+	}
+	return s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)
 }
 
 // ForwardCountTokens 转发 count_tokens 请求到上游 API

@@ -335,10 +335,10 @@ export default {
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
+    channels: 'Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
-    channels: 'Channels',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
@@ -1720,7 +1720,7 @@ export default {
       }
     },
 
-    // Channels
+    // Channel Management
     channels: {
       title: 'Channel Management',
       description: 'Manage channels and custom model pricing',
@@ -2090,7 +2090,6 @@ export default {
       privacyAntigravityFailed: 'Privacy setting failed',
       setPrivacy: 'Set Privacy',
       subscriptionAbnormal: 'Abnormal',
-      subscriptionExpires: 'Expires',
       // Capacity status tooltips
       capacity: {
         windowCost: {
@@ -2363,7 +2362,7 @@ export default {
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
-        hint: 'Configure cost window, session limits, client affinity and other scheduling controls.',
+        hint: 'Configure affinity settings (user affinity, client affinity), cost windows, session limits and other scheduling controls.',
         windowCost: {
           label: '5h Window Cost Limit',
           hint: 'Limit account cost usage within the 5-hour window',
@@ -2431,12 +2430,15 @@ export default {
           hint: 'When enabled, new sessions prefer accounts previously used by this client to reduce account switching'
         }
       },
+      affinityConfigTitle: 'Affinity Settings',
+      affinityConfigHint: 'Configure user affinity and client affinity scheduling rules under quota control.',
       affinityNoClients: 'No affinity clients',
-      affinityClients: '{count} affinity clients:',
+      affinityClients: '{count} client affinity',
+      affinityClientCountLabel: '{count} clients',
       affinitySection: 'Client Affinity',
       affinitySectionHint: 'Control how clients are distributed across accounts. Configure zone thresholds to balance load.',
-      affinityToggle: 'Enable Client Affinity',
-      affinityToggleHint: 'New sessions prefer accounts previously used by this client',
+      affinityToggle: 'Enable Affinity Scheduling',
+      affinityToggleHint: 'When enabled, new sessions prefer user affinity and client affinity matches',
       affinityBase: 'Base Limit (Green Zone)',
       affinityBasePlaceholder: 'Empty = no limit',
       affinityBaseHint: 'Max clients in green zone (full priority scheduling)',
@@ -2445,6 +2447,28 @@ export default {
       affinityBufferPlaceholder: 'e.g. 3',
       affinityBufferHint: 'Additional clients allowed in the yellow zone (degraded priority)',
       affinityBufferInfinite: 'Unlimited',
+      affinityAllowSwitch: 'Allow Switch',
+      affinityAllowSwitchHint: 'Allow scheduling to other accounts when affinity account is unavailable',
+      affinityAllowSwitchWarning: 'When disabled, unavailable affinity account will return error directly',
+      affinityUserSection: 'User Affinity',
+      affinityUserSectionHint: 'Configure affinity capacity and scheduling rules for users',
+      affinityUserBase: 'Base Limit (Green Zone)',
+      affinityUserBaseHint: 'Max users in green zone (full priority scheduling)',
+      affinityUserBuffer: 'Buffer (Yellow Zone)',
+      affinityUserBufferHint: 'Additional users allowed in the yellow zone (degraded priority)',
+      affinityClientSection: 'Client Affinity',
+      affinityClientSectionHint: 'Configure affinity capacity and scheduling rules for clients',
+      affinityPerUserLimit: 'Per-User Client Limit',
+      affinityPerUserLimitHint: 'Limit the number of distinct clients each user can use',
+      affinityPerUserMax: 'Max Clients',
+      affinityPinnedUsers: 'Pinned Affinity Users',
+      affinityPinnedUsersHint: 'Pre-bound users will automatically create affinity cache and occupy user affinity slots',
+      affinityPinnedUsersSearch: 'Search user email or username...',
+      affinityPinnedUsersEmpty: 'No pinned affinity users',
+      affinityUsers: '{count} user affinity',
+      affinityNoUsers: 'No affinity users',
+      affinityDetailTitle: 'Affinity Details',
+      affinityPinnedLabel: 'Pinned',
       expired: 'Expired',
       proxy: 'Proxy',
       noProxy: 'No Proxy',
@@ -3360,6 +3384,11 @@ export default {
       allBillingTypes: 'All Billing Types',
       billingTypeBalance: 'Balance',
       billingTypeSubscription: 'Subscription',
+      billingMode: 'Billing Mode',
+      billingModeToken: 'Token',
+      billingModePerRequest: 'Per Request',
+      billingModeImage: 'Image',
+      allBillingModes: 'All Billing Modes',
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
@@ -4454,7 +4483,7 @@ export default {
       },
       soraS3: {
         title: 'Sora Storage',
-        description: 'Manage Sora media storage profiles with S3 and Google Drive support',
+        description: 'Manage Sora media storage profiles with S3 support',
         newProfile: 'New Profile',
         reloadProfiles: 'Reload Profiles',
         empty: 'No storage profiles yet, create one first',
@@ -4462,7 +4491,6 @@ export default {
         editTitle: 'Edit Storage Profile',
         selectProvider: 'Select Storage Type',
         providerS3Desc: 'S3-compatible object storage',
-        providerGDriveDesc: 'Google Drive cloud storage',
         profileID: 'Profile ID',
         profileName: 'Profile Name',
         setActive: 'Set as active after creation',
@@ -4520,29 +4548,7 @@ export default {
         testSuccess: 'Connection test successful',
         testFailed: 'Connection test failed',
         saved: 'Storage settings saved successfully',
-        saveFailed: 'Failed to save storage settings',
-        gdrive: {
-          authType: 'Authentication Method',
-          serviceAccount: 'Service Account',
-          clientId: 'Client ID',
-          clientSecret: 'Client Secret',
-          clientSecretConfigured: '(Configured, leave blank to keep)',
-          refreshToken: 'Refresh Token',
-          refreshTokenConfigured: '(Configured, leave blank to keep)',
-          serviceAccountJson: 'Service Account JSON',
-          serviceAccountConfigured: '(Configured, leave blank to keep)',
-          folderId: 'Folder ID (optional)',
-          authorize: 'Authorize Google Drive',
-          authorizeHint: 'Get Refresh Token via OAuth2',
-          oauthFieldsRequired: 'Please fill in Client ID and Client Secret first',
-          oauthSuccess: 'Google Drive authorization successful',
-          oauthFailed: 'Google Drive authorization failed',
-          closeWindow: 'This window will close automatically',
-          processing: 'Processing authorization...',
-          testStorage: 'Test Storage',
-          testSuccess: 'Google Drive storage test passed (upload, access, delete all OK)',
-          testFailed: 'Google Drive storage test failed'
-        }
+        saveFailed: 'Failed to save storage settings'
       },
       overloadCooldown: {
         title: '529 Overload Cooldown',

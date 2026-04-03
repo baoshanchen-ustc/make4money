@@ -399,8 +399,6 @@ export interface Group {
   fallback_group_id_on_invalid_request: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
-  require_oauth_only: boolean
-  require_privacy_set: boolean
   created_at: string
   updated_at: string
 }
@@ -512,8 +510,6 @@ export interface CreateGroupRequest {
   mcp_xml_inject?: boolean
   simulate_claude_max_enabled?: boolean
   supported_model_scopes?: string[]
-  require_oauth_only?: boolean
-  require_privacy_set?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -543,8 +539,6 @@ export interface UpdateGroupRequest {
   mcp_xml_inject?: boolean
   simulate_claude_max_enabled?: boolean
   supported_model_scopes?: string[]
-  require_oauth_only?: boolean
-  require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
 }
 
@@ -683,6 +677,7 @@ export interface Account {
   // Extra fields including Codex usage and model-level rate limits (Antigravity smart retry)
   extra?: (CodexUsageSnapshot & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
+    antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
   } & Record<string, unknown>)
   proxy_id: number | null
   concurrency: number
@@ -750,6 +745,11 @@ export interface Account {
   affinity_client_count?: number | null
   affinity_clients?: string[] | null
 
+  // 二维亲和扩展
+  affinity_allow_switch?: boolean | null      // 允许切换
+  affinity_user_count?: number | null         // 关联用户数
+  pinned_user_ids?: number[] | null           // 指定亲和用户 ID 列表
+
   // API Key 账号配额限制
   quota_limit?: number | null
   quota_used?: number | null
@@ -772,6 +772,27 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+}
+
+// Affinity Details types
+export interface AffinityClientInfo {
+  client_id: string
+  last_active: string
+}
+
+export interface AffinityUserGroup {
+  user_id: number
+  user_email: string
+  client_count: number
+  is_pinned: boolean
+  clients: AffinityClientInfo[]
+}
+
+export interface AffinityDetailsResponse {
+  users: AffinityUserGroup[]
+  total_users: number
+  total_clients: number
+  pinned_users: number[]
 }
 
 // Account Usage types
@@ -1036,6 +1057,9 @@ export interface UsageLog {
   // Cache TTL Override
   cache_ttl_overridden: boolean
 
+  // 计费模式
+  billing_mode?: string | null
+
   created_at: string
 
   user?: User
@@ -1051,6 +1075,7 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  model_mapping_chain?: string | null
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null

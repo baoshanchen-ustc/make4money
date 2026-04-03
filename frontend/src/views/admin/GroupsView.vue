@@ -792,59 +792,56 @@
           </div>
         </div>
 
-        <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
-        <div v-if="['openai', 'antigravity', 'anthropic', 'gemini'].includes(createForm.platform)" class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4">
-          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">账号过滤控制</h4>
-
-          <!-- require_oauth_only toggle -->
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm text-gray-600 dark:text-gray-400">仅允许 OAuth 账号</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {{ createForm.require_oauth_only ? '已启用 — 排除 API Key 类型账号' : '未启用' }}
-              </p>
+        <!-- Claude Max Usage 模拟（仅 anthropic 平台） -->
+        <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.groups.claudeMaxSimulation.title') }}
+            </label>
+            <div class="group relative inline-flex">
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
+              <div class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-80 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+                <div class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800">
+                  <p class="text-xs leading-relaxed text-gray-300">
+                    {{ t('admin.groups.claudeMaxSimulation.tooltip') }}
+                  </p>
+                  <div class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+                </div>
+              </div>
             </div>
+          </div>
+          <div class="flex items-center gap-3">
             <button
               type="button"
-              @click="createForm.require_oauth_only = !createForm.require_oauth_only"
-              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="
-                createForm.require_oauth_only ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
-              "
+              @click="createForm.simulate_claude_max_enabled = !createForm.simulate_claude_max_enabled"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.simulate_claude_max_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              ]"
             >
               <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="
-                  createForm.require_oauth_only ? 'translate-x-6' : 'translate-x-1'
-                "
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.simulate_claude_max_enabled ? 'translate-x-6' : 'translate-x-1'
+                ]"
               />
             </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                createForm.simulate_claude_max_enabled
+                  ? t('admin.groups.claudeMaxSimulation.enabled')
+                  : t('admin.groups.claudeMaxSimulation.disabled')
+              }}
+            </span>
           </div>
-
-          <!-- require_privacy_set toggle -->
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm text-gray-600 dark:text-gray-400">仅允许隐私保护已设置的账号</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {{ createForm.require_privacy_set ? '已启用 — Privacy 未设置的账号将被排除' : '未启用' }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="createForm.require_privacy_set = !createForm.require_privacy_set"
-              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="
-                createForm.require_privacy_set ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
-              "
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="
-                  createForm.require_privacy_set ? 'translate-x-6' : 'translate-x-1'
-                "
-              />
-            </button>
-          </div>
+          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.groups.claudeMaxSimulation.hint') }}
+          </p>
         </div>
 
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
@@ -1582,59 +1579,56 @@
           </div>
         </div>
 
-        <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
-        <div v-if="['openai', 'antigravity', 'anthropic', 'gemini'].includes(editForm.platform)" class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4">
-          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">账号过滤控制</h4>
-
-          <!-- require_oauth_only toggle -->
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm text-gray-600 dark:text-gray-400">仅允许 OAuth 账号</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {{ editForm.require_oauth_only ? '已启用 — 排除 API Key 类型账号' : '未启用' }}
-              </p>
+        <!-- Claude Max Usage 模拟（仅 anthropic 平台） -->
+        <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.groups.claudeMaxSimulation.title') }}
+            </label>
+            <div class="group relative inline-flex">
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
+              <div class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-80 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+                <div class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800">
+                  <p class="text-xs leading-relaxed text-gray-300">
+                    {{ t('admin.groups.claudeMaxSimulation.tooltip') }}
+                  </p>
+                  <div class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+                </div>
+              </div>
             </div>
+          </div>
+          <div class="flex items-center gap-3">
             <button
               type="button"
-              @click="editForm.require_oauth_only = !editForm.require_oauth_only"
-              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="
-                editForm.require_oauth_only ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
-              "
+              @click="editForm.simulate_claude_max_enabled = !editForm.simulate_claude_max_enabled"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                editForm.simulate_claude_max_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              ]"
             >
               <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="
-                  editForm.require_oauth_only ? 'translate-x-6' : 'translate-x-1'
-                "
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.simulate_claude_max_enabled ? 'translate-x-6' : 'translate-x-1'
+                ]"
               />
             </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.simulate_claude_max_enabled
+                  ? t('admin.groups.claudeMaxSimulation.enabled')
+                  : t('admin.groups.claudeMaxSimulation.disabled')
+              }}
+            </span>
           </div>
-
-          <!-- require_privacy_set toggle -->
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm text-gray-600 dark:text-gray-400">仅允许隐私保护已设置的账号</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {{ editForm.require_privacy_set ? '已启用 — Privacy 未设置的账号将被排除' : '未启用' }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="editForm.require_privacy_set = !editForm.require_privacy_set"
-              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="
-                editForm.require_privacy_set ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
-              "
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="
-                  editForm.require_privacy_set ? 'translate-x-6' : 'translate-x-1'
-                "
-              />
-            </button>
-          </div>
+          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.groups.claudeMaxSimulation.hint') }}
+          </p>
         </div>
 
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
@@ -2168,14 +2162,13 @@ const createForm = reactive({
   sora_storage_quota_gb: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
+  // Claude Max usage 模拟开关（仅 anthropic 平台）
+  simulate_claude_max_enabled: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: 'gpt-5.4',
-  // 账号过滤控制（OpenAI/Antigravity 平台）
-  require_oauth_only: false,
-  require_privacy_set: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -2415,14 +2408,13 @@ const editForm = reactive({
   sora_storage_quota_gb: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
+  // Claude Max usage 模拟开关（仅 anthropic 平台）
+  simulate_claude_max_enabled: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: '',
-  // 账号过滤控制（OpenAI/Antigravity 平台）
-  require_oauth_only: false,
-  require_privacy_set: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -2565,11 +2557,10 @@ const closeCreateModal = () => {
   createForm.sora_video_price_per_request_hd = null
   createForm.sora_storage_quota_gb = null
   createForm.claude_code_only = false
+  createForm.simulate_claude_max_enabled = false
   createForm.fallback_group_id = null
   createForm.fallback_group_id_on_invalid_request = null
   createForm.allow_messages_dispatch = false
-  createForm.require_oauth_only = false
-  createForm.require_privacy_set = false
   createForm.default_mapped_model = 'gpt-5.4'
   createForm.supported_model_scopes = ['claude', 'gemini_text', 'gemini_image']
   createForm.mcp_xml_inject = true
@@ -2609,6 +2600,8 @@ const handleCreateGroup = async () => {
       weekly_limit_usd: normalizeOptionalLimit(createForm.weekly_limit_usd as number | string | null),
       monthly_limit_usd: normalizeOptionalLimit(createForm.monthly_limit_usd as number | string | null),
       sora_storage_quota_bytes: createQuotaGb ? Math.round(createQuotaGb * 1024 * 1024 * 1024) : 0,
+      simulate_claude_max_enabled:
+        createForm.platform === 'anthropic' ? createForm.simulate_claude_max_enabled : false,
       model_routing: convertRoutingRulesToApiFormat(createModelRoutingRules.value)
     }
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
@@ -2654,11 +2647,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.sora_video_price_per_request_hd = group.sora_video_price_per_request_hd
   editForm.sora_storage_quota_gb = group.sora_storage_quota_bytes ? Number((group.sora_storage_quota_bytes / (1024 * 1024 * 1024)).toFixed(2)) : null
   editForm.claude_code_only = group.claude_code_only || false
+  editForm.simulate_claude_max_enabled = group.simulate_claude_max_enabled || false
   editForm.fallback_group_id = group.fallback_group_id
   editForm.fallback_group_id_on_invalid_request = group.fallback_group_id_on_invalid_request
   editForm.allow_messages_dispatch = group.allow_messages_dispatch || false
-  editForm.require_oauth_only = group.require_oauth_only ?? false
-  editForm.require_privacy_set = group.require_privacy_set ?? false
   editForm.default_mapped_model = group.default_mapped_model || ''
   editForm.model_routing_enabled = group.model_routing_enabled || false
   editForm.supported_model_scopes = group.supported_model_scopes || ['claude', 'gemini_text', 'gemini_image']
@@ -2677,6 +2669,7 @@ const closeEditModal = () => {
   showEditModal.value = false
   editingGroup.value = null
   editModelRoutingRules.value = []
+  editForm.simulate_claude_max_enabled = false
   editForm.copy_accounts_from_group_ids = []
 }
 
@@ -2697,6 +2690,8 @@ const handleUpdateGroup = async () => {
       weekly_limit_usd: normalizeOptionalLimit(editForm.weekly_limit_usd as number | string | null),
       monthly_limit_usd: normalizeOptionalLimit(editForm.monthly_limit_usd as number | string | null),
       sora_storage_quota_bytes: editQuotaGb ? Math.round(editQuotaGb * 1024 * 1024 * 1024) : 0,
+      simulate_claude_max_enabled:
+        editForm.platform === 'anthropic' ? editForm.simulate_claude_max_enabled : false,
       fallback_group_id: editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
       fallback_group_id_on_invalid_request:
         editForm.fallback_group_id_on_invalid_request === null
@@ -2767,9 +2762,24 @@ watch(
       createForm.allow_messages_dispatch = false
       createForm.default_mapped_model = ''
     }
-    if (!['openai', 'antigravity', 'anthropic', 'gemini'].includes(newVal)) {
-      createForm.require_oauth_only = false
-      createForm.require_privacy_set = false
+    if (newVal !== 'anthropic') {
+      createForm.simulate_claude_max_enabled = false
+    }
+  }
+)
+
+watch(
+  () => editForm.platform,
+  (newVal) => {
+    if (!['anthropic', 'antigravity'].includes(newVal)) {
+      editForm.fallback_group_id_on_invalid_request = null
+    }
+    if (newVal !== 'openai') {
+      editForm.allow_messages_dispatch = false
+      editForm.default_mapped_model = ''
+    }
+    if (newVal !== 'anthropic') {
+      editForm.simulate_claude_max_enabled = false
     }
   }
 )

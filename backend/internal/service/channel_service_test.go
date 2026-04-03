@@ -11,9 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testPtrFloat64(v float64) *float64 { return &v }
-func testPtrString(v string) *string    { return &v }
-
 // ---------------------------------------------------------------------------
 // Mock: ChannelRepository
 // ---------------------------------------------------------------------------
