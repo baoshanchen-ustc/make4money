@@ -660,7 +660,24 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 用 wrapReleaseOnDone 确保 context 取消时自动释放（仅 serialize 模式有 queueRelease）
 			queueRelease = wrapReleaseOnDone(c.Request.Context(), queueRelease)
 			// 注入回调到 ParsedRequest：使用外层 wrapper 以便提前清理 AfterFunc
-			parsedReq.OnUpstreamAccepted = queueRelease
+			// Chain body release so pooled buffer is freed as soon as
+			// the upstream accepts the request (before streaming).
+			{
+				origQueueRelease := queueRelease
+				rb := releaseBody
+				combined := func() {
+					if origQueueRelease != nil {
+						origQueueRelease()
+					}
+					if rb != nil {
+						rb()
+					}
+				}
+				if origQueueRelease != nil {
+					queueRelease = combined
+				}
+				parsedReq.OnUpstreamAccepted = combined
+			}
 			// ===== 用户消息串行队列 END =====
 
 			// 转发请求 - 根据账号平台分流
