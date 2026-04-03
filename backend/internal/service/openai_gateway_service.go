@@ -4152,12 +4152,23 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
 
-	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	// Prefer BillingModel when explicitly set (e.g., Anthropic Messages compat path where
+	// the requested model is a Claude model but billing should use the mapped GPT model).
+	billingModel := result.BillingModel
+	if billingModel == "" {
+		billingModel = forwardResultBillingModel(result.Model, result.UpstreamModel)
+	}
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
 	cost, err := s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
+	if err != nil && result.UpstreamModel != "" && result.UpstreamModel != billingModel {
+		// Fallback: try upstream model pricing when billing model has no configured price.
+		// This handles cases where billingModel is a non-standard name (e.g. "gpt" without
+		// version) while upstreamModel is always normalized to a known model (e.g. "gpt-5.1").
+		cost, err = s.billingService.CalculateCostWithServiceTier(result.UpstreamModel, tokens, multiplier, serviceTier)
+	}
 	if err != nil {
 		cost = &CostBreakdown{ActualCost: 0}
 	}

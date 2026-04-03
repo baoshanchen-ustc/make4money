@@ -984,3 +984,72 @@ func TestOpenAIGatewayServiceRecordUsage_SimpleModeSkipsBillingAfterPersist(t *t
 	require.Equal(t, 0, userRepo.deductCalls)
 	require.Equal(t, 0, subRepo.incrementCalls)
 }
+
+// TestOpenAIGatewayServiceRecordUsage_UnknownBillingModelFallsBackToUpstream verifies that
+// when the billing model has no configured pricing (e.g. "gpt" without version), RecordUsage
+// falls back to the upstream model's pricing rather than silently billing zero.
+func TestOpenAIGatewayServiceRecordUsage_UnknownBillingModelFallsBackToUpstream(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	usage := OpenAIUsage{InputTokens: 10, OutputTokens: 5}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_unknown_billing_model",
+			Usage:         usage,
+			Model:         "gpt",     // no pricing for bare "gpt"
+			BillingModel:  "gpt",     // same non-standard name
+			UpstreamModel: "gpt-5.1", // normalized model with known pricing
+			Duration:      time.Second,
+		},
+		APIKey:  &APIKey{ID: 1001, Group: &Group{RateMultiplier: 1}},
+		User:    &User{ID: 2001},
+		Account: &Account{ID: 3001},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	// Cost must be non-zero: upstream model fallback should have been used.
+	require.Greater(t, usageRepo.lastLog.ActualCost, 0.0, "expected non-zero cost after upstream model fallback")
+	require.Greater(t, userRepo.lastAmount, 0.0, "expected non-zero deduction after upstream model fallback")
+}
+
+// TestOpenAIGatewayServiceRecordUsage_BillingModelPreferredOverRequestedModel verifies that
+// when BillingModel is explicitly set (Messages/Anthropic compat path), it is used for billing
+// instead of the client-visible model name.
+func TestOpenAIGatewayServiceRecordUsage_BillingModelPreferredOverRequestedModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 8}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_billing_model_preferred",
+			Usage:         usage,
+			Model:         "claude-opus-4-6", // client-visible Claude model (no GPT pricing)
+			BillingModel:  "gpt-5.1-codex",   // actual billing model set by Messages compat path
+			UpstreamModel: "gpt-5.1-codex",
+			Duration:      time.Second,
+		},
+		APIKey:  &APIKey{ID: 1002, Group: &Group{RateMultiplier: 1}},
+		User:    &User{ID: 2002},
+		Account: &Account{ID: 3002},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+
+	// Cost should use gpt-5.1-codex pricing, not claude-opus pricing.
+	expectedCost, calcErr := svc.billingService.CalculateCost("gpt-5.1-codex", UsageTokens{
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+	}, 1.0)
+	require.NoError(t, calcErr)
+	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+}
