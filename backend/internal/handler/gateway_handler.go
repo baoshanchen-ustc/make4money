@@ -132,7 +132,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	defer h.maybeLogCompatibilityFallbackMetrics(reqLog)
 
 	// 读取请求体
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, releaseBody, err := pkghttputil.ReadRequestBodyPooled(c.Request)
+	if releaseBody != nil {
+		defer releaseBody()
+	}
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
@@ -1388,7 +1391,10 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	defer h.maybeLogCompatibilityFallbackMetrics(reqLog)
 
 	// 读取请求体
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, releaseBody, err := pkghttputil.ReadRequestBodyPooled(c.Request)
+	if releaseBody != nil {
+		defer releaseBody()
+	}
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))

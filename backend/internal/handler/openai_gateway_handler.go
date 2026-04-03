@@ -113,7 +113,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// Read request body
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, releaseBody, err := pkghttputil.ReadRequestBodyPooled(c.Request)
+	if releaseBody != nil {
+		defer releaseBody()
+	}
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
@@ -516,7 +519,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, releaseBody, err := pkghttputil.ReadRequestBodyPooled(c.Request)
+	if releaseBody != nil {
+		defer releaseBody()
+	}
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))

@@ -167,7 +167,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	stream := action == "streamGenerateContent"
 	reqLog = reqLog.With(zap.String("model", modelName), zap.String("action", action), zap.Bool("stream", stream))
 
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, releaseBody, err := pkghttputil.ReadRequestBodyPooled(c.Request)
+	if releaseBody != nil {
+		defer releaseBody()
+	}
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			googleError(c, http.StatusRequestEntityTooLarge, buildBodyTooLargeMessage(maxErr.Limit))
