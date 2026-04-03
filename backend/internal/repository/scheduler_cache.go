@@ -272,7 +272,7 @@ var schedulerCacheCredentialDenyList = []string{"id_token"}
 // forwarding. The caller's Account is never mutated.
 //
 // Stripped fields:
-//   - Credentials: id_token, refresh_token (only access_token/api_key needed)
+//   - Credentials: id_token (large JWT, only used by background refresh services)
 //   - AccountGroups[].Group: full Group objects (only GroupID needed for routing)
 //   - AccountGroups[].Account: back-reference to parent (circular/redundant)
 //   - Groups: duplicate of AccountGroups[].Group (ops-only, not used in gateway)
