@@ -340,7 +340,11 @@ func setOpsRequestContext(c *gin.Context, model string, stream bool, requestBody
 	c.Set(opsModelKey, model)
 	c.Set(opsStreamKey, stream)
 	if len(requestBody) > 0 {
-		c.Set(opsRequestBodyKey, requestBody)
+		// Copy to break reference to pooled buffer; the ops middleware reads
+		// this value AFTER the handler returns (after defer releaseBody).
+		owned := make([]byte, len(requestBody))
+		copy(owned, requestBody)
+		c.Set(opsRequestBodyKey, owned)
 	}
 	if c.Request != nil && model != "" {
 		ctx := context.WithValue(c.Request.Context(), ctxkey.Model, model)
