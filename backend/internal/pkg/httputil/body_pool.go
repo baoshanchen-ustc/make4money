@@ -9,61 +9,63 @@ import (
 
 // Tiered buffer pool sizes.
 const (
-	poolSmallCap  = 64 << 10  // 64KB
-	poolMediumCap = 1 << 20   // 1MB
-	poolLargeCap  = 10 << 20  // 10MB
-	poolXLargeCap = 50 << 20  // 50MB
-	poolMaxCap    = 50 << 20  // discard buffers larger than this
+	poolSmallCap  = 64 << 10 // 64KB
+	poolMediumCap = 1 << 20  // 1MB
+	poolLargeCap  = 10 << 20 // 10MB
+	poolXLargeCap = 50 << 20 // 50MB
+	poolMaxCap    = 50 << 20 // discard buffers larger than this
 )
 
 var (
 	poolSmall = sync.Pool{New: func() any {
-		b := bytes.NewBuffer(make([]byte, 0, poolSmallCap))
-		return b
+		return bytes.NewBuffer(make([]byte, 0, poolSmallCap))
 	}}
 	poolMedium = sync.Pool{New: func() any {
-		b := bytes.NewBuffer(make([]byte, 0, poolMediumCap))
-		return b
+		return bytes.NewBuffer(make([]byte, 0, poolMediumCap))
 	}}
 	poolLarge = sync.Pool{New: func() any {
-		b := bytes.NewBuffer(make([]byte, 0, poolLargeCap))
-		return b
+		return bytes.NewBuffer(make([]byte, 0, poolLargeCap))
 	}}
 	poolXLarge = sync.Pool{New: func() any {
-		b := bytes.NewBuffer(make([]byte, 0, poolXLargeCap))
-		return b
+		return bytes.NewBuffer(make([]byte, 0, poolXLargeCap))
 	}}
 )
 
 func acquireBuffer(sizeHint int) *bytes.Buffer {
+	var v any
 	switch {
 	case sizeHint <= poolSmallCap:
-		return poolSmall.Get().(*bytes.Buffer)
+		v = poolSmall.Get()
 	case sizeHint <= poolMediumCap:
-		return poolMedium.Get().(*bytes.Buffer)
+		v = poolMedium.Get()
 	case sizeHint <= poolLargeCap:
-		return poolLarge.Get().(*bytes.Buffer)
+		v = poolLarge.Get()
 	default:
-		return poolXLarge.Get().(*bytes.Buffer)
+		v = poolXLarge.Get()
 	}
+	buf, ok := v.(*bytes.Buffer)
+	if !ok {
+		return bytes.NewBuffer(make([]byte, 0, sizeHint))
+	}
+	return buf
 }
 
 func releaseBuffer(buf *bytes.Buffer) {
 	if buf == nil {
 		return
 	}
-	cap := buf.Cap()
+	c := buf.Cap()
 	buf.Reset()
 	// Discard oversized buffers to prevent pool bloat.
-	if cap > poolMaxCap {
+	if c > poolMaxCap {
 		return
 	}
 	switch {
-	case cap <= poolSmallCap:
+	case c <= poolSmallCap:
 		poolSmall.Put(buf)
-	case cap <= poolMediumCap:
+	case c <= poolMediumCap:
 		poolMedium.Put(buf)
-	case cap <= poolLargeCap:
+	case c <= poolLargeCap:
 		poolLarge.Put(buf)
 	default:
 		poolXLarge.Put(buf)
