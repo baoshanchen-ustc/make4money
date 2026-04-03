@@ -64,6 +64,9 @@ func RegisterAdminRoutes(
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
+		// 渠道管理
+		registerChannelRoutes(admin, h)
+
 		// 系统管理
 		registerSystemRoutes(admin, h)
 
@@ -565,5 +568,17 @@ func registerTLSFingerprintProfileRoutes(admin *gin.RouterGroup, h *handler.Hand
 		profiles.POST("", h.Admin.TLSFingerprintProfile.Create)
 		profiles.PUT("/:id", h.Admin.TLSFingerprintProfile.Update)
 		profiles.DELETE("/:id", h.Admin.TLSFingerprintProfile.Delete)
+	}
+}
+
+func registerChannelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	channels := admin.Group("/channels")
+	{
+		channels.GET("", h.Admin.Channel.List)
+		channels.GET("/model-pricing", h.Admin.Channel.GetModelDefaultPricing)
+		channels.GET("/:id", h.Admin.Channel.GetByID)
+		channels.POST("", h.Admin.Channel.Create)
+		channels.PUT("/:id", h.Admin.Channel.Update)
+		channels.DELETE("/:id", h.Admin.Channel.Delete)
 	}
 }
