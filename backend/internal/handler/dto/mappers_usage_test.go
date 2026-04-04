@@ -107,7 +107,7 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	require.InDelta(t, 1.5, *adminDTO.AccountRateMultiplier, 1e-12)
 }
 
-func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *testing.T) {
+func TestUsageLogFromService_UsesRequestedModelAndIncludesUpstreamModel(t *testing.T) {
 	t.Parallel()
 
 	upstreamModel := "claude-sonnet-4-20250514"
@@ -126,7 +126,7 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 
 	userJSON, err := json.Marshal(userDTO)
 	require.NoError(t, err)
-	require.NotContains(t, string(userJSON), "upstream_model")
+	require.Contains(t, string(userJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
 
 	adminJSON, err := json.Marshal(adminDTO)
 	require.NoError(t, err)

@@ -19,6 +19,7 @@
             </div>
             <div>
               <p class="text-sm font-medium text-gray-900 dark:text-white">{{ log.model }}</p>
+              <p v-if="log.upstream_model && log.upstream_model !== log.model" class="text-xs text-gray-500 dark:text-dark-400">↳ {{ log.upstream_model }}</p>
               <p class="text-xs text-gray-500 dark:text-dark-400">{{ formatDateTime(log.created_at) }}</p>
             </div>
           </div>

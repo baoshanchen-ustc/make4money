@@ -156,8 +156,14 @@
             }}</span>
           </template>
 
-          <template #cell-model="{ value }">
-            <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+          <template #cell-model="{ value, row }">
+            <div v-if="row.upstream_model && row.upstream_model !== value" class="space-y-0.5">
+              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <div class="text-xs text-gray-500 dark:text-gray-400">
+                <span class="mr-0.5">↳</span>{{ row.upstream_model }}
+              </div>
+            </div>
+            <span v-else class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
           </template>
 
           <template #cell-reasoning_effort="{ row }">
