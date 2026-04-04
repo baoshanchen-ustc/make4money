@@ -1,5 +1,5 @@
 export const OPENAI_REQUEST_OVERRIDES_EXTRA_KEY = 'openai_request_overrides'
-export const OPENAI_REQUEST_OVERRIDES_PLACEHOLDER = '{\n  "service_tier": "fast"\n}'
+export const OPENAI_REQUEST_OVERRIDES_PLACEHOLDER = '{\n  "service_tier": "priority"\n}'
 const DISALLOWED_TOP_LEVEL_KEYS = new Set(['model'])
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>

@@ -2355,7 +2355,7 @@ export default {
       },
       requestOverrides: '请求参数覆盖',
       requestOverridesDesc: '可选 JSON 对象。配置后会写入该 OpenAI 账号的请求体，并覆盖客户端传入的同名参数。',
-      requestOverridesPlaceholder: '{\n  "service_tier": "fast"\n}',
+      requestOverridesPlaceholder: '{\n  "service_tier": "priority"\n}',
       requestOverridesInvalid: 'OpenAI 请求参数覆盖必须是合法 JSON，且顶层必须是对象。',
       requestOverridesModelNotAllowed: 'OpenAI 请求参数覆盖不允许设置顶层 "model" 字段。',
       anthropic: {

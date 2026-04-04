@@ -2208,7 +2208,7 @@ export default {
       requestOverrides: 'Request parameter overrides',
       requestOverridesDesc:
         'Optional JSON object. These values are written into requests for this OpenAI account and override client-provided values.',
-      requestOverridesPlaceholder: '{\n  "service_tier": "fast"\n}',
+      requestOverridesPlaceholder: '{\n  "service_tier": "priority"\n}',
       requestOverridesInvalid: 'OpenAI request overrides must be valid JSON and the top level must be an object.',
       requestOverridesModelNotAllowed: 'OpenAI request overrides cannot set the top-level "model" field.',
       anthropic: {
