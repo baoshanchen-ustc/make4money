@@ -2434,6 +2434,21 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.requestOverrides') }}</label>
+        <textarea
+          v-model="openAIRequestOverridesText"
+          rows="8"
+          class="input font-mono text-xs"
+          :placeholder="t('admin.accounts.requestOverridesPlaceholder')"
+          spellcheck="false"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.requestOverridesDesc') }}</p>
+      </div>
+
       <div>
         <div class="flex items-center justify-between">
           <div>
@@ -2917,6 +2932,10 @@ import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
+  OPENAI_REQUEST_OVERRIDES_EXTRA_KEY,
+  parseOpenAIRequestOverrides
+} from '@/utils/openaiRequestOverrides'
+import {
   // OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
@@ -3061,6 +3080,7 @@ const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
+const openAIRequestOverridesText = ref('')
 const anthropicPassthroughEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
@@ -3181,6 +3201,28 @@ const openAIWSModeConcurrencyHintKey = computed(() =>
 const isOpenAIModelRestrictionDisabled = computed(() =>
   form.platform === 'openai' && openaiPassthroughEnabled.value
 )
+
+const applyOpenAIRequestOverridesExtra = (extra: Record<string, unknown>): boolean => {
+  const { value, error } = parseOpenAIRequestOverrides(openAIRequestOverridesText.value)
+  if (error) {
+    appStore.showError(
+      t(
+        error === 'model_not_allowed'
+          ? 'admin.accounts.requestOverridesModelNotAllowed'
+          : 'admin.accounts.requestOverridesInvalid'
+      )
+    )
+    return false
+  }
+
+  if (value && Object.keys(value).length > 0) {
+    extra[OPENAI_REQUEST_OVERRIDES_EXTRA_KEY] = value
+  } else {
+    delete extra[OPENAI_REQUEST_OVERRIDES_EXTRA_KEY]
+  }
+
+  return true
+}
 
 const mixedChannelWarningMessageText = computed(() => {
   if (mixedChannelWarningDetails.value) {
@@ -3399,6 +3441,7 @@ watch(
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
+      openAIRequestOverridesText.value = ''
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
@@ -3784,6 +3827,7 @@ const resetForm = () => {
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
+  openAIRequestOverridesText.value = ''
   anthropicPassthroughEnabled.value = false
   // Reset quota control state
   windowCostEnabled.value = false
@@ -3830,7 +3874,7 @@ const handleClose = () => {
   emit('close')
 }
 
-const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined | null => {
   if (form.platform !== 'openai') {
     return base
   }
@@ -3857,6 +3901,10 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_cli_only = true
   } else {
     delete extra.codex_cli_only
+  }
+
+  if (!applyOpenAIRequestOverridesExtra(extra)) {
+    return null
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
@@ -4120,7 +4168,11 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const openAIExtra = buildOpenAIExtra()
+  if (openAIExtra === null) {
+    return
+  }
+  const extra = buildAnthropicExtra(openAIExtra)
 
   await doCreateAccount({
     ...form,
@@ -4337,6 +4389,9 @@ const handleOpenAIExchange = async (authCode: string) => {
     const credentials = oauthClient.buildCredentials(tokenInfo)
     const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
     const extra = buildOpenAIExtra(oauthExtra)
+    if (extra === null) {
+      return
+    }
     const shouldCreateOpenAI = form.platform === 'openai'
     const shouldCreateSora = form.platform === 'sora'
 
@@ -4464,6 +4519,9 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         }
         const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
         const extra = buildOpenAIExtra(oauthExtra)
+        if (extra === null) {
+          return
+        }
 
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
         if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {

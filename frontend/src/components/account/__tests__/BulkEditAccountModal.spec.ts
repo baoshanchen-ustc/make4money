@@ -149,6 +149,27 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('OpenAI 账号批量编辑可提交请求参数覆盖', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-request-overrides-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-request-overrides-body textarea').setValue('{\n  "service_tier": "fast"\n}')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_request_overrides: {
+          service_tier: 'fast'
+        }
+      }
+    })
+  })
+
   it('OpenAI OAuth 批量编辑应提交 OAuth 专属 WS mode 字段', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

@@ -2353,6 +2353,11 @@ export default {
         enableSora: '同时启用 Sora',
         enableSoraHint: 'Sora 使用相同的 OpenAI 账号，开启后将同时创建 Sora 平台账号'
       },
+      requestOverrides: '请求参数覆盖',
+      requestOverridesDesc: '可选 JSON 对象。配置后会写入该 OpenAI 账号的请求体，并覆盖客户端传入的同名参数。',
+      requestOverridesPlaceholder: '{\n  "service_tier": "fast"\n}',
+      requestOverridesInvalid: 'OpenAI 请求参数覆盖必须是合法 JSON，且顶层必须是对象。',
+      requestOverridesModelNotAllowed: 'OpenAI 请求参数覆盖不允许设置顶层 "model" 字段。',
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
         apiKeyPassthroughDesc:

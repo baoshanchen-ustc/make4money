@@ -82,6 +82,47 @@
         </div>
       </div>
 
+      <div
+        v-if="allOpenAIPassthroughCapable"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-openai-request-overrides-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-request-overrides-enabled"
+            >
+              {{ t('admin.accounts.requestOverrides') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.requestOverridesDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAIRequestOverrides"
+            id="bulk-edit-openai-request-overrides-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-request-overrides-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-request-overrides-body"
+          :class="!enableOpenAIRequestOverrides && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-request-overrides-label"
+        >
+          <textarea
+            v-model="openAIRequestOverridesText"
+            rows="8"
+            class="input font-mono text-xs"
+            :placeholder="t('admin.accounts.requestOverridesPlaceholder')"
+            spellcheck="false"
+          ></textarea>
+        </div>
+      </div>
+
       <!-- Base URL (API Key only) -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -927,6 +968,10 @@ import {
   resolveOpenAIWSModeConcurrencyHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
+import {
+  OPENAI_REQUEST_OVERRIDES_EXTRA_KEY,
+  parseOpenAIRequestOverrides
+} from '@/utils/openaiRequestOverrides'
 interface Props {
   show: boolean
   accountIds: number[]
@@ -1010,6 +1055,7 @@ const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
+const enableOpenAIRequestOverrides = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableRpmLimit = ref(false)
 
@@ -1033,6 +1079,7 @@ const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
 const openaiPassthroughEnabled = ref(false)
+const openAIRequestOverridesText = ref('')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const rpmLimitEnabled = ref(false)
 const bulkBaseRpm = ref<number | null>(null)
@@ -1152,6 +1199,28 @@ const buildModelMappingObject = (): Record<string, string> | null => {
   )
 }
 
+const applyOpenAIRequestOverridesExtra = (extra: Record<string, unknown>): boolean => {
+  const { value, error } = parseOpenAIRequestOverrides(openAIRequestOverridesText.value)
+  if (error) {
+    appStore.showError(
+      t(
+        error === 'model_not_allowed'
+          ? 'admin.accounts.requestOverridesModelNotAllowed'
+          : 'admin.accounts.requestOverridesInvalid'
+      )
+    )
+    return false
+  }
+
+  if (value && Object.keys(value).length > 0) {
+    extra[OPENAI_REQUEST_OVERRIDES_EXTRA_KEY] = value
+  } else {
+    delete extra[OPENAI_REQUEST_OVERRIDES_EXTRA_KEY]
+  }
+
+  return true
+}
+
 const buildUpdatePayload = (): Record<string, unknown> | null => {
   const updates: Record<string, unknown> = {}
   const credentials: Record<string, unknown> = {}
@@ -1207,6 +1276,13 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_passthrough = openaiPassthroughEnabled.value
     if (!openaiPassthroughEnabled.value) {
       extra.openai_oauth_passthrough = false
+    }
+  }
+
+  if (enableOpenAIRequestOverrides.value) {
+    const extra = ensureExtra()
+    if (!applyOpenAIRequestOverridesExtra(extra)) {
+      return null
     }
   }
 
@@ -1331,6 +1407,7 @@ const handleSubmit = async () => {
   const hasAnyFieldEnabled =
     enableBaseUrl.value ||
     enableOpenAIPassthrough.value ||
+    enableOpenAIRequestOverrides.value ||
     enableModelRestriction.value ||
     enableCustomErrorCodes.value ||
     enableInterceptWarmup.value ||
@@ -1434,6 +1511,7 @@ watch(
       enableStatus.value = false
       enableGroups.value = false
       enableOpenAIPassthrough.value = false
+      enableOpenAIRequestOverrides.value = false
       enableOpenAIWSMode.value = false
       enableRpmLimit.value = false
 
@@ -1454,6 +1532,7 @@ watch(
       status.value = 'active'
       groupIds.value = []
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+      openAIRequestOverridesText.value = ''
       rpmLimitEnabled.value = false
       bulkBaseRpm.value = null
       bulkRpmStrategy.value = 'tiered'

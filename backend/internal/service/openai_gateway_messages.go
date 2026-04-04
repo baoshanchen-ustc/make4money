@@ -96,6 +96,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 	}
 
+	responsesBody, _, err = applyOpenAIRequestOverridesToBody(responsesBody, account)
+	if err != nil {
+		return nil, fmt.Errorf("apply openai request overrides: %w", err)
+	}
+	_, _, promptCacheKey = extractOpenAIRequestMetaFromBody(responsesBody)
+	effectiveServiceTier := extractOpenAIServiceTierFromBody(responsesBody)
+	effectiveReasoningEffort := extractOpenAIReasoningEffortFromBody(responsesBody, mappedModel)
+
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -190,14 +198,8 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
-		if responsesReq.ServiceTier != "" {
-			st := responsesReq.ServiceTier
-			result.ServiceTier = &st
-		}
-		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
-			re := responsesReq.Reasoning.Effort
-			result.ReasoningEffort = &re
-		}
+		result.ServiceTier = effectiveServiceTier
+		result.ReasoningEffort = effectiveReasoningEffort
 	}
 
 	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)

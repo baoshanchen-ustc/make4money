@@ -1694,6 +1694,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
+	body, overridesApplied, err := applyOpenAIRequestOverridesToBody(body, account)
+	if err != nil {
+		return nil, err
+	}
+	if overridesApplied {
+		clearOpenAIRequestBodyCache(c)
+	}
+
 	originalBody := body
 	reqModel, reqStream, promptCacheKey := extractOpenAIRequestMetaFromBody(body)
 	originalModel := reqModel
@@ -4708,6 +4716,13 @@ func getOpenAIRequestBodyMap(c *gin.Context, body []byte) (map[string]any, error
 		c.Set(OpenAIParsedRequestBodyKey, reqBody)
 	}
 	return reqBody, nil
+}
+
+func clearOpenAIRequestBodyCache(c *gin.Context) {
+	if c == nil || c.Keys == nil {
+		return
+	}
+	delete(c.Keys, OpenAIParsedRequestBodyKey)
 }
 
 func extractOpenAIReasoningEffort(reqBody map[string]any, requestedModel string) *string {
