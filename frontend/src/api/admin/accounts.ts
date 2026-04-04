@@ -402,6 +402,50 @@ export interface BatchTodayStatsResponse {
   stats: Record<string, WindowStats>
 }
 
+export interface RawAPIKeyImportLineResult {
+  line: number
+  key_preview?: string
+  platform?: string
+  account_id?: number
+  created: boolean
+  checked: boolean
+  valid: boolean
+  invalid_disabled: boolean
+  error?: string
+  message?: string
+  status_code?: number
+}
+
+export interface RawAPIKeyImportResult {
+  total_lines: number
+  created: number
+  checked: number
+  valid: number
+  invalid_disabled: number
+  failed: number
+  results: RawAPIKeyImportLineResult[]
+}
+
+export interface APIKeyHealthCheckItem {
+  account_id: number
+  name: string
+  platform: string
+  status_code?: number
+  valid: boolean
+  invalid_disabled: boolean
+  error?: string
+  message?: string
+}
+
+export interface APIKeyHealthCheckResult {
+  total: number
+  checked: number
+  valid: number
+  invalid_disabled: number
+  failed: number
+  results: APIKeyHealthCheckItem[]
+}
+
 /**
  * 批量获取多个账号的今日统计
  * @param accountIds - 账号 ID 列表
@@ -528,6 +572,25 @@ export async function importData(payload: {
   const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
     data: payload.data,
     skip_default_group_bind: payload.skip_default_group_bind
+  })
+  return data
+}
+
+export async function importRawAPIKeys(payload: {
+  raw_text: string
+  validate_after_import?: boolean
+  skip_default_group_bind?: boolean
+}): Promise<RawAPIKeyImportResult> {
+  const { data } = await apiClient.post<RawAPIKeyImportResult>('/admin/accounts/raw-import', payload, {
+    timeout: 120000
+  })
+  return data
+}
+
+export async function checkAPIKeysHealth(accountIds?: number[]): Promise<APIKeyHealthCheckResult> {
+  const payload = accountIds && accountIds.length > 0 ? { account_ids: accountIds } : {}
+  const { data } = await apiClient.post<APIKeyHealthCheckResult>('/admin/accounts/apikey-health-check', payload, {
+    timeout: 120000
   })
   return data
 }
@@ -671,6 +734,8 @@ export const accountsAPI = {
   syncFromCrs,
   exportData,
   importData,
+  importRawAPIKeys,
+  checkAPIKeysHealth,
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,

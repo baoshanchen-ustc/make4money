@@ -2,7 +2,7 @@
 #
 # Sub2API Installation Script
 # Sub2API 安装脚本
-# Usage: curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/kw0ngr/sub2api/main/deploy/install.sh | bash
 #
 
 set -e
@@ -16,7 +16,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
-GITHUB_REPO="Wei-Shaw/sub2api"
+GITHUB_REPO="kw0ngr/sub2api"
 INSTALL_DIR="/opt/sub2api"
 SERVICE_NAME="sub2api"
 SERVICE_USER="sub2api"
@@ -112,6 +112,9 @@ declare -A MSG_ZH=(
     ["fetching_versions"]="正在获取可用版本..."
     ["not_installed"]="Sub2API 尚未安装，请先执行全新安装"
     ["fresh_install_hint"]="用法"
+    ["fork_no_releases"]="Fork 仓库尚未发布任何 GitHub Releases"
+    ["fork_only_release_source"]="当前安装脚本仅从该 Fork 仓库下载发布包"
+    ["fork_publish_release_hint"]="请先在 GitHub 上创建如 vX.Y.Z 的 tag，并等待 release workflow 发布资产后重试"
 
     # Uninstall
     ["uninstall_confirm"]="这将从系统中移除 Sub2API。"
@@ -237,6 +240,9 @@ declare -A MSG_EN=(
     ["fetching_versions"]="Fetching available versions..."
     ["not_installed"]="Sub2API is not installed. Please run a fresh install first"
     ["fresh_install_hint"]="Usage"
+    ["fork_no_releases"]="No GitHub Releases have been published for this fork yet"
+    ["fork_only_release_source"]="This installer only downloads release artifacts from this fork"
+    ["fork_publish_release_hint"]="Create a tag such as vX.Y.Z on GitHub and wait for the release workflow to publish assets before retrying"
 
     # Uninstall
     ["uninstall_confirm"]="This will remove Sub2API from your system."
@@ -465,9 +471,37 @@ check_dependencies() {
     fi
 }
 
+get_releases_json() {
+    curl -s --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20" 2>/dev/null
+}
+
+print_no_releases_guidance() {
+    print_error "$(msg 'fork_no_releases'): ${GITHUB_REPO}"
+    print_info "$(msg 'fork_only_release_source')"
+    print_info "$(msg 'fork_publish_release_hint')"
+}
+
+ensure_releases_available() {
+    local releases_json="$1"
+
+    if echo "$releases_json" | grep -q '"message"[[:space:]]*:[[:space:]]*"Not Found"'; then
+        print_no_releases_guidance
+        exit 1
+    fi
+
+    if ! echo "$releases_json" | grep -q '"tag_name"'; then
+        print_no_releases_guidance
+        exit 1
+    fi
+}
+
 # Get latest release version
 get_latest_version() {
     print_info "$(msg 'fetching_version')"
+    local releases_json
+    releases_json=$(get_releases_json)
+    ensure_releases_available "$releases_json"
+
     LATEST_VERSION=$(curl -s --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
 
     if [ -z "$LATEST_VERSION" ]; then
@@ -484,7 +518,10 @@ list_versions() {
     print_info "$(msg 'fetching_versions')"
 
     local versions
-    versions=$(curl -s --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${GITHUB_REPO}/releases" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | head -20)
+    local releases_json
+    releases_json=$(get_releases_json)
+    ensure_releases_available "$releases_json"
+    versions=$(echo "$releases_json" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | head -20)
 
     if [ -z "$versions" ]; then
         print_error "$(msg 'failed_get_version')"
@@ -515,6 +552,17 @@ validate_version() {
     # Ensure version starts with 'v'
     if [[ ! "$version" =~ ^v ]]; then
         version="v$version"
+    fi
+
+    local releases_json
+    releases_json=$(get_releases_json)
+    if echo "$releases_json" | grep -q '"message"[[:space:]]*:[[:space:]]*"Not Found"'; then
+        print_no_releases_guidance >&2
+        exit 1
+    fi
+    if ! echo "$releases_json" | grep -q '"tag_name"'; then
+        print_no_releases_guidance >&2
+        exit 1
     fi
 
     print_info "$(msg 'validating_version') $version" >&2
@@ -655,7 +703,7 @@ install_service() {
     cat > /etc/systemd/system/sub2api.service << EOF
 [Unit]
 Description=Sub2API - AI API Gateway Platform
-Documentation=https://github.com/Wei-Shaw/sub2api
+Documentation=https://github.com/kw0ngr/sub2api
 After=network.target postgresql.service redis.service
 Wants=postgresql.service redis.service
 

@@ -652,6 +652,10 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if account.Platform == PlatformAntigravity {
 		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
 	}
+	if account.Type == AccountTypeAPIKey && !ShouldDisableAPIKeyAuthFailure(account, http.StatusForbidden, responseBody) {
+		slog.Info("apikey_403_not_disabled", "account_id", account.ID, "platform", account.Platform)
+		return false
+	}
 	// 非 Antigravity 平台：保持原有行为
 	msg := "Access forbidden (403): account may be suspended or lack permissions"
 	if upstreamMsg != "" {
