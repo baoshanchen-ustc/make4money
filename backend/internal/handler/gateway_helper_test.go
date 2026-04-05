@@ -139,3 +139,36 @@ func BenchmarkWrapReleaseOnDone(b *testing.B) {
 		release()
 	}
 }
+
+func TestFormatConcurrencyErrorMessage(t *testing.T) {
+	t.Run("account timeout", func(t *testing.T) {
+		err := &ConcurrencyError{SlotType: "account", IsTimeout: true}
+		got := formatConcurrencyErrorMessage(err, "account")
+		if got != "Timed out waiting for an available account slot, please retry later" {
+			t.Fatalf("unexpected message: %q", got)
+		}
+	})
+
+	t.Run("user timeout", func(t *testing.T) {
+		err := &ConcurrencyError{SlotType: "user", IsTimeout: true}
+		got := formatConcurrencyErrorMessage(err, "user")
+		if got != "Timed out waiting for an available user slot, please retry later" {
+			t.Fatalf("unexpected message: %q", got)
+		}
+	})
+
+	t.Run("account limit", func(t *testing.T) {
+		err := &ConcurrencyError{SlotType: "account", IsTimeout: false}
+		got := formatConcurrencyErrorMessage(err, "account")
+		if got != "Account concurrency limit reached, please retry later" {
+			t.Fatalf("unexpected message: %q", got)
+		}
+	})
+
+	t.Run("fallback non-concurrency error", func(t *testing.T) {
+		got := formatConcurrencyErrorMessage(context.DeadlineExceeded, "user")
+		if got != "User concurrency limit reached, please retry later" {
+			t.Fatalf("unexpected message: %q", got)
+		}
+	})
+}

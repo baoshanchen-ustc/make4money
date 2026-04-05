@@ -205,7 +205,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		reqLog.Warn("gemini.user_wait_counter_increment_failed", zap.Error(err))
 	} else if !canWait {
 		reqLog.Info("gemini.user_wait_queue_full", zap.Int("max_wait", maxWait))
-		googleError(c, http.StatusTooManyRequests, "Too many pending requests, please retry later")
+		googleError(c, http.StatusTooManyRequests, tooManyPendingRequestsMessage)
 		return
 	}
 	if err == nil && canWait {
@@ -225,7 +225,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	userReleaseFunc, err := geminiConcurrency.AcquireUserSlotWithWait(c, authSubject.UserID, authSubject.Concurrency, stream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gemini.user_slot_acquire_failed", zap.Error(err))
-		googleError(c, http.StatusTooManyRequests, err.Error())
+		googleError(c, http.StatusTooManyRequests, formatConcurrencyErrorMessage(err, "user"))
 		return
 	}
 	if waitCounted {
@@ -422,7 +422,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 					zap.Int64("account_id", account.ID),
 					zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
 				)
-				googleError(c, http.StatusTooManyRequests, "Too many pending requests, please retry later")
+				googleError(c, http.StatusTooManyRequests, tooManyPendingRequestsMessage)
 				return
 			}
 			if err == nil && canWait {
@@ -444,7 +444,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			)
 			if err != nil {
 				reqLog.Warn("gemini.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-				googleError(c, http.StatusTooManyRequests, err.Error())
+				googleError(c, http.StatusTooManyRequests, formatConcurrencyErrorMessage(err, "account"))
 				return
 			}
 			if accountWaitCounted {

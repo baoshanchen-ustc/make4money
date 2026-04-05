@@ -184,7 +184,7 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 		reqLog.Warn("sora.user_wait_counter_increment_failed", zap.Error(err))
 	} else if !canWait {
 		reqLog.Info("sora.user_wait_queue_full", zap.Int("max_wait", maxWait))
-		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
+		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", tooManyPendingRequestsMessage)
 		return
 	}
 	if err == nil && canWait {
@@ -288,7 +288,7 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 					zap.Bool("tls_fingerprint_enabled", tlsFingerprintEnabled),
 					zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
 				)
-				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
+				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", tooManyPendingRequestsMessage, streamStarted)
 				return
 			}
 			if err == nil && canWait {
@@ -483,7 +483,7 @@ func (h *SoraGatewayHandler) submitUsageRecordTask(task service.UsageRecordTask)
 
 func (h *SoraGatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
-		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+		formatConcurrencyErrorMessage(err, slotType), streamStarted)
 }
 
 func (h *SoraGatewayHandler) handleFailoverExhausted(c *gin.Context, statusCode int, responseHeaders http.Header, responseBody []byte, streamStarted bool) {

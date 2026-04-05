@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -125,6 +126,8 @@ const (
 	backoffMultiplier = 1.5
 	// maxBackoff 最大退避时间
 	maxBackoff = 2 * time.Second
+
+	tooManyPendingRequestsMessage = "Too many pending requests, please retry later"
 )
 
 // SSEPingFormat defines the format of SSE ping events for different platforms
@@ -150,6 +153,29 @@ func (e *ConcurrencyError) Error() string {
 		return fmt.Sprintf("timeout waiting for %s concurrency slot", e.SlotType)
 	}
 	return fmt.Sprintf("%s concurrency limit reached", e.SlotType)
+}
+
+func formatConcurrencyErrorMessage(err error, slotType string) string {
+	var concurrencyErr *ConcurrencyError
+	if errors.As(err, &concurrencyErr) && concurrencyErr.IsTimeout {
+		switch slotType {
+		case "account":
+			return "Timed out waiting for an available account slot, please retry later"
+		case "user":
+			return "Timed out waiting for an available user slot, please retry later"
+		default:
+			return fmt.Sprintf("Timed out waiting for an available %s slot, please retry later", slotType)
+		}
+	}
+
+	switch slotType {
+	case "account":
+		return "Account concurrency limit reached, please retry later"
+	case "user":
+		return "User concurrency limit reached, please retry later"
+	default:
+		return fmt.Sprintf("%s concurrency limit reached, please retry later", slotType)
+	}
 }
 
 // ConcurrencyHelper provides common concurrency slot management for gateway handlers

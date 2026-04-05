@@ -209,7 +209,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		// On error, allow request to proceed
 	} else if !canWait {
 		reqLog.Info("gateway.user_wait_queue_full", zap.Int("max_wait", maxWait))
-		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
+		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", tooManyPendingRequestsMessage)
 		return
 	}
 	if err == nil && canWait {
@@ -353,7 +353,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Int64("account_id", account.ID),
 						zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
 					)
-					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
+					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", tooManyPendingRequestsMessage, streamStarted)
 					return
 				}
 				if err == nil && canWait {
@@ -576,7 +576,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Int64("account_id", account.ID),
 						zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
 					)
-					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
+					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", tooManyPendingRequestsMessage, streamStarted)
 					return
 				}
 				if err == nil && canWait {
@@ -1227,7 +1227,7 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 // handleConcurrencyError handles concurrency-related errors with proper 429 response
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
-		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+		formatConcurrencyErrorMessage(err, slotType), streamStarted)
 }
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
