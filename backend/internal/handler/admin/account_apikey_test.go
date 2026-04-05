@@ -67,6 +67,8 @@ func TestDisableInvalidAPIKeyAccount_SkipsSchedulingUpdateWhenAlreadyDisabled(t 
 }
 
 func TestRecoverValidAPIKeyAccount_ClearsErrorAndEnablesScheduling(t *testing.T) {
+	// When health check confirms the key is valid via real chat completions,
+	// status=error accounts should be fully recovered.
 	adminSvc := newStubAdminService()
 	handler := &AccountHandler{adminService: adminSvc}
 	account := &service.Account{

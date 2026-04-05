@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -304,6 +303,9 @@ func ClassifyAPIKeyProbeResponse(account *Account, statusCode int, responseBody 
 	}
 }
 
+// CheckAPIKeyValidity tests an API key account using a real chat completions request,
+// identical to the single-account "test connection" flow. This ensures health check
+// results are authoritative and consistent with manual test results.
 func (s *AccountTestService) CheckAPIKeyValidity(ctx context.Context, account *Account) (*APIKeyHealthCheckResult, error) {
 	if account == nil {
 		return nil, fmt.Errorf("account is required")
@@ -315,49 +317,26 @@ func (s *AccountTestService) CheckAPIKeyValidity(ctx context.Context, account *A
 		return nil, fmt.Errorf("account test service is not configured")
 	}
 
-	req, err := s.buildAPIKeyProbeRequest(ctx, account)
+	// Run the same real chat completions test used by single-account "test connection".
+	// Account state (SetError, SetSchedulable, SetTempUnschedulable, etc.) is written
+	// inside the platform-specific test functions, so no additional state writes are needed here.
+	result, err := s.RunTestBackground(ctx, account.ID, "")
 	if err != nil {
 		return nil, err
 	}
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	valid, invalid, cooldown, message := ClassifyAPIKeyProbeResponse(account, resp.StatusCode, respBody)
-
-	if s.accountRepo != nil {
-		if invalid {
-			errMsg := buildAPIKeyProbeErrorMessage(resp.StatusCode, message)
-			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
-			if account.Schedulable {
-				_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
-			}
-		} else if cooldown {
-			reason := fmt.Sprintf("API key probe temporary cooldown (%d): %s", resp.StatusCode, strings.TrimSpace(message))
-			until := time.Now().Add(apiKeyProbeCooldown)
-			_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason)
-		} else if valid {
-			// Key is healthy: clear any temporary cooldown/rate-limit so it re-enters scheduling immediately.
-			_ = s.accountRepo.ClearTempUnschedulable(ctx, account.ID)
-			_ = s.accountRepo.ClearRateLimit(ctx, account.ID)
-		}
+	valid := result.Status == "success"
+	invalid := false
+	message := result.ResponseText
+	if !valid {
+		message = result.ErrorMessage
 	}
 
 	return &APIKeyHealthCheckResult{
-		Platform:   account.Platform,
-		StatusCode: resp.StatusCode,
-		Valid:      valid,
-		Invalid:    invalid,
-		Message:    message,
+		Platform: account.Platform,
+		Valid:    valid,
+		Invalid:  invalid,
+		Message:  message,
 	}, nil
 }
 
