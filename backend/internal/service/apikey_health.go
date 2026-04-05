@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 )
 
@@ -304,12 +303,14 @@ func (s *AccountTestService) buildAnthropicAPIKeyProbeRequest(ctx context.Contex
 		return nil, fmt.Errorf("invalid anthropic base url: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(normalizedBaseURL, "/")+"/v1/messages", nil)
+	// Use GET /v1/models for probe - no token consumption, pure auth check.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		strings.TrimSuffix(normalizedBaseURL, "/")+"/v1/models",
+		nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 	req.Header.Set("x-api-key", account.GetCredential("api_key"))
 	req.Header.Set("User-Agent", proxyQualityClientUserAgent)
 	return req, nil
