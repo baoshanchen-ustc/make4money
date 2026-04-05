@@ -28,6 +28,10 @@ type AccountRepository interface {
 	// GetByCRSAccountID finds an account previously synced from CRS.
 	// Returns (nil, nil) if not found.
 	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error)
+	// FindByAPIKey returns the first non-deleted account that matches the given
+	// platform + api_key + base_url combination.
+	// Returns (nil, nil) when no match is found.
+	FindByAPIKey(ctx context.Context, platform, apiKey, baseURL string) (*Account, error)
 	// FindByExtraField 根据 extra 字段中的键值对查找账号（限定 platform='sora'）
 	// 用于查找通过 linked_openai_account_id 关联的 Sora 账号
 	FindByExtraField(ctx context.Context, key string, value any) ([]Account, error)

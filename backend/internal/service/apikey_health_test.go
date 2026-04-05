@@ -46,27 +46,35 @@ func TestClassifyAPIKeyProbeResponse(t *testing.T) {
 	geminiAccount := &Account{Platform: PlatformGemini, Type: AccountTypeAPIKey}
 	anthropicAccount := &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKey}
 
-	valid, invalid, _ := ClassifyAPIKeyProbeResponse(openAIAccount, http.StatusOK, []byte(`{}`))
+	valid, invalid, cooldown, _ := ClassifyAPIKeyProbeResponse(openAIAccount, http.StatusOK, []byte(`{}`))
 	require.True(t, valid)
 	require.False(t, invalid)
+	require.False(t, cooldown)
 
-	valid, invalid, _ = ClassifyAPIKeyProbeResponse(openAIAccount, http.StatusPaymentRequired, []byte(`{"error":{"message":"insufficient balance"}}`))
+	valid, invalid, cooldown, _ = ClassifyAPIKeyProbeResponse(openAIAccount, http.StatusPaymentRequired, []byte(`{"error":{"message":"insufficient balance"}}`))
 	require.False(t, valid)
 	require.True(t, invalid)
+	require.False(t, cooldown)
 
-	valid, invalid, _ = ClassifyAPIKeyProbeResponse(geminiAccount, http.StatusBadRequest, []byte(`{"error":{"message":"API key not valid. Please pass a valid API key.","status":"API_KEY_INVALID"}}`))
+	valid, invalid, cooldown, _ = ClassifyAPIKeyProbeResponse(geminiAccount, http.StatusBadRequest, []byte(`{"error":{"message":"API key not valid. Please pass a valid API key.","status":"API_KEY_INVALID"}}`))
 	require.False(t, valid)
 	require.True(t, invalid)
+	require.False(t, cooldown)
 
-	valid, invalid, _ = ClassifyAPIKeyProbeResponse(openAIAccount, http.StatusForbidden, []byte(`{"error":{"message":"model not allowed for this project","code":"forbidden"}}`))
+	// OpenAI 403 unrecognized → cooldown (not permanent disable, not valid)
+	valid, invalid, cooldown, _ = ClassifyAPIKeyProbeResponse(openAIAccount, http.StatusForbidden, []byte(`{"error":{"message":"model not allowed for this project","code":"forbidden"}}`))
 	require.False(t, valid)
 	require.False(t, invalid)
+	require.True(t, cooldown)
 
-	valid, invalid, _ = ClassifyAPIKeyProbeResponse(anthropicAccount, http.StatusMethodNotAllowed, []byte(`method not allowed`))
+	// Unknown status code (405) → cooldown
+	valid, invalid, cooldown, _ = ClassifyAPIKeyProbeResponse(anthropicAccount, http.StatusMethodNotAllowed, []byte(`method not allowed`))
 	require.False(t, valid)
 	require.False(t, invalid)
+	require.True(t, cooldown)
 
-	valid, invalid, _ = ClassifyAPIKeyProbeResponse(openAIAccount, http.StatusTooManyRequests, []byte(`{"error":{"message":"rate limited"}}`))
+	valid, invalid, cooldown, _ = ClassifyAPIKeyProbeResponse(openAIAccount, http.StatusTooManyRequests, []byte(`{"error":{"message":"rate limited"}}`))
 	require.False(t, valid)
 	require.False(t, invalid)
+	require.True(t, cooldown)
 }

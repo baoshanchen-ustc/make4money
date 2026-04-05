@@ -521,6 +521,14 @@ func (e *UpstreamFailoverError) Error() string {
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 }
 
+// streamSSEError is returned by processSSEEvent when an SSE "event: error" frame is received.
+// It carries the raw data line so the caller can classify the error and update account state.
+type streamSSEError struct {
+	body []byte
+}
+
+func (e *streamSSEError) Error() string { return "have error in stream" }
+
 // TempUnscheduleRetryableError 对 RetryableOnSameAccount 类型的 failover 错误触发临时封禁。
 // 由 handler 层在同账号重试全部用尽、切换账号时调用。
 func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) {
@@ -4555,9 +4563,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
-			if ShouldDisableAPIKeyStatus(account, resp.StatusCode, respBody) {
-				logger.LegacyPrintf("service.gateway", "[APIKey] Account %d: permanent error %d after retries, triggering failover",
-					account.ID, resp.StatusCode)
+			action := ClassifyAPIKeyStatusAction(account, resp.StatusCode, respBody)
+			if action == APIKeyStatusActionPermanentDisable || action == APIKeyStatusActionTemporaryCooldown {
+				kind := "apikey_permanent_retry_exhausted_failover"
+				if action == APIKeyStatusActionTemporaryCooldown {
+					kind = "apikey_temporary_retry_exhausted_failover"
+				}
+				logger.LegacyPrintf("service.gateway", "[APIKey] Account %d: error %d after retries (%s), triggering failover",
+					account.ID, resp.StatusCode, kind)
 				s.handleRetryExhaustedSideEffects(ctx, resp, account)
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
@@ -4565,7 +4578,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
-					Kind:               "apikey_permanent_retry_exhausted_failover",
+					Kind:               kind,
 					Message:            sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody))),
 				})
 				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
@@ -4606,8 +4619,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 	if resp.StatusCode >= 400 {
-		// API Key 账号的永久性 400 错误（余额不足、账号禁用等）直接触发 failover 切换。
-		// 这类错误无法通过重试恢复，应立即标记 key 状态并切换到其他账号。
+		// API Key 账号的 400 错误：永久禁用直接 failover，临时冷却也 failover 切换让用户无感。
 		if resp.StatusCode == 400 && account.Type == AccountTypeAPIKey {
 			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			if readErr != nil {
@@ -4616,9 +4628,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
-			if ShouldDisableAPIKeyStatus(account, resp.StatusCode, respBody) {
-				logger.LegacyPrintf("service.gateway", "[APIKey] Account %d: permanent 400 error, triggering failover: %s",
-					account.ID, truncateString(string(respBody), 500))
+			action := ClassifyAPIKeyStatusAction(account, resp.StatusCode, respBody)
+			if action == APIKeyStatusActionPermanentDisable || action == APIKeyStatusActionTemporaryCooldown {
+				kind := "apikey_permanent_400_failover"
+				if action == APIKeyStatusActionTemporaryCooldown {
+					kind = "apikey_temporary_400_failover"
+				}
+				logger.LegacyPrintf("service.gateway", "[APIKey] Account %d: 400 error (%s), triggering failover: %s",
+					account.ID, kind, truncateString(string(respBody), 500))
 				s.handleFailoverSideEffects(ctx, resp, account)
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
@@ -4626,7 +4643,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
-					Kind:               "apikey_permanent_400_failover",
+					Kind:               kind,
 					Message:            sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody))),
 				})
 				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
@@ -4694,9 +4711,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if reqStream {
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
 		if err != nil {
-			if err.Error() == "have error in stream" {
+			var sseErr *streamSSEError
+			if errors.As(err, &sseErr) {
+				// Classify and persist account state before failing over.
+				s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusForbidden, resp.Header, sseErr.body)
 				return nil, &UpstreamFailoverError{
-					StatusCode: 403,
+					StatusCode:   http.StatusForbidden,
+					ResponseBody: sseErr.body,
 				}
 			}
 			return nil, err
@@ -6534,6 +6555,12 @@ func extractUpstreamErrorCode(body []byte) string {
 	return ""
 }
 
+// extractUpstreamErrorType extracts the error type field from Anthropic-style responses:
+// {"type":"error","error":{"type":"authentication_error","message":"..."}}
+func extractUpstreamErrorType(body []byte) string {
+	return strings.TrimSpace(gjson.GetBytes(body, "error.type").String())
+}
+
 func isCountTokensUnsupported404(statusCode int, body []byte) bool {
 	if statusCode != http.StatusNotFound {
 		return false
@@ -6963,7 +6990,12 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		if eventName == "error" {
-			return nil, dataLine, nil, errors.New("have error in stream")
+			// Wrap dataLine as a synthetic error body so callers can classify the error.
+			syntheticBody := []byte(dataLine)
+			if len(syntheticBody) == 0 {
+				syntheticBody = []byte(`{"error":{"type":"stream_error","message":"error event in stream"}}`)
+			}
+			return nil, dataLine, nil, &streamSSEError{body: syntheticBody}
 		}
 
 		if dataLine == "" {

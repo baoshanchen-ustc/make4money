@@ -315,26 +315,14 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
 
 		if account.Type == AccountTypeAPIKey && s.accountRepo != nil {
-			switch ClassifyAPIKeyStatusAction(account, resp.StatusCode, body) {
-			case APIKeyStatusActionPermanentDisable:
-				msg := buildAPIKeyRuntimeErrorMessage(resp.StatusCode, body, "API key permanently disabled after test connection")
-				_ = s.accountRepo.SetError(ctx, account.ID, msg)
-				if account.Schedulable {
-					_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
-				}
-			case APIKeyStatusActionTemporaryCooldown:
-				if resp.StatusCode == http.StatusTooManyRequests {
-					t := time.Now().Add(apiKey429Cooldown)
-					_ = s.accountRepo.SetRateLimited(ctx, account.ID, t)
-				}
-			}
+			applyTestConnectionAction(ctx, s.accountRepo, account, resp.StatusCode, resp.Header, body)
 		}
 
 		return s.sendErrorAndEnd(c, errMsg)
 	}
 
 	// Process SSE stream
-	return s.processClaudeStream(c, resp.Body)
+	return s.processClaudeStream(c, ctx, account, resp.Body)
 }
 
 // testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke
@@ -563,35 +551,20 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			}
 		}
 		if account.Type == AccountTypeAPIKey && s.accountRepo != nil {
-			// For API key accounts, classify the error and mark account state accordingly.
-			switch ClassifyAPIKeyStatusAction(account, resp.StatusCode, body) {
-			case APIKeyStatusActionPermanentDisable:
-				errMsg := buildAPIKeyRuntimeErrorMessage(resp.StatusCode, body, "API key permanently disabled after test connection")
-				_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
-				if account.Schedulable {
-					_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
-				}
-			case APIKeyStatusActionTemporaryCooldown:
-				if resp.StatusCode == http.StatusTooManyRequests {
-					resetAt := (&RateLimitService{}).calculateOpenAI429ResetTime(resp.Header)
-					if resetAt == nil {
-						t := time.Now().Add(apiKey429Cooldown)
-						resetAt = &t
-					}
-					_ = s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt)
-					account.RateLimitResetAt = resetAt
-				}
-			}
+			applyTestConnectionAction(ctx, s.accountRepo, account, resp.StatusCode, resp.Header, body)
 		} else if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
-			// OAuth 401: mark account as error
+			// OAuth 401: mark account as error and disable scheduling
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			if account.Schedulable {
+				_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
+			}
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	// Process SSE stream
-	return s.processOpenAIStream(c, resp.Body)
+	return s.processOpenAIStream(c, ctx, account, resp.Body)
 }
 
 // testGeminiAccountConnection tests a Gemini account's connection
@@ -660,19 +633,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		body, _ := io.ReadAll(resp.Body)
 
 		if account.Type == AccountTypeAPIKey && s.accountRepo != nil {
-			switch ClassifyAPIKeyStatusAction(account, resp.StatusCode, body) {
-			case APIKeyStatusActionPermanentDisable:
-				msg := buildAPIKeyRuntimeErrorMessage(resp.StatusCode, body, "API key permanently disabled after test connection")
-				_ = s.accountRepo.SetError(ctx, account.ID, msg)
-				if account.Schedulable {
-					_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
-				}
-			case APIKeyStatusActionTemporaryCooldown:
-				if resp.StatusCode == http.StatusTooManyRequests {
-					t := time.Now().Add(apiKey429Cooldown)
-					_ = s.accountRepo.SetRateLimited(ctx, account.ID, t)
-				}
-			}
+			applyTestConnectionAction(ctx, s.accountRepo, account, resp.StatusCode, resp.Header, body)
 		}
 
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
@@ -1691,7 +1652,7 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 }
 
 // processClaudeStream processes the SSE stream from Claude API
-func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processClaudeStream(c *gin.Context, ctx context.Context, account *Account, body io.Reader) error {
 	reader := bufio.NewReader(body)
 
 	for {
@@ -1734,9 +1695,30 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 			return nil
 		case "error":
 			errorMsg := "Unknown error"
+			errorCode := ""
 			if errData, ok := data["error"].(map[string]any); ok {
 				if msg, ok := errData["message"].(string); ok {
 					errorMsg = msg
+				}
+				if t, ok := errData["type"].(string); ok {
+					errorCode = t
+				}
+			}
+			// For API Key accounts, classify the in-stream error and mark account state.
+			if account != nil && account.Type == AccountTypeAPIKey && s.accountRepo != nil {
+				syntheticBody := []byte(`{"error":{"message":` + fmt.Sprintf("%q", errorMsg) + `,"type":` + fmt.Sprintf("%q", errorCode) + `}}`)
+				action := ClassifyAPIKeyStatusAction(account, http.StatusForbidden, syntheticBody)
+				switch action {
+				case APIKeyStatusActionPermanentDisable:
+					msg := buildAPIKeyRuntimeErrorMessage(http.StatusForbidden, syntheticBody, "API key permanently disabled after test connection (stream error)")
+					_ = s.accountRepo.SetError(ctx, account.ID, msg)
+					if account.Schedulable {
+						_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
+					}
+				case APIKeyStatusActionTemporaryCooldown:
+					reason := buildAPIKeyRuntimeErrorMessage(http.StatusForbidden, syntheticBody, "API key temporary cooldown after test connection (stream error)")
+					until := time.Now().Add(apiKeyProbeCooldown)
+					_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason)
 				}
 			}
 			return s.sendErrorAndEnd(c, errorMsg)
@@ -1744,55 +1726,157 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 	}
 }
 
-// processOpenAIStream processes the SSE stream from OpenAI Responses API
-func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
+// classifyOpenAIStreamTextAsAccountError checks if accumulated response text from a
+// 200 OK SSE stream indicates an account-level error returned as plain text content.
+// Some third-party OpenAI-compatible APIs return account errors as text deltas instead
+// of structured error events, causing the system to miss account disabling.
+// Wraps the text as a synthetic JSON error body and delegates to ClassifyAPIKeyStatusAction
+// so there is a single source of truth for all keyword/code matching.
+// applyTestConnectionAction classifies a non-200 response from a test connection and writes
+// account state accordingly. For APIKey accounts only.
+func applyTestConnectionAction(ctx context.Context, repo AccountRepository, account *Account, statusCode int, headers http.Header, body []byte) {
+	switch ClassifyAPIKeyStatusAction(account, statusCode, body) {
+	case APIKeyStatusActionPermanentDisable:
+		msg := buildAPIKeyRuntimeErrorMessage(statusCode, body, "API key permanently disabled after test connection")
+		_ = repo.SetError(ctx, account.ID, msg)
+		if account.Schedulable {
+			_ = repo.SetSchedulable(ctx, account.ID, false)
+		}
+	case APIKeyStatusActionTemporaryCooldown:
+		if statusCode == http.StatusTooManyRequests {
+			resetAt := (&RateLimitService{}).calculateOpenAI429ResetTime(headers)
+			if resetAt == nil {
+				t := time.Now().Add(apiKey429Cooldown)
+				resetAt = &t
+			}
+			_ = repo.SetRateLimited(ctx, account.ID, *resetAt)
+		} else {
+			reason := buildAPIKeyRuntimeErrorMessage(statusCode, body, "API key temporary cooldown after test connection")
+			until := time.Now().Add(apiKeyProbeCooldown)
+			_ = repo.SetTempUnschedulable(ctx, account.ID, until, reason)
+		}
+	}
+}
+
+func classifyOpenAIStreamTextAsAccountError(account *Account, accumulatedText string) APIKeyStatusAction {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return APIKeyStatusActionIgnore
+	}
+	txt := strings.TrimSpace(accumulatedText)
+	if txt == "" {
+		return APIKeyStatusActionIgnore
+	}
+	// Try each permanent-disable status code used by OpenAI-compatible APIs.
+	// The text is placed in the message field so extractUpstreamErrorMessage can find it.
+	for _, statusCode := range []int{http.StatusForbidden, http.StatusBadRequest, http.StatusPaymentRequired, http.StatusTooManyRequests} {
+		syntheticBody := []byte(`{"error":{"message":` + fmt.Sprintf("%q", txt) + `}}`)
+		if ClassifyAPIKeyStatusAction(account, statusCode, syntheticBody) == APIKeyStatusActionPermanentDisable {
+			return APIKeyStatusActionPermanentDisable
+		}
+	}
+	return APIKeyStatusActionIgnore
+}
+
+// processOpenAIStream processes the SSE stream from OpenAI Responses API.
+// account may be nil for OAuth accounts where state marking is not needed.
+func (s *AccountTestService) processOpenAIStream(c *gin.Context, ctx context.Context, account *Account, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	var accumulatedText strings.Builder
+
+	applyStreamTextErrorAction := func(txt string) (bool, error) {
+		if txt == "" || classifyOpenAIStreamTextAsAccountError(account, txt) != APIKeyStatusActionPermanentDisable {
+			return false, nil
+		}
+		if account != nil && account.Type == AccountTypeAPIKey && s.accountRepo != nil {
+			syntheticBody := []byte(`{"error":{"message":` + fmt.Sprintf("%q", txt) + `}}`)
+			msg := buildAPIKeyRuntimeErrorMessage(http.StatusForbidden, syntheticBody, "API key permanently disabled after test connection (stream text error)")
+			_ = s.accountRepo.SetError(ctx, account.ID, msg)
+			if account.Schedulable {
+				_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
+			}
+		}
+		return true, s.sendErrorAndEnd(c, txt)
+	}
 
 	for {
 		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
-			}
+		isEOF := err == io.EOF
+		if err != nil && !isEOF {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 		}
 
 		line = strings.TrimSpace(line)
-		if line == "" || !sseDataPrefix.MatchString(line) {
-			continue
-		}
 
-		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
-		if jsonStr == "[DONE]" {
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
-		}
+		if line != "" && sseDataPrefix.MatchString(line) {
+			jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 
-		var data map[string]any
-		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-			continue
-		}
-
-		eventType, _ := data["type"].(string)
-
-		switch eventType {
-		case "response.output_text.delta":
-			// OpenAI Responses API uses "delta" field for text content
-			if delta, ok := data["delta"].(string); ok && delta != "" {
-				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
-			}
-		case "response.completed":
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
-		case "error":
-			errorMsg := "Unknown error"
-			if errData, ok := data["error"].(map[string]any); ok {
-				if msg, ok := errData["message"].(string); ok {
-					errorMsg = msg
+			if jsonStr == "[DONE]" || isEOF && jsonStr == "" {
+				// Terminal: check accumulated text before declaring success.
+			} else if jsonStr != "" {
+				var data map[string]any
+				if jsonErr := json.Unmarshal([]byte(jsonStr), &data); jsonErr == nil {
+					eventType, _ := data["type"].(string)
+					switch eventType {
+					case "response.output_text.delta":
+						if delta, ok := data["delta"].(string); ok && delta != "" {
+							accumulatedText.WriteString(delta)
+							// Emit content immediately unless this is also the EOF line
+							// (in that case we may suppress it if it turns out to be an error).
+							if !isEOF {
+								s.sendEvent(c, TestEvent{Type: "content", Text: delta})
+							}
+						}
+						if !isEOF {
+							continue
+						}
+					case "response.completed":
+						if triggered, errResult := applyStreamTextErrorAction(accumulatedText.String()); triggered {
+							return errResult
+						}
+						s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+						return nil
+					case "error":
+						errorMsg := "Unknown error"
+						errorCode := ""
+						if errData, ok := data["error"].(map[string]any); ok {
+							if msg, ok := errData["message"].(string); ok {
+								errorMsg = msg
+							}
+							if code, ok := errData["code"].(string); ok {
+								errorCode = code
+							}
+						}
+						// For API Key accounts, classify the in-stream error and mark account state.
+						// OpenAI sometimes returns HTTP 200 with an error event inside the SSE stream
+						// for account-level issues (e.g. "account is not active").
+						if account != nil && account.Type == AccountTypeAPIKey && s.accountRepo != nil {
+							syntheticBody := []byte(`{"error":{"message":` + fmt.Sprintf("%q", errorMsg) + `,"code":` + fmt.Sprintf("%q", errorCode) + `}}`)
+							action := ClassifyAPIKeyStatusAction(account, http.StatusForbidden, syntheticBody)
+							switch action {
+							case APIKeyStatusActionPermanentDisable:
+								msg := buildAPIKeyRuntimeErrorMessage(http.StatusForbidden, syntheticBody, "API key permanently disabled after test connection (stream error)")
+								_ = s.accountRepo.SetError(ctx, account.ID, msg)
+								if account.Schedulable {
+									_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
+								}
+							case APIKeyStatusActionTemporaryCooldown:
+								reason := buildAPIKeyRuntimeErrorMessage(http.StatusForbidden, syntheticBody, "API key temporary cooldown after test connection (stream error)")
+								until := time.Now().Add(apiKeyProbeCooldown)
+								_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason)
+							}
+						}
+						return s.sendErrorAndEnd(c, errorMsg)
+					}
 				}
 			}
-			return s.sendErrorAndEnd(c, errorMsg)
+		}
+
+		if isEOF {
+			if triggered, errResult := applyStreamTextErrorAction(accumulatedText.String()); triggered {
+				return errResult
+			}
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
 		}
 	}
 }

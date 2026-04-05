@@ -285,6 +285,39 @@ func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID 
 	return &accounts[0], nil
 }
 
+// FindByAPIKey returns the first non-deleted account matching the given
+// platform + credentials.api_key + credentials.base_url combination.
+// Returns (nil, nil) when no match is found.
+func (r *accountRepository) FindByAPIKey(ctx context.Context, platform, apiKey, baseURL string) (*service.Account, error) {
+	if platform == "" || apiKey == "" {
+		return nil, nil
+	}
+	m, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ(platform),
+			dbaccount.TypeEQ("apikey"),
+			dbaccount.DeletedAtIsNil(),
+			func(s *entsql.Selector) {
+				s.Where(sqljson.ValueEQ(dbaccount.FieldCredentials, apiKey, sqljson.Path("api_key")))
+			},
+		).
+		First(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	// Verify base_url match in Go to avoid JSONB cast complexity for empty values.
+	account := accountEntityToService(m)
+	existingBaseURL := strings.TrimSuffix(strings.TrimSpace(account.GetCredential("base_url")), "/")
+	wantBaseURL := strings.TrimSuffix(strings.TrimSpace(baseURL), "/")
+	if existingBaseURL != wantBaseURL {
+		return nil, nil
+	}
+	return account, nil
+}
+
 func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT id, extra->>'crs_account_id'

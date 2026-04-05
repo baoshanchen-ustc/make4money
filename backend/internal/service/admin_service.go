@@ -1578,6 +1578,21 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
+	// Deduplicate API Key accounts: reject creation if the same key already exists.
+	if input.Type == AccountTypeAPIKey {
+		apiKey, _ := input.Credentials["api_key"].(string)
+		baseURL, _ := input.Credentials["base_url"].(string)
+		if strings.TrimSpace(apiKey) != "" {
+			existing, err := s.accountRepo.FindByAPIKey(ctx, input.Platform, strings.TrimSpace(apiKey), strings.TrimSpace(baseURL))
+			if err != nil {
+				return nil, fmt.Errorf("duplicate check failed: %w", err)
+			}
+			if existing != nil {
+				return nil, fmt.Errorf("duplicate api key: account %d (%s) already uses this key", existing.ID, existing.Name)
+			}
+		}
+	}
+
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -2221,6 +2236,10 @@ func (s *adminServiceImpl) TestProxy(ctx context.Context, id int64) (*ProxyTestR
 			Message:   err.Error(),
 			UpdatedAt: time.Now(),
 		})
+		if proxy.Status == StatusActive {
+			proxy.Status = "inactive"
+			_ = s.proxyRepo.Update(ctx, proxy)
+		}
 		return &ProxyTestResult{
 			Success: false,
 			Message: err.Error(),
@@ -2239,6 +2258,10 @@ func (s *adminServiceImpl) TestProxy(ctx context.Context, id int64) (*ProxyTestR
 		City:        exitInfo.City,
 		UpdatedAt:   time.Now(),
 	})
+	if proxy.Status != StatusActive {
+		proxy.Status = StatusActive
+		_ = s.proxyRepo.Update(ctx, proxy)
+	}
 	return &ProxyTestResult{
 		Success:     true,
 		Message:     "Proxy is accessible",
@@ -2265,6 +2288,21 @@ func (s *adminServiceImpl) CheckProxyQuality(ctx context.Context, id int64) (*Pr
 		Items:     make([]ProxyQualityCheckItem, 0, len(proxyQualityTargets)+1),
 	}
 
+	finalize := func(exitInfo *ProxyExitInfo) (*ProxyQualityCheckResult, error) {
+		finalizeProxyQualityResult(result)
+		s.saveProxyQualitySnapshot(ctx, id, result, exitInfo)
+		if result.FailedCount > 0 {
+			if proxy.Status == StatusActive {
+				proxy.Status = "inactive"
+				_ = s.proxyRepo.Update(ctx, proxy)
+			}
+		} else if proxy.Status != StatusActive {
+			proxy.Status = StatusActive
+			_ = s.proxyRepo.Update(ctx, proxy)
+		}
+		return result, nil
+	}
+
 	proxyURL := proxy.URL()
 	if s.proxyProber == nil {
 		result.Items = append(result.Items, ProxyQualityCheckItem{
@@ -2273,9 +2311,7 @@ func (s *adminServiceImpl) CheckProxyQuality(ctx context.Context, id int64) (*Pr
 			Message: "代理探测服务未配置",
 		})
 		result.FailedCount++
-		finalizeProxyQualityResult(result)
-		s.saveProxyQualitySnapshot(ctx, id, result, nil)
-		return result, nil
+		return finalize(nil)
 	}
 
 	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxyURL)
@@ -2287,9 +2323,7 @@ func (s *adminServiceImpl) CheckProxyQuality(ctx context.Context, id int64) (*Pr
 			Message:   err.Error(),
 		})
 		result.FailedCount++
-		finalizeProxyQualityResult(result)
-		s.saveProxyQualitySnapshot(ctx, id, result, nil)
-		return result, nil
+		return finalize(nil)
 	}
 
 	result.ExitIP = exitInfo.IP
@@ -2316,9 +2350,7 @@ func (s *adminServiceImpl) CheckProxyQuality(ctx context.Context, id int64) (*Pr
 			Message: fmt.Sprintf("创建检测客户端失败: %v", err),
 		})
 		result.FailedCount++
-		finalizeProxyQualityResult(result)
-		s.saveProxyQualitySnapshot(ctx, id, result, exitInfo)
-		return result, nil
+		return finalize(exitInfo)
 	}
 
 	for _, target := range proxyQualityTargets {
@@ -2336,9 +2368,7 @@ func (s *adminServiceImpl) CheckProxyQuality(ctx context.Context, id int64) (*Pr
 		}
 	}
 
-	finalizeProxyQualityResult(result)
-	s.saveProxyQualitySnapshot(ctx, id, result, exitInfo)
-	return result, nil
+	return finalize(exitInfo)
 }
 
 func runProxyQualityTarget(ctx context.Context, client *http.Client, target proxyQualityTarget) ProxyQualityCheckItem {

@@ -7,9 +7,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 )
+
+const apiKeyProbeCooldown = 60 * time.Minute
 
 type APIKeyHealthCheckResult struct {
 	Platform   string `json:"platform"`
@@ -89,29 +92,39 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 			}
 			return APIKeyStatusActionTemporaryCooldown
 		case http.StatusBadRequest:
+			// Prefer structured error code: high-precision, no false positives
+			if containsAny(code,
+				"account_deactivated",
+				"deactivated_workspace",
+				"billing_not_active",
+				"account_inactive",
+				"billing_hard_limit_reached",
+				"invalid_api_key",
+			) {
+				return APIKeyStatusActionPermanentDisable
+			}
+			// Message text fallback: use precise phrases that cannot appear in normal API errors
 			if containsAny(msg,
 				"organization has been disabled",
 				"project has been disabled",
 				"workspace has been deactivated",
 				"workspace has been disabled",
-				"account deactivated",
 				"account has been deactivated",
+				"account has been suspended",
+				"account has been blocked",
 				"key is disabled",
 				"api key disabled",
 				"account is not active",
-				"billing details",
-				"check your billing",
-				"account has been suspended",
-				"account suspended",
 				"billing_hard_limit_reached",
-				"billing hard limit",
+				"billing hard limit reached",
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}
-			if code == "billing_hard_limit_reached" {
-				return APIKeyStatusActionPermanentDisable
-			}
+			// Unrecognized 400: could be a parameter issue or an unknown account error.
+			// Treat as temporary cooldown to avoid hammering a potentially disabled key.
+			return APIKeyStatusActionTemporaryCooldown
 		case http.StatusForbidden:
+			// Prefer structured error code
 			if containsAny(code,
 				"invalid_api_key",
 				"token_invalidated",
@@ -123,43 +136,74 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}
+			// Message text fallback: precise phrases only
 			if containsAny(msg,
 				"invalid api key",
 				"incorrect api key",
+				"no api key provided",
 				"token invalidated",
 				"token revoked",
-				"account deactivated",
+				"account has been deactivated",
 				"workspace has been deactivated",
 				"organization has been disabled",
 				"project has been disabled",
 				"key is disabled",
 				"api key disabled",
 				"account is not active",
-				"billing details",
-				"check your billing",
 				"account has been suspended",
-				"account suspended",
+				"account has been blocked",
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}
+			// Unrecognized 403: treat as temporary cooldown.
+			return APIKeyStatusActionTemporaryCooldown
 		}
 	case PlatformAnthropic:
 		switch statusCode {
-		case http.StatusUnauthorized, http.StatusForbidden:
+		case http.StatusUnauthorized:
+			// 401 is always a permanent key/auth failure for Anthropic
 			return APIKeyStatusActionPermanentDisable
+		case http.StatusForbidden:
+			// Anthropic 403: check for known account-level error types first.
+			// Some 403s are model-level permission issues (e.g. no access to claude-opus),
+			// not key invalidation. Use structured type field when available.
+			errType := strings.ToLower(strings.TrimSpace(extractUpstreamErrorType(responseBody)))
+			if containsAny(errType,
+				"authentication_error",
+				"permission_error",
+			) {
+				return APIKeyStatusActionPermanentDisable
+			}
+			// Fallback: precise message phrases that only appear for account-level issues
+			if containsAny(msg,
+				"invalid api key",
+				"api key is invalid",
+				"account has been disabled",
+				"organization has been disabled",
+				"account has been deactivated",
+			) {
+				return APIKeyStatusActionPermanentDisable
+			}
+			// Unknown 403: treat as temporary, not permanent — model access restriction
+			return APIKeyStatusActionTemporaryCooldown
+		case http.StatusPaymentRequired:
+			// 402 is temporary billing issue (payment needed), not permanent key invalidation
+			return APIKeyStatusActionTemporaryCooldown
 		case http.StatusTooManyRequests:
 			return APIKeyStatusActionTemporaryCooldown
 		case http.StatusBadRequest:
 			// Anthropic returns 400 for credit balance exhaustion (not 402/429)
 			if containsAny(msg,
 				"credit balance is too low",
-				"your credit balance",
+				"your credit balance is",
 				"insufficient credits",
 				"account has been disabled",
 				"organization has been disabled",
+				"account has been deactivated",
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}
+			return APIKeyStatusActionTemporaryCooldown
 		}
 	case PlatformGemini:
 		switch statusCode {
@@ -183,14 +227,22 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}
-			// Unknown 403: could be model-level restriction, do not permanently disable
-			return APIKeyStatusActionIgnore
+			// Unknown 403: treat as temporary cooldown rather than ignore.
+			// A model-level permission 403 is transient for this key/model combo;
+			// a temporary cooldown avoids hammering a key that may be account-level suspended.
+			return APIKeyStatusActionTemporaryCooldown
 		case http.StatusBadRequest:
 			if strings.Contains(bodyUpper, "API_KEY_INVALID") || googleapi.IsServiceDisabledError(string(responseBody)) {
 				return APIKeyStatusActionPermanentDisable
 			}
-			// FAILED_PRECONDITION: free tier not available in region, requires billing setup
-			if strings.Contains(bodyUpper, "FAILED_PRECONDITION") {
+			// FAILED_PRECONDITION with billing/free-tier messages: permanent disable.
+			// Bare FAILED_PRECONDITION without billing context may be a request issue, not key failure.
+			if strings.Contains(bodyUpper, "FAILED_PRECONDITION") && containsAny(msg,
+				"free tier is not available",
+				"enable billing",
+				"billing account",
+				"requires a billing",
+			) {
 				return APIKeyStatusActionPermanentDisable
 			}
 			if containsAny(msg,
@@ -208,19 +260,25 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}
+			return APIKeyStatusActionTemporaryCooldown
 		}
 	}
 
-	return APIKeyStatusActionIgnore
+	// All other non-200 status codes (404, 405, 422, etc.) that are not explicitly handled above:
+	// treat as temporary cooldown so the key is not scheduled again immediately.
+	// This covers endpoint-not-found, method-not-allowed, and any future unknown error codes.
+	return APIKeyStatusActionTemporaryCooldown
 }
 
 func ShouldDisableAPIKeyAuthFailure(account *Account, statusCode int, responseBody []byte) bool {
 	return ShouldDisableAPIKeyStatus(account, statusCode, responseBody)
 }
 
-func ClassifyAPIKeyProbeResponse(account *Account, statusCode int, responseBody []byte) (valid bool, invalid bool, message string) {
+// ClassifyAPIKeyProbeResponse classifies a probe response into (valid, invalid, cooldown, message).
+// valid=true: key works. invalid=true: key is permanently disabled. cooldown=true: key needs temp cooldown.
+func ClassifyAPIKeyProbeResponse(account *Account, statusCode int, responseBody []byte) (valid bool, invalid bool, cooldown bool, message string) {
 	if account == nil || account.Type != AccountTypeAPIKey {
-		return false, false, "unsupported account type"
+		return false, false, false, "unsupported account type"
 	}
 
 	message = strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
@@ -233,14 +291,16 @@ func ClassifyAPIKeyProbeResponse(account *Account, statusCode int, responseBody 
 	case PlatformAnthropic, PlatformOpenAI, PlatformGemini:
 		switch ClassifyAPIKeyStatusAction(account, statusCode, responseBody) {
 		case APIKeyStatusActionValid:
-			return true, false, message
+			return true, false, false, message
 		case APIKeyStatusActionPermanentDisable:
-			return false, true, message
+			return false, true, false, message
+		case APIKeyStatusActionTemporaryCooldown:
+			return false, false, true, message
 		default:
-			return false, false, message
+			return false, false, false, message
 		}
 	default:
-		return false, false, message
+		return false, false, false, message
 	}
 }
 
@@ -272,7 +332,26 @@ func (s *AccountTestService) CheckAPIKeyValidity(ctx context.Context, account *A
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	valid, invalid, message := ClassifyAPIKeyProbeResponse(account, resp.StatusCode, respBody)
+	valid, invalid, cooldown, message := ClassifyAPIKeyProbeResponse(account, resp.StatusCode, respBody)
+
+	if s.accountRepo != nil {
+		if invalid {
+			errMsg := buildAPIKeyProbeErrorMessage(resp.StatusCode, message)
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+			if account.Schedulable {
+				_ = s.accountRepo.SetSchedulable(ctx, account.ID, false)
+			}
+		} else if cooldown {
+			reason := fmt.Sprintf("API key probe temporary cooldown (%d): %s", resp.StatusCode, strings.TrimSpace(message))
+			until := time.Now().Add(apiKeyProbeCooldown)
+			_ = s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason)
+		} else if valid {
+			// Key is healthy: clear any temporary cooldown/rate-limit so it re-enters scheduling immediately.
+			_ = s.accountRepo.ClearTempUnschedulable(ctx, account.ID)
+			_ = s.accountRepo.ClearRateLimit(ctx, account.ID)
+		}
+	}
+
 	return &APIKeyHealthCheckResult{
 		Platform:   account.Platform,
 		StatusCode: resp.StatusCode,
@@ -280,6 +359,14 @@ func (s *AccountTestService) CheckAPIKeyValidity(ctx context.Context, account *A
 		Invalid:    invalid,
 		Message:    message,
 	}, nil
+}
+
+func buildAPIKeyProbeErrorMessage(statusCode int, upstreamMsg string) string {
+	msg := strings.TrimSpace(upstreamMsg)
+	if msg == "" {
+		msg = http.StatusText(statusCode)
+	}
+	return fmt.Sprintf("API key permanently disabled after probe (%d): %s", statusCode, msg)
 }
 
 func (s *AccountTestService) buildAPIKeyProbeRequest(ctx context.Context, account *Account) (*http.Request, error) {

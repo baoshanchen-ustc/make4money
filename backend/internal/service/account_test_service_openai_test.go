@@ -130,3 +130,126 @@ func TestAccountTestService_OpenAIApiKeyUsesV1ResponsesEndpoint(t *testing.T) {
 	require.Equal(t, "https://api.openai.com/v1/responses", upstream.requests[0].URL.String())
 	require.Contains(t, recorder.Body.String(), "test_complete")
 }
+
+// openAIStreamTextErrorRepo tracks SetError and SetSchedulable calls.
+type openAIStreamTextErrorRepo struct {
+	mockAccountRepoForGemini
+	setErrorCalls       int
+	lastErrorMsg        string
+	setSchedulableCalls int
+	lastSchedulable     bool
+}
+
+func (r *openAIStreamTextErrorRepo) SetError(_ context.Context, _ int64, errorMsg string) error {
+	r.setErrorCalls++
+	r.lastErrorMsg = errorMsg
+	return nil
+}
+
+func (r *openAIStreamTextErrorRepo) SetSchedulable(_ context.Context, _ int64, schedulable bool) error {
+	r.setSchedulableCalls++
+	r.lastSchedulable = schedulable
+	return nil
+}
+
+// TestAccountTestService_OpenAIApiKey_StreamTextAccountError verifies that when an
+// OpenAI-compatible upstream returns an account-level error message as plain text
+// delta content (HTTP 200 + stream), the account is permanently disabled.
+func TestAccountTestService_OpenAIApiKey_StreamTextAccountError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cases := []struct {
+		name    string
+		sseBody string
+		wantErr bool
+	}{
+		{
+			name: "account_not_active_via_completed_event",
+			sseBody: "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Your account is not active, please check your billing details on our website.\"}\n\n" +
+				"data: {\"type\":\"response.completed\"}\n\n",
+			wantErr: true,
+		},
+		{
+			name: "account_not_active_via_done",
+			sseBody: "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Your account is not active, please check your billing details on our website.\"}\n\n" +
+				"data: [DONE]\n\n",
+			wantErr: true,
+		},
+		{
+			name:    "account_not_active_via_eof",
+			sseBody: "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Your account is not active, please check your billing details on our website.\"}",
+			wantErr: true,
+		},
+		{
+			name: "normal_response_not_flagged",
+			sseBody: "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello! How can I help you?\"}\n\n" +
+				"data: {\"type\":\"response.completed\"}\n\n",
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, recorder := newSoraTestContext()
+
+			resp := newJSONResponse(http.StatusOK, "")
+			resp.Body = io.NopCloser(strings.NewReader(tc.sseBody))
+
+			repo := &openAIStreamTextErrorRepo{}
+			upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+			svc := &AccountTestService{
+				httpUpstream: upstream,
+				accountRepo:  repo,
+				cfg:          &config.Config{},
+			}
+			account := &Account{
+				ID:          91,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Schedulable: true,
+				Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://api.openai.com"},
+			}
+
+			err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Equal(t, 1, repo.setErrorCalls, "SetError should be called once")
+				require.Equal(t, 1, repo.setSchedulableCalls, "SetSchedulable should be called once")
+				require.False(t, repo.lastSchedulable, "account should be marked not schedulable")
+				require.NotContains(t, recorder.Body.String(), "test_complete")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, 0, repo.setErrorCalls, "SetError should NOT be called")
+				require.Equal(t, 0, repo.setSchedulableCalls, "SetSchedulable should NOT be called")
+				require.Contains(t, recorder.Body.String(), "test_complete")
+			}
+		})
+	}
+}
+
+// TestClassifyOpenAIStreamTextAsAccountError verifies pattern matching.
+func TestClassifyOpenAIStreamTextAsAccountError(t *testing.T) {
+	account := &Account{ID: 1, Type: AccountTypeAPIKey, Platform: PlatformOpenAI}
+
+	cases := []struct {
+		text   string
+		action APIKeyStatusAction
+	}{
+		{"Your account is not active, please check your billing details on our website.", APIKeyStatusActionPermanentDisable},
+		{"account is not active", APIKeyStatusActionPermanentDisable},
+		{"billing details", APIKeyStatusActionPermanentDisable},
+		{"check your billing", APIKeyStatusActionPermanentDisable},
+		{"Account has been suspended.", APIKeyStatusActionPermanentDisable},
+		{"insufficient_quota exceeded", APIKeyStatusActionPermanentDisable},
+		{"Hello, how can I assist you today?", APIKeyStatusActionIgnore},
+		{"", APIKeyStatusActionIgnore},
+	}
+
+	for _, tc := range cases {
+		got := classifyOpenAIStreamTextAsAccountError(account, tc.text)
+		if got != tc.action {
+			t.Errorf("text=%q: want %v, got %v", tc.text, tc.action, got)
+		}
+	}
+}

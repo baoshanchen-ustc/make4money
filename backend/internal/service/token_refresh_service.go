@@ -303,6 +303,14 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					"error", setErr,
 				)
 			}
+			if account.Schedulable {
+				if setErr := s.accountRepo.SetSchedulable(ctx, account.ID, false); setErr != nil {
+					slog.Error("token_refresh.set_schedulable_false_failed",
+						"account_id", account.ID,
+						"error", setErr,
+					)
+				}
+			}
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
 			s.ensureOpenAIPrivacy(ctx, account)
 			s.ensureAntigravityPrivacy(ctx, account)

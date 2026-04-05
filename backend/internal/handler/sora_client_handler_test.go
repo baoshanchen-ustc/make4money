@@ -2064,6 +2064,9 @@ func (r *stubAccountRepoForHandler) GetByCRSAccountID(context.Context, string) (
 func (r *stubAccountRepoForHandler) FindByExtraField(context.Context, string, any) ([]service.Account, error) {
 	return nil, nil
 }
+func (r *stubAccountRepoForHandler) FindByAPIKey(context.Context, string, string, string) (*service.Account, error) {
+	return nil, nil
+}
 func (r *stubAccountRepoForHandler) ListCRSAccountIDs(context.Context) (map[string]int64, error) {
 	return nil, nil
 }

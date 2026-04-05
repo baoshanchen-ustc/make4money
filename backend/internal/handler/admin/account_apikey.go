@@ -5,12 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"net/http"
-	"strings"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
+	"net/http"
+	"strings"
 )
 
 const rawAPIKeyImportPageSize = 500
@@ -394,11 +394,13 @@ func filterSupportedAPIKeyAccounts(accounts []*service.Account) []*service.Accou
 func (h *AccountHandler) loadExistingAPIKeyIndex(ctx context.Context) (map[string]*service.Account, error) {
 	index := make(map[string]*service.Account)
 	page := 1
+	fetched := 0
 	for {
 		items, total, err := h.adminService.ListAccounts(ctx, page, rawAPIKeyImportPageSize, "", service.AccountTypeAPIKey, "", "", 0, "")
 		if err != nil {
 			return nil, err
 		}
+		fetched += len(items)
 		for i := range items {
 			account := items[i]
 			if account.Type != service.AccountTypeAPIKey {
@@ -410,9 +412,13 @@ func (h *AccountHandler) loadExistingAPIKeyIndex(ctx context.Context) (map[strin
 				continue
 			}
 			accCopy := account
-			index[buildAPIKeyIdentity(account.Platform, account.GetCredential("api_key"), account.GetCredential("base_url"))] = &accCopy
+			identity := buildAPIKeyIdentity(account.Platform, account.GetCredential("api_key"), account.GetCredential("base_url"))
+			// Keep the earliest account (lowest ID) for each identity to preserve original.
+			if existing, ok := index[identity]; !ok || account.ID < existing.ID {
+				index[identity] = &accCopy
+			}
 		}
-		if len(index) >= int(total) || len(items) == 0 {
+		if fetched >= int(total) || len(items) == 0 {
 			break
 		}
 		page++

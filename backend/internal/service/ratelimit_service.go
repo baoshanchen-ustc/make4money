@@ -172,15 +172,6 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 
 	switch statusCode {
 	case 400:
-		if account.Type == AccountTypeAPIKey && ShouldDisableAPIKeyStatus(account, statusCode, responseBody) {
-			msg := "API key rejected (400)"
-			if upstreamMsg != "" {
-				msg = "API key rejected (400): " + upstreamMsg
-			}
-			s.handleAuthError(ctx, account, msg)
-			shouldDisable = true
-			break
-		}
 		// 只有当错误信息包含 "organization has been disabled" 时才禁用
 		if strings.Contains(strings.ToLower(upstreamMsg), "organization has been disabled") {
 			msg := "Organization disabled (400): " + upstreamMsg
@@ -737,6 +728,16 @@ func (s *RateLimitService) handleAPIKeyTemporaryCooldown(ctx context.Context, ac
 			return
 		}
 		slog.Info("apikey_temp_unschedulable", "account_id", account.ID, "status_code", statusCode, "until", until)
+	default:
+		// 400/402/403 等其他被分类为 TemporaryCooldown 的状态码（如模型权限不足、临时欠费等）
+		// 执行临时封禁，冷却后自动恢复调度。
+		until := time.Now().Add(apiKeyServerErrorCooldown)
+		reason := buildAPIKeyRuntimeErrorMessage(statusCode, responseBody, "API key temporary cooldown")
+		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+			slog.Warn("apikey_temp_unsched_set_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
+			return
+		}
+		slog.Info("apikey_temp_unschedulable", "account_id", account.ID, "status_code", statusCode, "until", until)
 	}
 }
 
@@ -747,11 +748,25 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if account.Platform == PlatformAntigravity {
 		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
 	}
-	if account.Type == AccountTypeAPIKey && !ShouldDisableAPIKeyStatus(account, http.StatusForbidden, responseBody) {
-		slog.Info("apikey_403_not_disabled", "account_id", account.ID, "platform", account.Platform)
-		return false
+	if account.Type == AccountTypeAPIKey {
+		action := ClassifyAPIKeyStatusAction(account, http.StatusForbidden, responseBody)
+		switch action {
+		case APIKeyStatusActionPermanentDisable:
+			msg := "Access forbidden (403): account permanently disabled"
+			if upstreamMsg != "" {
+				msg = "Access forbidden (403): " + upstreamMsg
+			}
+			s.handleAuthError(ctx, account, msg)
+			return true
+		case APIKeyStatusActionTemporaryCooldown:
+			s.handleAPIKeyTemporaryCooldown(ctx, account, http.StatusForbidden, nil, responseBody)
+			return true
+		default:
+			slog.Info("apikey_403_not_disabled", "account_id", account.ID, "platform", account.Platform)
+			return false
+		}
 	}
-	// 非 Antigravity 平台：保持原有行为
+	// 非 Antigravity 平台、非 APIKey：保持原有行为
 	msg := "Access forbidden (403): account may be suspended or lack permissions"
 	if upstreamMsg != "" {
 		msg = "Access forbidden (403): " + upstreamMsg
