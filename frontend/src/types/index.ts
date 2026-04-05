@@ -400,6 +400,8 @@ export interface Group {
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
   proxy_bucket_load_balance_enabled?: boolean
+  require_oauth_only: boolean
+  require_privacy_set: boolean
   created_at: string
   updated_at: string
 }
@@ -515,6 +517,9 @@ export interface CreateGroupRequest {
   allow_messages_dispatch?: boolean
   default_mapped_model?: string
   proxy_bucket_load_balance_enabled?: boolean
+  require_oauth_only?: boolean
+  require_privacy_set?: boolean
+  // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
 
@@ -546,6 +551,8 @@ export interface UpdateGroupRequest {
   allow_messages_dispatch?: boolean
   default_mapped_model?: string
   proxy_bucket_load_balance_enabled?: boolean
+  require_oauth_only?: boolean
+  require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
 }
 
@@ -1037,6 +1044,9 @@ export interface UsageLog {
   // Cache TTL Override
   cache_ttl_overridden: boolean
 
+  // 计费模式
+  billing_mode?: string | null
+
   created_at: string
 
   user?: User
@@ -1052,6 +1062,7 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  model_mapping_chain?: string | null
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null

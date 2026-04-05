@@ -663,6 +663,8 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		SupportedModelScopes:            g.SupportedModelScopes,
 		SortOrder:                       g.SortOrder,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
+		RequireOAuthOnly:                g.RequireOauthOnly,
+		RequirePrivacySet:               g.RequirePrivacySet,
 		DefaultMappedModel:              g.DefaultMappedModel,
 		ProxyBucketLoadBalanceEnabled:   g.ProxyBucketLoadBalanceEnabled,
 		CreatedAt:                       g.CreatedAt,

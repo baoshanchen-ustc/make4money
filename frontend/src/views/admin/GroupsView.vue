@@ -814,6 +814,61 @@
           </div>
         </div>
 
+        <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
+        <div v-if="['openai', 'antigravity', 'anthropic', 'gemini'].includes(createForm.platform)" class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4">
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">账号过滤控制</h4>
+
+          <!-- require_oauth_only toggle -->
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">仅允许 OAuth 账号</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ createForm.require_oauth_only ? '已启用 — 排除 API Key 类型账号' : '未启用' }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="createForm.require_oauth_only = !createForm.require_oauth_only"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.require_oauth_only ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.require_oauth_only ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+
+          <!-- require_privacy_set toggle -->
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">仅允许隐私保护已设置的账号</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ createForm.require_privacy_set ? '已启用 — Privacy 未设置的账号将被排除' : '未启用' }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="createForm.require_privacy_set = !createForm.require_privacy_set"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.require_privacy_set ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.require_privacy_set ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+        </div>
+
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
         <div
           v-if="['anthropic', 'antigravity'].includes(createForm.platform) && createForm.subscription_type !== 'subscription'"
@@ -1571,6 +1626,61 @@
           </div>
         </div>
 
+        <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
+        <div v-if="['openai', 'antigravity', 'anthropic', 'gemini'].includes(editForm.platform)" class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4">
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">账号过滤控制</h4>
+
+          <!-- require_oauth_only toggle -->
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">仅允许 OAuth 账号</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ editForm.require_oauth_only ? '已启用 — 排除 API Key 类型账号' : '未启用' }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="editForm.require_oauth_only = !editForm.require_oauth_only"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.require_oauth_only ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.require_oauth_only ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+
+          <!-- require_privacy_set toggle -->
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">仅允许隐私保护已设置的账号</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ editForm.require_privacy_set ? '已启用 — Privacy 未设置的账号将被排除' : '未启用' }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="editForm.require_privacy_set = !editForm.require_privacy_set"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.require_privacy_set ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.require_privacy_set ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+        </div>
+
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
         <div
           v-if="['anthropic', 'antigravity'].includes(editForm.platform) && editForm.subscription_type !== 'subscription'"
@@ -2108,6 +2218,9 @@ const createForm = reactive({
   allow_messages_dispatch: false,
   default_mapped_model: 'gpt-5.4',
   proxy_bucket_load_balance_enabled: false,
+  // 账号过滤控制（OpenAI/Antigravity 平台）
+  require_oauth_only: false,
+  require_privacy_set: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -2353,6 +2466,9 @@ const editForm = reactive({
   allow_messages_dispatch: false,
   default_mapped_model: '',
   proxy_bucket_load_balance_enabled: false,
+  // 账号过滤控制（OpenAI/Antigravity 平台）
+  require_oauth_only: false,
+  require_privacy_set: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -2498,6 +2614,8 @@ const closeCreateModal = () => {
   createForm.fallback_group_id = null
   createForm.fallback_group_id_on_invalid_request = null
   createForm.allow_messages_dispatch = false
+  createForm.require_oauth_only = false
+  createForm.require_privacy_set = false
   createForm.default_mapped_model = 'gpt-5.4'
   createForm.proxy_bucket_load_balance_enabled = false
   createForm.supported_model_scopes = ['claude', 'gemini_text', 'gemini_image']
@@ -2586,6 +2704,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.fallback_group_id = group.fallback_group_id
   editForm.fallback_group_id_on_invalid_request = group.fallback_group_id_on_invalid_request
   editForm.allow_messages_dispatch = group.allow_messages_dispatch || false
+  editForm.require_oauth_only = group.require_oauth_only ?? false
+  editForm.require_privacy_set = group.require_privacy_set ?? false
   editForm.default_mapped_model = group.default_mapped_model || ''
   editForm.proxy_bucket_load_balance_enabled = group.proxy_bucket_load_balance_enabled || false
   editForm.model_routing_enabled = group.model_routing_enabled || false
@@ -2694,6 +2814,10 @@ watch(
     if (newVal !== 'openai') {
       createForm.allow_messages_dispatch = false
       createForm.default_mapped_model = ''
+    }
+    if (!['openai', 'antigravity', 'anthropic', 'gemini'].includes(newVal)) {
+      createForm.require_oauth_only = false
+      createForm.require_privacy_set = false
     }
   }
 )
