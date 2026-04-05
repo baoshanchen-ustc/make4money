@@ -61,17 +61,6 @@
         {{ t('admin.accounts.soraTestHint') }}
       </div>
 
-      <div v-if="supportsGeminiImageTest" class="space-y-1.5">
-        <TextArea
-          v-model="testPrompt"
-          :label="t('admin.accounts.geminiImagePromptLabel')"
-          :placeholder="t('admin.accounts.geminiImagePromptPlaceholder')"
-          :hint="t('admin.accounts.geminiImageTestHint')"
-          :disabled="status === 'connecting'"
-          rows="3"
-        />
-      </div>
-
       <!-- Terminal Output -->
       <div class="group relative">
         <div
@@ -147,6 +136,21 @@
         </div>
       </div>
 
+      <div
+        v-if="supportsCustomTestPrompt && isPromptEditorOpen"
+        data-testid="test-prompt-panel"
+        class="space-y-1.5"
+      >
+        <TextArea
+          v-model="testPrompt"
+          :label="testPromptLabel"
+          :placeholder="testPromptPlaceholder"
+          :hint="testPromptHint"
+          :disabled="status === 'connecting'"
+          rows="3"
+        />
+      </div>
+
       <!-- Test Info -->
       <div class="flex items-center justify-between px-1 text-xs text-gray-500 dark:text-gray-400">
         <div class="flex items-center gap-3">
@@ -155,7 +159,18 @@
             {{ isSoraAccount ? t('admin.accounts.soraTestTarget') : t('admin.accounts.testModel') }}
           </span>
         </div>
-        <span class="flex items-center gap-1">
+        <button
+          v-if="supportsCustomTestPrompt"
+          data-testid="test-prompt-toggle"
+          type="button"
+          class="flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-300"
+          :disabled="status === 'connecting'"
+          @click="togglePromptEditor"
+        >
+          <Icon name="chat" size="sm" :stroke-width="2" />
+          <span>{{ testPromptSummary }}</span>
+        </button>
+        <span v-else class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
           {{
             isSoraAccount
@@ -257,16 +272,40 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
+const isPromptEditorOpen = ref(false)
 let eventSource: EventSource | null = null
 const isSoraAccount = computed(() => props.account?.platform === 'sora')
 const generatedImages = ref<PreviewImage[]>([])
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
+const supportsOpenAITestPrompt = computed(() => props.account?.platform === 'openai')
 const supportsGeminiImageTest = computed(() => {
   if (isSoraAccount.value) return false
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
 
   return props.account?.platform === 'gemini' || (props.account?.platform === 'antigravity' && props.account?.type === 'apikey')
+})
+const supportsCustomTestPrompt = computed(() => supportsOpenAITestPrompt.value || supportsGeminiImageTest.value)
+const testPromptLabel = computed(() => supportsGeminiImageTest.value ? t('admin.accounts.geminiImagePromptLabel') : t('admin.accounts.testPromptLabel'))
+const testPromptPlaceholder = computed(() => supportsGeminiImageTest.value ? t('admin.accounts.geminiImagePromptPlaceholder') : t('admin.accounts.testPromptPlaceholder'))
+const testPromptHint = computed(() => supportsGeminiImageTest.value ? t('admin.accounts.geminiImageTestHint') : '')
+const defaultPromptValue = computed(() => supportsGeminiImageTest.value ? t('admin.accounts.geminiImagePromptDefault') : 'hi')
+const normalizedTestPrompt = computed(() => testPrompt.value.trim())
+const isUsingDefaultPrompt = computed(() => {
+  if (supportsGeminiImageTest.value) {
+    const defaultPrompt = defaultPromptValue.value.trim()
+    return normalizedTestPrompt.value === '' || normalizedTestPrompt.value === defaultPrompt
+  }
+  return normalizedTestPrompt.value === ''
+})
+const testPromptSummary = computed(() => {
+  const summaryLabel = supportsGeminiImageTest.value
+    ? t('admin.accounts.geminiImagePromptLabel')
+    : t('admin.accounts.testPromptLabel')
+  const summaryValue = isUsingDefaultPrompt.value
+    ? defaultPromptValue.value.trim()
+    : t('admin.accounts.testPromptCustom')
+  return `${summaryLabel}: ${summaryValue}`
 })
 
 const sortTestModels = (models: ClaudeModel[]) => {
@@ -286,6 +325,7 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
+      isPromptEditorOpen.value = false
       resetState()
       await loadAvailableModels()
     } else {
@@ -296,7 +336,7 @@ watch(
 
 watch(selectedModelId, () => {
   if (supportsGeminiImageTest.value && !testPrompt.value.trim()) {
-    testPrompt.value = t('admin.accounts.geminiImagePromptDefault')
+    testPrompt.value = defaultPromptValue.value
   }
 })
 
@@ -342,6 +382,11 @@ const resetState = () => {
   streamingContent.value = ''
   errorMessage.value = ''
   generatedImages.value = []
+}
+
+const togglePromptEditor = () => {
+  if (!supportsCustomTestPrompt.value || status.value === 'connecting') return
+  isPromptEditorOpen.value = !isPromptEditorOpen.value
 }
 
 const handleClose = () => {
@@ -399,7 +444,7 @@ const startTest = async () => {
           ? {}
           : {
               model_id: selectedModelId.value,
-              prompt: supportsGeminiImageTest.value ? testPrompt.value.trim() : ''
+              prompt: supportsCustomTestPrompt.value ? testPrompt.value.trim() : ''
             }
       )
     })

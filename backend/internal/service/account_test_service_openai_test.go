@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -58,8 +59,22 @@ func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.
 		Credentials: map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "custom test prompt")
 	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	var payload struct {
+		Input []struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"input"`
+	}
+	body, readErr := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, readErr)
+	require.NoError(t, json.Unmarshal(body, &payload))
+	require.Len(t, payload.Input, 1)
+	require.Len(t, payload.Input[0].Content, 1)
+	require.Equal(t, "custom test prompt", payload.Input[0].Content[0].Text)
 	require.NotEmpty(t, repo.updatedExtra)
 	require.Equal(t, 42.0, repo.updatedExtra["codex_5h_used_percent"])
 	require.Equal(t, 88.0, repo.updatedExtra["codex_7d_used_percent"])
@@ -89,8 +104,22 @@ func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimit(t *testing.T) 
 		Credentials: map[string]any{"access_token": "test-token"},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "")
 	require.Error(t, err)
+	require.Len(t, upstream.requests, 1)
+	var payload struct {
+		Input []struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"input"`
+	}
+	body, readErr := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, readErr)
+	require.NoError(t, json.Unmarshal(body, &payload))
+	require.Len(t, payload.Input, 1)
+	require.Len(t, payload.Input[0].Content, 1)
+	require.Equal(t, "hi", payload.Input[0].Content[0].Text)
 	require.NotEmpty(t, repo.updatedExtra)
 	require.Equal(t, 100.0, repo.updatedExtra["codex_5h_used_percent"])
 	require.Equal(t, int64(88), repo.rateLimitedID)
