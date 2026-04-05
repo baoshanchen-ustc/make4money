@@ -5,12 +5,26 @@ exceptions:
     severity: high
     reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2023-30533)"
     mitigation: "Load only on export; restrict export permissions and data scope"
-    expires_on: "2026-04-05"
+    expires_on: "2026-07-05"
     owner: "security@your-domain"
   - package: xlsx
     advisory: "GHSA-5pgg-2g8v-p4x9"
     severity: high
     reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2024-22363)"
     mitigation: "Load only on export; restrict export permissions and data scope"
-    expires_on: "2026-04-05"
+    expires_on: "2026-07-05"
+    owner: "security@your-domain"
+  - package: lodash-es
+    advisory: "GHSA-r5fr-rjxr-66jc"
+    severity: high
+    reason: "Transitive dependency via mermaid>@lobehub/ui>@lobehub/icons; _.template is not called with user-controlled input in this codebase"
+    mitigation: "No direct lodash template usage; waiting for upstream mermaid/lobehub to release a patched version"
+    expires_on: "2026-07-05"
+    owner: "security@your-domain"
+  - package: lodash
+    advisory: "GHSA-r5fr-rjxr-66jc"
+    severity: high
+    reason: "Transitive dependency via eslint-plugin-vue>vue-eslint-parser (dev/build tooling only, not in production bundle)"
+    mitigation: "Dev tooling dependency only; not included in production build; waiting for upstream to patch"
+    expires_on: "2026-07-05"
     owner: "security@your-domain"
