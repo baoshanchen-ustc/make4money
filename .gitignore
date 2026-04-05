@@ -148,3 +148,6 @@ output/
 
 backend/logs/*
 .ccb/
+.dekit/
+.omx/
+.gstack/
