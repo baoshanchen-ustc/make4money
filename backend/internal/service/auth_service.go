@@ -188,9 +188,15 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	// 创建用户
+	// 默认用户名使用邮箱，但需截断至 schema 上限（100 字符），与 OAuth 注册路径保持一致
+	defaultUsername := strings.TrimSpace(email)
+	if len([]rune(defaultUsername)) > 100 {
+		defaultUsername = string([]rune(defaultUsername)[:100])
+	}
+
 	user := &User{
 		Email:        email,
-		Username:     email,
+		Username:     defaultUsername,
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      defaultBalance,

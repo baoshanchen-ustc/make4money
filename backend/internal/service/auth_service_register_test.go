@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -318,6 +319,25 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.Len(t, repo.created, 1)
 	require.True(t, user.CheckPassword("password"))
 	require.Equal(t, "user@test.com", user.Username)
+}
+
+// TestAuthService_Register_LongEmail_DefaultUsernameIsTruncatedToSchemaLimit
+// 验证超过 100 字符的邮箱作为默认用户名时会被截断，避免持久化层 schema 校验失败
+func TestAuthService_Register_LongEmail_DefaultUsernameIsTruncatedToSchemaLimit(t *testing.T) {
+	repo := &userRepoStub{nextID: 6}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil)
+
+	// 构造一个 103 字符的邮箱（94 个 'a' + "@test.com" = 103 字符）
+	email := strings.Repeat("a", 94) + "@test.com"
+
+	_, user, err := service.Register(context.Background(), email, "password")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	// Username 必须被截断至 100 字符，不超过 schema 上限
+	require.Len(t, []rune(user.Username), 100)
+	require.Equal(t, string([]rune(email)[:100]), user.Username)
 }
 
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {
