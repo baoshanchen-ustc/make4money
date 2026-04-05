@@ -667,11 +667,16 @@ func (s *RateLimitService) GeminiCooldown(ctx context.Context, account *Account)
 	return s.geminiQuotaService.CooldownForAccount(ctx, account)
 }
 
-// handleAuthError 处理认证类错误(401/403)，停止账号调度
+// handleAuthError 处理认证类错误(401/403)，停止账号调度并关闭调度开关
 func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account, errorMsg string) {
 	if err := s.accountRepo.SetError(ctx, account.ID, errorMsg); err != nil {
 		slog.Warn("account_set_error_failed", "account_id", account.ID, "error", err)
 		return
+	}
+	if account.Schedulable {
+		if err := s.accountRepo.SetSchedulable(ctx, account.ID, false); err != nil {
+			slog.Warn("account_set_schedulable_false_failed", "account_id", account.ID, "error", err)
+		}
 	}
 	slog.Warn("account_disabled_auth_error", "account_id", account.ID, "error", errorMsg)
 }

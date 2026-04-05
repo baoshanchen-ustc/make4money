@@ -72,8 +72,9 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
 	bodyUpper := strings.ToUpper(string(responseBody))
 
+	// 5xx and 529 are always temporary cooldowns regardless of platform
 	switch statusCode {
-	case http.StatusTooManyRequests, 529, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	case 529, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return APIKeyStatusActionTemporaryCooldown
 	}
 
@@ -82,6 +83,12 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 		switch statusCode {
 		case http.StatusUnauthorized, http.StatusPaymentRequired:
 			return APIKeyStatusActionPermanentDisable
+		case http.StatusTooManyRequests:
+			// insufficient_quota is permanent billing exhaustion, not a temporary rate limit
+			if code == "insufficient_quota" || containsAny(msg, "exceeded your current quota", "insufficient_quota") {
+				return APIKeyStatusActionPermanentDisable
+			}
+			return APIKeyStatusActionTemporaryCooldown
 		case http.StatusBadRequest:
 			if containsAny(msg,
 				"organization has been disabled",
@@ -92,11 +99,29 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 				"account has been deactivated",
 				"key is disabled",
 				"api key disabled",
+				"account is not active",
+				"billing details",
+				"check your billing",
+				"account has been suspended",
+				"account suspended",
+				"billing_hard_limit_reached",
+				"billing hard limit",
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}
+			if code == "billing_hard_limit_reached" {
+				return APIKeyStatusActionPermanentDisable
+			}
 		case http.StatusForbidden:
-			if code == "invalid_api_key" || code == "token_invalidated" || code == "token_revoked" || code == "account_deactivated" || code == "deactivated_workspace" {
+			if containsAny(code,
+				"invalid_api_key",
+				"token_invalidated",
+				"token_revoked",
+				"account_deactivated",
+				"deactivated_workspace",
+				"billing_not_active",
+				"account_inactive",
+			) {
 				return APIKeyStatusActionPermanentDisable
 			}
 			if containsAny(msg,
@@ -110,6 +135,11 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 				"project has been disabled",
 				"key is disabled",
 				"api key disabled",
+				"account is not active",
+				"billing details",
+				"check your billing",
+				"account has been suspended",
+				"account suspended",
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}
@@ -118,13 +148,48 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 		switch statusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
 			return APIKeyStatusActionPermanentDisable
+		case http.StatusTooManyRequests:
+			return APIKeyStatusActionTemporaryCooldown
+		case http.StatusBadRequest:
+			// Anthropic returns 400 for credit balance exhaustion (not 402/429)
+			if containsAny(msg,
+				"credit balance is too low",
+				"your credit balance",
+				"insufficient credits",
+				"account has been disabled",
+				"organization has been disabled",
+			) {
+				return APIKeyStatusActionPermanentDisable
+			}
 		}
 	case PlatformGemini:
 		switch statusCode {
-		case http.StatusUnauthorized, http.StatusForbidden:
+		case http.StatusTooManyRequests:
+			return APIKeyStatusActionTemporaryCooldown
+		case http.StatusUnauthorized:
+			return APIKeyStatusActionPermanentDisable
+		case http.StatusForbidden:
+			// Use structured reason check first (covers BILLING_DISABLED, CONSUMER_SUSPENDED, PROJECT_DISABLED, SERVICE_DISABLED)
+			if googleapi.IsPermanentlyDisabledError(string(responseBody)) {
+				return APIKeyStatusActionPermanentDisable
+			}
+			if containsAny(msg,
+				"billing is disabled",
+				"billing disabled",
+				"consumer suspended",
+				"project disabled",
+				"project has been suspended",
+				"does not have permission",
+			) {
+				return APIKeyStatusActionPermanentDisable
+			}
 			return APIKeyStatusActionPermanentDisable
 		case http.StatusBadRequest:
 			if strings.Contains(bodyUpper, "API_KEY_INVALID") || googleapi.IsServiceDisabledError(string(responseBody)) {
+				return APIKeyStatusActionPermanentDisable
+			}
+			// FAILED_PRECONDITION: free tier not available in region, requires billing setup
+			if strings.Contains(bodyUpper, "FAILED_PRECONDITION") {
 				return APIKeyStatusActionPermanentDisable
 			}
 			if containsAny(msg,
@@ -137,6 +202,8 @@ func ClassifyAPIKeyStatusAction(account *Account, statusCode int, responseBody [
 				"api has not been used in project",
 				"unregistered callers",
 				"caller not registered",
+				"free tier is not available",
+				"enable billing",
 			) {
 				return APIKeyStatusActionPermanentDisable
 			}

@@ -4546,6 +4546,31 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
+		// API Key 账号：重试耗尽后，对永久性错误（402等）也触发 failover
+		if account.Type == AccountTypeAPIKey {
+			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			if readErr != nil {
+				return s.handleRetryExhaustedError(ctx, resp, c, account)
+			}
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+			if ShouldDisableAPIKeyStatus(account, resp.StatusCode, respBody) {
+				logger.LegacyPrintf("service.gateway", "[APIKey] Account %d: permanent error %d after retries, triggering failover",
+					account.ID, resp.StatusCode)
+				s.handleRetryExhaustedSideEffects(ctx, resp, account)
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "apikey_permanent_retry_exhausted_failover",
+					Message:            sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody))),
+				})
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+			}
+		}
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
 	}
 
@@ -4581,6 +4606,33 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 	if resp.StatusCode >= 400 {
+		// API Key 账号的永久性 400 错误（余额不足、账号禁用等）直接触发 failover 切换。
+		// 这类错误无法通过重试恢复，应立即标记 key 状态并切换到其他账号。
+		if resp.StatusCode == 400 && account.Type == AccountTypeAPIKey {
+			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			if readErr != nil {
+				return s.handleErrorResponse(ctx, resp, c, account)
+			}
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+			if ShouldDisableAPIKeyStatus(account, resp.StatusCode, respBody) {
+				logger.LegacyPrintf("service.gateway", "[APIKey] Account %d: permanent 400 error, triggering failover: %s",
+					account.ID, truncateString(string(respBody), 500))
+				s.handleFailoverSideEffects(ctx, resp, account)
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "apikey_permanent_400_failover",
+					Message:            sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody))),
+				})
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+			}
+		}
+
 		// 可选：对部分 400 触发 failover（默认关闭以保持语义）
 		if resp.StatusCode == 400 && s.cfg != nil && s.cfg.Gateway.FailoverOn400 {
 			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
@@ -4851,6 +4903,32 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
+		// API Key 账号：重试耗尽后，对永久性错误（402等）也触发 failover
+		if account.Type == AccountTypeAPIKey {
+			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			if readErr != nil {
+				return s.handleRetryExhaustedError(ctx, resp, c, account)
+			}
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+			if ShouldDisableAPIKeyStatus(account, resp.StatusCode, respBody) {
+				logger.LegacyPrintf("service.gateway", "[Anthropic Passthrough][APIKey] Account %d: permanent error %d after retries, triggering failover",
+					account.ID, resp.StatusCode)
+				s.handleRetryExhaustedSideEffects(ctx, resp, account)
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Passthrough:        true,
+					Kind:               "apikey_permanent_retry_exhausted_failover",
+					Message:            sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody))),
+				})
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+			}
+		}
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
 	}
 
@@ -4883,6 +4961,33 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           respBody,
 			RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+		}
+	}
+
+	// API Key 账号的永久性 400（余额不足、账号禁用等）触发 failover
+	if resp.StatusCode == 400 && account.Type == AccountTypeAPIKey {
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if readErr != nil {
+			return s.handleErrorResponse(ctx, resp, c, account)
+		}
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+		if ShouldDisableAPIKeyStatus(account, resp.StatusCode, respBody) {
+			logger.LegacyPrintf("service.gateway", "[Anthropic Passthrough][APIKey] Account %d: permanent 400 error, triggering failover: %s",
+				account.ID, truncateString(string(respBody), 500))
+			s.handleFailoverSideEffects(ctx, resp, account)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				Passthrough:        true,
+				Kind:               "apikey_permanent_400_failover",
+				Message:            sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody))),
+			})
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
 		}
 	}
 
@@ -6600,10 +6705,17 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 	if account.IsOAuth() && statusCode == 403 {
 		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
 		logger.LegacyPrintf("service.gateway", "Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
-	} else {
-		// API Key 未配置错误码：不标记账号状态
-		logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
+		return
 	}
+
+	// API Key 账号：标记账号状态（永久禁用或临时冷却）
+	if account.Type == AccountTypeAPIKey {
+		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
+		logger.LegacyPrintf("service.gateway", "Account %d: apikey error %d after %d retries, status marked", account.ID, statusCode, maxRetryAttempts)
+		return
+	}
+
+	logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
 }
 
 func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {

@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
-
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -76,6 +74,35 @@ type rawAPIKeyImportLine struct {
 	Key      string
 	BaseURL  string
 	Platform string
+}
+
+func (h *AccountHandler) disableInvalidAPIKeyAccount(ctx context.Context, account *service.Account, message string) error {
+	if err := h.adminService.SetAccountError(ctx, account.ID, buildInvalidAPIKeyErrorMessage(account.Platform, message)); err != nil {
+		return err
+	}
+	if account != nil && account.Schedulable {
+		if _, err := h.adminService.SetAccountSchedulable(ctx, account.ID, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *AccountHandler) recoverValidAPIKeyAccount(ctx context.Context, account *service.Account) error {
+	if account == nil {
+		return nil
+	}
+	if !account.IsActive() {
+		if _, err := h.adminService.ClearAccountError(ctx, account.ID); err != nil {
+			return err
+		}
+	}
+	if !account.Schedulable {
+		if _, err := h.adminService.SetAccountSchedulable(ctx, account.ID, true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (h *AccountHandler) ImportRawAPIKeys(c *gin.Context) {
@@ -185,7 +212,7 @@ func (h *AccountHandler) ImportRawAPIKeys(c *gin.Context) {
 				if health.Invalid {
 					item.InvalidDisabled = true
 					result.InvalidDisabled++
-					if err := h.adminService.SetAccountError(c.Request.Context(), account.ID, buildInvalidAPIKeyErrorMessage(account.Platform, health.Message)); err != nil {
+					if err := h.disableInvalidAPIKeyAccount(c.Request.Context(), account, health.Message); err != nil {
 						item.Error = err.Error()
 						item.InvalidDisabled = false
 						result.InvalidDisabled--
@@ -227,7 +254,15 @@ func (h *AccountHandler) CheckAPIKeysHealth(c *gin.Context) {
 	g, ctx := errgroup.WithContext(c.Request.Context())
 	g.SetLimit(maxConcurrency)
 
-	var mu sync.Mutex
+	type checkResult struct {
+		item APIKeyHealthCheckItem
+		// counters
+		valid           bool
+		invalidDisabled bool
+		failed          bool
+	}
+	resultCh := make(chan checkResult, len(accounts))
+
 	for _, account := range accounts {
 		acc := account
 		g.Go(func() error {
@@ -239,45 +274,50 @@ func (h *AccountHandler) CheckAPIKeysHealth(c *gin.Context) {
 
 			health, healthErr := h.accountTestService.CheckAPIKeyValidity(ctx, acc)
 
-			mu.Lock()
-			defer mu.Unlock()
-
-			result.Checked++
+			r := checkResult{item: item}
 			if healthErr != nil {
-				item.Error = healthErr.Error()
-				result.Failed++
-				result.Results = append(result.Results, item)
+				r.item.Error = healthErr.Error()
+				r.failed = true
+				resultCh <- r
 				return nil
 			}
 
-			item.StatusCode = health.StatusCode
-			item.Message = health.Message
-			item.Valid = health.Valid
+			r.item.StatusCode = health.StatusCode
+			r.item.Message = health.Message
+			r.item.Valid = health.Valid
+
 			if health.Valid {
-				result.Valid++
-				if acc.Status != service.StatusActive {
-					if _, err := h.adminService.ClearAccountError(ctx, acc.ID); err != nil {
-						item.Error = err.Error()
-						result.Failed++
-					} else if strings.TrimSpace(item.Message) == "" {
-						item.Message = "account re-enabled after successful health check"
+				r.valid = true
+				if !acc.IsActive() || !acc.Schedulable {
+					if err := h.recoverValidAPIKeyAccount(ctx, acc); err != nil {
+						r.item.Error = err.Error()
+						r.failed = true
+					} else if strings.TrimSpace(r.item.Message) == "" {
+						r.item.Message = "account re-enabled and scheduling restored after successful health check"
 					} else {
-						item.Message = item.Message + " | account re-enabled after successful health check"
+						r.item.Message = r.item.Message + " | account re-enabled and scheduling restored after successful health check"
 					}
 				}
 			}
 
 			if health.Invalid {
-				if err := h.adminService.SetAccountError(ctx, acc.ID, buildInvalidAPIKeyErrorMessage(acc.Platform, health.Message)); err != nil {
-					item.Error = err.Error()
-					result.Failed++
+				if err := h.disableInvalidAPIKeyAccount(ctx, acc, health.Message); err != nil {
+					r.item.Error = err.Error()
+					r.failed = true
 				} else {
-					item.InvalidDisabled = true
-					result.InvalidDisabled++
+					r.item.InvalidDisabled = true
+					r.invalidDisabled = true
+					if acc.Schedulable {
+						if strings.TrimSpace(r.item.Message) == "" {
+							r.item.Message = "account marked invalid and scheduling disabled after health check"
+						} else {
+							r.item.Message += " | scheduling disabled after failed health check"
+						}
+					}
 				}
 			}
 
-			result.Results = append(result.Results, item)
+			resultCh <- r
 			return nil
 		})
 	}
@@ -285,6 +325,21 @@ func (h *AccountHandler) CheckAPIKeysHealth(c *gin.Context) {
 	if err := g.Wait(); err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	close(resultCh)
+
+	for r := range resultCh {
+		result.Checked++
+		if r.valid {
+			result.Valid++
+		}
+		if r.invalidDisabled {
+			result.InvalidDisabled++
+		}
+		if r.failed {
+			result.Failed++
+		}
+		result.Results = append(result.Results, r.item)
 	}
 
 	response.Success(c, result)

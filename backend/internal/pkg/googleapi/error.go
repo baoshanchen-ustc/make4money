@@ -107,3 +107,38 @@ func IsServiceDisabledError(body string) bool {
 
 	return false
 }
+
+// permanentDisableReasons contains ErrorInfo reasons that indicate a permanent,
+// non-recoverable account or billing issue on the Google Cloud / Gemini platform.
+var permanentDisableReasons = map[string]bool{
+	"BILLING_DISABLED":   true,
+	"CONSUMER_SUSPENDED": true,
+	"PROJECT_DISABLED":   true,
+	"SERVICE_DISABLED":   true,
+	"API_KEY_INVALID":    true,
+}
+
+// IsPermanentlyDisabledError checks if the error indicates a permanent account/billing
+// issue that requires manual intervention (billing disabled, project suspended, etc.).
+// This covers 403 PERMISSION_DENIED with known permanent-disable reasons.
+func IsPermanentlyDisabledError(body string) bool {
+	var errResp ErrorResponse
+	if err := json.Unmarshal([]byte(body), &errResp); err != nil {
+		return false
+	}
+
+	if errResp.Error.Code != 403 || errResp.Error.Status != "PERMISSION_DENIED" {
+		return false
+	}
+
+	for _, detailRaw := range errResp.Error.Details {
+		var info ErrorDetailInfo
+		if err := json.Unmarshal(detailRaw, &info); err == nil {
+			if permanentDisableReasons[info.Reason] {
+				return true
+			}
+		}
+	}
+
+	return false
+}

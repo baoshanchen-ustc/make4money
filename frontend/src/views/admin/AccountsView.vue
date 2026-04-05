@@ -1133,7 +1133,7 @@ const handleCheckAllAPIKeys = async () => {
         valid: result.valid
       }))
     }
-    reload()
+    await reload()
   } catch (error: any) {
     console.error('Failed to check API keys health:', error)
     appStore.showError(error?.message || t('admin.accounts.apiKeyHealthCheckFailed'))

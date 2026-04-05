@@ -26,7 +26,16 @@ type stubAdminService struct {
 	updateAccountErr     error
 	bulkUpdateAccountErr error
 	checkMixedErr        error
-	lastMixedCheck       struct {
+	clearedAccountErrIDs []int64
+	setAccountErrCalls   []struct {
+		id  int64
+		msg string
+	}
+	setSchedulableCalls []struct {
+		id          int64
+		schedulable bool
+	}
+	lastMixedCheck struct {
 		accountID int64
 		platform  string
 		groupIDs  []int64
@@ -234,15 +243,30 @@ func (s *stubAdminService) RefreshAccountCredentials(ctx context.Context, id int
 }
 
 func (s *stubAdminService) ClearAccountError(ctx context.Context, id int64) (*service.Account, error) {
+	s.mu.Lock()
+	s.clearedAccountErrIDs = append(s.clearedAccountErrIDs, id)
+	s.mu.Unlock()
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
 }
 
 func (s *stubAdminService) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
+	s.mu.Lock()
+	s.setAccountErrCalls = append(s.setAccountErrCalls, struct {
+		id  int64
+		msg string
+	}{id: id, msg: errorMsg})
+	s.mu.Unlock()
 	return nil
 }
 
 func (s *stubAdminService) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*service.Account, error) {
+	s.mu.Lock()
+	s.setSchedulableCalls = append(s.setSchedulableCalls, struct {
+		id          int64
+		schedulable bool
+	}{id: id, schedulable: schedulable})
+	s.mu.Unlock()
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive, Schedulable: schedulable}
 	return &account, nil
 }
