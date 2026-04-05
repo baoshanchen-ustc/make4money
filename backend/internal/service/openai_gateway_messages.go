@@ -109,7 +109,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	_, _, promptCacheKey = extractOpenAIRequestMetaFromBody(responsesBody)
 	effectiveServiceTier := extractOpenAIServiceTierFromBody(responsesBody)
-	effectiveReasoningEffort := extractOpenAIReasoningEffortFromBody(responsesBody, mappedModel)
+	effectiveReasoningEffort := extractOpenAIReasoningEffortFromBody(responsesBody, upstreamModel)
 
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
