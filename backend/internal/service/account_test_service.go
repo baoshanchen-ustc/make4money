@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 )
 
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
@@ -531,9 +532,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 				account.RateLimitResetAt = resetAt
 			}
 		}
-		// 401 Unauthorized: 标记账号为永久错误
+		// 401 Unauthorized: 标记账号为永久错误，并保留更具体的 OpenAI 失效原因。
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
-			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
+			errMsg := formatOpenAI401PermanentError(body)
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
@@ -612,6 +613,39 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 
 	// Process SSE stream
 	return s.processGeminiStream(c, resp.Body)
+}
+
+func formatOpenAI401PermanentError(body []byte) string {
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	if upstreamMsg != "" {
+		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
+	}
+
+	switch extractUpstreamErrorCode(body) {
+	case "account_deactivated":
+		if upstreamMsg != "" {
+			return "Account deactivated (401): " + upstreamMsg
+		}
+		return "Account deactivated (401): account has been deactivated"
+	case "token_invalidated", "token_revoked":
+		if upstreamMsg != "" {
+			return "Token revoked (401): " + upstreamMsg
+		}
+		return "Token revoked (401): account authentication permanently revoked"
+	}
+
+	if gjson.GetBytes(body, "detail").String() == "Unauthorized" {
+		if upstreamMsg != "" {
+			return "Unauthorized (401): " + upstreamMsg
+		}
+		return "Unauthorized (401): account authentication failed permanently"
+	}
+
+	if upstreamMsg != "" {
+		return "Authentication failed (401): " + upstreamMsg
+	}
+	return "Authentication failed (401): invalid or expired credentials"
 }
 
 // routeAntigravityTest 路由 Antigravity 账号的测试请求。
