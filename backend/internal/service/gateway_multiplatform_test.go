@@ -2311,19 +2311,12 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-<<<<<<< HEAD
-		result, err := svc.SelectAccountWithLoadAwareness(testCtx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(testCtx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
 		require.Equal(t, int64(12), result.Account.ID)
 		require.Equal(t, 1, concurrencyCache.loadBatchCalls)
-=======
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNoAvailableAccounts)
->>>>>>> upstream/main
 	})
 
 	t.Run("proxy bucket无代理账号时回退原逻辑", func(t *testing.T) {
@@ -2364,7 +2357,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(testCtx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(testCtx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
