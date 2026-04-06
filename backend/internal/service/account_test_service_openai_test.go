@@ -202,5 +202,5 @@ func TestAccountTestService_OpenAI401UnauthorizedDetailMarksSpecificPermanentErr
 	require.Error(t, err)
 	require.Equal(t, 1, repo.setErrorCalls)
 	require.Equal(t, int64(86), repo.setErrorID)
-	require.Contains(t, repo.setErrorMsg, "Unauthorized (401)")
+	require.Equal(t, "Unauthorized (401): account authentication failed permanently", repo.setErrorMsg)
 }

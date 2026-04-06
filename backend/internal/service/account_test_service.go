@@ -621,6 +621,7 @@ func formatOpenAI401PermanentError(body []byte) string {
 	if upstreamMsg != "" {
 		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
 	}
+	detail := strings.TrimSpace(gjson.GetBytes(body, "detail").String())
 
 	switch extractUpstreamErrorCode(body) {
 	case "account_deactivated":
@@ -635,8 +636,8 @@ func formatOpenAI401PermanentError(body []byte) string {
 		return "Token revoked (401): account authentication permanently revoked"
 	}
 
-	if gjson.GetBytes(body, "detail").String() == "Unauthorized" {
-		if upstreamMsg != "" {
+	if detail == "Unauthorized" {
+		if upstreamMsg != "" && upstreamMsg != detail {
 			return "Unauthorized (401): " + upstreamMsg
 		}
 		return "Unauthorized (401): account authentication failed permanently"
