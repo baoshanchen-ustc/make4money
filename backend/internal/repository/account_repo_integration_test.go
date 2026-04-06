@@ -256,6 +256,23 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
+			name: "filter_by_paused",
+			setup: func(client *dbent.Client) {
+				active := mustCreateAccount(s.T(), client, &service.Account{Name: "active-schedulable"})
+				paused := mustCreateAccount(s.T(), client, &service.Account{Name: "paused-account"})
+				err := client.Account.UpdateOneID(paused.ID).SetSchedulable(false).Exec(context.Background())
+				s.Require().NoError(err)
+				err = client.Account.UpdateOneID(active.ID).SetSchedulable(true).Exec(context.Background())
+				s.Require().NoError(err)
+			},
+			status:    "paused",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("paused-account", accounts[0].Name)
+				s.Require().False(accounts[0].Schedulable)
+			},
+		},
+		{
 			name: "filter_by_search",
 			setup: func(client *dbent.Client) {
 				mustCreateAccount(s.T(), client, &service.Account{Name: "alpha-account"})

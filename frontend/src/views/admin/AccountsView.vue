@@ -1107,7 +1107,9 @@ const accountMatchesCurrentFilters = (account: Account) => {
   if (params.platform && account.platform !== params.platform) return false
   if (params.type && account.type !== params.type) return false
   if (params.status) {
-    if (params.status === 'rate_limited') {
+    if (params.status === 'paused') {
+      if (account.schedulable) return false
+    } else if (params.status === 'rate_limited') {
       if (!account.rate_limit_reset_at) return false
       const resetAt = new Date(account.rate_limit_reset_at).getTime()
       if (!Number.isFinite(resetAt) || resetAt <= Date.now()) return false
