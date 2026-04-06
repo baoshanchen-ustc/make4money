@@ -3472,6 +3472,15 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			clientDisconnected = true
 			return
 		}
+		// Terminate any in-progress SSE event with a blank line before injecting
+		// the error event. Without this, if a read error occurs after the data line
+		// of an event has been written but before the blank-line terminator arrives,
+		// the error payload ends up concatenated into the same SSE event, producing
+		// two JSON objects in one data field that downstream parsers cannot decode.
+		if _, err := bufferedWriter.WriteString("\n"); err != nil {
+			clientDisconnected = true
+			return
+		}
 		if _, err := bufferedWriter.WriteString("data: " + payload + "\n\n"); err != nil {
 			clientDisconnected = true
 			return
