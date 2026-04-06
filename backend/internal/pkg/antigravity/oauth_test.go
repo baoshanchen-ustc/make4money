@@ -690,8 +690,12 @@ func TestConstants_值正确(t *testing.T) {
 	if RedirectURI != "http://localhost:8085/callback" {
 		t.Errorf("RedirectURI 不匹配: got %s", RedirectURI)
 	}
-	if GetUserAgent() != "antigravity/1.21.9 windows/amd64" {
-		t.Errorf("UserAgent 不匹配: got %s", GetUserAgent())
+	if !strings.Contains(GetUserAgent(), "Antigravity/") || !strings.Contains(GetUserAgent(), "Chrome/") || !strings.Contains(GetUserAgent(), "Electron/") {
+		t.Errorf("UserAgent 格式不正确，应为 Electron 风格: got %s", GetUserAgent())
+	}
+	if !strings.Contains(GetUserAgent(), GetUserAgentVersion()) {
+		t.Errorf("UserAgent 应包含版本号 %s: got %s", GetUserAgentVersion(), GetUserAgent())
+	}
 	}
 	if SessionTTL != 30*time.Minute {
 		t.Errorf("SessionTTL 不匹配: got %v", SessionTTL)

@@ -4,6 +4,8 @@ package antigravity
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +14,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
@@ -29,6 +33,34 @@ func (e *ForbiddenError) Error() string {
 	return fmt.Sprintf("fetchAvailableModels 失败 (HTTP %d): %s", e.StatusCode, e.Body)
 }
 
+// machineID 缓存的机器唯一标识（进程级别单次计算）
+var (
+	machineIDOnce sync.Once
+	machineIDVal  string
+)
+
+// getMachineID 返回稳定的机器唯一标识
+func getMachineID() string {
+	machineIDOnce.Do(func() {
+		hostname, _ := os.Hostname()
+		if hostname == "" {
+			hostname = "unknown"
+		}
+		hash := sha256.Sum256([]byte(hostname))
+		machineIDVal = hex.EncodeToString(hash[:])
+	})
+	return machineIDVal
+}
+
+// setAntigravityHeaders 设置 Antigravity 官方客户端特征 Headers
+func setAntigravityHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", GetUserAgent())
+	req.Header.Set("x-client-name", "antigravity")
+	req.Header.Set("x-client-version", GetUserAgentVersion())
+	req.Header.Set("x-machine-id", getMachineID())
+	req.Header.Set("x-vscode-sessionid", GetSessionID())
+}
+
 // NewAPIRequestWithURL 使用指定的 base URL 创建 Antigravity API 请求（v1internal 端点）
 func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken string, body []byte) (*http.Request, error) {
 	// 构建 URL，流式请求添加 ?alt=sse 参数
@@ -43,10 +75,10 @@ func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken stri
 		return nil, err
 	}
 
-	// 基础 Headers（与 Antigravity-Manager 保持一致，只设置这 3 个）
+	// 基础 Headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("User-Agent", GetUserAgent())
+	setAntigravityHeaders(req)
 
 	return req, nil
 }
@@ -461,7 +493,7 @@ func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadC
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", GetUserAgent())
+		setAntigravityHeaders(req)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -540,7 +572,7 @@ func (c *Client) OnboardUser(ctx context.Context, accessToken, tierID string) (s
 			}
 			req.Header.Set("Authorization", "Bearer "+accessToken)
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("User-Agent", GetUserAgent())
+			setAntigravityHeaders(req)
 
 			resp, err := c.httpClient.Do(req)
 			if err != nil {
@@ -674,7 +706,7 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", GetUserAgent())
+		setAntigravityHeaders(req)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {

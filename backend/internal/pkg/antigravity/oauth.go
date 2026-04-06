@@ -9,9 +9,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -49,11 +52,21 @@ const (
 	antigravityDailyBaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
 )
 
-// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.20.5
-var defaultUserAgentVersion = "1.21.9"
+// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置。
+// 确保不低于 Google API 的最低版本要求。
+var defaultUserAgentVersion = "4.1.31"
+
+// Electron/Chrome 版本，与 Antigravity 4.1.31 对应
+const (
+	knownStableElectron = "39.2.3"
+	knownStableChrome   = "132.0.6834.160"
+)
 
 // defaultClientSecret 可通过环境变量 ANTIGRAVITY_OAUTH_CLIENT_SECRET 配置
 var defaultClientSecret = "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"
+
+// sessionID 全局 Session ID（每次进程启动生成一次），模拟 Antigravity x-vscode-sessionid
+var sessionID = uuid.New().String()
 
 func init() {
 	// 从环境变量读取版本号，未设置则使用默认值
@@ -66,9 +79,27 @@ func init() {
 	}
 }
 
-// GetUserAgent 返回当前配置的 User-Agent
+// GetUserAgentVersion 返回当前配置的 Antigravity 版本号
+func GetUserAgentVersion() string {
+	return defaultUserAgentVersion
+}
+
+// GetUserAgent 返回 Electron 风格的 User-Agent（与 Antigravity-Manager 保持一致）
 func GetUserAgent() string {
-	return fmt.Sprintf("antigravity/%s windows/amd64", defaultUserAgentVersion)
+	platform := "X11; Linux x86_64"
+	switch runtime.GOOS {
+	case "darwin":
+		platform = "Macintosh; Intel Mac OS X 10_15_7"
+	case "windows":
+		platform = "Windows NT 10.0; Win64; x64"
+	}
+	return fmt.Sprintf("Antigravity/%s (%s) Chrome/%s Electron/%s",
+		defaultUserAgentVersion, platform, knownStableChrome, knownStableElectron)
+}
+
+// GetSessionID 返回本进程的全局 Session ID
+func GetSessionID() string {
+	return sessionID
 }
 
 func getClientSecret() (string, error) {
