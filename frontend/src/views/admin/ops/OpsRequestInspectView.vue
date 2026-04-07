@@ -29,23 +29,13 @@
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
               {{ t('admin.ops.requestInspect.windowLabel') }}
             </label>
-            <select v-model="timeRange" class="input w-full">
-              <option value="5m">{{ t('admin.ops.timeRange.5m') }}</option>
-              <option value="30m">{{ t('admin.ops.timeRange.30m') }}</option>
-              <option value="1h">{{ t('admin.ops.timeRange.1h') }}</option>
-              <option value="6h">{{ t('admin.ops.timeRange.6h') }}</option>
-              <option value="24h">{{ t('admin.ops.timeRange.24h') }}</option>
-            </select>
+            <Select v-model="timeRange" :options="timeRangeOptions" />
           </div>
           <div class="min-w-[120px]">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
               {{ t('admin.ops.requestInspect.kindFilter') }}
             </label>
-            <select v-model="kind" class="input w-full">
-              <option value="all">{{ t('admin.ops.requestInspect.kindAll') }}</option>
-              <option value="success">{{ t('admin.ops.requestDetails.kind.success') }}</option>
-              <option value="error">{{ t('admin.ops.requestDetails.kind.error') }}</option>
-            </select>
+            <Select v-model="kind" :options="kindOptions" />
           </div>
           <!-- User search filter -->
           <div ref="userFilterRef" class="relative min-w-[200px] flex-1">
@@ -135,52 +125,19 @@
               </div>
             </div>
           </div>
-          <!-- Group search filter -->
-          <div ref="groupFilterRef" class="relative min-w-[200px] flex-1">
+          <!-- Group filter (Select.vue with local search) -->
+          <div class="min-w-[200px] flex-1">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
               分组
             </label>
-            <div class="relative">
-              <input
-                v-model="groupKeyword"
-                type="text"
-                class="input w-full pr-8 text-sm"
-                placeholder="搜索分组…"
-                @input="handleGroupInput"
-                @focus="handleGroupFocus"
-              />
-              <button
-                v-if="groupKeyword || groupId != null"
-                type="button"
-                class="absolute inset-y-0 right-2 flex items-center text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
-                @click="clearGroup"
-              >
-                <Icon name="x" size="xs" />
-              </button>
-            </div>
-            <div
-              v-if="showGroupDropdown && (groupResults.length > 0 || groupKeyword.trim())"
-              class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
-            >
-              <button
-                v-for="group in groupResults"
-                :key="group.id"
-                type="button"
-                class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-dark-700"
-                @click="selectGroup(group)"
-              >
-                <span class="truncate text-sm text-gray-800 dark:text-gray-100" :title="group.name">{{ group.name }}</span>
-                <span class="flex flex-shrink-0 items-center gap-1.5 text-xs text-gray-400">
-                  <span class="font-mono uppercase">{{ group.platform }}</span>
-                  <span class="font-mono">#{{ group.id }}</span>
-                </span>
-              </button>
-              <div v-if="groupResults.length === 0" class="px-3 py-2 text-sm text-gray-400">
-                {{ t('common.noOptionsFound') }}
-              </div>
-            </div>
+            <Select
+              v-model="groupId"
+              :options="groupSelectOptions"
+              searchable
+              :placeholder="t('common.all')"
+            />
           </div>
-          <!-- Account search filter -->
+          <!-- Account search filter (remote search, custom dropdown) -->
           <div ref="accountFilterRef" class="relative min-w-[200px] flex-1">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
               账户
@@ -225,29 +182,28 @@
               </div>
             </div>
           </div>
+          <!-- Platform filter (Select.vue with search) -->
           <div class="min-w-[140px]">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
               {{ t('admin.ops.requestInspect.platform') }}
             </label>
-            <select v-model="platform" class="input w-full font-mono text-sm">
-              <option value="">{{ t('common.all') }}</option>
-              <option value="anthropic">anthropic</option>
-              <option value="openai">openai</option>
-              <option value="gemini">gemini</option>
-              <option value="antigravity">antigravity</option>
-              <option value="sora">sora</option>
-              <option value="copilot">copilot</option>
-            </select>
+            <Select
+              v-model="platform"
+              :options="platformOptions"
+              searchable
+              :placeholder="t('common.all')"
+            />
           </div>
+          <!-- Status code filter (Select.vue) -->
           <div class="min-w-[110px]">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
               {{ t('admin.ops.requestDetails.table.status') }}
             </label>
-            <select v-model="statusCode" class="input w-full font-mono text-sm">
-              <option v-for="code in STATUS_CODE_OPTIONS" :key="String(code) || 'all'" :value="code">
-                {{ code === '' ? t('common.all') : code }}
-              </option>
-            </select>
+            <Select
+              v-model="statusCode"
+              :options="statusCodeOptions"
+              :placeholder="t('common.all')"
+            />
           </div>
           <div class="min-w-[200px] flex-[2]">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
@@ -486,6 +442,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { useAdminSettingsStore } from '@/stores'
 import { adminAPI } from '@/api/admin'
 import { opsAPI, computeFaultOwner, type AnomalyType, type FaultOwner, type OpsRequestDetail, type OpsRequestDetailsKind } from '@/api/admin/ops'
@@ -506,13 +463,54 @@ const opsEnabled = computed(() => adminSettingsStore.opsMonitoringEnabled)
 
 const timeRange = ref('24h')
 const kind = ref<OpsRequestDetailsKind>('all')
-const platform = ref('')
+// null = "全部"（与 Select.vue 的 null 占位值一致）
+const platform = ref<string | null>(null)
 const q = ref('')
 const faultOwnerFilter = ref<FaultOwner | 'all'>('all')
 
-// Status code filter
-const STATUS_CODE_OPTIONS: Array<number | ''> = ['', 200, 400, 401, 403, 404, 422, 429, 499, 500, 502, 503]
-const statusCode = ref<number | ''>('')
+// Status code filter — null = 全部
+const statusCode = ref<number | null>(null)
+
+// ---------- Static Select options ----------
+
+const timeRangeOptions = computed<SelectOption[]>(() => [
+  { value: '5m',  label: t('admin.ops.timeRange.5m') },
+  { value: '30m', label: t('admin.ops.timeRange.30m') },
+  { value: '1h',  label: t('admin.ops.timeRange.1h') },
+  { value: '6h',  label: t('admin.ops.timeRange.6h') },
+  { value: '24h', label: t('admin.ops.timeRange.24h') },
+])
+
+const kindOptions = computed<SelectOption[]>(() => [
+  { value: 'all',     label: t('admin.ops.requestInspect.kindAll') },
+  { value: 'success', label: t('admin.ops.requestDetails.kind.success') },
+  { value: 'error',   label: t('admin.ops.requestDetails.kind.error') },
+])
+
+const platformOptions = computed<SelectOption[]>(() => [
+  { value: null,          label: t('common.all') },
+  { value: 'anthropic',   label: 'anthropic' },
+  { value: 'openai',      label: 'openai' },
+  { value: 'gemini',      label: 'gemini' },
+  { value: 'antigravity', label: 'antigravity' },
+  { value: 'sora',        label: 'sora' },
+  { value: 'copilot',     label: 'copilot' },
+])
+
+const statusCodeOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('common.all') },
+  { value: 200,  label: '200' },
+  { value: 400,  label: '400' },
+  { value: 401,  label: '401' },
+  { value: 403,  label: '403' },
+  { value: 404,  label: '404' },
+  { value: 422,  label: '422' },
+  { value: 429,  label: '429' },
+  { value: 499,  label: '499' },
+  { value: 500,  label: '500' },
+  { value: 502,  label: '502' },
+  { value: 503,  label: '503' },
+])
 
 // User search filter state
 const userFilterRef = ref<HTMLElement | null>(null)
@@ -523,20 +521,18 @@ const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-// Group search filter state
-const groupFilterRef = ref<HTMLElement | null>(null)
-const groupId = ref<number | undefined>(undefined)
-const groupKeyword = ref('')
+// Group filter — backed by Select.vue (local filtering, null = 全部)
+const groupId = ref<number | null>(null)
 const allGroups = ref<AdminGroup[]>([])
-const showGroupDropdown = ref(false)
-const groupResults = computed(() => {
-  const keyword = groupKeyword.value.trim().toLowerCase()
+const groupSelectOptions = computed<SelectOption[]>(() => {
   const selectedPlatform = platform.value
-  return allGroups.value.filter((g) => {
-    if (selectedPlatform && g.platform !== selectedPlatform) return false
-    if (!keyword) return true
-    return g.name.toLowerCase().includes(keyword) || String(g.id).includes(keyword)
-  })
+  const filtered = selectedPlatform
+    ? allGroups.value.filter((g) => g.platform === selectedPlatform)
+    : allGroups.value
+  return [
+    { value: null, label: t('common.all') },
+    ...filtered.map((g) => ({ value: g.id, label: `${g.name} (${g.platform})` })),
+  ]
 })
 
 // Account search filter state
@@ -726,33 +722,6 @@ async function loadGroups() {
   }
 }
 
-function handleGroupInput() {
-  showGroupDropdown.value = true
-  // Only clear the selected id — don't refresh yet. The user is still typing.
-  // Refresh happens on selectGroup() or clearGroup().
-  if (groupId.value !== undefined) {
-    groupId.value = undefined
-  }
-}
-
-function handleGroupFocus() {
-  showGroupDropdown.value = true
-}
-
-function selectGroup(group: AdminGroup) {
-  groupId.value = group.id
-  groupKeyword.value = group.name
-  showGroupDropdown.value = false
-  refresh()
-}
-
-function clearGroup() {
-  groupId.value = undefined
-  groupKeyword.value = ''
-  showGroupDropdown.value = false
-  refresh()
-}
-
 // ---------- Account search filter ----------
 
 function debounceAccountSearch() {
@@ -835,9 +804,6 @@ function onDocumentClick(event: MouseEvent) {
   if (userFilterRef.value && !userFilterRef.value.contains(target)) {
     showUserDropdown.value = false
   }
-  if (groupFilterRef.value && !groupFilterRef.value.contains(target)) {
-    showGroupDropdown.value = false
-  }
   if (accountFilterRef.value && !accountFilterRef.value.contains(target)) {
     showAccountDropdown.value = false
   }
@@ -862,7 +828,7 @@ async function fetchData() {
       kind: kind.value,
       sort: 'created_at_desc' as const
     }
-    const pf = platform.value.trim()
+    const pf = platform.value
     if (pf) {
       params.platform = pf
     }
@@ -915,16 +881,15 @@ function handlePageSizeChange(next: number) {
   fetchData()
 }
 
-watch([timeRange, kind, anomalyTypes, statusCode], () => {
+watch([timeRange, kind, anomalyTypes, statusCode, groupId], () => {
   page.value = 1
   fetchData()
 })
 
-// When platform changes, clear any group/account selection that may belong to a different platform.
+// When platform changes, clear group/account selections that may not match the new platform.
 watch(platform, () => {
-  if (groupId.value !== undefined) {
-    groupId.value = undefined
-    groupKeyword.value = ''
+  if (groupId.value !== null) {
+    groupId.value = null
   }
   if (accountId.value !== undefined) {
     accountId.value = undefined
