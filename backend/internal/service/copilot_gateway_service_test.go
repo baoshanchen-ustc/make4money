@@ -84,6 +84,63 @@ func TestCopilotInitiator(t *testing.T) {
 	}
 }
 
+func TestCopilotInitiatorFromResponsesBody(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			"first turn plain string input",
+			`{"model":"gpt-4o","input":"hello"}`,
+			"user",
+		},
+		{
+			"first turn array with only user message",
+			`{"model":"gpt-4o","input":[{"role":"user","content":"hello"}]}`,
+			"user",
+		},
+		{
+			"multi-turn with assistant message – agent call",
+			`{"model":"gpt-4o","input":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"},{"role":"user","content":"more"}]}`,
+			"agent",
+		},
+		{
+			"function_call item – agent call",
+			`{"model":"gpt-4o","input":[{"role":"user","content":"hi"},{"type":"function_call","name":"read_file","arguments":"{}"}]}`,
+			"agent",
+		},
+		{
+			"function_call_output item – agent call",
+			`{"model":"gpt-4o","input":[{"role":"user","content":"hi"},{"type":"function_call_output","output":"result"}]}`,
+			"agent",
+		},
+		{
+			"empty input array",
+			`{"model":"gpt-4o","input":[]}`,
+			"user",
+		},
+		{
+			"invalid json defaults to user",
+			`{invalid`,
+			"user",
+		},
+		{
+			"missing input field defaults to user",
+			`{"model":"gpt-4o"}`,
+			"user",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := copilotInitiatorFromResponsesBody([]byte(tt.body))
+			if got != tt.want {
+				t.Errorf("copilotInitiatorFromResponsesBody() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCopilotModelUsesMaxOutputClamp(t *testing.T) {
 	tests := []struct {
 		model string
@@ -1238,8 +1295,148 @@ func TestForwardChatCompletions_FilePartsViaResponsesNonStreaming(t *testing.T) 
 	}
 }
 
-// TestForwardChatCompletions_NoFilePartsUsesDirectPath verifies that requests
-// without file parts still use the direct /chat/completions path (not bridged).
+// TestForwardChatCompletions_UnsupportedAPIForModel_FallbackToChatCompletions
+// verifies that when the upstream returns HTTP 400 with
+// error.code == "unsupported_api_for_model" (e.g. claude-opus-4.6 does not
+// support the Responses API), ForwardChatCompletions falls back to the
+// standard /chat/completions path using the stripped body (file parts removed).
+func TestForwardChatCompletions_UnsupportedAPIForModel_FallbackToChatCompletions(t *testing.T) {
+	var requestPaths []string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPaths = append(requestPaths, r.URL.Path)
+		_, _ = io.ReadAll(r.Body)
+
+		if r.URL.Path == "/responses" {
+			// Simulate Copilot rejecting the model for the Responses API.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprint(w, `{"error":{"message":"model claude-opus-4.6 does not support Responses API.","code":"unsupported_api_for_model"}}`)
+			return
+		}
+		// Fallback /chat/completions responds with a minimal streaming reply.
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"文档摘要\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+		fmt.Fprint(w, "data: {\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("copilot-token-opus-fallback")
+	provider.tokens[1] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	account := &Account{
+		ID: 1, Platform: PlatformCopilot, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"github_token": "ghp_test"},
+	}
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/chat/completions", nil)
+
+	// Request with a PDF file attachment using claude-opus-4.6.
+	clientBody := []byte(`{"model":"claude-opus-4.6","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"总结这个PDF"},{"type":"file","file":{"filename":"report.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}}]}]}`)
+	result, err := svc.ForwardChatCompletions(context.Background(), c, account, clientBody)
+	if err != nil {
+		t.Fatalf("ForwardChatCompletions: %v", err)
+	}
+
+	// Must have tried /responses first, then fallen back to /chat/completions.
+	if len(requestPaths) < 2 {
+		t.Fatalf("expected 2 upstream requests (/responses then /chat/completions), got: %v", requestPaths)
+	}
+	if requestPaths[0] != "/responses" {
+		t.Errorf("first request should be /responses, got %q", requestPaths[0])
+	}
+	if requestPaths[1] != "/chat/completions" {
+		t.Errorf("second request (fallback) should be /chat/completions, got %q", requestPaths[1])
+	}
+
+	// Client should receive a successful streaming response.
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 OK, got %d; body: %s", w.Code, w.Body.String())
+	}
+	respBody := w.Body.String()
+	if !strings.Contains(respBody, "文档摘要") {
+		t.Errorf("expected response text in SSE stream; got: %s", respBody)
+	}
+	if !strings.Contains(respBody, "[DONE]") {
+		t.Errorf("expected [DONE] in SSE stream; got: %s", respBody)
+	}
+
+	if result == nil || result.Usage == nil {
+		t.Fatalf("expected non-nil usage; result=%+v", result)
+	}
+	if result.Usage.PromptTokens != 100 || result.Usage.CompletionTokens != 10 {
+		t.Errorf("expected usage prompt=100 completion=10; got %+v", result.Usage)
+	}
+}
+
+// TestForwardChatCompletions_NonUnsupportedAPI400_NotFallback verifies that a
+// 400 error with a different code (e.g. a validation error) is NOT treated as
+// the unsupported-API fallback — it is forwarded to the client as-is.
+func TestForwardChatCompletions_NonUnsupportedAPI400_NotFallback(t *testing.T) {
+	var requestPaths []string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPaths = append(requestPaths, r.URL.Path)
+		_, _ = io.ReadAll(r.Body)
+
+		// /responses returns a different 400 error (not unsupported_api_for_model).
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprint(w, `{"error":{"message":"invalid request format","code":"invalid_request_error"}}`)
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("copilot-token-400-nofallback")
+	provider.tokens[1] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	account := &Account{
+		ID: 1, Platform: PlatformCopilot, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"github_token": "ghp_test"},
+	}
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/chat/completions", nil)
+
+	clientBody := []byte(`{"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"test"},{"type":"file","file":{"filename":"f.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}}]}]}`)
+	result, err := svc.ForwardChatCompletions(context.Background(), c, account, clientBody)
+	if err != nil {
+		t.Fatalf("ForwardChatCompletions: %v", err)
+	}
+
+	// Only one upstream request — no fallback should happen.
+	if len(requestPaths) != 1 {
+		t.Errorf("expected exactly 1 upstream request (no fallback), got: %v", requestPaths)
+	}
+	if requestPaths[0] != "/responses" {
+		t.Errorf("expected /responses, got %q", requestPaths[0])
+	}
+
+	// The 400 should be forwarded to the client.
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 forwarded to client, got %d", w.Code)
+	}
+	if result == nil || result.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected result.StatusCode=400, got %+v", result)
+	}
+}
+
 func TestForwardChatCompletions_NoFilePartsUsesDirectPath(t *testing.T) {
 	var capturedPath string
 

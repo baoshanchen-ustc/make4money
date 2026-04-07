@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
@@ -53,6 +55,9 @@ const (
 	copilotModelEndpointsCacheTTL = 1 * time.Hour
 	// copilotModelEndpointsCacheFailedTTL is the retry window after a failed fetch.
 	copilotModelEndpointsCacheFailedTTL = 2 * time.Minute
+	// copilotChatFileTextPreviewMaxBytes caps inline text extracted from text-like
+	// file attachments when downgrading file parts to plain text for /chat/completions.
+	copilotChatFileTextPreviewMaxBytes = 16 * 1024
 )
 
 // NewCopilotGatewayService creates a new CopilotGatewayService.
@@ -119,14 +124,59 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 
 	// GitHub Copilot /chat/completions rejects "file" content parts (only
 	// "text" and "image_url" are accepted). When the client sends file
-	// attachments (e.g. Cherry Studio PDF upload), bridge the request through
-	// the /responses endpoint which supports inline base64 file input, then
-	// translate the response back to Chat Completions format so the client
-	// receives the expected protocol.
-	if _, hasFile := StripUnsupportedContentPartsFromOpenAIBody(body); hasFile {
-		return s.forwardChatCompletionsViaResponses(ctx, c, account, body, startTime)
+	// attachments (e.g. Cherry Studio PDF upload), we check the model's
+	// supported_endpoints first:
+	//   - Models that support /responses (responses-only, e.g. gpt-5): bridge
+	//     through /responses which accepts inline base64 file input, then
+	//     translate the response back to Chat Completions format.
+	//   - Models that only support /chat/completions (e.g. claude-opus-4.6):
+	//     convert file parts to descriptive text parts so /chat/completions
+	//     can still receive the attachment context.
+	//
+	// chatFallbackBody holds the same request with "file" parts rewritten to
+	// text parts, used both as the direct path for chat-only models and as the
+	// fallback if /responses later rejects the model.
+	strippedBody, hasFile := StripUnsupportedContentPartsFromOpenAIBody(body)
+	if hasFile {
+		chatFallbackBody := convertFilePartsToText(body)
+		if bytes.Equal(chatFallbackBody, body) {
+			// Text conversion failed unexpectedly — use stripped body as safety net.
+			chatFallbackBody = strippedBody
+		}
+
+		// Check model support before choosing the upstream path, matching the
+		// same logic used in ForwardMessages to avoid unnecessary /responses hits.
+		modelProbeBody, _ := rewriteCopilotUpstreamModel(body, account)
+		upstreamModelID := strings.TrimSpace(extractModelFromBody(modelProbeBody))
+		supportedEndpoints, epErr := s.getSupportedEndpointsForModel(ctx, account, upstreamModelID)
+		if epErr != nil {
+			slog.Warn("copilot chat: could not resolve supported endpoints for file request, falling back to /chat/completions",
+				"account_id", account.ID,
+				"model", upstreamModelID,
+				"error", epErr)
+		}
+
+		if shouldUseResponsesEndpoint(supportedEndpoints) {
+			return s.forwardChatCompletionsViaResponses(ctx, c, account, body, chatFallbackBody, startTime)
+		}
+		// Chat-only model: skip /responses entirely, send textified body.
+		return s.forwardChatCompletionsDirect(ctx, c, account, chatFallbackBody, startTime)
 	}
 
+	return s.forwardChatCompletionsDirect(ctx, c, account, body, startTime)
+}
+
+// forwardChatCompletionsDirect handles the standard Copilot /chat/completions
+// forwarding flow.  It is used both by the normal path (no file attachments) and
+// as a fallback from forwardChatCompletionsViaResponses when the upstream model
+// does not support the Responses API (e.g. claude-opus-4.6).
+func (s *CopilotGatewayService) forwardChatCompletionsDirect(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	startTime time.Time,
+) (*CopilotForwardResult, error) {
 	translateStart := time.Now()
 	// Normalize the OpenAI request body before forwarding:
 	// merge consecutive same-role messages so Copilot API doesn't reject with 400.
@@ -273,6 +323,7 @@ func (s *CopilotGatewayService) forwardChatCompletionsViaResponses(
 	c *gin.Context,
 	account *Account,
 	body []byte,
+	strippedBody []byte,
 	startTime time.Time,
 ) (*CopilotForwardResult, error) {
 	translateStart := time.Now()
@@ -385,6 +436,25 @@ func (s *CopilotGatewayService) forwardChatCompletionsViaResponses(
 		"latency_ms", upstreamDurationMs)
 
 	if resp.StatusCode != http.StatusOK {
+		// When the model doesn't support the Responses API (e.g. claude-opus-4.6),
+		// Copilot returns 400 with code "unsupported_api_for_model".  Fall back to
+		// /chat/completions using the textified body so the model still receives
+		// the attachment context as descriptive text rather than silently losing it.
+		if resp.StatusCode == http.StatusBadRequest {
+			errBody, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+
+			if strings.TrimSpace(gjson.GetBytes(errBody, "error.code").String()) == "unsupported_api_for_model" {
+				slog.Warn("copilot chat via responses: model does not support /responses, falling back to /chat/completions",
+					"account_id", account.ID,
+					"model", upstreamModel,
+					"x_request_id", resp.Header.Get("x-request-id"))
+				return s.forwardChatCompletionsDirect(ctx, c, account, strippedBody, startTime)
+			}
+
+			// Not the unsupported-model error — restore body so handleErrorResponse can read it.
+			resp.Body = io.NopCloser(bytes.NewReader(errBody))
+		}
 		return s.handleErrorResponse(c, resp, account)
 	}
 
@@ -823,6 +893,40 @@ func copilotInitiator(openAIBody []byte) string {
 	return "user"
 }
 
+// copilotInitiatorFromResponsesBody returns the value for the X-Initiator
+// header for an OpenAI Responses API request body.
+//
+// The Responses API input may be either a plain string (first-turn text) or an
+// array of typed input items. Copilot expects "agent" when the request already
+// contains assistant content or tool call/result items, otherwise "user".
+func copilotInitiatorFromResponsesBody(body []byte) string {
+	var req struct {
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "user"
+	}
+
+	input := bytes.TrimSpace(req.Input)
+	if len(input) == 0 || input[0] == '"' || input[0] != '[' {
+		return "user"
+	}
+
+	var items []struct {
+		Type string `json:"type"`
+		Role string `json:"role"`
+	}
+	if err := json.Unmarshal(input, &items); err != nil {
+		return "user"
+	}
+	for _, item := range items {
+		if item.Role == "assistant" || item.Type == "function_call" || item.Type == "function_call_output" {
+			return "agent"
+		}
+	}
+	return "user"
+}
+
 // extractModelFromBody reads the model field from a JSON request body.
 func extractModelFromBody(body []byte) string {
 	var req struct {
@@ -1211,7 +1315,7 @@ func (s *CopilotGatewayService) ForwardResponses(
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	for k, vals := range copilot.CopilotHeaders("user", false) {
+	for k, vals := range copilot.CopilotHeaders(copilotInitiatorFromResponsesBody(body), false) {
 		for _, v := range vals {
 			req.Header.Set(k, v)
 		}
@@ -2722,4 +2826,235 @@ func StripUnsupportedContentPartsFromOpenAIBody(body []byte) ([]byte, bool) {
 		return body, false
 	}
 	return out, true
+}
+
+// convertFilePartsToText rewrites OpenAI chat content parts of type="file" into
+// type="text" parts so /chat/completions can still receive attachment context
+// when the target model cannot be served via /responses.
+//
+// For text-like MIME types (text/*, application/json, etc.) the base64 payload
+// is decoded and inlined directly (up to copilotChatFileTextPreviewMaxBytes).
+// For binary types (PDF, images, etc.) a descriptive placeholder is inserted so
+// the model at least knows a file was attached.
+func convertFilePartsToText(body []byte) []byte {
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(body, &generic); err != nil {
+		return body
+	}
+
+	msgsRaw, ok := generic["messages"]
+	if !ok {
+		return body
+	}
+
+	var msgs []json.RawMessage
+	if err := json.Unmarshal(msgsRaw, &msgs); err != nil {
+		return body
+	}
+
+	changed := false
+	rewritten := make([]json.RawMessage, 0, len(msgs))
+
+	for _, rawMsg := range msgs {
+		var m struct {
+			Content json.RawMessage `json:"content"`
+		}
+		if err := json.Unmarshal(rawMsg, &m); err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+
+		// Only array-form content can contain typed file parts.
+		var parts []json.RawMessage
+		if err := json.Unmarshal(m.Content, &parts); err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+
+		msgChanged := false
+		converted := make([]json.RawMessage, 0, len(parts))
+		for _, rawPart := range parts {
+			var part copilotFilePart
+			if err := json.Unmarshal(rawPart, &part); err != nil || part.Type != "file" || part.File == nil {
+				converted = append(converted, rawPart)
+				continue
+			}
+
+			textPart, err := json.Marshal(map[string]any{
+				"type": "text",
+				"text": describeChatFileForTextFallback(part.File),
+			})
+			if err != nil {
+				converted = append(converted, rawPart)
+				continue
+			}
+			converted = append(converted, textPart)
+			msgChanged = true
+			changed = true
+		}
+
+		if !msgChanged {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+
+		newContent, err := json.Marshal(converted)
+		if err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+
+		var msgMap map[string]json.RawMessage
+		if err := json.Unmarshal(rawMsg, &msgMap); err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+		msgMap["content"] = newContent
+		newMsg, err := json.Marshal(msgMap)
+		if err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+		rewritten = append(rewritten, newMsg)
+	}
+
+	if !changed {
+		return body
+	}
+
+	newMsgs, err := json.Marshal(rewritten)
+	if err != nil {
+		return body
+	}
+	generic["messages"] = newMsgs
+	out, err := json.Marshal(generic)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+// copilotFilePart is a minimal struct for parsing "file" typed content parts.
+type copilotFilePart struct {
+	Type string           `json:"type"`
+	File *copilotFileData `json:"file,omitempty"`
+}
+
+// copilotFileData mirrors the ChatFile structure used for inline file attachments.
+type copilotFileData struct {
+	FileData string `json:"file_data,omitempty"`
+	FileID   string `json:"file_id,omitempty"`
+	Filename string `json:"filename,omitempty"`
+}
+
+// describeChatFileForTextFallback converts a file attachment into a plain-text
+// representation suitable for /chat/completions:
+//   - Text-like files (text/*, JSON, XML, …): base64-decoded content is inlined.
+//   - Binary files (PDF, images, …): a descriptive placeholder is emitted so the
+//     model knows a file was attached.
+func describeChatFileForTextFallback(file *copilotFileData) string {
+	filename := strings.TrimSpace(file.Filename)
+	if filename == "" {
+		filename = "unnamed file"
+	}
+
+	// file_id reference only (no inline data).
+	if fileID := strings.TrimSpace(file.FileID); fileID != "" && strings.TrimSpace(file.FileData) == "" {
+		return fmt.Sprintf("[Attached file: %s (file_id=%s), content unavailable - model cannot process files via this endpoint]", filename, fileID)
+	}
+
+	mimeType, encoded, ok := parseInlineBase64FileData(strings.TrimSpace(file.FileData))
+	if !ok {
+		if strings.TrimSpace(file.FileData) != "" {
+			return fmt.Sprintf("[Attached file: %s, inline file payload omitted - model cannot process files via this endpoint]", filename)
+		}
+		return fmt.Sprintf("[Attached file: %s, content unavailable - model cannot process files via this endpoint]", filename)
+	}
+
+	// Text-like: try to inline the decoded content.
+	if isTextLikeMIMEType(mimeType) {
+		if text, ok := decodeInlineTextFile(encoded); ok {
+			return fmt.Sprintf("[Attached file: %s (%s)]\n%s", filename, mimeType, text)
+		}
+	}
+
+	// Binary (PDF, images, etc.): descriptive placeholder.
+	return fmt.Sprintf("[Attached file: %s (%s), base64 content omitted - model cannot process binary files via this endpoint]", filename, mimeType)
+}
+
+// parseInlineBase64FileData parses a data URI of the form
+// "data:<mime>;base64,<encoded>" and returns the MIME type and encoded payload.
+func parseInlineBase64FileData(fileData string) (mimeType string, encoded string, ok bool) {
+	if !strings.HasPrefix(fileData, "data:") {
+		return "", "", false
+	}
+	parts := strings.SplitN(strings.TrimPrefix(fileData, "data:"), ",", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	meta := strings.TrimSpace(parts[0])
+	if !strings.HasSuffix(meta, ";base64") {
+		return "", "", false
+	}
+	mimeType = strings.TrimSpace(strings.TrimSuffix(meta, ";base64"))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	return mimeType, parts[1], true
+}
+
+// isTextLikeMIMEType reports whether mimeType represents human-readable text.
+func isTextLikeMIMEType(mimeType string) bool {
+	m := strings.ToLower(strings.TrimSpace(strings.SplitN(mimeType, ";", 2)[0]))
+	if strings.HasPrefix(m, "text/") {
+		return true
+	}
+	switch m {
+	case "application/json",
+		"application/xml",
+		"application/javascript",
+		"application/x-javascript",
+		"application/x-ndjson",
+		"application/yaml",
+		"application/x-yaml",
+		"application/toml",
+		"application/x-toml":
+		return true
+	}
+	return false
+}
+
+// decodeInlineTextFile base64-decodes an inline file payload and returns the
+// content as a UTF-8 string (truncated to copilotChatFileTextPreviewMaxBytes).
+// Returns ("", false) when the payload is binary or decoding fails.
+func decodeInlineTextFile(encoded string) (string, bool) {
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		decoded, err = base64.RawStdEncoding.DecodeString(encoded)
+		if err != nil {
+			return "", false
+		}
+	}
+	if len(decoded) == 0 || !utf8.Valid(decoded) {
+		return "", false
+	}
+
+	truncated := false
+	if len(decoded) > copilotChatFileTextPreviewMaxBytes {
+		decoded = decoded[:copilotChatFileTextPreviewMaxBytes]
+		// Trim to the last valid UTF-8 boundary.
+		for len(decoded) > 0 && !utf8.Valid(decoded) {
+			decoded = decoded[:len(decoded)-1]
+		}
+		truncated = true
+	}
+
+	text := strings.TrimSpace(string(decoded))
+	if text == "" {
+		return "", false
+	}
+	if truncated {
+		text += "\n\n[truncated]"
+	}
+	return text, true
 }
