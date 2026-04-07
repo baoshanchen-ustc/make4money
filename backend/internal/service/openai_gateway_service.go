@@ -1120,6 +1120,9 @@ func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) str
 //  1. Header: session_id
 //  2. Header: conversation_id
 //  3. Body:   prompt_cache_key (opencode)
+//  4. Content-based fallback: model + system messages + first user message + auth header
+//     Used for clients that do not send explicit session signals (e.g. standard OpenAI-compat clients).
+//     Hashes only the stable request prefix so routing stays sticky across conversation rounds.
 func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
 	if c == nil {
 		return ""
@@ -1132,13 +1135,66 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 	if sessionID == "" && len(body) > 0 {
 		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 	}
-	if sessionID == "" {
-		return ""
+	if sessionID != "" {
+		currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
+		attachOpenAILegacySessionHashToGin(c, legacyHash)
+		return currentHash
 	}
 
-	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
-	attachOpenAILegacySessionHashToGin(c, legacyHash)
-	return currentHash
+	// Content-based fallback: derive a stable hash from the request prefix.
+	// This ensures non-Codex clients without explicit session signals are routed
+	// to the same upstream account for a given conversation, enabling prompt caching.
+	if len(body) > 0 {
+		if seed := deriveOpenAIContentBasedSessionSeed(c, body); seed != "" {
+			return DeriveSessionHashFromSeed(seed)
+		}
+	}
+
+	return ""
+}
+
+// deriveOpenAIContentBasedSessionSeed builds a stable seed from the Authorization
+// header (to differentiate users) and the stable prefix of the request body
+// (model + all system messages + first user message). Including only the stable
+// prefix means the hash does not change as the conversation grows, keeping
+// sticky-session routing consistent across turns.
+func deriveOpenAIContentBasedSessionSeed(c *gin.Context, body []byte) string {
+	var parts []string
+
+	// Mix in the Authorization header so two different users with identical prompts
+	// are routed independently. The raw value is hashed before use.
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	if authHeader != "" {
+		parts = append(parts, "auth="+hashSensitiveValueForLog(authHeader))
+	}
+
+	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	if model != "" {
+		parts = append(parts, "model="+model)
+	}
+
+	firstUserCaptured := false
+	for _, msg := range gjson.GetBytes(body, "messages").Array() {
+		role := strings.TrimSpace(msg.Get("role").String())
+		switch role {
+		case "system":
+			if content := strings.TrimSpace(msg.Get("content").String()); content != "" {
+				parts = append(parts, "system="+content)
+			}
+		case "user":
+			if !firstUserCaptured {
+				if content := strings.TrimSpace(msg.Get("content").String()); content != "" {
+					parts = append(parts, "first_user="+content)
+					firstUserCaptured = true
+				}
+			}
+		}
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "|")
 }
 
 // GenerateSessionHashWithFallback 先按常规信号生成会话哈希；

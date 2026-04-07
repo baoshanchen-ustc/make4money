@@ -182,11 +182,63 @@ func TestOpenAIGatewayService_GenerateSessionHash_Priority(t *testing.T) {
 		t.Fatalf("expected different hashes for different keys")
 	}
 
-	// 4) empty when no signals
+	// 4) empty when no signals (no auth header, empty body)
 	h4 := svc.GenerateSessionHash(c, []byte(`{}`))
 	if h4 != "" {
 		t.Fatalf("expected empty hash when no signals")
 	}
+}
+
+func TestOpenAIGatewayService_GenerateSessionHash_ContentBasedFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+
+	makeCtx := func(authHeader string) *gin.Context {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", nil)
+		if authHeader != "" {
+			c.Request.Header.Set("Authorization", authHeader)
+		}
+		return c
+	}
+
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"Hello"}]}`)
+
+	// Content-based fallback produces a non-empty hash when Authorization + content are present
+	c1 := makeCtx("Bearer key-abc")
+	h1 := svc.GenerateSessionHash(c1, body)
+	if h1 == "" {
+		t.Fatalf("expected non-empty content-based hash")
+	}
+
+	// Same content + same auth → same hash (stable across retries)
+	c2 := makeCtx("Bearer key-abc")
+	h2 := svc.GenerateSessionHash(c2, body)
+	require.Equal(t, h1, h2, "same content + same auth should produce identical hash")
+
+	// Different auth header → different hash (different users isolated)
+	c3 := makeCtx("Bearer key-xyz")
+	h3 := svc.GenerateSessionHash(c3, body)
+	require.NotEqual(t, h1, h3, "different auth headers should produce different hashes")
+
+	// Adding more messages should NOT change the hash (stable prefix only)
+	bodyWithMore := []byte(`{"model":"gpt-5.4","messages":[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"Hello"},{"role":"assistant","content":"Hi!"},{"role":"user","content":"How are you?"}]}`)
+	c4 := makeCtx("Bearer key-abc")
+	h4 := svc.GenerateSessionHash(c4, bodyWithMore)
+	require.Equal(t, h1, h4, "content-based hash should be stable as conversation grows (only stable prefix is hashed)")
+
+	// No auth header + no meaningful content → empty hash
+	c5 := makeCtx("")
+	h5 := svc.GenerateSessionHash(c5, []byte(`{}`))
+	require.Equal(t, "", h5, "empty body with no auth should return empty hash")
+
+	// Explicit session_id header takes priority over content-based fallback
+	c6 := makeCtx("Bearer key-abc")
+	c6.Request.Header.Set("session_id", "explicit-session")
+	h6 := svc.GenerateSessionHash(c6, body)
+	want := fmt.Sprintf("%016x", xxhash.Sum64String("explicit-session"))
+	require.Equal(t, want, h6, "explicit session_id should take priority over content-based fallback")
 }
 
 func TestOpenAIGatewayService_GenerateSessionHash_UsesXXHash64(t *testing.T) {
