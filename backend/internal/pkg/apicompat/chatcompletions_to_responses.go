@@ -156,8 +156,24 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 					ImageURL: p.ImageURL.URL,
 				})
 			}
-		}
-	}
+		case "file":
+			if p.File == nil {
+				return nil, fmt.Errorf("user content: file part missing file object")
+			}
+			part := ResponsesContentPart{
+				Type:     "input_file",
+				Filename: p.File.Filename,
+			}
+			switch {
+			case p.File.FileData != "":
+				part.FileData = p.File.FileData
+			case p.File.FileID != "":
+				part.FileID = p.File.FileID
+			default:
+				return nil, fmt.Errorf("user content: file part missing file_data or file_id")
+			}
+			responseParts = append(responseParts, part)
+		}	}
 
 	content, err := json.Marshal(responseParts)
 	if err != nil {

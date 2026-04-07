@@ -941,3 +941,120 @@ func TestForwardMessages_UpstreamBodyHasStreamIncludeUsage(t *testing.T) {
 		t.Errorf("want non-zero PromptTokens; result=%+v", result)
 	}
 }
+
+func TestStripUnsupportedContentPartsFromOpenAIBody(t *testing.T) {
+	t.Run("file parts stripped from user message array", func(t *testing.T) {
+		// Cherry Studio 发送带 PDF 文件的请求，Copilot 不支持 type="file"，应被剥除。
+		body := `{"model":"gpt-4o","stream":true,"messages":[
+			{"role":"user","content":[
+				{"type":"text","text":"请分析这个PDF"},
+				{"type":"file","file":{"filename":"report.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}}
+			]}
+		]}`
+
+		got, hasFile := StripUnsupportedContentPartsFromOpenAIBody([]byte(body))
+
+		if !hasFile {
+			t.Error("expected hasFile=true when file parts are present")
+		}
+
+		var result struct {
+			Messages []struct {
+				Role    string            `json:"role"`
+				Content json.RawMessage   `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(got, &result); err != nil {
+			t.Fatalf("unmarshal result: %v", err)
+		}
+
+		require := func(cond bool, msg string) {
+			t.Helper()
+			if !cond {
+				t.Error(msg)
+			}
+		}
+
+		require(len(result.Messages) == 1, "should have 1 message")
+
+		// Content should be an array with only the text part remaining.
+		var parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(result.Messages[0].Content, &parts); err != nil {
+			t.Fatalf("unmarshal content parts: %v", err)
+		}
+		require(len(parts) == 1, "should have 1 part after file stripped")
+		require(parts[0].Type == "text", "remaining part should be text")
+		require(parts[0].Text == "请分析这个PDF", "text content should be preserved")
+	})
+
+	t.Run("no file parts returns unchanged body with hasFile=false", func(t *testing.T) {
+		body := `{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`
+		got, hasFile := StripUnsupportedContentPartsFromOpenAIBody([]byte(body))
+		if hasFile {
+			t.Error("expected hasFile=false when no file parts")
+		}
+		if string(got) != body {
+			t.Errorf("body should be unchanged when no file parts: got %s", got)
+		}
+	})
+
+	t.Run("message with only file parts gets empty content array", func(t *testing.T) {
+		// 消息只有 file part 没有 text，剥除后 content 为空数组。
+		body := `{"model":"gpt-4o","messages":[
+			{"role":"user","content":[
+				{"type":"file","file":{"filename":"doc.pdf","file_data":"data:application/pdf;base64,abc"}}
+			]}
+		]}`
+		got, hasFile := StripUnsupportedContentPartsFromOpenAIBody([]byte(body))
+		if !hasFile {
+			t.Error("expected hasFile=true")
+		}
+		var result struct {
+			Messages []struct {
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(got, &result); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		var parts []json.RawMessage
+		if err := json.Unmarshal(result.Messages[0].Content, &parts); err != nil {
+			t.Fatalf("unmarshal parts: %v", err)
+		}
+		if len(parts) != 0 {
+			t.Errorf("expected empty content array, got %d parts", len(parts))
+		}
+	})
+
+	t.Run("invalid json returned unchanged with hasFile=false", func(t *testing.T) {
+		body := []byte(`{invalid}`)
+		got, hasFile := StripUnsupportedContentPartsFromOpenAIBody(body)
+		if hasFile {
+			t.Error("expected hasFile=false on parse error")
+		}
+		if string(got) != string(body) {
+			t.Error("expected original body on parse error")
+		}
+	})
+
+	t.Run("other fields preserved", func(t *testing.T) {
+		body := `{"model":"gpt-4o","temperature":0.7,"stream":true,"messages":[
+			{"role":"user","content":[
+				{"type":"text","text":"hi"},
+				{"type":"file","file":{"filename":"x.pdf","file_data":"data:application/pdf;base64,abc"}}
+			]}
+		]}`
+		got, _ := StripUnsupportedContentPartsFromOpenAIBody([]byte(body))
+
+		if !strings.Contains(string(got), `"temperature":0.7`) {
+			t.Error("temperature field should be preserved")
+		}
+		if !strings.Contains(string(got), `"stream":true`) {
+			t.Error("stream field should be preserved")
+		}
+	})
+}

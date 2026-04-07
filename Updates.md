@@ -1,6 +1,12 @@
 # 更新记录
 
-## 2026-03-28（0.1.126）
+## 2026-04-07（0.1.135）
+
+- 版本号：`0.1.134` → `0.1.135`。
+- **修复 Copilot 端点上传文件报 400**：Cherry Studio 等客户端通过 `/copilot/v1/chat/completions` 发送含 PDF 文件（OpenAI `type:"file"` 格式）的请求时，上游 Copilot 返回 `400: type has to be either 'image_url' or 'text'`。现在在账号选择循环前提前检测 file content parts，直接返回明确的 `400 invalid_request_error`（File attachments are not supported），避免触发无效 failover。
+- **Chat Completions → Responses API 转换支持 `type:"file"`**：`apicompat` 层新增 `ChatFile` 结构体和 `input_file` 转换逻辑，OpenAI Responses API 路径可正确处理内联 base64（`file_data`）或预上传（`file_id`）的文件附件。
+
+
 
 - 版本号：`0.1.125` → `0.1.126`。
 - **新功能：Copilot 成本分析系统**

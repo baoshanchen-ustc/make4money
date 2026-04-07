@@ -2281,3 +2281,108 @@ func planTypeFromString(plan string) string {
 		return "Unknown"
 	}
 }
+
+// StripUnsupportedContentPartsFromOpenAIBody removes content parts with
+// unsupported types (e.g. "file") from user messages before forwarding to
+// Copilot, which only accepts "text" and "image_url" part types.
+//
+// Returns the (possibly rewritten) body and a boolean indicating whether any
+// file parts were found and stripped.  On parse failure the original body is
+// returned with hasFile=false, preserving the existing upstream error path.
+func StripUnsupportedContentPartsFromOpenAIBody(body []byte) ([]byte, bool) {
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(body, &generic); err != nil {
+		return body, false
+	}
+
+	msgsRaw, ok := generic["messages"]
+	if !ok {
+		return body, false
+	}
+
+	var msgs []json.RawMessage
+	if err := json.Unmarshal(msgsRaw, &msgs); err != nil {
+		return body, false
+	}
+
+	hasFile := false
+	rewritten := make([]json.RawMessage, 0, len(msgs))
+
+	for _, rawMsg := range msgs {
+		var m struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		}
+		if err := json.Unmarshal(rawMsg, &m); err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+
+		// Only filter array-form content; plain string content is fine as-is.
+		var parts []json.RawMessage
+		if err := json.Unmarshal(m.Content, &parts); err != nil {
+			// Not an array — plain string content, keep unchanged.
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+
+		filtered := make([]json.RawMessage, 0, len(parts))
+		for _, p := range parts {
+			var typed struct {
+				Type string `json:"type"`
+			}
+			if err := json.Unmarshal(p, &typed); err != nil {
+				filtered = append(filtered, p)
+				continue
+			}
+			if typed.Type == "file" {
+				hasFile = true
+				continue // drop this part
+			}
+			filtered = append(filtered, p)
+		}
+
+		if len(filtered) == len(parts) {
+			// Nothing was stripped; keep the original raw message.
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+
+		// Re-encode the message with the filtered content.
+		newContent, err := json.Marshal(filtered)
+		if err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+
+		// Preserve all other message fields by round-tripping through a generic map.
+		var msgMap map[string]json.RawMessage
+		if err := json.Unmarshal(rawMsg, &msgMap); err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+		msgMap["content"] = newContent
+		newMsg, err := json.Marshal(msgMap)
+		if err != nil {
+			rewritten = append(rewritten, rawMsg)
+			continue
+		}
+		rewritten = append(rewritten, newMsg)
+	}
+
+	if !hasFile {
+		return body, false
+	}
+
+	newMsgs, err := json.Marshal(rewritten)
+	if err != nil {
+		return body, false
+	}
+	generic["messages"] = newMsgs
+
+	out, err := json.Marshal(generic)
+	if err != nil {
+		return body, false
+	}
+	return out, true
+}

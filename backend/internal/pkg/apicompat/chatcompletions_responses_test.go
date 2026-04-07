@@ -157,6 +157,90 @@ func TestChatCompletionsToResponses_ReasoningEffort(t *testing.T) {
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 }
 
+func TestChatCompletionsToResponses_FileInlineBase64(t *testing.T) {
+	// Cherry Studio 发送 PDF 文件时使用 type="file" 格式，包含内联 base64 数据。
+	// sub2api 应将其转换为 Responses API 的 input_file 类型。
+	content := `[{"type":"text","text":"请分析这个PDF"},{"type":"file","file":{"filename":"report.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+
+	// text part
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "请分析这个PDF", parts[0].Text)
+
+	// file part — should be converted to input_file with file_data and filename
+	assert.Equal(t, "input_file", parts[1].Type)
+	assert.Equal(t, "data:application/pdf;base64,JVBERi0x", parts[1].FileData)
+	assert.Equal(t, "report.pdf", parts[1].Filename)
+}
+
+func TestChatCompletionsToResponses_FileByID(t *testing.T) {
+	// 通过 file_id 引用已上传文件的情况。
+	content := `[{"type":"file","file":{"file_id":"file-abc123","filename":"doc.pdf"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "file-abc123", parts[0].FileID)
+	assert.Equal(t, "doc.pdf", parts[0].Filename)
+}
+
+func TestChatCompletionsToResponses_FileWithoutPayload(t *testing.T) {
+	// file 对象没有 file_data 也没有 file_id，应返回错误而不是静默忽略。
+	content := `[{"type":"file","file":{"filename":"empty.pdf"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	_, err := ChatCompletionsToResponses(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file_data")
+}
+
+func TestChatCompletionsToResponses_FileMissingFileObject(t *testing.T) {
+	// type="file" 但没有 file 对象，应返回错误。
+	content := `[{"type":"file"}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	_, err := ChatCompletionsToResponses(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file")
+}
+
 func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	content := `[{"type":"text","text":"Describe this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,abc123"}}]`
 	req := &ChatCompletionsRequest{

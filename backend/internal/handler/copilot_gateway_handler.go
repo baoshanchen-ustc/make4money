@@ -199,6 +199,16 @@ func (h *CopilotGatewayHandler) ChatCompletions(c *gin.Context) {
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
 
+	// Reject requests with unsupported content part types (e.g. "file" / PDF
+	// attachments). Copilot only accepts "text" and "image_url" parts; "file"
+	// parts cause upstream 400 errors. Checking here — before the account
+	// selection loop — avoids triggering failover for a client-side error.
+	if _, hasFile := service.StripUnsupportedContentPartsFromOpenAIBody(body); hasFile {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
+			"File attachments are not supported on the Copilot endpoint. Remove the file content parts and try again.")
+		return
+	}
+
 	// Select a Copilot account.
 	// ForcePlatform middleware sets platform = "copilot" in context, so
 	// SelectAccountForModelWithExclusions will only pick copilot accounts.
