@@ -173,7 +173,8 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 				return nil, fmt.Errorf("user content: file part missing file_data or file_id")
 			}
 			responseParts = append(responseParts, part)
-		}	}
+		}
+	}
 
 	content, err := json.Marshal(responseParts)
 	if err != nil {

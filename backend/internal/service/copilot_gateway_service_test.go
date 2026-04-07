@@ -960,8 +960,8 @@ func TestStripUnsupportedContentPartsFromOpenAIBody(t *testing.T) {
 
 		var result struct {
 			Messages []struct {
-				Role    string            `json:"role"`
-				Content json.RawMessage   `json:"content"`
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
 			} `json:"messages"`
 		}
 		if err := json.Unmarshal(got, &result); err != nil {
