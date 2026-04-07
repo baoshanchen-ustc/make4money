@@ -254,6 +254,8 @@ export interface OpsRequestDetailsParams {
   api_key_id?: number
   account_id?: number
 
+  status_code?: number
+
   model?: string
   request_id?: string
   q?: string

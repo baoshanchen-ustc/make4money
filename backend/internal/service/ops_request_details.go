@@ -87,6 +87,10 @@ type OpsRequestDetailFilter struct {
 	MinDurationMs *int
 	MaxDurationMs *int
 
+	// StatusCode filters rows with the exact HTTP status code.
+	// For success rows the status_code is always 200 (hard-coded in the CTE).
+	StatusCode *int
+
 	// AnomalyTypes filters rows matching any of the given anomaly types (OR logic).
 	// Computed dynamically at the SQL layer — no dependency on request_logs.
 	AnomalyTypes []string

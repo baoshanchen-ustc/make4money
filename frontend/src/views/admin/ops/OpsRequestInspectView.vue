@@ -135,11 +135,119 @@
               </div>
             </div>
           </div>
-          <div class="min-w-[160px] flex-1">
+          <!-- Group search filter -->
+          <div ref="groupFilterRef" class="relative min-w-[200px] flex-1">
+            <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
+              分组
+            </label>
+            <div class="relative">
+              <input
+                v-model="groupKeyword"
+                type="text"
+                class="input w-full pr-8 text-sm"
+                placeholder="搜索分组…"
+                @input="handleGroupInput"
+                @focus="handleGroupFocus"
+              />
+              <button
+                v-if="groupKeyword || groupId != null"
+                type="button"
+                class="absolute inset-y-0 right-2 flex items-center text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+                @click="clearGroup"
+              >
+                <Icon name="x" size="xs" />
+              </button>
+            </div>
+            <div
+              v-if="showGroupDropdown && (groupResults.length > 0 || groupKeyword.trim())"
+              class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
+            >
+              <button
+                v-for="group in groupResults"
+                :key="group.id"
+                type="button"
+                class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-dark-700"
+                @click="selectGroup(group)"
+              >
+                <span class="truncate text-sm text-gray-800 dark:text-gray-100" :title="group.name">{{ group.name }}</span>
+                <span class="flex flex-shrink-0 items-center gap-1.5 text-xs text-gray-400">
+                  <span class="font-mono uppercase">{{ group.platform }}</span>
+                  <span class="font-mono">#{{ group.id }}</span>
+                </span>
+              </button>
+              <div v-if="groupResults.length === 0" class="px-3 py-2 text-sm text-gray-400">
+                {{ t('common.noOptionsFound') }}
+              </div>
+            </div>
+          </div>
+          <!-- Account search filter -->
+          <div ref="accountFilterRef" class="relative min-w-[200px] flex-1">
+            <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
+              账户
+            </label>
+            <div class="relative">
+              <input
+                v-model="accountKeyword"
+                type="text"
+                class="input w-full pr-8 text-sm"
+                placeholder="搜索账户…"
+                @input="handleAccountInput"
+                @focus="handleAccountFocus"
+              />
+              <button
+                v-if="accountKeyword || accountId != null"
+                type="button"
+                class="absolute inset-y-0 right-2 flex items-center text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+                @click="clearAccount"
+              >
+                <Icon name="x" size="xs" />
+              </button>
+            </div>
+            <div
+              v-if="showAccountDropdown && (accountResults.length > 0 || accountKeyword.trim())"
+              class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
+            >
+              <button
+                v-for="account in accountResults"
+                :key="account.id"
+                type="button"
+                class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-dark-700"
+                @click="selectAccount(account)"
+              >
+                <span class="truncate text-sm text-gray-800 dark:text-gray-100" :title="account.name">{{ account.name }}</span>
+                <span class="flex flex-shrink-0 items-center gap-1.5 text-xs text-gray-400">
+                  <span class="font-mono uppercase">{{ account.platform }}</span>
+                  <span class="font-mono">#{{ account.id }}</span>
+                </span>
+              </button>
+              <div v-if="accountResults.length === 0" class="px-3 py-2 text-sm text-gray-400">
+                {{ t('common.noOptionsFound') }}
+              </div>
+            </div>
+          </div>
+          <div class="min-w-[140px]">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
               {{ t('admin.ops.requestInspect.platform') }}
             </label>
-            <input v-model="platform" type="text" class="input w-full font-mono text-sm" placeholder="anthropic / openai …" />
+            <select v-model="platform" class="input w-full font-mono text-sm">
+              <option value="">{{ t('common.all') }}</option>
+              <option value="anthropic">anthropic</option>
+              <option value="openai">openai</option>
+              <option value="gemini">gemini</option>
+              <option value="antigravity">antigravity</option>
+              <option value="sora">sora</option>
+              <option value="copilot">copilot</option>
+            </select>
+          </div>
+          <div class="min-w-[110px]">
+            <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
+              {{ t('admin.ops.requestDetails.table.status') }}
+            </label>
+            <select v-model="statusCode" class="input w-full font-mono text-sm">
+              <option v-for="code in STATUS_CODE_OPTIONS" :key="String(code) || 'all'" :value="code">
+                {{ code === '' ? t('common.all') : code }}
+              </option>
+            </select>
           </div>
           <div class="min-w-[200px] flex-[2]">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-400">
@@ -379,6 +487,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAdminSettingsStore } from '@/stores'
+import { adminAPI } from '@/api/admin'
 import { opsAPI, computeFaultOwner, type AnomalyType, type FaultOwner, type OpsRequestDetail, type OpsRequestDetailsKind } from '@/api/admin/ops'
 import { searchUsers, type SimpleUser } from '@/api/admin/usage'
 import { formatDateTime, parseTimeRangeMinutes } from './utils/opsFormatters'
@@ -388,6 +497,7 @@ import DurationBadge from './components/DurationBadge.vue'
 import AnomalyBadge from './components/AnomalyBadge.vue'
 import AnomalySettingsModal from './components/AnomalySettingsModal.vue'
 import FaultOwnerTag from './components/FaultOwnerTag.vue'
+import type { AdminGroup } from '@/types'
 
 const { t } = useI18n()
 const adminSettingsStore = useAdminSettingsStore()
@@ -400,6 +510,10 @@ const platform = ref('')
 const q = ref('')
 const faultOwnerFilter = ref<FaultOwner | 'all'>('all')
 
+// Status code filter
+const STATUS_CODE_OPTIONS: Array<number | ''> = ['', 200, 400, 401, 403, 404, 422, 429, 499, 500, 502, 503]
+const statusCode = ref<number | ''>('')
+
 // User search filter state
 const userFilterRef = ref<HTMLElement | null>(null)
 const userId = ref<number | undefined>(undefined)
@@ -408,6 +522,30 @@ const selectedUser = ref<SimpleUser | null>(null)
 const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+
+// Group search filter state
+const groupFilterRef = ref<HTMLElement | null>(null)
+const groupId = ref<number | undefined>(undefined)
+const groupKeyword = ref('')
+const allGroups = ref<AdminGroup[]>([])
+const showGroupDropdown = ref(false)
+const groupResults = computed(() => {
+  const keyword = groupKeyword.value.trim().toLowerCase()
+  const selectedPlatform = platform.value
+  return allGroups.value.filter((g) => {
+    if (selectedPlatform && g.platform !== selectedPlatform) return false
+    if (!keyword) return true
+    return g.name.toLowerCase().includes(keyword) || String(g.id).includes(keyword)
+  })
+})
+
+// Account search filter state
+const accountFilterRef = ref<HTMLElement | null>(null)
+const accountId = ref<number | undefined>(undefined)
+const accountKeyword = ref('')
+const accountResults = ref<Array<{ id: number; name: string; platform: string }>>([])
+const showAccountDropdown = ref(false)
+let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Anomaly type multi-select dropdown state
 const ALL_ANOMALY_TYPES: AnomalyType[] = ['zero_token', 'slow_request', 'timeout', 'error', 'quota_exhaustion_suspected']
@@ -452,7 +590,8 @@ const tableCols = computed(() => [
   t('admin.ops.requestDetails.table.anomaly')
 ])
 
-const inspectWindow = computed(() => {
+/** Always computes a fresh time window — call this in fetchData to avoid Vue computed caching. */
+function getCurrentWindow() {
   const minutes = parseTimeRangeMinutes(timeRange.value)
   const endTime = new Date()
   const startTime = new Date(endTime.getTime() - minutes * 60 * 1000)
@@ -460,7 +599,10 @@ const inspectWindow = computed(() => {
     start_time: startTime.toISOString(),
     end_time: endTime.toISOString()
   }
-})
+}
+
+/** Reactive window for the detail panel prop only — OK to be cached between fetches. */
+const inspectWindow = computed(() => getCurrentWindow())
 
 function rowKey(row: OpsRequestDetail) {
   return `${row.kind}|${row.created_at}|${row.request_id || ''}|${row.error_id ?? 0}`
@@ -573,6 +715,102 @@ function clearUser() {
   refresh()
 }
 
+// ---------- Group search filter ----------
+
+async function loadGroups() {
+  try {
+    allGroups.value = await adminAPI.groups.getAll()
+  } catch (e) {
+    console.error('[OpsRequestInspectView] loadGroups failed', e)
+    allGroups.value = []
+  }
+}
+
+function handleGroupInput() {
+  showGroupDropdown.value = true
+  // Only clear the selected id — don't refresh yet. The user is still typing.
+  // Refresh happens on selectGroup() or clearGroup().
+  if (groupId.value !== undefined) {
+    groupId.value = undefined
+  }
+}
+
+function handleGroupFocus() {
+  showGroupDropdown.value = true
+}
+
+function selectGroup(group: AdminGroup) {
+  groupId.value = group.id
+  groupKeyword.value = group.name
+  showGroupDropdown.value = false
+  refresh()
+}
+
+function clearGroup() {
+  groupId.value = undefined
+  groupKeyword.value = ''
+  showGroupDropdown.value = false
+  refresh()
+}
+
+// ---------- Account search filter ----------
+
+function debounceAccountSearch() {
+  if (accountSearchTimeout) {
+    clearTimeout(accountSearchTimeout)
+  }
+  accountSearchTimeout = setTimeout(async () => {
+    const keyword = accountKeyword.value.trim()
+    if (!keyword) {
+      accountResults.value = []
+      return
+    }
+    try {
+      const res = await adminAPI.accounts.list(1, 20, { search: keyword })
+      if (accountKeyword.value.trim() === keyword) {
+        accountResults.value = (res.items || []).map((a) => ({ id: a.id, name: a.name, platform: a.platform }))
+      }
+    } catch {
+      if (accountKeyword.value.trim() === keyword) {
+        accountResults.value = []
+      }
+    }
+  }, 300)
+}
+
+function handleAccountInput() {
+  showAccountDropdown.value = true
+  // Only clear the selected id — don't refresh yet. The user is still typing.
+  // Refresh happens on selectAccount() or clearAccount().
+  if (accountId.value !== undefined) {
+    accountId.value = undefined
+  }
+  debounceAccountSearch()
+}
+
+function handleAccountFocus() {
+  showAccountDropdown.value = true
+  if (accountKeyword.value.trim()) {
+    debounceAccountSearch()
+  }
+}
+
+function selectAccount(account: { id: number; name: string; platform: string }) {
+  accountId.value = account.id
+  accountKeyword.value = account.name
+  accountResults.value = []
+  showAccountDropdown.value = false
+  refresh()
+}
+
+function clearAccount() {
+  accountId.value = undefined
+  accountKeyword.value = ''
+  accountResults.value = []
+  showAccountDropdown.value = false
+  refresh()
+}
+
 // ---------- Anomaly multi-select ----------
 
 function toggleAnomalyType(type: AnomalyType) {
@@ -597,6 +835,12 @@ function onDocumentClick(event: MouseEvent) {
   if (userFilterRef.value && !userFilterRef.value.contains(target)) {
     showUserDropdown.value = false
   }
+  if (groupFilterRef.value && !groupFilterRef.value.contains(target)) {
+    showGroupDropdown.value = false
+  }
+  if (accountFilterRef.value && !accountFilterRef.value.contains(target)) {
+    showAccountDropdown.value = false
+  }
   if (anomalyFilterRef.value && !anomalyFilterRef.value.contains(target)) {
     showAnomalyDropdown.value = false
   }
@@ -606,7 +850,10 @@ async function fetchData() {
   if (!opsEnabled.value) return
   loading.value = true
   try {
-    const w = inspectWindow.value
+    // Always call getCurrentWindow() directly — do NOT read inspectWindow.value here,
+    // because Vue caches computed values when dependencies haven't changed, which would
+    // cause the time window to stay fixed even after a manual refresh.
+    const w = getCurrentWindow()
     const params: Parameters<typeof opsAPI.listRequestDetails>[0] = {
       start_time: w.start_time,
       end_time: w.end_time,
@@ -617,14 +864,23 @@ async function fetchData() {
     }
     const pf = platform.value.trim()
     if (pf) {
-      (params as Record<string, unknown>).platform = pf
+      params.platform = pf
     }
     const qq = q.value.trim()
     if (qq) {
-      (params as Record<string, unknown>).q = qq
+      params.q = qq
     }
     if (typeof userId.value === 'number') {
       params.user_id = userId.value
+    }
+    if (typeof groupId.value === 'number') {
+      params.group_id = groupId.value
+    }
+    if (typeof accountId.value === 'number') {
+      params.account_id = accountId.value
+    }
+    if (typeof statusCode.value === 'number') {
+      params.status_code = statusCode.value
     }
     if (anomalyTypes.value.length > 0) {
       params.anomaly_types = anomalyTypes.value
@@ -659,7 +915,22 @@ function handlePageSizeChange(next: number) {
   fetchData()
 }
 
-watch([timeRange, kind, anomalyTypes], () => {
+watch([timeRange, kind, anomalyTypes, statusCode], () => {
+  page.value = 1
+  fetchData()
+})
+
+// When platform changes, clear any group/account selection that may belong to a different platform.
+watch(platform, () => {
+  if (groupId.value !== undefined) {
+    groupId.value = undefined
+    groupKeyword.value = ''
+  }
+  if (accountId.value !== undefined) {
+    accountId.value = undefined
+    accountKeyword.value = ''
+    accountResults.value = []
+  }
   page.value = 1
   fetchData()
 })
@@ -668,7 +939,7 @@ onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
   await adminSettingsStore.fetch()
   if (opsEnabled.value) {
-    fetchData()
+    await Promise.all([loadGroups(), fetchData()])
   }
 })
 
@@ -677,6 +948,10 @@ onUnmounted(() => {
   if (userSearchTimeout) {
     clearTimeout(userSearchTimeout)
     userSearchTimeout = null
+  }
+  if (accountSearchTimeout) {
+    clearTimeout(accountSearchTimeout)
+    accountSearchTimeout = null
   }
 })
 </script>

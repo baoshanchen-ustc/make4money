@@ -87,6 +87,9 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		if filter.MaxDurationMs != nil {
 			addCondition(fmt.Sprintf("duration_ms <= $%d", len(args)+1), *filter.MaxDurationMs)
 		}
+		if filter.StatusCode != nil {
+			addCondition(fmt.Sprintf("status_code = $%d", len(args)+1), *filter.StatusCode)
+		}
 
 		// AnomalyTypes filter: rows must match at least one of the given anomaly types (OR logic).
 		if len(filter.AnomalyTypes) > 0 {

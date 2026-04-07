@@ -692,6 +692,14 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 		}
 		filter.MaxDurationMs = &parsed
 	}
+	if v := strings.TrimSpace(c.Query("status_code")); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil || parsed < 100 || parsed > 599 {
+			response.BadRequest(c, "Invalid status_code")
+			return
+		}
+		filter.StatusCode = &parsed
+	}
 
 	// Always load anomaly settings so that the slow_request / timeout computed columns
 	// in the list query use the user-configured thresholds rather than hard-coded defaults.
