@@ -181,6 +181,26 @@ func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	assert.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
 }
 
+func TestChatCompletionsToResponses_TextOnlyArrayContentFlattensToString(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"hello"},{"type":"text","text":" world"}]`)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var content string
+	require.NoError(t, json.Unmarshal(items[0].Content, &content))
+	assert.Equal(t, "hello world", content)
+}
+
 func TestChatCompletionsToResponses_SystemArrayContent(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -197,11 +217,9 @@ func TestChatCompletionsToResponses_SystemArrayContent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 2)
 
-	var systemParts []ResponsesContentPart
-	require.NoError(t, json.Unmarshal(items[0].Content, &systemParts))
-	require.Len(t, systemParts, 1)
-	assert.Equal(t, "input_text", systemParts[0].Type)
-	assert.Equal(t, "You are a careful visual assistant.", systemParts[0].Text)
+	var systemContent string
+	require.NoError(t, json.Unmarshal(items[0].Content, &systemContent))
+	assert.Equal(t, "You are a careful visual assistant.", systemContent)
 
 	var userParts []ResponsesContentPart
 	require.NoError(t, json.Unmarshal(items[1].Content, &userParts))

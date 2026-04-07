@@ -3,6 +3,8 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -106,4 +110,56 @@ func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReason
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "medium", *result.ReasoningEffort)
 	require.Contains(t, rec.Body.String(), `[DONE]`)
+}
+
+func TestOpenAIGatewayService_ForwardAsChatCompletions_StreamTextArrayContent(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"x-request-id": []string{"rid_openai_cc_stream"}},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+				``,
+				`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"gpt-4o","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello back"}],"status":"completed"}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}`,
+				``,
+				`data: [DONE]`,
+				``,
+			}, "\n"))),
+		},
+	}
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          1,
+		Name:        "openai-key",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+	}
+	body := []byte(`{"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hello"},{"type":"text","text":" world"}]}]}`)
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Contains(t, rec.Body.String(), `[DONE]`)
+
+	var upstreamReq apicompat.ResponsesRequest
+	require.NoError(t, json.Unmarshal(upstream.lastBody, &upstreamReq))
+
+	var items []apicompat.ResponsesInputItem
+	require.NoError(t, json.Unmarshal(upstreamReq.Input, &items))
+	require.Len(t, items, 1)
+
+	var content string
+	require.NoError(t, json.Unmarshal(items[0].Content, &content))
+	require.Equal(t, "hello world", content)
 }

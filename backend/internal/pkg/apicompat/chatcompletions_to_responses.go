@@ -324,7 +324,19 @@ func marshalChatInputContent(content chatMessageContent) (json.RawMessage, error
 	if content.Text != nil {
 		return json.Marshal(*content.Text)
 	}
+	if hasOnlyTextChatContentParts(content.Parts) {
+		return json.Marshal(flattenChatContentParts(content.Parts))
+	}
 	return json.Marshal(convertChatContentPartsToResponses(content.Parts))
+}
+
+func hasOnlyTextChatContentParts(parts []ChatContentPart) bool {
+	for _, p := range parts {
+		if p.Type != "text" {
+			return false
+		}
+	}
+	return true
 }
 
 func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesContentPart {
