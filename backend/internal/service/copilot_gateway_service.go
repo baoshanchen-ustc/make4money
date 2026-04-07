@@ -898,13 +898,18 @@ func copilotInitiator(openAIBody []byte) string {
 //
 // The Responses API input may be either a plain string (first-turn text) or an
 // array of typed input items. Copilot expects "agent" when the request already
-// contains assistant content or tool call/result items, otherwise "user".
+// contains a previous_response_id, assistant content, or tool call/result
+// items, otherwise "user".
 func copilotInitiatorFromResponsesBody(body []byte) string {
 	var req struct {
-		Input json.RawMessage `json:"input"`
+		PreviousResponseID string          `json:"previous_response_id"`
+		Input              json.RawMessage `json:"input"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		return "user"
+	}
+	if req.PreviousResponseID != "" {
+		return "agent"
 	}
 
 	input := bytes.TrimSpace(req.Input)

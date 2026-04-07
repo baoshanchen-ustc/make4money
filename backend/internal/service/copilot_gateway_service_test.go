@@ -130,6 +130,11 @@ func TestCopilotInitiatorFromResponsesBody(t *testing.T) {
 			`{"model":"gpt-4o"}`,
 			"user",
 		},
+		{
+			"continuation via previous_response_id – agent call",
+			`{"model":"gpt-4o","previous_response_id":"resp_abc123","input":"continue the task"}`,
+			"agent",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1639,6 +1644,11 @@ func TestXInitiatorHeader_ResponsesEndpoint(t *testing.T) {
 		{
 			name:          "function_call_output item → Standard quota (free)",
 			body:          `{"model":"gpt-4o","input":[{"role":"user","content":"hi"},{"type":"function_call_output","call_id":"c1","output":"file contents"}]}`,
+			wantInitiator: "agent",
+		},
+		{
+			name:          "continuation via previous_response_id → Standard quota (free)",
+			body:          `{"model":"gpt-4o","previous_response_id":"resp_abc123","input":"continue the task"}`,
 			wantInitiator: "agent",
 		},
 	}
