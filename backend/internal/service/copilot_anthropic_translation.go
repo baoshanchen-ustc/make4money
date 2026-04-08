@@ -1103,3 +1103,258 @@ func TruncateAnthropicBodyToLimit(body []byte, limitBytes int) (trimmed []byte, 
 	}
 	return candidate, true, nil
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OpenAI Chat Completions → Anthropic Messages translation (for file uploads)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// AnthropicDocumentBlock is an Anthropic content block for document (PDF) files.
+// The Anthropic Messages API accepts these natively, preserving file content.
+type AnthropicDocumentBlock struct {
+	Type   string                        `json:"type"` // "document"
+	Source AnthropicDocumentBlockSource  `json:"source"`
+}
+
+// AnthropicDocumentBlockSource holds the encoded document data.
+type AnthropicDocumentBlockSource struct {
+	Type      string `json:"type"`       // "base64"
+	MediaType string `json:"media_type"` // "application/pdf"
+	Data      string `json:"data"`       // base64-encoded PDF bytes (no data: URI prefix)
+}
+
+// convertOpenAIChatToAnthropicMessages converts an OpenAI Chat Completions
+// request body (which may contain type:"file" content parts with base64-encoded
+// PDFs) to an Anthropic Messages API request body.
+//
+// type:"file" parts with a "file_data" URL ("data:<mime>;base64,<data>") are
+// converted to type:"document" blocks so the Anthropic-compatible Copilot
+// /v1/messages endpoint can process the file content natively.
+//
+// The returned body is ready to POST to Copilot /v1/messages.
+func convertOpenAIChatToAnthropicMessages(body []byte) ([]byte, error) {
+	// Parse as a generic map to preserve all fields we don't explicitly handle.
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(body, &generic); err != nil {
+		return nil, fmt.Errorf("parse openai chat request: %w", err)
+	}
+
+	// Parse messages specifically.
+	rawMsgs, ok := generic["messages"]
+	if !ok {
+		return nil, fmt.Errorf("messages field missing")
+	}
+	var msgs []openAIMessage
+	if err := json.Unmarshal(rawMsgs, &msgs); err != nil {
+		return nil, fmt.Errorf("parse messages: %w", err)
+	}
+
+	// Build Anthropic messages.
+	var anthropicMsgs []AnthropicMessage
+	var systemText string
+
+	for _, m := range msgs {
+		switch m.Role {
+		case "system":
+			// Collect as system prompt.
+			switch v := m.Content.(type) {
+			case string:
+				systemText = v
+			default:
+				b, _ := json.Marshal(v)
+				systemText = string(b)
+			}
+		case "user":
+			blocks, err := openAIContentToAnthropicBlocks(m.Content)
+			if err != nil {
+				return nil, fmt.Errorf("convert user message: %w", err)
+			}
+			blocksJSON, err := json.Marshal(blocks)
+			if err != nil {
+				return nil, fmt.Errorf("marshal user blocks: %w", err)
+			}
+			anthropicMsgs = append(anthropicMsgs, AnthropicMessage{
+				Role:    "user",
+				Content: blocksJSON,
+			})
+		case "assistant":
+			// Pass assistant content through as text.
+			text := openAIContentToString(m.Content)
+			textBlock := AnthropicTextBlock{Type: "text", Text: text}
+			blockJSON, _ := json.Marshal([]AnthropicTextBlock{textBlock})
+			anthropicMsgs = append(anthropicMsgs, AnthropicMessage{
+				Role:    "assistant",
+				Content: blockJSON,
+			})
+		}
+	}
+
+	// Build Anthropic request.
+	anthropicReq := AnthropicMessagesRequest{
+		Model:    extractStringField(generic, "model"),
+		Messages: anthropicMsgs,
+		Stream:   extractBoolField(generic, "stream"),
+	}
+	if systemText != "" {
+		b, _ := json.Marshal(systemText)
+		anthropicReq.System = b
+	}
+	if v := extractIntField(generic, "max_tokens"); v > 0 {
+		anthropicReq.MaxTokens = v
+	} else {
+		anthropicReq.MaxTokens = 4096 // sensible default required by Anthropic API
+	}
+
+	return json.Marshal(anthropicReq)
+}
+
+// openAIContentToAnthropicBlocks converts OpenAI content (string or []parts)
+// to a slice of Anthropic content blocks (text/document/image).
+func openAIContentToAnthropicBlocks(content any) ([]json.RawMessage, error) {
+	// Re-marshal and parse as parts to handle the any interface.
+	raw, err := json.Marshal(content)
+	if err != nil {
+		return nil, err
+	}
+
+	// Plain string → single text block.
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		tb, _ := json.Marshal(AnthropicTextBlock{Type: "text", Text: text})
+		return []json.RawMessage{tb}, nil
+	}
+
+	// Array of parts.
+	var parts []json.RawMessage
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		// Fallback: treat as text.
+		tb, _ := json.Marshal(AnthropicTextBlock{Type: "text", Text: string(raw)})
+		return []json.RawMessage{tb}, nil
+	}
+
+	var blocks []json.RawMessage
+	for _, p := range parts {
+		var typed struct {
+			Type string `json:"type"`
+			Text string `json:"text,omitempty"`
+			File *struct {
+				Filename string `json:"filename"`
+				FileData string `json:"file_data"` // "data:<mime>;base64,<b64>"
+			} `json:"file,omitempty"`
+		}
+		if err := json.Unmarshal(p, &typed); err != nil {
+			continue
+		}
+		switch typed.Type {
+		case "text":
+			tb, _ := json.Marshal(AnthropicTextBlock{Type: "text", Text: typed.Text})
+			blocks = append(blocks, tb)
+		case "file":
+			if typed.File == nil || typed.File.FileData == "" {
+				continue
+			}
+			mediaType, b64Data, ok := parseDataURI(typed.File.FileData)
+			if !ok {
+				// Try treating the raw value as plain base64.
+				b64Data = typed.File.FileData
+				mediaType = "application/pdf"
+			}
+			db, _ := json.Marshal(AnthropicDocumentBlock{
+				Type: "document",
+				Source: AnthropicDocumentBlockSource{
+					Type:      "base64",
+					MediaType: mediaType,
+					Data:      b64Data,
+				},
+			})
+			blocks = append(blocks, db)
+		}
+	}
+
+	if len(blocks) == 0 {
+		tb, _ := json.Marshal(AnthropicTextBlock{Type: "text", Text: string(raw)})
+		return []json.RawMessage{tb}, nil
+	}
+	return blocks, nil
+}
+
+// parseDataURI splits a "data:<mediaType>;base64,<data>" URI into its components.
+// Returns the media type and base64 data, plus ok=true on success.
+func parseDataURI(uri string) (mediaType, data string, ok bool) {
+	// Expected format: data:<mediaType>;base64,<data>
+	if !strings.HasPrefix(uri, "data:") {
+		return "", uri, false
+	}
+	rest := uri[len("data:"):]
+	semi := strings.Index(rest, ";")
+	if semi < 0 {
+		return "", uri, false
+	}
+	mediaType = rest[:semi]
+	rest = rest[semi+1:]
+	if !strings.HasPrefix(rest, "base64,") {
+		return "", uri, false
+	}
+	data = rest[len("base64,"):]
+	return mediaType, data, true
+}
+
+// openAIContentToString converts OpenAI content (string or parts) to a plain string.
+func openAIContentToString(content any) string {
+	raw, err := json.Marshal(content)
+	if err != nil {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	// Parts: extract text parts only.
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return string(raw)
+	}
+	var texts []string
+	for _, p := range parts {
+		if p.Type == "text" && p.Text != "" {
+			texts = append(texts, p.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
+}
+
+// extractStringField reads a string value from a map[string]json.RawMessage.
+func extractStringField(m map[string]json.RawMessage, key string) string {
+	raw, ok := m[key]
+	if !ok {
+		return ""
+	}
+	var s string
+	_ = json.Unmarshal(raw, &s)
+	return s
+}
+
+// extractBoolField reads a bool value from a map[string]json.RawMessage.
+func extractBoolField(m map[string]json.RawMessage, key string) bool {
+	raw, ok := m[key]
+	if !ok {
+		return false
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b
+}
+
+// extractIntField reads an int value from a map[string]json.RawMessage.
+func extractIntField(m map[string]json.RawMessage, key string) int {
+	raw, ok := m[key]
+	if !ok {
+		return 0
+	}
+	var n int
+	_ = json.Unmarshal(raw, &n)
+	return n
+}
+

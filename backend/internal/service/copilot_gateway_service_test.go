@@ -1772,3 +1772,160 @@ func TestXInitiatorHeader_MessagesEndpoint(t *testing.T) {
 		})
 	}
 }
+
+// TestParseModelEndpointsFromModelsResponse_NormalizedKeyAlias verifies that
+// parseModelEndpointsFromModelsResponse indexes each Claude model under both its
+// raw dash-separated ID (as returned by Copilot /models) and the normalized
+// dot-separated form (as produced by NormalizeModelIDForCopilotUpstream).
+//
+// This is the regression test for the bug where claude-opus-4.6 file attachments
+// were silently downgraded to text because the /models cache stored the entry
+// under "claude-opus-4-6" but the lookup used "claude-opus-4.6".
+func TestParseModelEndpointsFromModelsResponse_NormalizedKeyAlias(t *testing.T) {
+	body := []byte(`{"data":[
+		{"id":"claude-opus-4-6","supported_endpoints":["/chat/completions","/responses"]},
+		{"id":"claude-sonnet-4-6","supported_endpoints":["/chat/completions","/responses"]},
+		{"id":"gpt-4o","supported_endpoints":["/chat/completions","/responses"]}
+	]}`)
+
+	m := parseModelEndpointsFromModelsResponse(body)
+
+	cases := []struct {
+		key  string
+		want []string
+	}{
+		// Raw dash form (what /models returns)
+		{"claude-opus-4-6", []string{"/chat/completions", "/responses"}},
+		// Normalized dot form (what NormalizeModelIDForCopilotUpstream returns)
+		{"claude-opus-4.6", []string{"/chat/completions", "/responses"}},
+		{"claude-sonnet-4-6", []string{"/chat/completions", "/responses"}},
+		{"claude-sonnet-4.6", []string{"/chat/completions", "/responses"}},
+		// Non-Claude model: no normalization needed, only raw key exists
+		{"gpt-4o", []string{"/chat/completions", "/responses"}},
+	}
+
+	for _, tc := range cases {
+		eps, ok := m[tc.key]
+		if !ok {
+			t.Errorf("key %q not found in map; available keys: %v", tc.key, modelEndpointMapKeys(m))
+			continue
+		}
+		if len(eps) != len(tc.want) {
+			t.Errorf("key %q: got endpoints %v, want %v", tc.key, eps, tc.want)
+			continue
+		}
+		for i, ep := range eps {
+			if ep != tc.want[i] {
+				t.Errorf("key %q: endpoint[%d] = %q, want %q", tc.key, i, ep, tc.want[i])
+			}
+		}
+	}
+}
+
+// TestForwardChatCompletions_FilePartsClaudeOpusDashID verifies that when a
+// Chat Completions request with a file attachment targets claude-opus-4.6 and
+// the Copilot /models response uses the dash-separated ID "claude-opus-4-6",
+// the request is still routed through /responses (not downgraded to text).
+// This is the regression test for the ID mismatch bug.
+func TestForwardChatCompletions_FilePartsClaudeOpusDashID(t *testing.T) {
+	var capturedPath string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			// Copilot returns dash-separated IDs; this is what triggers the bug.
+			_, _ = fmt.Fprint(w, `{"data":[{"id":"claude-opus-4-6","supported_endpoints":["/chat/completions","/responses"]}]}`)
+			return
+		}
+
+		capturedPath = r.URL.Path
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","model":"claude-opus-4-6","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"PDF content read successfully"}]}],"usage":{"input_tokens":40,"output_tokens":15}}}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("copilot-token-opus")
+	provider.tokens[1] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	account := &Account{
+		ID: 1, Platform: PlatformCopilot, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"github_token": "ghp_test"},
+	}
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/chat/completions", nil)
+
+	// Client sends dot-separated model ID (as Cherry Studio does).
+	clientBody := []byte(`{"model":"claude-opus-4.6","stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"总结这个PDF"},{"type":"file","file":{"filename":"doc.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}}]}]}`)
+	_, err := svc.ForwardChatCompletions(context.Background(), c, account, clientBody)
+	if err != nil {
+		t.Fatalf("ForwardChatCompletions: %v", err)
+	}
+
+	// Must have been routed to /responses, not /chat/completions.
+	if capturedPath != "/responses" {
+		t.Fatalf("expected upstream path /responses, got %q — file attachment was downgraded to text (ID mismatch bug)", capturedPath)
+	}
+
+	// Response must contain the actual file-read content.
+	if !strings.Contains(w.Body.String(), "PDF content read successfully") {
+		t.Errorf("expected file content in response; got: %s", w.Body.String())
+	}
+}
+
+// modelEndpointMapKeys returns the keys of a map[string][]string for use in test error messages.
+func modelEndpointMapKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// TestStaticSupportedEndpoints verifies the fallback static endpoint knowledge
+// used when the live /models fetch fails.
+func TestStaticSupportedEndpoints(t *testing.T) {
+	cases := []struct {
+		modelID      string
+		wantResponses bool
+	}{
+		{"claude-opus-4.6", true},
+		{"claude-opus-4-6", true},
+		{"claude-sonnet-4.6", true},
+		{"claude-sonnet-4-6", true},
+		{"claude-haiku-4.5", true},
+		{"claude-haiku-4-5", true},
+		{"claude-sonnet-4", true},
+		{"claude-opus-4", true},
+		// Claude 3.x and non-Claude models should NOT get /responses from static list.
+		{"claude-3.5-sonnet", false},
+		{"gpt-4o", false},
+		{"gemini-2.0-flash-001", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.modelID, func(t *testing.T) {
+			eps := staticSupportedEndpoints(tc.modelID)
+			hasResponses := false
+			for _, ep := range eps {
+				if ep == "/responses" {
+					hasResponses = true
+					break
+				}
+			}
+			if hasResponses != tc.wantResponses {
+				t.Errorf("staticSupportedEndpoints(%q): hasResponses=%v, want %v (got %v)", tc.modelID, hasResponses, tc.wantResponses, eps)
+			}
+		})
+	}
+}

@@ -138,6 +138,8 @@ docs/*
 !docs/superpowers/**
 !docs/cc-copilot-nonclause-models/
 !docs/cc-copilot-nonclause-models/**
+!docs/cc-copilot-file-upload/
+!docs/cc-copilot-file-upload/**
 .serena/
 .codex/
 .superpowers/

@@ -126,17 +126,25 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 	// "text" and "image_url" are accepted). When the client sends file
 	// attachments (e.g. Cherry Studio PDF upload), we check the model's
 	// supported_endpoints first:
-	//   - Models that support /responses (responses-only, e.g. gpt-5): bridge
-	//     through /responses which accepts inline base64 file input, then
-	//     translate the response back to Chat Completions format.
-	//   - Models that only support /chat/completions (e.g. claude-opus-4.6):
-	//     convert file parts to descriptive text parts so /chat/completions
-	//     can still receive the attachment context.
+	//   - Models that support /responses (including dual-endpoint models such as
+	//     claude-opus-4.6): bridge through /responses which accepts inline
+	//     base64 file input, then translate the response back to Chat
+	//     Completions format.
+	//   - Models that only support /chat/completions: convert file parts to
+	//     descriptive text parts so /chat/completions can still receive the
+	//     attachment context.
 	//
 	// chatFallbackBody holds the same request with "file" parts rewritten to
-	// text parts, used both as the direct path for chat-only models and as the
+	// text parts, used as the direct path for chat-only models and as the
 	// fallback if /responses later rejects the model.
 	strippedBody, hasFile := StripUnsupportedContentPartsFromOpenAIBody(body)
+	slog.Info("copilot chat: file detection", "has_file", hasFile, "body_len", len(body),
+		"body_preview", func() string {
+			if len(body) > 500 {
+				return string(body[:500])
+			}
+			return string(body)
+		}())
 	if hasFile {
 		chatFallbackBody := convertFilePartsToText(body)
 		if bytes.Equal(chatFallbackBody, body) {
@@ -144,11 +152,26 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 			chatFallbackBody = strippedBody
 		}
 
-		// Check model support before choosing the upstream path, matching the
-		// same logic used in ForwardMessages to avoid unnecessary /responses hits.
+		// For file attachments, prefer /responses whenever the model supports it
+		// so Copilot can preserve the original file input instead of downgrading
+		// it to a text placeholder.
+		//
+		// Exception: accounts with a custom base_url bypass the canonical
+		// api.githubcopilot.com, so /responses (which is only available there)
+		// would silently route around their configured proxy. In that case fall
+		// back to the textified /chat/completions path instead.
+		hasCustomBaseURL := strings.TrimSpace(account.GetCredential("base_url")) != ""
+
 		modelProbeBody, _ := rewriteCopilotUpstreamModel(body, account)
 		upstreamModelID := strings.TrimSpace(extractModelFromBody(modelProbeBody))
 		supportedEndpoints, epErr := s.getSupportedEndpointsForModel(ctx, account, upstreamModelID)
+		slog.Info("copilot chat: file routing decision",
+			"upstream_model_id", upstreamModelID,
+			"has_custom_base_url", hasCustomBaseURL,
+			"supported_endpoints", supportedEndpoints,
+			"ep_err", epErr,
+			"model_supports_responses", modelSupportsResponses(supportedEndpoints),
+			"model_supports_messages", modelSupportsMessages(supportedEndpoints))
 		if epErr != nil {
 			slog.Warn("copilot chat: could not resolve supported endpoints for file request, falling back to /chat/completions",
 				"account_id", account.ID,
@@ -156,10 +179,15 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 				"error", epErr)
 		}
 
-		if shouldUseResponsesEndpoint(supportedEndpoints) {
+		if !hasCustomBaseURL && modelSupportsResponses(supportedEndpoints) {
 			return s.forwardChatCompletionsViaResponses(ctx, c, account, body, chatFallbackBody, startTime)
 		}
-		// Chat-only model: skip /responses entirely, send textified body.
+		// /responses not available — try native Anthropic /v1/messages which accepts
+		// document blocks (type:"document") and can therefore process PDF attachments.
+		if !hasCustomBaseURL && modelSupportsMessages(supportedEndpoints) {
+			return s.forwardChatCompletionsViaMessages(ctx, c, account, body, chatFallbackBody, startTime)
+		}
+		// No file-capable endpoint available: downgrade to text and send via /chat/completions.
 		return s.forwardChatCompletionsDirect(ctx, c, account, chatFallbackBody, startTime)
 	}
 
@@ -169,7 +197,7 @@ func (s *CopilotGatewayService) ForwardChatCompletions(
 // forwardChatCompletionsDirect handles the standard Copilot /chat/completions
 // forwarding flow.  It is used both by the normal path (no file attachments) and
 // as a fallback from forwardChatCompletionsViaResponses when the upstream model
-// does not support the Responses API (e.g. claude-opus-4.6).
+// does not support the Responses API.
 func (s *CopilotGatewayService) forwardChatCompletionsDirect(
 	ctx context.Context,
 	c *gin.Context,
@@ -464,9 +492,141 @@ func (s *CopilotGatewayService) forwardChatCompletionsViaResponses(
 	return s.handleChatViaResponsesNonStreamingResponse(c, resp, model, upstreamModel, startTime)
 }
 
-// handleChatViaResponsesStreamingResponse reads a Responses API SSE stream from
-// Copilot and translates each event into Chat Completions SSE chunks, writing
-// them directly to the client as they arrive.
+// forwardChatCompletionsViaMessages handles Chat Completions requests that
+// contain "file" content parts for models that support the Anthropic /v1/messages
+// endpoint (e.g. claude-opus-4.6 on Copilot).
+//
+// Flow:
+//  1. Convert OpenAI Chat Completions request (with type:"file" parts) to
+//     Anthropic Messages format (type:"document" blocks).
+//  2. POST to Copilot baseURL+/v1/messages with the Anthropic body.
+//  3. Translate the Anthropic SSE stream back to Chat Completions format.
+//
+// Falls back to strippedBody via /chat/completions on any conversion or
+// upstream error, preserving at least the text context.
+func (s *CopilotGatewayService) forwardChatCompletionsViaMessages(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	strippedBody []byte,
+	startTime time.Time,
+) (*CopilotForwardResult, error) {
+	translateStart := time.Now()
+
+	body = mergeConsecutiveSameRoleMessagesInOpenAIBody(body)
+	body, logModel := rewriteCopilotUpstreamModel(body, account)
+	body = clampCopilotUpstreamMaxTokens(body, account)
+
+	clientWantsStream := gjson.GetBytes(body, "stream").Bool()
+
+	// Convert OpenAI (with file parts) → Anthropic Messages format.
+	anthropicBody, err := convertOpenAIChatToAnthropicMessages(body)
+	if err != nil {
+		slog.Warn("copilot chat via messages: failed to convert to anthropic format, falling back to /chat/completions",
+			"account_id", account.ID,
+			"model", logModel,
+			"error", err)
+		return s.forwardChatCompletionsDirect(ctx, c, account, strippedBody, startTime)
+	}
+
+	// Force streaming upstream — non-streaming Anthropic endpoint can hang.
+	anthropicBody, _ = sjson.SetBytes(anthropicBody, "stream", true)
+
+	upstreamModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	model := logModel
+	if model == "" {
+		model = upstreamModel
+	}
+
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "translate.req",
+		StartUnixMs: translateStart.UnixMilli(),
+		DurationMs:  time.Since(translateStart).Milliseconds(),
+		Status:      "ok",
+	})
+
+	tokenStart := time.Now()
+	token, err := s.tokenProvider.GetAccessToken(ctx, account)
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "token.fetch",
+		StartUnixMs: tokenStart.UnixMilli(),
+		DurationMs:  time.Since(tokenStart).Milliseconds(),
+		Status: func() string {
+			if err != nil {
+				return "error"
+			}
+			return "ok"
+		}(),
+		Attrs: map[string]any{"account_id": account.ID},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("copilot chat via messages: auth: %w", err)
+	}
+
+	// Use canonical base URL — /v1/messages is only available there.
+	baseURL := copilot.CopilotAPIBase
+
+	initiator := copilotInitiator(body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/messages", bytes.NewReader(anthropicBody))
+	if err != nil {
+		return nil, fmt.Errorf("copilot chat via messages: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	for k, vals := range copilot.CopilotHeaders(initiator, false) {
+		for _, v := range vals {
+			req.Header.Set(k, v)
+		}
+	}
+
+	setOpsUpstreamRequestBody(c, anthropicBody)
+
+	upstreamStart := time.Now()
+	resp, err := s.httpClient.Do(req) //nolint:gosec // URL is from trusted Copilot API config
+	upstreamDurationMs := time.Since(upstreamStart).Milliseconds()
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamDurationMs)
+	AppendOpsSpan(c, OpsSpan{
+		Name:        "upstream.post",
+		StartUnixMs: upstreamStart.UnixMilli(),
+		DurationMs:  upstreamDurationMs,
+		Status: func() string {
+			if err != nil {
+				return "error"
+			}
+			return "ok"
+		}(),
+		Attrs: map[string]any{"account_id": account.ID, "endpoint": "v1/messages"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("copilot chat via messages: upstream request: %w", err)
+	}
+
+	slog.Debug("copilot upstream response",
+		"account_id", account.ID,
+		"model", upstreamModel,
+		"status", resp.StatusCode,
+		"stream", true,
+		"latency_ms", upstreamDurationMs)
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		slog.Warn("copilot chat via messages: upstream error, falling back to /chat/completions",
+			"account_id", account.ID,
+			"model", upstreamModel,
+			"status", resp.StatusCode,
+			"body", truncateString(string(errBody), 512))
+		return s.forwardChatCompletionsDirect(ctx, c, account, strippedBody, startTime)
+	}
+
+	// The upstream response is an Anthropic SSE stream.
+	// Translate it to OpenAI Chat Completions format.
+	if clientWantsStream {
+		return s.handleChatViaMessagesStreamingResponse(c, resp, model, upstreamModel, startTime)
+	}
+	return s.handleChatViaMessagesNonStreamingResponse(c, resp, model, upstreamModel, startTime)
+}
 func (s *CopilotGatewayService) handleChatViaResponsesStreamingResponse(
 	c *gin.Context,
 	resp *http.Response,
@@ -652,6 +812,273 @@ func (s *CopilotGatewayService) handleChatViaResponsesNonStreamingResponse(
 		UpstreamModel: upstreamModel,
 		Usage:         usage,
 		Duration:      time.Since(startTime),
+	}, nil
+}
+
+// handleChatViaMessagesStreamingResponse reads an Anthropic Messages API SSE
+// stream from Copilot /v1/messages and translates each event into OpenAI Chat
+// Completions SSE chunks, writing them directly to the client.
+func (s *CopilotGatewayService) handleChatViaMessagesStreamingResponse(
+	c *gin.Context,
+	resp *http.Response,
+	model string,
+	upstreamModel string,
+	startTime time.Time,
+) (*CopilotForwardResult, error) {
+	defer func() { _ = resp.Body.Close() }()
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(http.StatusOK)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return nil, fmt.Errorf("copilot chat via messages stream: writer does not support flushing")
+	}
+
+	usage := &CopilotUsage{}
+	var firstTokenMs *int
+	msgID := "chatcmpl-" + fmt.Sprintf("%d", time.Now().UnixMilli())
+	// Emit the opening chunk with role.
+	openChunk := map[string]any{
+		"id":      msgID,
+		"object":  "chat.completion.chunk",
+		"model":   model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "content": ""}, "finish_reason": nil}},
+	}
+	openBytes, _ := json.Marshal(openChunk)
+	fmt.Fprintf(c.Writer, "data: %s\n\n", openBytes)
+	flusher.Flush()
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 512*1024), 512*1024)
+
+	var currentEventType string
+	streamDone := false
+
+	for scanner.Scan() {
+		if err := c.Request.Context().Err(); err != nil {
+			break
+		}
+		line := scanner.Text()
+
+		if strings.HasPrefix(line, "event: ") {
+			currentEventType = strings.TrimPrefix(line, "event: ")
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := line[6:]
+		if data == "[DONE]" {
+			streamDone = true
+			break
+		}
+
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(data), &raw); err != nil {
+			continue
+		}
+
+		switch currentEventType {
+		case "content_block_delta":
+			// Extract text_delta.
+			var delta struct {
+				Delta struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"delta"`
+			}
+			if err := json.Unmarshal([]byte(data), &delta); err != nil || delta.Delta.Type != "text_delta" {
+				continue
+			}
+			if firstTokenMs == nil {
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			chunk := map[string]any{
+				"id":      msgID,
+				"object":  "chat.completion.chunk",
+				"model":   model,
+				"choices": []map[string]any{{"index": 0, "delta": map[string]any{"content": delta.Delta.Text}, "finish_reason": nil}},
+			}
+			chunkBytes, _ := json.Marshal(chunk)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", chunkBytes)
+			flusher.Flush()
+
+		case "message_delta":
+			// Extract stop_reason and usage.
+			var md struct {
+				Delta struct {
+					StopReason string `json:"stop_reason"`
+				} `json:"delta"`
+				Usage struct {
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			}
+			if err := json.Unmarshal([]byte(data), &md); err != nil {
+				continue
+			}
+			usage.CompletionTokens = md.Usage.OutputTokens
+			finishReason := "stop"
+			if md.Delta.StopReason == "max_tokens" {
+				finishReason = "length"
+			}
+			finalChunk := map[string]any{
+				"id":      msgID,
+				"object":  "chat.completion.chunk",
+				"model":   model,
+				"choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": finishReason}},
+				"usage": map[string]any{
+					"prompt_tokens":     usage.PromptTokens,
+					"completion_tokens": usage.CompletionTokens,
+					"total_tokens":      usage.PromptTokens + usage.CompletionTokens,
+				},
+			}
+			finalBytes, _ := json.Marshal(finalChunk)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", finalBytes)
+			flusher.Flush()
+
+		case "message_start":
+			// Extract input token usage.
+			var ms struct {
+				Message struct {
+					Usage struct {
+						InputTokens int `json:"input_tokens"`
+					} `json:"usage"`
+				} `json:"message"`
+			}
+			if err := json.Unmarshal([]byte(data), &ms); err == nil {
+				usage.PromptTokens = ms.Message.Usage.InputTokens
+			}
+		}
+	}
+
+	if !streamDone {
+		if err := scanner.Err(); err != nil {
+			slog.Warn("copilot chat via messages stream scanner error", "error", err)
+		}
+	}
+
+	fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
+	flusher.Flush()
+
+	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	return &CopilotForwardResult{
+		StatusCode:    http.StatusOK,
+		Model:         model,
+		UpstreamModel: upstreamModel,
+		Usage:         usage,
+		Duration:      time.Since(startTime),
+		FirstTokenMs:  firstTokenMs,
+	}, nil
+}
+
+// handleChatViaMessagesNonStreamingResponse reads a full Anthropic Messages
+// response (or Anthropic SSE stream) from Copilot /v1/messages and returns a
+// single OpenAI Chat Completions JSON response.
+func (s *CopilotGatewayService) handleChatViaMessagesNonStreamingResponse(
+	c *gin.Context,
+	resp *http.Response,
+	model string,
+	upstreamModel string,
+	startTime time.Time,
+) (*CopilotForwardResult, error) {
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("copilot chat via messages: read response: %w", err)
+	}
+
+	// The upstream is always streaming (we force stream=true), so collect
+	// all SSE lines and extract the final message_stop text.
+	var fullText strings.Builder
+	var inputTokens, outputTokens int
+	var stopReason = "stop"
+
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Buffer(make([]byte, 0, 512*1024), 512*1024)
+	var currentEventType string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "event: ") {
+			currentEventType = strings.TrimPrefix(line, "event: ")
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := line[6:]
+		switch currentEventType {
+		case "content_block_delta":
+			var delta struct {
+				Delta struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"delta"`
+			}
+			if err := json.Unmarshal([]byte(data), &delta); err == nil && delta.Delta.Type == "text_delta" {
+				fullText.WriteString(delta.Delta.Text)
+			}
+		case "message_start":
+			var ms struct {
+				Message struct {
+					Usage struct {
+						InputTokens int `json:"input_tokens"`
+					} `json:"usage"`
+				} `json:"message"`
+			}
+			if err := json.Unmarshal([]byte(data), &ms); err == nil {
+				inputTokens = ms.Message.Usage.InputTokens
+			}
+		case "message_delta":
+			var md struct {
+				Delta struct {
+					StopReason string `json:"stop_reason"`
+				} `json:"delta"`
+				Usage struct {
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			}
+			if err := json.Unmarshal([]byte(data), &md); err == nil {
+				outputTokens = md.Usage.OutputTokens
+				if md.Delta.StopReason == "max_tokens" {
+					stopReason = "length"
+				}
+			}
+		}
+	}
+
+	chatResp := map[string]any{
+		"id":      "chatcmpl-" + fmt.Sprintf("%d", time.Now().UnixMilli()),
+		"object":  "chat.completion",
+		"model":   model,
+		"choices": []map[string]any{{"index": 0, "message": map[string]any{"role": "assistant", "content": fullText.String()}, "finish_reason": stopReason}},
+		"usage": map[string]any{
+			"prompt_tokens":     inputTokens,
+			"completion_tokens": outputTokens,
+			"total_tokens":      inputTokens + outputTokens,
+		},
+	}
+	respBytes, err := json.Marshal(chatResp)
+	if err != nil {
+		return nil, fmt.Errorf("copilot chat via messages: marshal response: %w", err)
+	}
+	setOpsUpstreamResponseBody(c, respBytes)
+	c.Data(http.StatusOK, "application/json", respBytes)
+
+	return &CopilotForwardResult{
+		StatusCode:    http.StatusOK,
+		Model:         model,
+		UpstreamModel: upstreamModel,
+		Usage: &CopilotUsage{
+			PromptTokens:     inputTokens,
+			CompletionTokens: outputTokens,
+			TotalTokens:      inputTokens + outputTokens,
+		},
+		Duration: time.Since(startTime),
 	}, nil
 }
 
@@ -1197,7 +1624,10 @@ func (s *CopilotGatewayService) setModelEndpointsCache(accountID int64, endpoint
 
 // getSupportedEndpointsForModel returns the supported_endpoints list for modelID from the
 // Copilot /models response.  Results are cached per account (1 hour TTL).
-// On any error it returns nil, nil so callers fall back to /chat/completions.
+//
+// On error it falls back to staticSupportedEndpoints so that well-known
+// models (e.g. Claude sonnet/opus/haiku 4.x) are still routed correctly even
+// when the /models fetch fails due to a transient token-exchange error.
 func (s *CopilotGatewayService) getSupportedEndpointsForModel(ctx context.Context, account *Account, modelID string) ([]string, error) {
 	if account == nil || strings.TrimSpace(modelID) == "" {
 		return nil, nil
@@ -1208,15 +1638,39 @@ func (s *CopilotGatewayService) getSupportedEndpointsForModel(ctx context.Contex
 	body, err := s.ListModels(ctx, account)
 	if err != nil {
 		s.setModelEndpointsCache(account.ID, map[string][]string{}, false)
-		return nil, err
+		// Fall back to static knowledge so a transient token-exchange error
+		// does not permanently prevent file routing for known Claude models.
+		return staticSupportedEndpoints(modelID), err
 	}
 	endpointsByModel := parseModelEndpointsFromModelsResponse(body)
 	s.setModelEndpointsCache(account.ID, endpointsByModel, true)
 	return endpointsByModel[modelID], nil
 }
 
+// staticSupportedEndpoints returns a best-effort static list of supported
+// endpoints for well-known Copilot models, used as a fallback when the live
+// /models fetch fails.  It covers Claude sonnet/opus/haiku 4.x which are
+// known to support both /chat/completions and /responses.
+func staticSupportedEndpoints(modelID string) []string {
+	// All Claude 4.x models (any variant) support /responses.
+	// Match both dash form ("claude-opus-4-6") and dot form ("claude-opus-4.6").
+	if strings.HasPrefix(modelID, "claude-sonnet-4") ||
+		strings.HasPrefix(modelID, "claude-opus-4") ||
+		strings.HasPrefix(modelID, "claude-haiku-4") {
+		return []string{"/chat/completions", "/responses"}
+	}
+	return nil
+}
+
 // parseModelEndpointsFromModelsResponse extracts a modelID→supported_endpoints map from
 // the raw JSON returned by the Copilot /models endpoint.
+//
+// Each model ID is indexed under both the raw ID returned by the API (e.g.
+// "claude-opus-4-6" with dashes) and its normalized upstream form (e.g.
+// "claude-opus-4.6" with a dot) so that lookups using either variant succeed.
+// This is necessary because the Copilot /models response uses dash-separated
+// Claude IDs while NormalizeModelIDForCopilotUpstream converts them to
+// dot-separated form for request forwarding.
 func parseModelEndpointsFromModelsResponse(body []byte) map[string][]string {
 	var resp struct {
 		Data []struct {
@@ -1227,13 +1681,51 @@ func parseModelEndpointsFromModelsResponse(body []byte) map[string][]string {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return map[string][]string{}
 	}
-	m := make(map[string][]string, len(resp.Data))
+	m := make(map[string][]string, len(resp.Data)*2)
 	for _, item := range resp.Data {
-		if id := strings.TrimSpace(item.ID); id != "" {
-			m[id] = append([]string(nil), item.SupportedEndpoints...)
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			continue
+		}
+		eps := append([]string(nil), item.SupportedEndpoints...)
+		m[id] = eps
+		// Also index under the normalized upstream form so callers using the
+		// dot-separated variant (after NormalizeModelIDForCopilotUpstream) hit
+		// the same entry.
+		if normalized := copilot.NormalizeModelIDForCopilotUpstream(id); normalized != id {
+			m[normalized] = eps
 		}
 	}
 	return m
+}
+
+// modelSupportsResponses returns true when the model's supported_endpoints list
+// contains "/responses", regardless of whether "/chat/completions" is also
+// present. File attachments should prefer /responses whenever available so
+// Copilot can preserve inline file input instead of downgrading it to text.
+func modelSupportsResponses(supportedEndpoints []string) bool {
+	if len(supportedEndpoints) == 0 {
+		return false
+	}
+	for _, ep := range supportedEndpoints {
+		if ep == "/responses" {
+			return true
+		}
+	}
+	return false
+}
+
+// modelSupportsMessages returns true when the model's supported_endpoints list
+// contains "/v1/messages" (Anthropic Messages API).  Copilot exposes the
+// Anthropic-native endpoint for Claude models, which accepts document blocks
+// (type:"document") and can therefore process PDF attachments.
+func modelSupportsMessages(supportedEndpoints []string) bool {
+	for _, ep := range supportedEndpoints {
+		if ep == "/v1/messages" {
+			return true
+		}
+	}
+	return false
 }
 
 // shouldUseResponsesEndpoint returns true when the model's supported_endpoints list
