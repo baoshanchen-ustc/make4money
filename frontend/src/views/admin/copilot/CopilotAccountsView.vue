@@ -120,24 +120,42 @@
         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">每日请求趋势</h2>
-            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">各账户每天 Premium 请求量 · 每账户一条折线</p>
+            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.copilot.accounts.dailyChartSubtitle', { metric: METRIC_OPTIONS.find(m => m.value === dailyChartMetric)?.label }) }}
+            </p>
           </div>
-          <!-- Day range selector -->
-          <div class="flex items-center gap-1 rounded-lg border border-gray-200 p-1 dark:border-gray-700">
-            <button
-              v-for="opt in DAY_RANGE_OPTIONS"
-              :key="opt.value"
-              class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-              :class="dailyChartDays === opt.value
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300'"
-              @click="dailyChartDays = opt.value"
-            >
-              {{ opt.label }}
-            </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Metric selector -->
+            <div class="flex items-center gap-1 rounded-lg border border-gray-200 p-1 dark:border-gray-700">
+              <button
+                v-for="m in METRIC_OPTIONS"
+                :key="m.value"
+                class="rounded px-2.5 py-1 text-xs font-semibold transition-colors"
+                :class="dailyChartMetric === m.value
+                  ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'"
+                @click="dailyChartMetric = m.value"
+              >
+                {{ m.label }}
+              </button>
+            </div>
+            <!-- Day range selector -->
+            <div class="flex items-center gap-1 rounded-lg border border-gray-200 p-1 dark:border-gray-700">
+              <button
+                v-for="opt in DAY_RANGE_OPTIONS"
+                :key="opt.value"
+                class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                :class="dailyChartDays === opt.value
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300'"
+                @click="dailyChartDays = opt.value"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
           </div>
         </div>
-        <AccountsDailyChart :days="dailyChartDays" />
+        <AccountsDailyChart :days="dailyChartDays" :metric="dailyChartMetric" />
       </div>
 
       <!-- Accounts Table -->
@@ -494,6 +512,14 @@ const DAY_RANGE_OPTIONS = [
   { label: '90天', value: 90 },
 ] as const
 
+type DailyChartMetric = 'premium' | 'agent' | 'total'
+
+const METRIC_OPTIONS = computed(() => [
+  { label: t('admin.copilot.accounts.metrics.premium'), value: 'premium' as DailyChartMetric },
+  { label: t('admin.copilot.accounts.metrics.agent'), value: 'agent' as DailyChartMetric },
+  { label: t('admin.copilot.accounts.metrics.total'), value: 'total' as DailyChartMetric },
+])
+
 // plan_type → display label
 const PLAN_LABELS: Record<string, string> = {
   individual_free:     'Free',
@@ -535,6 +561,7 @@ const toast = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 const dailyChartDays = ref<7 | 14 | 30 | 60 | 90>(30)
+const dailyChartMetric = ref<DailyChartMetric>('premium')
 
 // Sort state — default: today DESC, month DESC, name ASC
 const sortKey = ref<SortKey>('today')

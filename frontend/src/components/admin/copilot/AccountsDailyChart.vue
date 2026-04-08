@@ -38,7 +38,12 @@ import { extractErrorMessage } from '@/api/client'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend, Filler)
 
-const props = defineProps<{ days: number }>()
+const props = withDefaults(defineProps<{
+  days: number
+  metric?: 'premium' | 'agent' | 'total'
+}>(), {
+  metric: 'premium',
+})
 
 // Palette — cycles for many accounts
 const LINE_COLORS = [
@@ -66,7 +71,12 @@ function buildChartData() {
   const countMap = new Map<number, Map<string, number>>()
   for (const entry of data.value.days) {
     if (!countMap.has(entry.account_id)) countMap.set(entry.account_id, new Map())
-    countMap.get(entry.account_id)!.set(entry.date, entry.count)
+    const val = props.metric === 'premium'
+      ? entry.premium_count
+      : props.metric === 'agent'
+        ? entry.agent_count
+        : entry.premium_count + entry.agent_count
+    countMap.get(entry.account_id)!.set(entry.date, val)
   }
 
   const accountsSorted = [...data.value.accounts].sort((a, b) => a.account_id - b.account_id)
@@ -188,6 +198,12 @@ onMounted(() => {
 })
 
 watch(() => props.days, load)
+watch(() => props.metric, () => {
+  if (chart && data.value) {
+    chart.data = buildChartData()
+    chart.update('active')
+  }
+})
 
 onBeforeUnmount(() => {
   chart?.destroy()

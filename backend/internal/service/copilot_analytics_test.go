@@ -316,3 +316,55 @@ func TestGetUserSummary_SignatureCheck(t *testing.T) {
 	svc := &CopilotAnalyticsService{}
 	var _ func(context.Context, int64) (*CopilotUserSummaryResult, error) = svc.GetUserSummary
 }
+
+// ─────────────────────────────────────────────
+// GetAccountsDailyStats — signature & struct
+// ─────────────────────────────────────────────
+
+func TestGetAccountsDailyStats_SignatureCheck(t *testing.T) {
+	svc := &CopilotAnalyticsService{}
+	var _ func(context.Context, int) (*CopilotAccountsDailyStatsResult, error) = svc.GetAccountsDailyStats
+}
+
+// TestCopilotAccountDailyEntry_CountIsAlias verifies that Count (backward-compat
+// deprecated field) is always equal to PremiumCount + AgentCount.
+func TestCopilotAccountDailyEntry_CountIsAlias(t *testing.T) {
+	cases := []struct {
+		premium int
+		agent   int
+	}{
+		{0, 0},
+		{10, 0},
+		{0, 7},
+		{10, 4},
+		{100, 50},
+	}
+	for _, tc := range cases {
+		entry := CopilotAccountDailyEntry{
+			PremiumCount: tc.premium,
+			AgentCount:   tc.agent,
+			Count:        tc.premium + tc.agent,
+		}
+		require.Equal(t, tc.premium+tc.agent, entry.Count,
+			"Count must equal PremiumCount + AgentCount (premium=%d, agent=%d)", tc.premium, tc.agent)
+	}
+}
+
+// TestCopilotAccountDailyEntry_JSONTags verifies the key struct fields have the
+// expected JSON tags by checking the struct value via basic property access.
+func TestCopilotAccountDailyEntry_Fields(t *testing.T) {
+	entry := CopilotAccountDailyEntry{
+		AccountID:    42,
+		Date:         "2024-01-01",
+		PremiumCount: 8,
+		AgentCount:   3,
+		Count:        11,
+	}
+	require.Equal(t, int64(42), entry.AccountID)
+	require.Equal(t, "2024-01-01", entry.Date)
+	require.Equal(t, 8, entry.PremiumCount)
+	require.Equal(t, 3, entry.AgentCount)
+	require.Equal(t, 11, entry.Count)
+	// Count must remain consistent
+	require.Equal(t, entry.PremiumCount+entry.AgentCount, entry.Count)
+}

@@ -725,11 +725,15 @@ func (s *CopilotAnalyticsService) GetAccountQuotaTrend(ctx context.Context, acco
 	return s.snapshotRepo.ListByAccountID(ctx, accountID, days)
 }
 
-// CopilotAccountDailyEntry holds one account's daily request count for a single day.
+// CopilotAccountDailyEntry holds one account's daily premium and agent request counts for a single day.
 type CopilotAccountDailyEntry struct {
-	AccountID int64  `json:"account_id"`
-	Date      string `json:"date"`
-	Count     int    `json:"count"`
+	AccountID    int64  `json:"account_id"`
+	Date         string `json:"date"`
+	PremiumCount int    `json:"premium_count"`
+	AgentCount   int    `json:"agent_count"`
+	// Count is a backward-compatible alias for premium_count + agent_count.
+	// Deprecated: use premium_count and agent_count instead.
+	Count int `json:"count"`
 }
 
 // CopilotAccountsDailyStatsResult is the response for the all-accounts daily stats endpoint.
@@ -744,8 +748,8 @@ type CopilotAccountDailyAccountInfo struct {
 	Name      string `json:"name"`
 }
 
-// GetAccountsDailyStats returns daily premium request counts for all Copilot accounts
-// over the past [days] days (default 30, max 90). Each row is (account_id, date, count).
+// GetAccountsDailyStats returns daily premium and agent request counts for all Copilot accounts
+// over the past [days] days (default 30, max 90). Each row is (account_id, date, premium_count, agent_count).
 func (s *CopilotAnalyticsService) GetAccountsDailyStats(ctx context.Context, days int) (*CopilotAccountsDailyStatsResult, error) {
 	if days <= 0 {
 		days = 30
@@ -762,11 +766,11 @@ SELECT
     ul.account_id,
     a.name,
     DATE(ul.created_at AT TIME ZONE 'UTC' AT TIME ZONE current_setting('TIMEZONE')) AS req_date,
-    COUNT(*) AS count
+    COUNT(*) FILTER (WHERE ul.initiator = 'user')  AS premium_count,
+    COUNT(*) FILTER (WHERE ul.initiator = 'agent') AS agent_count
 FROM usage_logs ul
 JOIN accounts a ON a.id = ul.account_id
-WHERE ul.initiator = 'user'
-  AND ul.created_at >= $1
+WHERE ul.created_at >= $1
   AND ul.account_id IN (SELECT id FROM accounts WHERE platform = 'copilot')
 GROUP BY ul.account_id, a.name, req_date
 ORDER BY ul.account_id, req_date
@@ -784,15 +788,17 @@ ORDER BY ul.account_id, req_date
 		var accountID int64
 		var name string
 		var date time.Time
-		var count int
-		if err := rows.Scan(&accountID, &name, &date, &count); err != nil {
+		var premiumCount, agentCount int
+		if err := rows.Scan(&accountID, &name, &date, &premiumCount, &agentCount); err != nil {
 			return nil, fmt.Errorf("copilot analytics: scan daily stats row: %w", err)
 		}
 		accountMap[accountID] = name
 		entries = append(entries, CopilotAccountDailyEntry{
-			AccountID: accountID,
-			Date:      date.Format("2006-01-02"),
-			Count:     count,
+			AccountID:    accountID,
+			Date:         date.Format("2006-01-02"),
+			PremiumCount: premiumCount,
+			AgentCount:   agentCount,
+			Count:        premiumCount + agentCount,
 		})
 	}
 	if err := rows.Err(); err != nil {

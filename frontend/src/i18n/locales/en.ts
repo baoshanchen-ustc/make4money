@@ -3469,6 +3469,12 @@ export default {
         actions: 'Actions',
         setBudget: 'Set Alert',
         refreshQuota: 'Refresh Quota',
+        metrics: {
+          premium: 'Premium',
+          agent: 'Agent',
+          total: 'Total',
+        },
+        dailyChartSubtitle: '{metric} requests per account per day · one line per account',
         budgetDialog: {
           title: 'Set Quota Alert',
           threshold: 'Reference Monthly Budget (USD)',

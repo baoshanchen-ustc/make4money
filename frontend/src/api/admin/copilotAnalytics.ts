@@ -241,6 +241,9 @@ export async function getCopilotUserSummary(
 export interface CopilotAccountDailyEntry {
   account_id: number
   date: string
+  premium_count: number
+  agent_count: number
+  /** @deprecated Use premium_count + agent_count instead. */
   count: number
 }
 

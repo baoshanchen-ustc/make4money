@@ -3630,6 +3630,12 @@ export default {
         actions: '操作',
         setBudget: '设置告警',
         refreshQuota: '刷新配额',
+        metrics: {
+          premium: 'Premium',
+          agent: 'Agent',
+          total: '总量',
+        },
+        dailyChartSubtitle: '各账户每天 {metric} 请求量 · 每账户一条折线',
         budgetDialog: {
           title: '设置配额告警',
           threshold: '参考月预算 (USD)',
