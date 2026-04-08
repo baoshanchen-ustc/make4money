@@ -863,8 +863,22 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 }
 
 var opsRetryRequestHeaderAllowlist = []string{
+	// Anthropic 平台关键 header
 	"anthropic-beta",
 	"anthropic-version",
+	"anthropic-dangerous-direct-browser-access",
+	"x-app",
+	// OpenAI 平台关键 header
+	"openai-beta",
+	// SDK 指纹（定位 SDK 版本 bug / 重试行为）
+	"x-stainless-lang",
+	"x-stainless-package-version",
+	"x-stainless-runtime",
+	"x-stainless-runtime-version",
+	"x-stainless-retry-count",
+	// 请求行为
+	"content-type",
+	"idempotency-key",
 }
 
 // isCountTokensRequest checks if the request is a count_tokens request

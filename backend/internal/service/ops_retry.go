@@ -37,9 +37,20 @@ const (
 	opsRetryMaxAccountSwitches  = 3
 )
 
+// opsRetryRequestHeaderAllowlist controls which request headers are forwarded
+// when retrying a failed upstream request. Only headers that affect routing or
+// upstream platform behavior should be included; pure diagnostic headers (SDK
+// fingerprints, idempotency-key) are intentionally excluded so retries are not
+// bound to a specific SDK session or a single-use idempotency constraint.
 var opsRetryRequestHeaderAllowlist = map[string]bool{
-	"anthropic-beta":    true,
-	"anthropic-version": true,
+	// Anthropic platform behavior
+	"anthropic-beta":                              true,
+	"anthropic-version":                           true,
+	"anthropic-dangerous-direct-browser-access":   true,
+	"x-app":                                       true,
+	// OpenAI platform behavior
+	"openai-beta":  true,
+	"content-type": true,
 }
 
 type opsRetryRequestType string
