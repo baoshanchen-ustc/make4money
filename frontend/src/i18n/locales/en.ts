@@ -3785,6 +3785,7 @@ export default {
         latency: 'Request Duration',
         businessLimited: 'Business Limited',
         requestPath: 'Request Path',
+        clientIp: 'Client IP',
         timings: 'Timings',
         auth: 'Auth',
         routing: 'Routing',
@@ -3959,7 +3960,9 @@ export default {
           tokens: 'Tokens (in / out)',
           stream: 'Stream',
           serviceTier: 'service_tier',
-          reasoningEffort: 'reasoning_effort'
+          reasoningEffort: 'reasoning_effort',
+          ipAddress: 'IP Address',
+          userAgent: 'User-Agent'
         },
         latency: {
           title: 'Latency breakdown',

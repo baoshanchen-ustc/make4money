@@ -306,6 +306,7 @@ export interface OpsUsageInspectDetail {
   service_tier?: string | null
   reasoning_effort?: string | null
   ip_address?: string | null
+  user_agent?: string | null
 
   /** Identity chain fields (populated when available). */
   user_name?: string | null

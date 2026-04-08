@@ -3952,6 +3952,7 @@ export default {
         latency: '请求时长',
         businessLimited: '业务限制',
         requestPath: '请求路径',
+        clientIp: '客户端 IP',
         timings: '时序信息',
         auth: '认证',
         routing: '路由',
@@ -4124,7 +4125,9 @@ export default {
           tokens: 'Token（入 / 出）',
           stream: '流式',
           serviceTier: 'service_tier',
-          reasoningEffort: 'reasoning_effort'
+          reasoningEffort: 'reasoning_effort',
+          ipAddress: 'IP 地址',
+          userAgent: 'User-Agent'
         },
         latency: {
           title: '耗时分解',

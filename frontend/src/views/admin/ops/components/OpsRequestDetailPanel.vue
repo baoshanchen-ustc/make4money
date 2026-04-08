@@ -216,6 +216,14 @@
               <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestInspect.fields.reasoningEffort') }}</div>
               <div class="mt-1 font-mono text-xs text-gray-900 dark:text-white">{{ usageInspect.reasoning_effort }}</div>
             </div>
+            <div v-if="usageInspect.ip_address" class="rounded-lg bg-gray-50 p-3 dark:bg-dark-900">
+              <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestInspect.fields.ipAddress') }}</div>
+              <div class="mt-1 font-mono text-xs text-gray-900 dark:text-white">{{ usageInspect.ip_address }}</div>
+            </div>
+            <div v-if="usageInspect.user_agent" class="rounded-lg bg-gray-50 p-3 dark:bg-dark-900 sm:col-span-2">
+              <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestInspect.fields.userAgent') }}</div>
+              <div class="mt-1 break-all font-mono text-xs text-gray-900 dark:text-white">{{ usageInspect.user_agent }}</div>
+            </div>
           </div>
         </div>
       </div>

@@ -181,6 +181,7 @@ type OpsUsageInspectDetail struct {
 	ServiceTier     *string `json:"service_tier,omitempty"`
 	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
 	IPAddress       *string `json:"ip_address,omitempty"`
+	UserAgent       *string `json:"user_agent,omitempty"`
 
 	// Identity fields — populated via JOIN.
 	UserName    *string `json:"user_name,omitempty"`

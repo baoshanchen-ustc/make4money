@@ -49,6 +49,7 @@ SELECT
   ul.output_tokens,
   ul.service_tier,
   ul.reasoning_effort,
+  ul.user_agent,
   CASE WHEN ul.ip_address IS NULL THEN NULL ELSE ul.ip_address::text END AS ip_address,
   u.username AS user_name,
   CASE WHEN ak.key IS NOT NULL THEN '***' || RIGHT(ak.key, 4) ELSE NULL END AS api_key_label
@@ -76,6 +77,7 @@ LIMIT 1`
 	var responseLatencyMs sql.NullInt64
 	var serviceTier sql.NullString
 	var reasoningEffort sql.NullString
+	var userAgent sql.NullString
 	var ipAddr sql.NullString
 	var userName sql.NullString
 	var apiKeyLabel sql.NullString
@@ -112,6 +114,7 @@ LIMIT 1`
 		&out.OutputTokens,
 		&serviceTier,
 		&reasoningEffort,
+		&userAgent,
 		&ipAddr,
 		&userName,
 		&apiKeyLabel,
@@ -171,6 +174,10 @@ LIMIT 1`
 	if reasoningEffort.Valid {
 		s := reasoningEffort.String
 		out.ReasoningEffort = &s
+	}
+	if userAgent.Valid && userAgent.String != "" {
+		s := userAgent.String
+		out.UserAgent = &s
 	}
 	if ipAddr.Valid {
 		s := ipAddr.String
