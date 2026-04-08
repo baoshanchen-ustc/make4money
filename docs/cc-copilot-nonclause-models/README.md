@@ -13,6 +13,8 @@
 - [5. 代码实现原理](#5-代码实现原理)
 - [6. Copilot 计费机制](#6-copilot-计费机制)
 - [7. 混用 Claude + GPT 的注意事项](#7-混用-claude--gpt-的注意事项)
+- [8. 账户分配策略：无粘性会话设计](#8-账户分配策略无粘性会话设计)
+- [9. 任务级计费审计的局限性](#9-任务级计费审计的局限性)
 
 ---
 
@@ -321,7 +323,99 @@ CC 的一次"用户发消息"在后端是**多个串行请求**：
 
 ---
 
-## 附：关键文件索引
+## 8. 账户分配策略：无粘性会话设计
+
+### sub2api 对 Copilot 路径的选择：不启用粘性会话
+
+sub2api 在处理 Copilot 请求时，**每条请求独立选择账户**，不绑定会话：
+
+```go
+// copilot_gateway_handler.go
+account, err := h.gatewayService.SelectAccountForModelWithExclusions(
+    ctx,
+    apiKey.GroupID,
+    "", // sessionHash — no sticky session for Copilot ← 硬编码空字符串
+    reqModel,
+    failedAccountIDs,
+)
+```
+
+系统中已有完整的粘性会话机制（Redis 绑定、1 小时 TTL），但 Copilot handler 明确传入空 `sessionHash`，绕过了它。这是有意为之的设计。
+
+### 实际效果
+
+同一个 CC 用户的一次任务（假设含 10 次模型请求）：
+
+| 请求 | 账户选择逻辑 | 实际分配 |
+|------|------------|---------|
+| 第 1 次 | 全局负载均衡 | copilot003 |
+| 第 2 次 | 重新负载均衡 | copilot001（可能不同） |
+| 第 3-10 次 | 每次重新负载均衡 | 任意账户 |
+
+10 次请求可能分散到多个不同 Copilot 账户上。
+
+### 这样做对计费有影响吗？
+
+**没有额外扣费。** 原因：
+
+`X-Initiator` 判断完全基于**请求体中的消息历史**，与转发到哪个账户无关：
+
+```go
+func copilotInitiator(openAIBody []byte) string {
+    for _, m := range req.Messages {
+        if m.Role == "assistant" || m.Role == "tool" {
+            return "agent"  // 消息体有历史 → 免费标准 quota
+        }
+    }
+    return "user"  // 纯首轮消息 → Premium 扣费
+}
+```
+
+CC 客户端在每次请求时都会携带**完整的对话历史**（system + user + 所有 assistant/tool 回合）。因此：
+
+- 同一任务的第 2 次请求（工具调用后续），消息体里有 `assistant(tool_use)` 和 `tool_result`
+- 不管这条请求发给 copilot001 还是 copilot099，sub2api 都会解析到 `role=assistant`，设置 `X-Initiator: agent`
+- Copilot 扣的是标准 quota（免费），不是 Premium
+
+**换账户不会改变消息体内容，所以不会改变计费判断。**
+
+### 无粘性会话的真正代价
+
+不是多扣费，而是**无法按「单次任务」维度进行端到端的计费审计**：
+
+- 一次任务的请求被分散到多个 Copilot 账户
+- 在 Copilot 账户维度只能看到碎片化的请求
+- 只能从**下游用户维度**（即分析后台的"按用户"Tab）追踪完整消耗，无法对照到具体的上游账户扣费记录
+
+---
+
+## 9. 任务级计费审计的局限性
+
+### 问题描述
+
+由于无粘性会话，一个 CC 任务的多次请求可能分散在多个 Copilot 账户上。以下场景无法精确追踪：
+
+> "下游用户 A 今天发起了一个任务，包含 20 次模型请求，到底消耗了哪些 Copilot 账户各多少 Premium？"
+
+### 现有分析工具的能力边界
+
+| 分析视角 | 能做到 | 做不到 |
+|---------|-------|-------|
+| 按下游用户（分析后台"按用户" Tab） | 看某用户在时间段内的 Premium/Agent 总量趋势 | 对应到具体哪个 Copilot 账户扣费 |
+| 按 Copilot 账户（账户分析页） | 看账户的 Premium 消耗曲线 | 归因到是哪个下游用户产生的 |
+| 单次任务全链路 | — | 无法在不同账户的请求记录中还原出「同一任务」的完整调用链 |
+
+### 验证计费正确性的推荐方法
+
+虽然无法做任务级追踪，但可以从统计层面验证：
+
+1. **用户维度 vs 账户维度总量对比**：下游用户 Premium 总和 ≈ 所有 Copilot 账户 Premium 总和（允许微小误差来自 title 生成等辅助请求）
+
+2. **观察 agent 比例**：正常 CC 任务中，agent 请求数量应远多于 user（Premium）请求数量。如果某账户 Premium 占比异常高，说明该账户接收了大量「首轮」请求，可能是负载均衡偏斜，值得排查。
+
+3. **若需精确追踪**：可考虑在 Copilot handler 中启用粘性会话（将 `""` 改为实际 `sessionHash`），代价是降低负载均衡效果，且粘性账户满载时会引入等待延迟。
+
+
 
 | 文件 | 作用 |
 |------|------|
