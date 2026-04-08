@@ -87,23 +87,69 @@
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">用户请求趋势</h2>
             <p class="text-xs text-gray-400">近 {{ selectedDays }} 天按用户拆分</p>
           </div>
-          <!-- 指标切换 -->
-          <div class="flex items-center gap-1 rounded-lg border border-gray-200 p-1 dark:border-gray-700">
-            <button
-              v-for="m in METRIC_OPTIONS"
-              :key="m.value"
-              class="rounded px-2.5 py-1 text-xs font-semibold transition-colors"
-              :class="chartMetric === m.value
-                ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'"
-              @click="chartMetric = m.value"
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Tab 切换 -->
+            <div class="flex items-center gap-1 rounded-lg border border-gray-200 p-1 dark:border-gray-700">
+              <button
+                class="rounded px-2.5 py-1 text-xs font-semibold transition-colors"
+                :class="trendTab === 'metric'
+                  ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'"
+                @click="trendTab = 'metric'"
+              >
+                按指标
+              </button>
+              <button
+                class="rounded px-2.5 py-1 text-xs font-semibold transition-colors"
+                :class="trendTab === 'user'
+                  ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'"
+                @click="trendTab = 'user'"
+              >
+                按用户
+              </button>
+            </div>
+            <!-- 按指标时的指标选择器 -->
+            <div
+              v-if="trendTab === 'metric'"
+              class="flex items-center gap-1 rounded-lg border border-gray-200 p-1 dark:border-gray-700"
             >
-              {{ m.label }}
-            </button>
+              <button
+                v-for="m in METRIC_OPTIONS"
+                :key="m.value"
+                class="rounded px-2.5 py-1 text-xs font-semibold transition-colors"
+                :class="chartMetric === m.value
+                  ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'"
+                @click="chartMetric = m.value"
+              >
+                {{ m.label }}
+              </button>
+            </div>
+            <!-- 按用户时的用户选择器 -->
+            <select
+              v-if="trendTab === 'user'"
+              v-model="selectedUserId"
+              class="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+            >
+              <option
+                v-for="user in aggregatedUsers"
+                :key="user.userId"
+                :value="user.userId"
+              >
+                {{ user.username }}
+              </option>
+            </select>
           </div>
         </div>
         <div class="p-4">
-          <UsersDailyChart :days="selectedDays" :metric="chartMetric" />
+          <UsersDailyChart v-if="trendTab === 'metric'" :days="selectedDays" :metric="chartMetric" />
+          <UserSingleChart
+            v-else
+            :days="selectedDays"
+            :user-id="selectedUserId"
+            :daily-data="dailyData"
+          />
         </div>
       </div>
 
@@ -227,6 +273,7 @@ import Select from '@/components/common/Select.vue'
 import SummaryCard from '@/components/admin/copilot/CopilotSummaryCard.vue'
 import UsersDailyChart from '@/components/admin/copilot/UsersDailyChart.vue'
 import UserSparkline from '@/components/admin/copilot/UserSparkline.vue'
+import UserSingleChart from '@/components/admin/copilot/UserSingleChart.vue'
 
 // ─────────────────────────────────────────────
 // Types
@@ -278,6 +325,9 @@ const { t } = useI18n()
 
 const selectedDays = ref<number>(30)
 const chartMetric = ref<ChartMetric>('premium')
+type TrendTab = 'metric' | 'user'
+const trendTab = ref<TrendTab>('metric')
+const selectedUserId = ref<number | null>(null)
 const sortKey = ref<SortKey>('premium')
 const searchQuery = ref('')
 const loading = ref(false)
@@ -390,6 +440,13 @@ const topUser = computed<UserRow | null>(() => {
     u.premiumRequests > best.premiumRequests ? u : best,
   )
 })
+
+// 首次加载后把默认选中用户设为 topUser（当日 Premium 最多）
+watch(topUser, (val) => {
+  if (val && selectedUserId.value === null) {
+    selectedUserId.value = val.userId
+  }
+}, { immediate: true })
 
 // ─────────────────────────────────────────────
 // Filtered / sorted leaderboard
