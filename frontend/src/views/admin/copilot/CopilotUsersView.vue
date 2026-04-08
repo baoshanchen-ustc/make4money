@@ -275,6 +275,7 @@ import SummaryCard from '@/components/admin/copilot/CopilotSummaryCard.vue'
 import UsersDailyChart from '@/components/admin/copilot/UsersDailyChart.vue'
 import UserSparkline from '@/components/admin/copilot/UserSparkline.vue'
 import UserSingleChart from '@/components/admin/copilot/UserSingleChart.vue'
+import { resolveDefaultUserId } from './resolveDefaultUserId'
 
 // ─────────────────────────────────────────────
 // Types
@@ -445,20 +446,7 @@ const topUser = computed<UserRow | null>(() => {
 // 默认选中用户：优先 topUser（Premium 最多），降级为列表第一个（兼容纯 Agent 流量）
 // 日期范围切换后，若当前选中用户不在新数据中则重置
 watch(aggregatedUsers, (users) => {
-  if (users.length === 0) {
-    selectedUserId.value = null
-    return
-  }
-  const ids = new Set(users.map(u => u.userId))
-  if (selectedUserId.value !== null && ids.has(selectedUserId.value)) {
-    // 当前选中仍然有效，保持不变
-    return
-  }
-  // 优先选 topUser（Premium 最多），否则选第一个有效用户
-  const best = users.filter(u => u.premiumRequests > 0)
-  selectedUserId.value = best.length > 0
-    ? best.reduce((a, b) => b.premiumRequests > a.premiumRequests ? b : a).userId
-    : users[0].userId
+  selectedUserId.value = resolveDefaultUserId(users, selectedUserId.value)
 }, { immediate: true })
 
 // ─────────────────────────────────────────────
@@ -498,6 +486,9 @@ async function loadDashboard(): Promise<void> {
     todayData.value = today
   } catch (e: unknown) {
     error.value = extractErrorMessage(e)
+    // 清空旧数据，防止错误时子图表仍渲染上一次的过期趋势线
+    dailyData.value = null
+    todayData.value = null
   } finally {
     loading.value = false
   }
