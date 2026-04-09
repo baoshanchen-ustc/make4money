@@ -396,7 +396,7 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 	}
 
 	admin := &service.User{
-		Email:       cfg.Admin.Email,
+		Email:       strings.ToLower(strings.TrimSpace(cfg.Admin.Email)),
 		Role:        service.RoleAdmin,
 		Status:      service.StatusActive,
 		Balance:     0,

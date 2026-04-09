@@ -401,6 +401,8 @@ func (s *AuthService) IsEmailVerifyEnabled(ctx context.Context) bool {
 
 // Login 用户登录，返回JWT token
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, *User, error) {
+	email = normalizeEmail(email)
+
 	// 查找用户
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
@@ -438,7 +440,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 // 注意：该函数用于 LinuxDo OAuth 登录场景（不同于上游账号的 OAuth，例如 Claude/OpenAI/Gemini）。
 // 为了满足现有数据库约束（需要密码哈希），新用户会生成随机密码并进行哈希保存。
 func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
-	email = strings.TrimSpace(email)
+	email = normalizeEmail(email)
 	if email == "" || len(email) > 255 {
 		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
@@ -537,7 +539,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 		return nil, nil, errors.New("refresh token cache not configured")
 	}
 
-	email = strings.TrimSpace(email)
+	email = normalizeEmail(email)
 	if email == "" || len(email) > 255 {
 		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
@@ -831,9 +833,12 @@ func randomHexString(byteLength int) (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 func isReservedEmail(email string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(email))
-	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain)
+	return strings.HasSuffix(normalizeEmail(email), LinuxDoConnectSyntheticEmailDomain)
 }
 
 // GenerateToken 生成JWT access token
@@ -943,6 +948,8 @@ func (s *AuthService) IsPasswordResetEnabled(ctx context.Context) bool {
 // Returns (siteName, resetURL, shouldProceed)
 // shouldProceed is false when we should silently return success (to prevent enumeration)
 func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendBaseURL string) (string, string, bool) {
+	email = normalizeEmail(email)
+
 	// Check if user exists (but don't reveal this to the caller)
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {

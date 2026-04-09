@@ -24,6 +24,10 @@ type userRepository struct {
 	sql    sqlExecutor
 }
 
+func normalizeUserEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
 }
@@ -36,6 +40,7 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 	if userIn == nil {
 		return nil
 	}
+	userIn.Email = normalizeUserEmail(userIn.Email)
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
 	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
@@ -99,7 +104,7 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 }
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service.User, error) {
-	m, err := r.client.User.Query().Where(dbuser.EmailEQ(email)).Only(ctx)
+	m, err := r.client.User.Query().Where(dbuser.EmailEqualFold(normalizeUserEmail(email))).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
@@ -119,6 +124,7 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	if userIn == nil {
 		return nil
 	}
+	userIn.Email = normalizeUserEmail(userIn.Email)
 
 	// 使用 ent 事务包裹用户更新与 allowed_groups 同步，避免跨层事务不一致。
 	tx, err := r.client.Tx(ctx)
@@ -374,7 +380,7 @@ func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount
 }
 
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	return r.client.User.Query().Where(dbuser.EmailEQ(email)).Exist(ctx)
+	return r.client.User.Query().Where(dbuser.EmailEqualFold(normalizeUserEmail(email))).Exist(ctx)
 }
 
 func (r *userRepository) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
