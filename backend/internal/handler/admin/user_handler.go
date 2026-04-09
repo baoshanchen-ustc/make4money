@@ -4,9 +4,11 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -22,14 +24,49 @@ type UserWithConcurrency struct {
 type UserHandler struct {
 	adminService       service.AdminService
 	concurrencyService *service.ConcurrencyService
+	usageService       *service.UsageService
 }
 
 // NewUserHandler creates a new admin user handler
-func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService) *UserHandler {
+func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService, usageService *service.UsageService) *UserHandler {
 	return &UserHandler{
 		adminService:       adminService,
 		concurrencyService: concurrencyService,
+		usageService:       usageService,
 	}
+}
+
+// parseAdminUserTimeRange parses start_date, end_date query parameters for admin user dashboard
+// Uses user's timezone if provided, otherwise falls back to server timezone
+func parseAdminUserTimeRange(c *gin.Context) (time.Time, time.Time) {
+	userTZ := c.Query("timezone")
+	now := timezone.NowInUserLocation(userTZ)
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	var startTime, endTime time.Time
+
+	if startDate != "" {
+		if t, err := timezone.ParseInUserLocation("2006-01-02", startDate, userTZ); err == nil {
+			startTime = t
+		} else {
+			startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
+		}
+	} else {
+		startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
+	}
+
+	if endDate != "" {
+		if t, err := timezone.ParseInUserLocation("2006-01-02", endDate, userTZ); err == nil {
+			endTime = t.Add(24 * time.Hour)
+		} else {
+			endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
+		}
+	} else {
+		endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
+	}
+
+	return startTime, endTime
 }
 
 // CreateUserRequest represents admin create user request
@@ -398,5 +435,73 @@ func (h *UserHandler) ReplaceGroup(c *gin.Context) {
 
 	response.Success(c, gin.H{
 		"migrated_keys": result.MigratedKeys,
+	})
+}
+
+// GetUserDashboardStats handles getting a user's dashboard statistics (admin view)
+// GET /api/v1/admin/users/:id/dashboard/stats
+func (h *UserHandler) GetUserDashboardStats(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	stats, err := h.usageService.GetUserDashboardStats(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, stats)
+}
+
+// GetUserDashboardTrend handles getting a user's usage trend data (admin view)
+// GET /api/v1/admin/users/:id/dashboard/trend
+func (h *UserHandler) GetUserDashboardTrend(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	startTime, endTime := parseAdminUserTimeRange(c)
+	granularity := c.DefaultQuery("granularity", "day")
+
+	trend, err := h.usageService.GetUserUsageTrendByUserID(c.Request.Context(), userID, startTime, endTime, granularity)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"trend":       trend,
+		"start_date":  startTime.Format("2006-01-02"),
+		"end_date":    endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"granularity": granularity,
+	})
+}
+
+// GetUserDashboardModels handles getting a user's model usage statistics (admin view)
+// GET /api/v1/admin/users/:id/dashboard/models
+func (h *UserHandler) GetUserDashboardModels(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	startTime, endTime := parseAdminUserTimeRange(c)
+
+	stats, err := h.usageService.GetUserModelStats(c.Request.Context(), userID, startTime, endTime)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"models":     stats,
+		"start_date": startTime.Format("2006-01-02"),
+		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 	})
 }

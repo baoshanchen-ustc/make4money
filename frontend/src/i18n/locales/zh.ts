@@ -335,6 +335,7 @@ export default {
     redeem: '兑换',
     profile: '个人资料',
     users: '用户管理',
+    userView: '用户视图',
     groups: '分组管理',
     subscriptions: '订阅管理',
     accounts: '账号管理',

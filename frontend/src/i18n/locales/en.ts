@@ -334,6 +334,7 @@ export default {
     redeem: 'Redeem',
     profile: 'Profile',
     users: 'Users',
+    userView: 'User View',
     groups: 'Groups',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',

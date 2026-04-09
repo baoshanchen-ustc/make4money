@@ -432,6 +432,26 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.usage.description'
     }
   },
+  {
+    path: '/admin/user-view',
+    name: 'AdminUserView',
+    component: () => import('@/views/admin/UserViewView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'User View',
+    }
+  },
+  {
+    path: '/admin/user-view/:userId',
+    name: 'AdminUserViewById',
+    component: () => import('@/views/admin/UserViewView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'User View',
+    }
+  },
 
   // ==================== 404 Not Found ====================
   {
