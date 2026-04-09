@@ -25,6 +25,8 @@
       <KeysView v-else-if="activeTab === 'apikeys'" :admin-user-id="userId" :key="`keys-${userId}`" />
       <UsageView v-else-if="activeTab === 'usage'" :admin-user-id="userId" :key="`usage-${userId}`" />
       <SubscriptionsView v-else-if="activeTab === 'subscriptions'" :admin-user-id="userId" :key="`subs-${userId}`" />
+      <RedeemView v-else-if="activeTab === 'redeem'" :admin-user-id="userId" :key="`redeem-${userId}`" />
+      <ConnectivityTestView v-else-if="activeTab === 'connectivity'" :admin-user-id="userId" :key="`connectivity-${userId}`" />
       <ProfileView v-else-if="activeTab === 'profile'" :admin-user-id="userId" :key="`profile-${userId}`" />
     </div>
   </div>
@@ -36,19 +38,23 @@ import DashboardView from '@/views/user/DashboardView.vue'
 import KeysView from '@/views/user/KeysView.vue'
 import UsageView from '@/views/user/UsageView.vue'
 import SubscriptionsView from '@/views/user/SubscriptionsView.vue'
+import RedeemView from '@/views/user/RedeemView.vue'
+import ConnectivityTestView from '@/views/user/ConnectivityTestView.vue'
 import ProfileView from '@/views/user/ProfileView.vue'
 
 const { userId } = defineProps<{
   userId: number
 }>()
 
-type TabKey = 'dashboard' | 'apikeys' | 'usage' | 'subscriptions' | 'profile'
+type TabKey = 'dashboard' | 'apikeys' | 'usage' | 'subscriptions' | 'redeem' | 'connectivity' | 'profile'
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'dashboard', label: '仪表盘' },
   { key: 'apikeys', label: 'API 密钥' },
   { key: 'usage', label: '使用记录' },
   { key: 'subscriptions', label: '订阅' },
+  { key: 'redeem', label: '兑换' },
+  { key: 'connectivity', label: '连接测试' },
   { key: 'profile', label: '资料' },
 ]
 

@@ -1,5 +1,5 @@
 <template>
-  <AppLayout>
+  <AppLayout v-if="!adminUserId">
     <div class="space-y-6">
       <!-- Header -->
       <div>
@@ -298,6 +298,275 @@
 
     </div>
   </AppLayout>
+  <div v-else class="space-y-6">
+    <!-- Header -->
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('connectivityTest.title') }}</h1>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('connectivityTest.description') }}</p>
+    </div>
+
+    <!-- Config Card -->
+    <div class="card p-6 space-y-5">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('connectivityTest.testConfig') }}</h2>
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <!-- API Key selector -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {{ t('connectivityTest.apiKey') }}
+          </label>
+          <Select
+            :model-value="selectedApiKeyId"
+            :options="apiKeyOptions"
+            :placeholder="t('connectivityTest.selectApiKey')"
+            :disabled="isRunning"
+            searchable
+            @update:model-value="onApiKeySelectChange"
+          >
+            <template #selected="{ option }">
+              <span v-if="option" class="flex items-center gap-2 min-w-0">
+                <span class="font-medium truncate">{{ option.label }}</span>
+                <span class="shrink-0 text-xs text-gray-400 font-mono">{{ option.keyPreview }}</span>
+              </span>
+              <span v-else class="text-gray-400">{{ t('connectivityTest.selectApiKey') }}</span>
+            </template>
+            <template #option="{ option }">
+              <span class="flex items-center justify-between gap-3 w-full min-w-0">
+                <span class="font-medium truncate">{{ option.label }}</span>
+                <span class="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono">{{ option.keyPreview }}</span>
+              </span>
+            </template>
+          </Select>
+        </div>
+
+        <!-- Model selector -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {{ t('connectivityTest.model') }}
+            <span v-if="modelsLoading" class="ml-2 inline-block h-3 w-3 animate-spin rounded-full border border-gray-400 border-t-transparent align-middle" />
+          </label>
+          <Select
+            v-if="availableModels.length > 0"
+            v-model="model"
+            :options="modelOptions"
+            :disabled="isRunning"
+            searchable
+          />
+          <input
+            v-else
+            v-model="model"
+            type="text"
+            class="input w-full"
+            :disabled="isRunning"
+            placeholder="claude-sonnet-4-5"
+          />
+        </div>
+
+        <!-- Endpoint -->
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {{ t('connectivityTest.endpoint') }}
+          </label>
+          <input
+            v-model="endpoint"
+            type="text"
+            class="w-full rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 px-3 py-2.5 font-mono text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            :disabled="isRunning"
+          />
+        </div>
+
+        <!-- Timeout threshold + Stream duration -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {{ t('connectivityTest.timeoutThreshold') }}
+            <span class="text-xs text-gray-400 ml-1">{{ t('connectivityTest.timeoutThresholdHint') }}</span>
+          </label>
+          <input
+            v-model.number="timeoutThreshold"
+            type="number"
+            min="10"
+            max="600"
+            class="w-full rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            :disabled="isRunning"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {{ t('connectivityTest.streamDuration') }}
+            <span class="text-xs text-gray-400 ml-1">{{ t('connectivityTest.streamDurationHint') }}</span>
+          </label>
+          <input
+            v-model.number="streamDuration"
+            type="number"
+            min="10"
+            max="600"
+            class="w-full rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            :disabled="isRunning"
+          />
+        </div>
+
+        <!-- Prompt -->
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {{ t('connectivityTest.prompt') }}
+            <span class="text-xs text-gray-400 ml-1">{{ t('connectivityTest.promptHint') }}</span>
+          </label>
+          <textarea
+            v-model="prompt"
+            rows="3"
+            class="w-full rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed resize-none transition-colors"
+            :disabled="isRunning"
+          />
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center gap-3 pt-1">
+        <button
+          v-if="!isRunning"
+          @click="startTest"
+          :disabled="!selectedApiKeyId || !model"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          :class="!selectedApiKeyId || !model
+            ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+            : 'bg-primary-600 hover:bg-primary-700 active:bg-primary-800 focus:ring-primary-500'"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+          </svg>
+          {{ t('connectivityTest.startTest') }}
+        </button>
+        <button
+          v-if="isRunning"
+          @click="stopTest"
+          class="inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+        >
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M5.25 7.5A2.25 2.25 0 0 1 7.5 5.25h9a2.25 2.25 0 0 1 2.25 2.25v9a2.25 2.25 0 0 1-2.25 2.25h-9a2.25 2.25 0 0 1-2.25-2.25v-9Z" />
+          </svg>
+          {{ t('connectivityTest.stop') }}
+        </button>
+        <div v-if="isRunning" class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-gray-300 dark:border-gray-600 border-t-primary-500" />
+          {{ t('connectivityTest.testing') }}
+        </div>
+        <button
+          v-if="testResult && !isRunning"
+          @click="resetTest"
+          class="inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-800 hover:bg-gray-50 dark:hover:bg-dark-700 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+          </svg>
+          {{ t('connectivityTest.reset') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Metrics Panel -->
+    <div v-if="isRunning || testResult" class="card p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('connectivityTest.metrics') }}</h2>
+        <span
+          class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
+          :class="statusBadgeClass"
+        >
+          <span class="h-2 w-2 rounded-full bg-current" :class="isRunning ? 'animate-pulse' : ''" />
+          {{ statusLabel }}
+        </span>
+      </div>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div class="metric-box">
+          <div class="metric-label">{{ t('connectivityTest.elapsed') }}</div>
+          <div class="metric-value" :class="elapsedSeconds > warnThreshold ? 'text-yellow-500 dark:text-yellow-400' : ''">
+            {{ elapsedSeconds.toFixed(1) }}<span class="text-sm font-normal ml-0.5 opacity-70">s</span>
+          </div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">{{ t('connectivityTest.tokensReceived') }}</div>
+          <div class="metric-value">{{ tokenCount.toLocaleString() }}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">{{ t('connectivityTest.chunksReceived') }}</div>
+          <div class="metric-value">{{ chunkCount.toLocaleString() }}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">{{ t('connectivityTest.throughput') }}</div>
+          <div class="metric-value">
+            {{ tokensPerSecond.toFixed(1) }}<span class="text-sm font-normal ml-0.5 opacity-70">tok/s</span>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-2">
+        <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('connectivityTest.timeline') }}</div>
+        <div class="relative h-3 rounded-full bg-gray-100 dark:bg-gray-700/60 overflow-hidden">
+          <div
+            class="absolute left-0 top-0 h-full rounded-full transition-all duration-300"
+            :class="progressBarClass"
+            :style="{ width: progressPct + '%' }"
+          />
+          <div class="absolute top-0 h-full w-0.5 bg-yellow-400/60" :style="{ left: warnPct + '%' }" />
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-gray-400">0s</span>
+          <span class="text-yellow-500 font-medium">{{ warnThreshold }}s</span>
+          <span class="text-red-500 font-medium">{{ timeoutThreshold }}s</span>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{{ t('connectivityTest.events') }}</div>
+        <div
+          ref="eventsLogRef"
+          class="h-44 overflow-y-auto rounded-xl bg-gray-950/5 dark:bg-black/20 border border-gray-200 dark:border-dark-700 p-3 font-mono text-xs"
+        >
+          <div v-for="(event, i) in events" :key="i" class="flex gap-2 leading-5" :class="event.color">
+            <span class="shrink-0 text-gray-400 tabular-nums w-14 text-right">{{ event.time }}</span>
+            <span class="break-all">{{ event.msg }}</span>
+          </div>
+          <div v-if="events.length === 0" class="text-gray-400 italic py-1">{{ t('connectivityTest.noEvents') }}</div>
+        </div>
+      </div>
+      <div v-if="streamedText">
+        <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{{ t('connectivityTest.streamPreview') }}</div>
+        <div
+          ref="streamPreviewRef"
+          class="h-40 overflow-y-auto rounded-xl bg-gray-950/5 dark:bg-black/20 border border-gray-200 dark:border-dark-700 p-3 text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words leading-relaxed"
+        >{{ streamedText }}</div>
+      </div>
+    </div>
+
+    <!-- Final Result Card -->
+    <div v-if="testResult && !isRunning">
+      <div class="card p-5 border-l-4" :class="testResult.success ? 'border-l-green-500' : 'border-l-red-500'">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 shrink-0">
+            <div v-if="testResult.success" class="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+              <svg class="h-4 w-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            </div>
+            <div v-else class="flex h-8 w-8 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+              <svg class="h-4 w-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+            </div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-base" :class="testResult.success ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'">
+              {{ testResult.success ? t('connectivityTest.testPassed') : t('connectivityTest.testFailed') }}
+            </p>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ testResult.summary }}</p>
+            <div v-if="testResult.diagnosis" class="mt-3 rounded-lg bg-gray-50 dark:bg-dark-800 border border-gray-200 dark:border-dark-700 p-3">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">{{ t('connectivityTest.diagnosis') }}</p>
+              <p class="text-sm text-gray-700 dark:text-gray-300">{{ testResult.diagnosis }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -306,7 +575,11 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Select from '@/components/common/Select.vue'
 import { keysAPI } from '@/api/keys'
+import { usersAPI as adminUsersAPI } from '@/api/admin/users'
 import type { ApiKey } from '@/types'
+
+const props = defineProps<{ adminUserId?: number }>()
+const adminUserId = computed(() => props.adminUserId)
 
 const { t, locale } = useI18n()
 
@@ -482,8 +755,15 @@ function onApiKeySelectChange(val: string | number | boolean | null) {
 
 onMounted(async () => {
   try {
-    const res = await keysAPI.list(1, 100)
-    apiKeys.value = res.items || []
+    let keys: ApiKey[] = []
+    if (props.adminUserId) {
+      const res = await adminUsersAPI.getUserApiKeys(props.adminUserId)
+      keys = res.items || []
+    } else {
+      const res = await keysAPI.list(1, 100)
+      keys = res.items || []
+    }
+    apiKeys.value = keys
     if (apiKeys.value.length > 0) {
       // 使用排序后第一个（名称倒序最大的）
       const sorted = [...apiKeys.value].sort((a, b) => b.name.localeCompare(a.name))
