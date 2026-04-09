@@ -14,6 +14,7 @@ type anthropicWebSearchResult struct {
 
 type pendingAnthropicWebSearchResult struct {
 	ToolUseID string
+	ItemID    string
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +475,7 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	if len(results) == 0 {
 		state.PendingWebSearchResults = append(state.PendingWebSearchResults, pendingAnthropicWebSearchResult{
 			ToolUseID: toolUseID,
+			ItemID:    evt.Item.ID,
 		})
 		return events
 	}
@@ -513,13 +515,17 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	}
 
 	if len(state.PendingWebSearchResults) > 0 {
+		actionResultsByToolUseID := map[string][]anthropicWebSearchResult{}
+		if evt.Response != nil {
+			actionResultsByToolUseID = responsesWebSearchResultsByToolUseIDFromOutput(evt.Response.Output)
+		}
 		annotationResults := []anthropicWebSearchResult{}
 		if evt.Response != nil && responsesCountWebSearchCalls(evt.Response.Output) == 1 {
 			annotationResults = responsesWebSearchResultsFromAnnotations(evt.Response.Output)
 		}
 		for i, pending := range state.PendingWebSearchResults {
-			results := []anthropicWebSearchResult{}
-			if i == 0 && len(annotationResults) > 0 {
+			results := actionResultsByToolUseID[pending.ToolUseID]
+			if len(results) == 0 && i == 0 && len(annotationResults) > 0 {
 				results = annotationResults
 			}
 			events = append(events, emitAnthropicWebSearchResultBlock(state, pending.ToolUseID, results)...)
@@ -652,4 +658,19 @@ func responsesWebSearchResultsFromAnnotations(output []ResponsesOutput) []anthro
 		return []anthropicWebSearchResult{}
 	}
 	return results
+}
+
+func responsesWebSearchResultsByToolUseIDFromOutput(output []ResponsesOutput) map[string][]anthropicWebSearchResult {
+	resultsByID := make(map[string][]anthropicWebSearchResult)
+	for _, item := range output {
+		if item.Type != "web_search_call" || item.ID == "" {
+			continue
+		}
+		results := responsesWebSearchResultsFromAction(item.Action)
+		if len(results) == 0 {
+			continue
+		}
+		resultsByID["srvtoolu_"+item.ID] = results
+	}
+	return resultsByID
 }
