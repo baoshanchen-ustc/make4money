@@ -624,6 +624,53 @@ func (s *GroupRepoSuite) TestGetAccountCount_Empty() {
 	s.Require().Zero(count)
 }
 
+func (s *GroupRepoSuite) TestListWithFilters_GroupRateLimitedCountOnlyIncludesSchedulableAccounts() {
+	group := &service.Group{
+		Name:             "g-rate-limit-scope",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	insertAccount := func(name string, schedulable bool, rateLimited bool) int64 {
+		var id int64
+		query := "INSERT INTO accounts (name, platform, type, status, schedulable) VALUES ($1, $2, $3, $4, $5) RETURNING id"
+		args := []any{name, service.PlatformAnthropic, service.AccountTypeOAuth, service.StatusActive, schedulable}
+		if rateLimited {
+			query = "INSERT INTO accounts (name, platform, type, status, schedulable, rate_limit_reset_at) VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '10 minutes') RETURNING id"
+		}
+		s.Require().NoError(scanSingleRow(s.ctx, s.tx, query, args, &id))
+		return id
+	}
+
+	availableID := insertAccount("available", true, false)
+	schedulableLimitedID := insertAccount("schedulable-limited", true, true)
+	unschedulableLimitedID := insertAccount("unschedulable-limited", false, true)
+
+	for idx, accountID := range []int64{availableID, schedulableLimitedID, unschedulableLimitedID} {
+		_, err := s.tx.ExecContext(
+			s.ctx,
+			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+			accountID,
+			group.ID,
+			idx+1,
+		)
+		s.Require().NoError(err)
+	}
+
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", group.Name, nil)
+	s.Require().NoError(err)
+	s.Require().Len(groups, 1)
+
+	got := groups[0]
+	s.Require().Equal(int64(3), got.AccountCount)
+	s.Require().Equal(int64(2), got.ActiveAccountCount)
+	s.Require().Equal(int64(1), got.RateLimitedAccountCount)
+}
+
 // --- DeleteAccountGroupsByGroupID ---
 
 func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
