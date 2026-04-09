@@ -346,6 +346,7 @@ func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesConten
 	// Separate text (for function_call_output) from images (for user message).
 	var textParts []string
 	var imageParts []ResponsesContentPart
+	var toolReferences []anthropicToolReferenceEnvelope
 	for _, ib := range inner {
 		switch ib.Type {
 		case "text":
@@ -356,6 +357,21 @@ func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesConten
 			if uri := anthropicImageToDataURI(ib.Source); uri != "" {
 				imageParts = append(imageParts, ResponsesContentPart{Type: "input_image", ImageURL: uri})
 			}
+		case "tool_reference":
+			if ib.ToolName != "" {
+				toolReferences = append(toolReferences, anthropicToolReferenceEnvelope{ToolName: ib.ToolName})
+			}
+		}
+	}
+
+	if len(toolReferences) > 0 {
+		payload, err := json.Marshal(anthropicToolResultEnvelope{
+			Format:         anthropicToolResultEnvelopeFormat,
+			Text:           textParts,
+			ToolReferences: toolReferences,
+		})
+		if err == nil {
+			return string(payload), imageParts
 		}
 	}
 
@@ -410,11 +426,56 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 		out = append(out, ResponsesTool{
 			Type:        "function",
 			Name:        t.Name,
-			Description: t.Description,
+			Description: augmentClaudeToolDescription(t.Name, t.Description),
 			Parameters:  normalizeToolParameters(t.InputSchema),
 		})
 	}
 	return out
+}
+
+func augmentClaudeToolDescription(name, description string) string {
+	guidance := claudeToolRoutingGuidance(name)
+	description = strings.TrimSpace(description)
+	if guidance == "" {
+		return description
+	}
+	if description == "" {
+		return guidance
+	}
+	if strings.Contains(description, guidance) {
+		return description
+	}
+	return guidance + "\n\n" + description
+}
+
+func claudeToolRoutingGuidance(name string) string {
+	switch canonicalClaudeToolName(name) {
+	case "read":
+		return "Use this when you need the exact contents of a known file in the local workspace."
+	case "grep":
+		return "Use this when you need to search the local workspace for specific text, symbols, or patterns."
+	case "glob":
+		return "Use this when you need to discover files by path pattern, extension, or directory structure."
+	case "edit":
+		return "Use this when you need to modify an existing local file in place."
+	case "write":
+		return "Use this when you need to create a file or replace the full contents of a local file."
+	case "bash":
+		return "Use this when you need shell commands, build steps, tests, or repository state that Read, Grep, and Glob cannot provide."
+	case "websearch":
+		return "Use this when you need current external information across multiple sources."
+	case "webfetch":
+		return "Use this when a specific URL is already known and the exact page contents matter."
+	case "toolsearch":
+		return "Use this when you need to discover which local or MCP-backed tool should be called next."
+	case "askuserquestion":
+		return "Use this when a missing human decision would materially change the work."
+	case "teamcreate":
+		return "Use this when the task can be split into independent sub-agents that should work in parallel."
+	case "sendmessage":
+		return "Use this when you need to coordinate with an existing teammate or return structured status to the team lead."
+	}
+	return ""
 }
 
 // normalizeToolParameters ensures the tool parameter schema is valid for

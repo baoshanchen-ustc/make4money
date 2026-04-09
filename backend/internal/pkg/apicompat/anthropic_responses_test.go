@@ -111,6 +111,75 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	assert.Equal(t, "Sunny, 72°F", items[3].Output)
 }
 
+func TestAnthropicToResponses_PreservesToolReferenceInToolResult(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 256,
+		Messages: []AnthropicMessage{
+			{
+				Role:    "user",
+				Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_123","content":[{"type":"text","text":"candidate tools"},{"type":"tool_reference","tool_name":"WebFetch"},{"type":"tool_reference","tool_name":"AskUserQuestion"}]}]`),
+			},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	require.Equal(t, "function_call_output", items[0].Type)
+	require.Contains(t, items[0].Output, "tool_reference")
+	require.Contains(t, items[0].Output, "WebFetch")
+	require.Contains(t, items[0].Output, "AskUserQuestion")
+}
+
+func TestAnthropicToResponses_ToolResultWithoutToolReferenceStaysPlain(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 256,
+		Messages: []AnthropicMessage{
+			{
+				Role:    "user",
+				Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_123","content":[{"type":"text","text":"plain output"}]}]`),
+			},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	require.Equal(t, "function_call_output", items[0].Type)
+	require.Equal(t, "plain output", items[0].Output)
+}
+
+func TestAnthropicToResponses_ToolResultWithToolReferenceStillEmitsImages(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 256,
+		Messages: []AnthropicMessage{
+			{
+				Role:    "user",
+				Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_123","content":[{"type":"text","text":"candidate tools"},{"type":"tool_reference","tool_name":"WebFetch"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}]}]`),
+			},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 2)
+	require.Equal(t, "function_call_output", items[0].Type)
+	require.Equal(t, "user", items[1].Role)
+	require.Contains(t, string(items[1].Content), "input_image")
+}
+
 func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
@@ -211,6 +280,59 @@ func TestResponsesToAnthropic_ToolUse(t *testing.T) {
 	assert.Equal(t, "get_weather", anth.Content[1].Name)
 }
 
+func TestClaudeToolNameMapFromTools_PreservesOriginalNames(t *testing.T) {
+	tools := []ResponsesTool{
+		{Type: "function", Name: "Get_Weather"},
+	}
+
+	nameMap := ClaudeToolNameMapFromTools(tools)
+	require.Equal(t, "Get_Weather", nameMap["get_weather"])
+}
+
+func TestMapClaudeToolName_RestoresOriginalName(t *testing.T) {
+	tools := []ResponsesTool{
+		{Type: "function", Name: "__AskUserQuestion"},
+	}
+	nameMap := ClaudeToolNameMapFromTools(tools)
+
+	mapped := MapClaudeToolName("askuserquestion", nameMap)
+	require.Equal(t, "__AskUserQuestion", mapped)
+}
+
+func TestClaudeToolNameMapFromTools_FirstCanonicalNameWins(t *testing.T) {
+	tools := []ResponsesTool{
+		{Type: "function", Name: "__WebFetch"},
+		{Type: "function", Name: "webfetch"},
+	}
+
+	nameMap := ClaudeToolNameMapFromTools(tools)
+	require.Equal(t, "__WebFetch", nameMap["webfetch"])
+}
+
+func TestResponsesToAnthropic_RestoresMappedToolName(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_tool_restore",
+		Model:  "gpt-5.4",
+		Status: "completed",
+		Output: []ResponsesOutput{
+			{
+				Type:      "function_call",
+				CallID:    "call_1",
+				Name:      "webfetch",
+				Arguments: `{"url":"https://example.com"}`,
+			},
+		},
+	}
+	toolNameMap := ClaudeToolNameMapFromTools([]ResponsesTool{
+		{Type: "function", Name: "__WebFetch"},
+	})
+
+	anth := ResponsesToAnthropicWithToolNameMap(resp, "claude-opus-4-6", toolNameMap)
+	require.Len(t, anth.Content, 1)
+	assert.Equal(t, "tool_use", anth.Content[0].Type)
+	assert.Equal(t, "__WebFetch", anth.Content[0].Name)
+}
+
 func TestResponsesToAnthropic_Reasoning(t *testing.T) {
 	resp := &ResponsesResponse{
 		ID:     "resp_789",
@@ -238,6 +360,96 @@ func TestResponsesToAnthropic_Reasoning(t *testing.T) {
 	assert.Equal(t, "Thinking about the answer...", anth.Content[0].Thinking)
 	assert.Equal(t, "text", anth.Content[1].Type)
 	assert.Equal(t, "42", anth.Content[1].Text)
+}
+
+func TestResponsesToAnthropic_WebSearchUsesMessageAnnotations(t *testing.T) {
+	var resp ResponsesResponse
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "resp_ws_annotations",
+		"model": "gpt-5.4",
+		"status": "completed",
+		"output": [
+			{
+				"type": "web_search_call",
+				"id": "ws_1",
+				"status": "completed",
+				"action": {
+					"type": "search",
+					"query": "latest news"
+				}
+			},
+			{
+				"type": "message",
+				"id": "msg_1",
+				"status": "completed",
+				"role": "assistant",
+				"content": [
+					{
+						"type": "output_text",
+						"text": "Result with citation",
+						"annotations": [
+							{
+								"type": "url_citation",
+								"url": "https://example.com/a",
+								"title": "Example A",
+								"start_index": 0,
+								"end_index": 6
+							}
+						]
+					}
+				]
+			}
+		]
+	}`), &resp))
+
+	anth := ResponsesToAnthropic(&resp, "claude-opus-4-6")
+	require.Len(t, anth.Content, 3)
+	assert.Equal(t, "server_tool_use", anth.Content[0].Type)
+	assert.Equal(t, "web_search_tool_result", anth.Content[1].Type)
+
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(anth.Content[1].Content, &results))
+	require.NotEmpty(t, results)
+	assert.Equal(t, "web_search_result", results[0]["type"])
+	assert.Equal(t, "https://example.com/a", results[0]["url"])
+	assert.Equal(t, "Example A", results[0]["title"])
+}
+
+func TestResponsesToAnthropic_WebSearchUsesActionSources(t *testing.T) {
+	var resp ResponsesResponse
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "resp_ws_sources",
+		"model": "gpt-5.4",
+		"status": "completed",
+		"output": [
+			{
+				"type": "web_search_call",
+				"id": "ws_1",
+				"status": "completed",
+				"action": {
+					"type": "search",
+					"query": "latest news",
+					"sources": [
+						{
+							"type": "url",
+							"url": "https://example.com/source",
+							"title": "Example Source"
+						}
+					]
+				}
+			}
+		]
+	}`), &resp))
+
+	anth := ResponsesToAnthropic(&resp, "claude-opus-4-6")
+	require.Len(t, anth.Content, 2)
+	assert.Equal(t, "web_search_tool_result", anth.Content[1].Type)
+
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(anth.Content[1].Content, &results))
+	require.NotEmpty(t, results)
+	assert.Equal(t, "https://example.com/source", results[0]["url"])
+	assert.Equal(t, "Example Source", results[0]["title"])
 }
 
 func TestResponsesToAnthropic_Incomplete(t *testing.T) {
@@ -272,6 +484,41 @@ func TestResponsesToAnthropic_EmptyOutput(t *testing.T) {
 	require.Len(t, anth.Content, 1)
 	assert.Equal(t, "text", anth.Content[0].Type)
 	assert.Equal(t, "", anth.Content[0].Text)
+}
+
+func TestResponsesToAnthropicRequest_RestoresToolReferenceEnvelope(t *testing.T) {
+	input, err := json.Marshal([]ResponsesInputItem{
+		{
+			Type:   "function_call_output",
+			CallID: "call_123",
+			Output: `{"sub2api_format":"anthropic_tool_result_v1","text":["candidate tools"],"tool_references":[{"tool_name":"WebFetch"},{"tool_name":"AskUserQuestion"}]}`,
+		},
+	})
+	require.NoError(t, err)
+
+	req := &ResponsesRequest{
+		Model: "gpt-5.4",
+		Input: input,
+	}
+
+	out, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 1)
+
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(out.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 1)
+	require.Equal(t, "tool_result", blocks[0].Type)
+
+	var inner []map[string]any
+	require.NoError(t, json.Unmarshal(blocks[0].Content, &inner))
+	require.Len(t, inner, 3)
+	require.Equal(t, "text", inner[0]["type"])
+	require.Equal(t, "candidate tools", inner[0]["text"])
+	require.Equal(t, "tool_reference", inner[1]["type"])
+	require.Equal(t, "WebFetch", inner[1]["tool_name"])
+	require.Equal(t, "tool_reference", inner[2]["type"])
+	require.Equal(t, "AskUserQuestion", inner[2]["tool_name"])
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +640,27 @@ func TestStreamingToolCall(t *testing.T) {
 	assert.Equal(t, "tool_use", events[0].Delta.StopReason)
 }
 
+func TestStreamingToolCall_RestoresMappedToolName(t *testing.T) {
+	state := NewResponsesEventToAnthropicStateWithToolNameMap(
+		ClaudeToolNameMapFromTools([]ResponsesTool{
+			{Type: "function", Name: "__WebFetch"},
+		}),
+	)
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_2", Model: "gpt-5.2"},
+	}, state)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_1", Name: "webfetch"},
+	}, state)
+	require.Len(t, events, 1)
+	assert.Equal(t, "__WebFetch", events[0].ContentBlock.Name)
+}
+
 func TestStreamingReasoning(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 
@@ -428,6 +696,130 @@ func TestStreamingReasoning(t *testing.T) {
 	}, state)
 	require.Len(t, events, 1)
 	assert.Equal(t, "content_block_stop", events[0].Type)
+}
+
+func TestStreamingWebSearchUsesActionSources(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_ws_stream", Model: "gpt-5.4"},
+	}, state)
+
+	var evt ResponsesStreamEvent
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type": "response.output_item.done",
+		"output_index": 0,
+		"item": {
+			"type": "web_search_call",
+			"id": "ws_1",
+			"status": "completed",
+			"action": {
+				"type": "search",
+				"query": "latest news",
+				"sources": [
+					{
+						"type": "url",
+						"url": "https://example.com/source",
+						"title": "Example Source"
+					}
+				]
+			}
+		}
+	}`), &evt))
+
+	events := ResponsesEventToAnthropicEvents(&evt, state)
+	require.Len(t, events, 4)
+	assert.Equal(t, "server_tool_use", events[0].ContentBlock.Type)
+	assert.Equal(t, "web_search_tool_result", events[2].ContentBlock.Type)
+
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(events[2].ContentBlock.Content, &results))
+	require.NotEmpty(t, results)
+	assert.Equal(t, "https://example.com/source", results[0]["url"])
+	assert.Equal(t, "Example Source", results[0]["title"])
+}
+
+func TestStreamingWebSearchUsesCompletionAnnotationsWhenSourcesMissing(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_ws_stream_annotations", Model: "gpt-5.4"},
+	}, state)
+
+	var doneEvt ResponsesStreamEvent
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type": "response.output_item.done",
+		"output_index": 0,
+		"item": {
+			"type": "web_search_call",
+			"id": "ws_1",
+			"status": "completed",
+			"action": {
+				"type": "search",
+				"query": "latest news"
+			}
+		}
+	}`), &doneEvt))
+
+	events := ResponsesEventToAnthropicEvents(&doneEvt, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "server_tool_use", events[0].ContentBlock.Type)
+
+	var completedEvt ResponsesStreamEvent
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type": "response.completed",
+		"response": {
+			"id": "resp_ws_stream_annotations",
+			"model": "gpt-5.4",
+			"status": "completed",
+			"output": [
+				{
+					"type": "web_search_call",
+					"id": "ws_1",
+					"status": "completed",
+					"action": {
+						"type": "search",
+						"query": "latest news"
+					}
+				},
+				{
+					"type": "message",
+					"id": "msg_1",
+					"status": "completed",
+					"role": "assistant",
+					"content": [
+						{
+							"type": "output_text",
+							"text": "Result with citation",
+							"annotations": [
+								{
+									"type": "url_citation",
+									"url": "https://example.com/a",
+									"title": "Example A",
+									"start_index": 0,
+									"end_index": 6
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	}`), &completedEvt))
+
+	events = ResponsesEventToAnthropicEvents(&completedEvt, state)
+	require.Len(t, events, 4)
+	assert.Equal(t, "web_search_tool_result", events[0].ContentBlock.Type)
+
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(events[0].ContentBlock.Content, &results))
+	require.NotEmpty(t, results)
+	assert.Equal(t, "https://example.com/a", results[0]["url"])
+	assert.Equal(t, "Example A", results[0]["title"])
+	assert.Equal(t, "message_delta", events[2].Type)
+	assert.Equal(t, "message_stop", events[3].Type)
 }
 
 func TestStreamingIncomplete(t *testing.T) {
@@ -838,6 +1230,68 @@ func TestAnthropicToResponses_ToolChoiceSpecific(t *testing.T) {
 	fn, ok := tc["function"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "get_weather", fn["name"])
+}
+
+func TestAnthropicToResponses_AugmentsKnownClaudeToolDescriptions(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 1024,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Tools: []AnthropicTool{
+			{Name: "Read", InputSchema: json.RawMessage(`{"type":"object","properties":{"file_path":{"type":"string"}}}`)},
+			{Name: "WebSearch", InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 2)
+
+	assert.Equal(t, "Read", resp.Tools[0].Name)
+	assert.Contains(t, resp.Tools[0].Description, "Use this when you need the exact contents of a known file")
+
+	assert.Equal(t, "WebSearch", resp.Tools[1].Name)
+	assert.Contains(t, resp.Tools[1].Description, "Use this when you need current external information across multiple sources")
+}
+
+func TestAnthropicToResponses_PreservesOriginalDescriptionWhenAugmentingKnownClaudeTool(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 1024,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Tools: []AnthropicTool{
+			{
+				Name:        "Bash",
+				Description: "Run a shell command inside the working directory.",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+			},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	assert.Contains(t, resp.Tools[0].Description, "Use this when you need shell commands")
+	assert.Contains(t, resp.Tools[0].Description, "Run a shell command inside the working directory.")
+}
+
+func TestAnthropicToResponses_AugmentsPrefixedClaudeToolDescriptions(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 1024,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Tools: []AnthropicTool{
+			{Name: "__WebFetch", InputSchema: json.RawMessage(`{"type":"object","properties":{"url":{"type":"string"}}}`)},
+			{Name: "_AskUserQuestion", InputSchema: json.RawMessage(`{"type":"object","properties":{"question":{"type":"string"}}}`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 2)
+
+	assert.Contains(t, resp.Tools[0].Description, "Use this when a specific URL is already known and the exact page contents matter.")
+	assert.Contains(t, resp.Tools[1].Description, "Use this when a missing human decision would materially change the work.")
 }
 
 // ---------------------------------------------------------------------------

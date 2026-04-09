@@ -318,6 +318,31 @@ func TestApplyCodexOAuthTransform_CodexCLI_SuppliesDefaultWhenEmpty(t *testing.T
 	require.True(t, result.Modified)
 }
 
+func TestApplyCodexOAuthTransform_CodexCLI_SuppliesEmbeddedDefaultInstructions(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+	}
+
+	applyCodexOAuthTransform(reqBody, true, false)
+
+	instructions, ok := reqBody["instructions"].(string)
+	require.True(t, ok)
+	require.Contains(t, instructions, "<tool_routing_contract>")
+	require.Contains(t, instructions, "Prefer local `Read`, `Grep`, and `Glob` before `Bash`")
+	require.Contains(t, instructions, "<research_contract>")
+}
+
+func TestApplyCodexOAuthTransform_PreservesCallerInstructions(t *testing.T) {
+	reqBody := map[string]any{
+		"model":        "gpt-5.1",
+		"instructions": "caller instructions",
+	}
+
+	applyCodexOAuthTransform(reqBody, true, false)
+
+	require.Equal(t, "caller instructions", reqBody["instructions"])
+}
+
 func TestApplyCodexOAuthTransform_NonCodexCLI_PreservesExistingInstructions(t *testing.T) {
 	// 非 Codex CLI 场景：已有 instructions 时保留客户端的值，不再覆盖
 
@@ -331,6 +356,18 @@ func TestApplyCodexOAuthTransform_NonCodexCLI_PreservesExistingInstructions(t *t
 	instructions, ok := reqBody["instructions"].(string)
 	require.True(t, ok)
 	require.Equal(t, "old instructions", instructions)
+}
+
+func TestApplyCodexOAuthTransform_NonCodexCLI_DoesNotSupplyDefaultInstructionsWhenEmpty(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+
+	_, hasInstructions := reqBody["instructions"]
+	require.False(t, hasInstructions)
+	require.True(t, result.Modified)
 }
 
 func TestApplyCodexOAuthTransform_StringInputConvertedToArray(t *testing.T) {
