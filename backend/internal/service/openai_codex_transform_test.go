@@ -327,9 +327,18 @@ func TestApplyCodexOAuthTransform_CodexCLI_SuppliesEmbeddedDefaultInstructions(t
 
 	instructions, ok := reqBody["instructions"].(string)
 	require.True(t, ok)
+	require.Contains(t, instructions, "<communication_contract>")
+	require.Contains(t, instructions, "<explanation_contract>")
+	require.Contains(t, instructions, "<troubleshooting_contract>")
+	require.Contains(t, instructions, "Use natural, easy-to-follow language")
+	require.Contains(t, instructions, "Prefer short paragraphs by default")
+	require.Contains(t, instructions, "Explain things the way a capable teammate would in chat")
+	require.Contains(t, instructions, "start with the likely diagnosis")
 	require.Contains(t, instructions, "<tool_routing_contract>")
 	require.Contains(t, instructions, "Prefer local `Read`, `Grep`, and `Glob` before `Bash`")
 	require.Contains(t, instructions, "<research_contract>")
+	require.Contains(t, instructions, "Do not invoke agent, explore, or team-style delegation")
+	require.Contains(t, instructions, "Do not assume a default team exists")
 }
 
 func TestApplyCodexOAuthTransform_PreservesCallerInstructions(t *testing.T) {
