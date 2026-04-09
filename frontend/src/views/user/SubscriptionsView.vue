@@ -46,6 +46,9 @@
                 </h3>
                 <p class="text-xs text-gray-500 dark:text-dark-400">
                   {{ subscription.group?.description || '' }}
+                  <span v-if="subscription.package_count > 1" class="ml-1">
+                    · {{ t('userSubscriptions.packageCount', { count: subscription.package_count }) }}
+                  </span>
                 </p>
               </div>
             </div>
@@ -91,7 +94,7 @@
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
                   ${{ (subscription.daily_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.daily_limit_usd.toFixed(2)
+                    getScaledLimit(subscription.group.daily_limit_usd, subscription.package_count).toFixed(2)
                   }}
                 </span>
               </div>
@@ -101,13 +104,13 @@
                   :class="
                     getProgressBarClass(
                       subscription.daily_usage_usd,
-                      subscription.group.daily_limit_usd
+                      getScaledLimit(subscription.group.daily_limit_usd, subscription.package_count)
                     )
                   "
                   :style="{
                     width: getProgressWidth(
                       subscription.daily_usage_usd,
-                      subscription.group.daily_limit_usd
+                      getScaledLimit(subscription.group.daily_limit_usd, subscription.package_count)
                     )
                   }"
                 ></div>
@@ -132,7 +135,7 @@
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
                   ${{ (subscription.weekly_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.weekly_limit_usd.toFixed(2)
+                    getScaledLimit(subscription.group.weekly_limit_usd, subscription.package_count).toFixed(2)
                   }}
                 </span>
               </div>
@@ -142,13 +145,13 @@
                   :class="
                     getProgressBarClass(
                       subscription.weekly_usage_usd,
-                      subscription.group.weekly_limit_usd
+                      getScaledLimit(subscription.group.weekly_limit_usd, subscription.package_count)
                     )
                   "
                   :style="{
                     width: getProgressWidth(
                       subscription.weekly_usage_usd,
-                      subscription.group.weekly_limit_usd
+                      getScaledLimit(subscription.group.weekly_limit_usd, subscription.package_count)
                     )
                   }"
                 ></div>
@@ -173,7 +176,7 @@
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
                   ${{ (subscription.monthly_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.monthly_limit_usd.toFixed(2)
+                    getScaledLimit(subscription.group.monthly_limit_usd, subscription.package_count).toFixed(2)
                   }}
                 </span>
               </div>
@@ -183,13 +186,13 @@
                   :class="
                     getProgressBarClass(
                       subscription.monthly_usage_usd,
-                      subscription.group.monthly_limit_usd
+                      getScaledLimit(subscription.group.monthly_limit_usd, subscription.package_count)
                     )
                   "
                   :style="{
                     width: getProgressWidth(
                       subscription.monthly_usage_usd,
-                      subscription.group.monthly_limit_usd
+                      getScaledLimit(subscription.group.monthly_limit_usd, subscription.package_count)
                     )
                   }"
                 ></div>
@@ -266,6 +269,12 @@ function getProgressWidth(used: number | undefined, limit: number | null | undef
   if (!limit || limit === 0) return '0%'
   const percentage = Math.min(((used || 0) / limit) * 100, 100)
   return `${percentage}%`
+}
+
+function getScaledLimit(limit: number | null | undefined, packageCount: number | undefined): number {
+  if (!limit) return 0
+  const multiplier = packageCount && packageCount > 0 ? packageCount : 1
+  return limit * multiplier
 }
 
 function getProgressBarClass(used: number | undefined, limit: number | null | undefined): string {

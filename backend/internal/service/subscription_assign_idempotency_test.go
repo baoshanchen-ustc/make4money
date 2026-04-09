@@ -101,6 +101,9 @@ func (userSubRepoNoop) ExistsByUserIDAndGroupID(context.Context, int64, int64) (
 func (userSubRepoNoop) ExtendExpiry(context.Context, int64, time.Time) error {
 	panic("unexpected ExtendExpiry call")
 }
+func (userSubRepoNoop) UpdatePackageCount(context.Context, int64, int) error {
+	panic("unexpected UpdatePackageCount call")
+}
 func (userSubRepoNoop) UpdateStatus(context.Context, int64, string) error {
 	panic("unexpected UpdateStatus call")
 }
@@ -197,6 +200,15 @@ func (s *subscriptionUserSubRepoStub) GetByID(_ context.Context, id int64) (*Use
 	}
 	cp := *sub
 	return &cp, nil
+}
+
+func (s *subscriptionUserSubRepoStub) UpdatePackageCount(_ context.Context, subscriptionID int64, packageCount int) error {
+	sub := s.byID[subscriptionID]
+	if sub == nil {
+		return ErrSubscriptionNotFound
+	}
+	sub.PackageCount = packageCount
+	return nil
 }
 
 func TestAssignSubscriptionReuseWhenSemanticsMatch(t *testing.T) {

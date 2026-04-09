@@ -164,6 +164,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
 		SubscriptionType:                g.SubscriptionType,
+		AllowPackageStack:               g.AllowPackageStack,
 		DailyLimitUSD:                   g.DailyLimitUSD,
 		WeeklyLimitUSD:                  g.WeeklyLimitUSD,
 		MonthlyLimitUSD:                 g.MonthlyLimitUSD,
@@ -513,6 +514,70 @@ func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 	return out
 }
 
+func CheckInHistoryItemFromService(item *service.UserCheckIn) *CheckInHistoryItem {
+	if item == nil {
+		return nil
+	}
+	return &CheckInHistoryItem{
+		ID:           item.ID,
+		CheckInDate:  item.CheckInDate,
+		CheckedInAt:  item.CreatedAt,
+		RewardType:   service.CheckInRewardTypeBalance,
+		RewardAmount: item.RewardAmount,
+	}
+}
+
+func CheckInHistoryItemsFromService(items []service.UserCheckIn) []CheckInHistoryItem {
+	out := make([]CheckInHistoryItem, 0, len(items))
+	for i := range items {
+		if converted := CheckInHistoryItemFromService(&items[i]); converted != nil {
+			out = append(out, *converted)
+		}
+	}
+	return out
+}
+
+func CheckInStatusFromService(status *service.CheckInStatus) *CheckInStatus {
+	if status == nil {
+		return nil
+	}
+	return &CheckInStatus{
+		Enabled:         status.Enabled,
+		RewardType:      status.RewardType,
+		RewardAmount:    status.RewardAmount,
+		Timezone:        status.Timezone,
+		HistoryVisible:  status.HistoryVisible,
+		CheckedInToday:  status.CheckedInToday,
+		CurrentStreak:   status.CurrentStreak,
+		TotalCheckIns:   status.TotalCheckIns,
+		StreakBroken:    status.StreakBroken,
+		CheckInDate:     status.CheckInDate,
+		LastCheckInDate: status.LastCheckInDate,
+		LastCheckInAt:   status.LastCheckInAt,
+		NextAvailableAt: status.NextAvailableAt,
+	}
+}
+
+func CheckInResultFromService(result *service.CheckInResult) *CheckInResult {
+	if result == nil {
+		return nil
+	}
+	return &CheckInResult{
+		CheckedIn:        result.CheckedIn,
+		AlreadyCheckedIn: result.AlreadyCheckedIn,
+		CheckInDate:      result.CheckInDate,
+		CheckedInAt:      result.CheckedInAt,
+		CurrentStreak:    result.CurrentStreak,
+		TotalCheckIns:    result.TotalCheckIns,
+		StreakBroken:     result.StreakBroken,
+		Reward: CheckInReward{
+			Type:       result.Reward.Type,
+			Amount:     result.Reward.Amount,
+			NewBalance: result.Reward.NewBalance,
+		},
+	}
+}
+
 // AccountSummaryFromService returns a minimal AccountSummary for usage log display.
 // Only includes ID and Name - no sensitive fields like Credentials, Proxy, etc.
 func AccountSummaryFromService(a *service.Account) *AccountSummary {
@@ -689,6 +754,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		StartsAt:           sub.StartsAt,
 		ExpiresAt:          sub.ExpiresAt,
 		Status:             sub.Status,
+		PackageCount:       sub.PackageCount,
 		DailyWindowStart:   sub.DailyWindowStart,
 		WeeklyWindowStart:  sub.WeeklyWindowStart,
 		MonthlyWindowStart: sub.MonthlyWindowStart,

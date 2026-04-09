@@ -195,13 +195,18 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 	if existingSub != nil {
 		now := time.Now()
 		var newExpiresAt time.Time
+		newPackageCount := existingSub.EffectivePackageCount()
 
 		if existingSub.ExpiresAt.After(now) {
 			// 未过期：从当前过期时间累加
 			newExpiresAt = existingSub.ExpiresAt.AddDate(0, 0, validityDays)
+			if group.AllowPackageStack {
+				newPackageCount++
+			}
 		} else {
 			// 已过期：从当前时间开始计算
 			newExpiresAt = now.AddDate(0, 0, validityDays)
+			newPackageCount = 1
 		}
 
 		// 确保不超过最大过期时间
@@ -220,6 +225,10 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		if err := s.userSubRepo.ExtendExpiry(txCtx, existingSub.ID, newExpiresAt); err != nil {
 			_ = tx.Rollback()
 			return nil, false, fmt.Errorf("extend subscription: %w", err)
+		}
+		if err := s.userSubRepo.UpdatePackageCount(txCtx, existingSub.ID, newPackageCount); err != nil {
+			_ = tx.Rollback()
+			return nil, false, fmt.Errorf("update subscription package count: %w", err)
 		}
 
 		// 如果订阅已过期或被暂停，恢复为active状态
@@ -301,15 +310,16 @@ func (s *SubscriptionService) createSubscription(ctx context.Context, input *Ass
 	}
 
 	sub := &UserSubscription{
-		UserID:     input.UserID,
-		GroupID:    input.GroupID,
-		StartsAt:   now,
-		ExpiresAt:  expiresAt,
-		Status:     SubscriptionStatusActive,
-		AssignedAt: now,
-		Notes:      input.Notes,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		UserID:       input.UserID,
+		GroupID:      input.GroupID,
+		StartsAt:     now,
+		ExpiresAt:    expiresAt,
+		Status:       SubscriptionStatusActive,
+		PackageCount: 1,
+		AssignedAt:   now,
+		Notes:        input.Notes,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	// 只有当 AssignedBy > 0 时才设置（0 表示系统分配，如兑换码）
 	if input.AssignedBy > 0 {
@@ -942,8 +952,7 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 	}
 
 	// 日进度
-	if group.HasDailyLimit() && sub.DailyWindowStart != nil {
-		limit := *group.DailyLimitUSD
+	if limit, ok := sub.EffectiveDailyLimit(group); ok && sub.DailyWindowStart != nil {
 		resetsAt := sub.DailyWindowStart.Add(24 * time.Hour)
 		progress.Daily = &UsageWindowProgress{
 			LimitUSD:        limit,
@@ -966,8 +975,7 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 	}
 
 	// 周进度
-	if group.HasWeeklyLimit() && sub.WeeklyWindowStart != nil {
-		limit := *group.WeeklyLimitUSD
+	if limit, ok := sub.EffectiveWeeklyLimit(group); ok && sub.WeeklyWindowStart != nil {
 		resetsAt := sub.WeeklyWindowStart.Add(7 * 24 * time.Hour)
 		progress.Weekly = &UsageWindowProgress{
 			LimitUSD:        limit,
@@ -990,8 +998,7 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 	}
 
 	// 月进度
-	if group.HasMonthlyLimit() && sub.MonthlyWindowStart != nil {
-		limit := *group.MonthlyLimitUSD
+	if limit, ok := sub.EffectiveMonthlyLimit(group); ok && sub.MonthlyWindowStart != nil {
 		resetsAt := sub.MonthlyWindowStart.Add(30 * 24 * time.Hour)
 		progress.Monthly = &UsageWindowProgress{
 			LimitUSD:        limit,

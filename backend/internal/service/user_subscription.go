@@ -7,9 +7,10 @@ type UserSubscription struct {
 	UserID  int64
 	GroupID int64
 
-	StartsAt  time.Time
-	ExpiresAt time.Time
-	Status    string
+	StartsAt     time.Time
+	ExpiresAt    time.Time
+	Status       string
+	PackageCount int
 
 	DailyWindowStart   *time.Time
 	WeeklyWindowStart  *time.Time
@@ -48,6 +49,34 @@ func (s *UserSubscription) DaysRemaining() int {
 
 func (s *UserSubscription) IsWindowActivated() bool {
 	return s.DailyWindowStart != nil || s.WeeklyWindowStart != nil || s.MonthlyWindowStart != nil
+}
+
+func (s *UserSubscription) EffectivePackageCount() int {
+	if s.PackageCount <= 0 {
+		return 1
+	}
+	return s.PackageCount
+}
+
+func (s *UserSubscription) EffectiveDailyLimit(group *Group) (float64, bool) {
+	if group == nil || group.DailyLimitUSD == nil || *group.DailyLimitUSD <= 0 {
+		return 0, false
+	}
+	return *group.DailyLimitUSD * float64(s.EffectivePackageCount()), true
+}
+
+func (s *UserSubscription) EffectiveWeeklyLimit(group *Group) (float64, bool) {
+	if group == nil || group.WeeklyLimitUSD == nil || *group.WeeklyLimitUSD <= 0 {
+		return 0, false
+	}
+	return *group.WeeklyLimitUSD * float64(s.EffectivePackageCount()), true
+}
+
+func (s *UserSubscription) EffectiveMonthlyLimit(group *Group) (float64, bool) {
+	if group == nil || group.MonthlyLimitUSD == nil || *group.MonthlyLimitUSD <= 0 {
+		return 0, false
+	}
+	return *group.MonthlyLimitUSD * float64(s.EffectivePackageCount()), true
 }
 
 func (s *UserSubscription) NeedsDailyReset() bool {
@@ -96,24 +125,27 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 }
 
 func (s *UserSubscription) CheckDailyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasDailyLimit() {
+	limit, ok := s.EffectiveDailyLimit(group)
+	if !ok {
 		return true
 	}
-	return s.DailyUsageUSD+additionalCost <= *group.DailyLimitUSD
+	return s.DailyUsageUSD+additionalCost <= limit
 }
 
 func (s *UserSubscription) CheckWeeklyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasWeeklyLimit() {
+	limit, ok := s.EffectiveWeeklyLimit(group)
+	if !ok {
 		return true
 	}
-	return s.WeeklyUsageUSD+additionalCost <= *group.WeeklyLimitUSD
+	return s.WeeklyUsageUSD+additionalCost <= limit
 }
 
 func (s *UserSubscription) CheckMonthlyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasMonthlyLimit() {
+	limit, ok := s.EffectiveMonthlyLimit(group)
+	if !ok {
 		return true
 	}
-	return s.MonthlyUsageUSD+additionalCost <= *group.MonthlyLimitUSD
+	return s.MonthlyUsageUSD+additionalCost <= limit
 }
 
 func (s *UserSubscription) CheckAllLimits(group *Group, additionalCost float64) (daily, weekly, monthly bool) {

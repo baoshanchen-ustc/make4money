@@ -33,6 +33,7 @@ type AdminService interface {
 	// codeType is optional - pass empty string to return all types.
 	// Also returns totalRecharged (sum of all positive balance top-ups).
 	GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]RedeemCode, int64, float64, error)
+	GetUserCheckInHistory(ctx context.Context, userID int64, page, pageSize int) ([]UserCheckIn, int64, float64, *time.Time, error)
 
 	// Group management
 	ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error)
@@ -128,15 +129,16 @@ type UpdateUserInput struct {
 }
 
 type CreateGroupInput struct {
-	Name             string
-	Description      string
-	Platform         string
-	RateMultiplier   float64
-	IsExclusive      bool
-	SubscriptionType string   // standard/subscription
-	DailyLimitUSD    *float64 // 日限额 (USD)
-	WeeklyLimitUSD   *float64 // 周限额 (USD)
-	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	Name              string
+	Description       string
+	Platform          string
+	RateMultiplier    float64
+	IsExclusive       bool
+	SubscriptionType  string // standard/subscription
+	AllowPackageStack bool
+	DailyLimitUSD     *float64 // 日限额 (USD)
+	WeeklyLimitUSD    *float64 // 周限额 (USD)
+	MonthlyLimitUSD   *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	ImagePrice1K    *float64
 	ImagePrice2K    *float64
@@ -161,16 +163,17 @@ type CreateGroupInput struct {
 }
 
 type UpdateGroupInput struct {
-	Name             string
-	Description      string
-	Platform         string
-	RateMultiplier   *float64 // 使用指针以支持设置为0
-	IsExclusive      *bool
-	Status           string
-	SubscriptionType string   // standard/subscription
-	DailyLimitUSD    *float64 // 日限额 (USD)
-	WeeklyLimitUSD   *float64 // 周限额 (USD)
-	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	Name              string
+	Description       string
+	Platform          string
+	RateMultiplier    *float64 // 使用指针以支持设置为0
+	IsExclusive       *bool
+	Status            string
+	SubscriptionType  string // standard/subscription
+	AllowPackageStack *bool
+	DailyLimitUSD     *float64 // 日限额 (USD)
+	WeeklyLimitUSD    *float64 // 周限额 (USD)
+	MonthlyLimitUSD   *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	ImagePrice1K    *float64
 	ImagePrice2K    *float64
@@ -427,6 +430,7 @@ type adminServiceImpl struct {
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
+	checkInRepo          CheckInRepository
 	userGroupRateRepo    UserGroupRateRepository
 	billingCacheService  *BillingCacheService
 	proxyProber          ProxyExitInfoProber
@@ -451,6 +455,7 @@ func NewAdminService(
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
+	checkInRepo CheckInRepository,
 	userGroupRateRepo UserGroupRateRepository,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
@@ -469,6 +474,7 @@ func NewAdminService(
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,
+		checkInRepo:          checkInRepo,
 		userGroupRateRepo:    userGroupRateRepo,
 		billingCacheService:  billingCacheService,
 		proxyProber:          proxyProber,
@@ -786,6 +792,27 @@ func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int
 	return codes, result.Total, totalRecharged, nil
 }
 
+func (s *adminServiceImpl) GetUserCheckInHistory(ctx context.Context, userID int64, page, pageSize int) ([]UserCheckIn, int64, float64, *time.Time, error) {
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	items, result, err := s.checkInRepo.ListByUserPaginated(ctx, userID, params)
+	if err != nil {
+		return nil, 0, 0, nil, err
+	}
+	totalReward, err := s.checkInRepo.SumRewardByUser(ctx, userID)
+	if err != nil {
+		return nil, 0, 0, nil, err
+	}
+	latest, found, err := s.checkInRepo.GetLatestByUser(ctx, userID)
+	if err != nil {
+		return nil, 0, 0, nil, err
+	}
+	var lastCheckInAt *time.Time
+	if found {
+		lastCheckInAt = &latest.CreatedAt
+	}
+	return items, result.Total, totalReward, lastCheckInAt, nil
+}
+
 // Group management implementations
 func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
@@ -892,6 +919,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
+		AllowPackageStack:               input.AllowPackageStack,
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
@@ -1050,6 +1078,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive
+	}
+	if input.AllowPackageStack != nil {
+		group.AllowPackageStack = *input.AllowPackageStack
 	}
 	if input.Status != "" {
 		group.Status = input.Status

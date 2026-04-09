@@ -16,6 +16,7 @@ type Group struct {
 	Hydrated       bool // indicates the group was loaded from a trusted repository source
 
 	SubscriptionType    string
+	AllowPackageStack   bool
 	DailyLimitUSD       *float64
 	WeeklyLimitUSD      *float64
 	MonthlyLimitUSD     *float64

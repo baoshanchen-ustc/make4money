@@ -1266,6 +1266,75 @@
             </div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.checkIn.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.checkIn.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.checkIn.enabled') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.checkIn.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.checkin_enabled" />
+            </div>
+
+            <div class="grid grid-cols-1 gap-6 border-t border-gray-100 pt-4 md:grid-cols-2 dark:border-dark-700">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.checkIn.rewardBalance') }}
+                </label>
+                <input
+                  v-model.number="form.checkin_reward_balance"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.checkIn.rewardBalanceHint') }}
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.checkIn.timezone') }}
+                </label>
+                <input
+                  v-model.trim="form.checkin_timezone"
+                  type="text"
+                  class="input font-mono text-sm"
+                  placeholder="UTC"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.checkIn.timezoneHint') }}
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.checkIn.historyVisible') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.checkIn.historyVisibleHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.checkin_history_visible" />
+            </div>
+          </div>
+        </div>
         </div><!-- /Tab: Users -->
 
         <!-- Tab: Gateway — Claude Code, Scheduling -->
@@ -2207,6 +2276,10 @@ const form = reactive<SettingsForm>({
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
+  checkin_enabled: false,
+  checkin_reward_balance: 0,
+  checkin_timezone: 'Asia/Shanghai',
+  checkin_history_visible: true,
   site_name: 'Sub2API',
   site_logo: '',
   site_subtitle: 'Subscription to API Conversion Platform',
@@ -2408,6 +2481,8 @@ async function loadSettings() {
   try {
     const settings = await adminAPI.settings.getSettings()
     Object.assign(form, settings)
+    form.checkin_reward_balance = Math.max(0, Number(form.checkin_reward_balance || 0))
+    form.checkin_timezone = (form.checkin_timezone || 'Asia/Shanghai').trim() || 'Asia/Shanghai'
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
       ? settings.default_subscriptions
@@ -2518,6 +2593,9 @@ async function saveSettings() {
       form.purchase_subscription_url = ''
     }
 
+    form.checkin_reward_balance = Math.max(0, Number(form.checkin_reward_balance || 0))
+    form.checkin_timezone = (form.checkin_timezone || 'Asia/Shanghai').trim() || 'Asia/Shanghai'
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
@@ -2531,6 +2609,10 @@ async function saveSettings() {
       default_balance: form.default_balance,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
+      checkin_enabled: form.checkin_enabled,
+      checkin_reward_balance: form.checkin_reward_balance,
+      checkin_timezone: form.checkin_timezone,
+      checkin_history_visible: form.checkin_history_visible,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,

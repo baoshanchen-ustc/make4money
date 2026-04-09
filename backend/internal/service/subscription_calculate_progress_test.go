@@ -229,3 +229,29 @@ func TestCalculateProgress_ResetsInSeconds_NotNegative(t *testing.T) {
 	assert.GreaterOrEqual(t, progress.Daily.ResetsInSeconds, int64(0),
 		"ResetsInSeconds 不应为负数")
 }
+
+func TestCalculateProgress_UsesStackedPackageLimits(t *testing.T) {
+	svc := newTestSubscriptionService()
+	now := time.Now()
+
+	sub := &UserSubscription{
+		ID:                 1,
+		ExpiresAt:          now.Add(10 * 24 * time.Hour),
+		PackageCount:       2,
+		MonthlyUsageUSD:    300.0,
+		MonthlyWindowStart: ptrTime(now.Add(-10 * 24 * time.Hour)),
+	}
+	group := &Group{
+		Name:              "Stacked",
+		AllowPackageStack: true,
+		MonthlyLimitUSD:   ptrFloat64(300.0),
+	}
+
+	progress := svc.calculateProgress(sub, group)
+
+	require.NotNil(t, progress.Monthly, "叠加套餐时 Monthly 不应为 nil")
+	assert.Equal(t, 600.0, progress.Monthly.LimitUSD)
+	assert.Equal(t, 300.0, progress.Monthly.UsedUSD)
+	assert.Equal(t, 300.0, progress.Monthly.RemainingUSD)
+	assert.Equal(t, 50.0, progress.Monthly.Percentage)
+}

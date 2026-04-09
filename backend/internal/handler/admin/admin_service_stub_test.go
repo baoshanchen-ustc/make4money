@@ -414,6 +414,20 @@ func (s *stubAdminService) GetUserBalanceHistory(ctx context.Context, userID int
 	return s.redeems, int64(len(s.redeems)), 100.0, nil
 }
 
+func (s *stubAdminService) GetUserCheckInHistory(ctx context.Context, userID int64, page, pageSize int) ([]service.UserCheckIn, int64, float64, *time.Time, error) {
+	last := time.Date(2026, 4, 9, 3, 0, 0, 0, time.UTC)
+	items := []service.UserCheckIn{
+		{
+			ID:           1,
+			UserID:       userID,
+			CheckInDate:  "2026-04-09",
+			RewardAmount: 1.25,
+			CreatedAt:    last,
+		},
+	}
+	return items, int64(len(items)), 1.25, &last, nil
+}
+
 func (s *stubAdminService) UpdateGroupSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
 	return nil
 }

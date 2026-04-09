@@ -95,6 +95,11 @@ func Status(v string) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldStatus, v))
 }
 
+// PackageCount applies equality check predicate on the "package_count" field. It's identical to PackageCountEQ.
+func PackageCount(v int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldPackageCount, v))
+}
+
 // DailyWindowStart applies equality check predicate on the "daily_window_start" field. It's identical to DailyWindowStartEQ.
 func DailyWindowStart(v time.Time) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldDailyWindowStart, v))
@@ -453,6 +458,46 @@ func StatusEqualFold(v string) predicate.UserSubscription {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// PackageCountEQ applies the EQ predicate on the "package_count" field.
+func PackageCountEQ(v int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldPackageCount, v))
+}
+
+// PackageCountNEQ applies the NEQ predicate on the "package_count" field.
+func PackageCountNEQ(v int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldPackageCount, v))
+}
+
+// PackageCountIn applies the In predicate on the "package_count" field.
+func PackageCountIn(vs ...int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldPackageCount, vs...))
+}
+
+// PackageCountNotIn applies the NotIn predicate on the "package_count" field.
+func PackageCountNotIn(vs ...int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldPackageCount, vs...))
+}
+
+// PackageCountGT applies the GT predicate on the "package_count" field.
+func PackageCountGT(v int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldPackageCount, v))
+}
+
+// PackageCountGTE applies the GTE predicate on the "package_count" field.
+func PackageCountGTE(v int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldPackageCount, v))
+}
+
+// PackageCountLT applies the LT predicate on the "package_count" field.
+func PackageCountLT(v int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldPackageCount, v))
+}
+
+// PackageCountLTE applies the LTE predicate on the "package_count" field.
+func PackageCountLTE(v int) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldPackageCount, v))
 }
 
 // DailyWindowStartEQ applies the EQ predicate on the "daily_window_start" field.

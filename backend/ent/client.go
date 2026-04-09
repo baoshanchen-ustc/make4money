@@ -36,6 +36,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/usercheckin"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 
 	stdsql "database/sql"
@@ -88,6 +89,8 @@ type Client struct {
 	UserAttributeDefinition *UserAttributeDefinitionClient
 	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
 	UserAttributeValue *UserAttributeValueClient
+	// UserCheckIn is the client for interacting with the UserCheckIn builders.
+	UserCheckIn *UserCheckInClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
 }
@@ -122,6 +125,7 @@ func (c *Client) init() {
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
+	c.UserCheckIn = NewUserCheckInClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
 }
 
@@ -236,6 +240,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition: NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:      NewUserAttributeValueClient(cfg),
+		UserCheckIn:             NewUserCheckInClient(cfg),
 		UserSubscription:        NewUserSubscriptionClient(cfg),
 	}, nil
 }
@@ -277,6 +282,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition: NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:      NewUserAttributeValueClient(cfg),
+		UserCheckIn:             NewUserCheckInClient(cfg),
 		UserSubscription:        NewUserSubscriptionClient(cfg),
 	}, nil
 }
@@ -312,7 +318,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.UserCheckIn, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -327,7 +333,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.UserCheckIn, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -378,6 +384,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserAttributeDefinition.mutate(ctx, m)
 	case *UserAttributeValueMutation:
 		return c.UserAttributeValue.mutate(ctx, m)
+	case *UserCheckInMutation:
+		return c.UserCheckIn.mutate(ctx, m)
 	case *UserSubscriptionMutation:
 		return c.UserSubscription.mutate(ctx, m)
 	default:
@@ -3353,6 +3361,22 @@ func (c *UserClient) QueryPromoCodeUsages(_m *User) *PromoCodeUsageQuery {
 	return query
 }
 
+// QueryCheckins queries the checkins edge of a User.
+func (c *UserClient) QueryCheckins(_m *User) *UserCheckInQuery {
+	query := (&UserCheckInClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(usercheckin.Table, usercheckin.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CheckinsTable, user.CheckinsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUserAllowedGroups queries the user_allowed_groups edge of a User.
 func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 	query := (&UserAllowedGroupClient{config: c.config}).Query()
@@ -3828,6 +3852,155 @@ func (c *UserAttributeValueClient) mutate(ctx context.Context, m *UserAttributeV
 	}
 }
 
+// UserCheckInClient is a client for the UserCheckIn schema.
+type UserCheckInClient struct {
+	config
+}
+
+// NewUserCheckInClient returns a client for the UserCheckIn from the given config.
+func NewUserCheckInClient(c config) *UserCheckInClient {
+	return &UserCheckInClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `usercheckin.Hooks(f(g(h())))`.
+func (c *UserCheckInClient) Use(hooks ...Hook) {
+	c.hooks.UserCheckIn = append(c.hooks.UserCheckIn, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `usercheckin.Intercept(f(g(h())))`.
+func (c *UserCheckInClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserCheckIn = append(c.inters.UserCheckIn, interceptors...)
+}
+
+// Create returns a builder for creating a UserCheckIn entity.
+func (c *UserCheckInClient) Create() *UserCheckInCreate {
+	mutation := newUserCheckInMutation(c.config, OpCreate)
+	return &UserCheckInCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserCheckIn entities.
+func (c *UserCheckInClient) CreateBulk(builders ...*UserCheckInCreate) *UserCheckInCreateBulk {
+	return &UserCheckInCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserCheckInClient) MapCreateBulk(slice any, setFunc func(*UserCheckInCreate, int)) *UserCheckInCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserCheckInCreateBulk{err: fmt.Errorf("calling to UserCheckInClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserCheckInCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserCheckInCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserCheckIn.
+func (c *UserCheckInClient) Update() *UserCheckInUpdate {
+	mutation := newUserCheckInMutation(c.config, OpUpdate)
+	return &UserCheckInUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserCheckInClient) UpdateOne(_m *UserCheckIn) *UserCheckInUpdateOne {
+	mutation := newUserCheckInMutation(c.config, OpUpdateOne, withUserCheckIn(_m))
+	return &UserCheckInUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserCheckInClient) UpdateOneID(id int64) *UserCheckInUpdateOne {
+	mutation := newUserCheckInMutation(c.config, OpUpdateOne, withUserCheckInID(id))
+	return &UserCheckInUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserCheckIn.
+func (c *UserCheckInClient) Delete() *UserCheckInDelete {
+	mutation := newUserCheckInMutation(c.config, OpDelete)
+	return &UserCheckInDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserCheckInClient) DeleteOne(_m *UserCheckIn) *UserCheckInDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserCheckInClient) DeleteOneID(id int64) *UserCheckInDeleteOne {
+	builder := c.Delete().Where(usercheckin.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserCheckInDeleteOne{builder}
+}
+
+// Query returns a query builder for UserCheckIn.
+func (c *UserCheckInClient) Query() *UserCheckInQuery {
+	return &UserCheckInQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserCheckIn},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserCheckIn entity by its id.
+func (c *UserCheckInClient) Get(ctx context.Context, id int64) (*UserCheckIn, error) {
+	return c.Query().Where(usercheckin.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserCheckInClient) GetX(ctx context.Context, id int64) *UserCheckIn {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a UserCheckIn.
+func (c *UserCheckInClient) QueryUser(_m *UserCheckIn) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(usercheckin.Table, usercheckin.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, usercheckin.UserTable, usercheckin.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UserCheckInClient) Hooks() []Hook {
+	return c.hooks.UserCheckIn
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserCheckInClient) Interceptors() []Interceptor {
+	return c.inters.UserCheckIn
+}
+
+func (c *UserCheckInClient) mutate(ctx context.Context, m *UserCheckInMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserCheckInCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserCheckInUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserCheckInUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserCheckInDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserCheckIn mutation op: %q", m.Op())
+	}
+}
+
 // UserSubscriptionClient is a client for the UserSubscription schema.
 type UserSubscriptionClient struct {
 	config
@@ -4034,14 +4207,14 @@ type (
 		ErrorPassthroughRule, Group, IdempotencyRecord, PromoCode, PromoCodeUsage,
 		Proxy, RedeemCode, SecuritySecret, Setting, TLSFingerprintProfile,
 		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Hook
+		UserAttributeValue, UserCheckIn, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PromoCode, PromoCodeUsage,
 		Proxy, RedeemCode, SecuritySecret, Setting, TLSFingerprintProfile,
 		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Interceptor
+		UserAttributeValue, UserCheckIn, UserSubscription []ent.Interceptor
 	}
 )
 

@@ -108,6 +108,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
+		CheckInEnabled:                       settings.CheckInEnabled,
+		CheckInRewardBalance:                 settings.CheckInRewardBalance,
+		CheckInTimezone:                      settings.CheckInTimezone,
+		CheckInHistoryVisible:                settings.CheckInHistoryVisible,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -177,6 +181,10 @@ type UpdateSettingsRequest struct {
 	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	CheckInEnabled              *bool                 `json:"checkin_enabled"`
+	CheckInRewardBalance        *float64              `json:"checkin_reward_balance"`
+	CheckInTimezone             *string               `json:"checkin_timezone"`
+	CheckInHistoryVisible       *bool                 `json:"checkin_history_visible"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -332,6 +340,22 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	purchaseURL := previousSettings.PurchaseSubscriptionURL
 	if req.PurchaseSubscriptionURL != nil {
 		purchaseURL = strings.TrimSpace(*req.PurchaseSubscriptionURL)
+	}
+	checkInEnabled := previousSettings.CheckInEnabled
+	if req.CheckInEnabled != nil {
+		checkInEnabled = *req.CheckInEnabled
+	}
+	checkInRewardBalance := previousSettings.CheckInRewardBalance
+	if req.CheckInRewardBalance != nil {
+		checkInRewardBalance = *req.CheckInRewardBalance
+	}
+	checkInTimezone := previousSettings.CheckInTimezone
+	if req.CheckInTimezone != nil {
+		checkInTimezone = strings.TrimSpace(*req.CheckInTimezone)
+	}
+	checkInHistoryVisible := previousSettings.CheckInHistoryVisible
+	if req.CheckInHistoryVisible != nil {
+		checkInHistoryVisible = *req.CheckInHistoryVisible
 	}
 
 	// - 启用时要求 URL 合法且非空
@@ -566,6 +590,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PurchaseSubscriptionURL:          purchaseURL,
 		CustomMenuItems:                  customMenuJSON,
 		CustomEndpoints:                  customEndpointsJSON,
+		CheckInEnabled:                   checkInEnabled,
+		CheckInRewardBalance:             checkInRewardBalance,
+		CheckInTimezone:                  checkInTimezone,
+		CheckInHistoryVisible:            checkInHistoryVisible,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
 		DefaultSubscriptions:             defaultSubscriptions,
@@ -681,6 +709,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
+		CheckInEnabled:                       updatedSettings.CheckInEnabled,
+		CheckInRewardBalance:                 updatedSettings.CheckInRewardBalance,
+		CheckInTimezone:                      updatedSettings.CheckInTimezone,
+		CheckInHistoryVisible:                updatedSettings.CheckInHistoryVisible,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,

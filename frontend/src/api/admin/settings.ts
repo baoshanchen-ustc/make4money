@@ -29,6 +29,10 @@ export interface SystemSettings {
   default_balance: number
   default_concurrency: number
   default_subscriptions: DefaultSubscriptionSetting[]
+  checkin_enabled: boolean
+  checkin_reward_balance: number
+  checkin_timezone: string
+  checkin_history_visible: boolean
   // OEM settings
   site_name: string
   site_logo: string
@@ -104,6 +108,10 @@ export interface UpdateSettingsRequest {
   default_balance?: number
   default_concurrency?: number
   default_subscriptions?: DefaultSubscriptionSetting[]
+  checkin_enabled?: boolean
+  checkin_reward_balance?: number
+  checkin_timezone?: string
+  checkin_history_visible?: boolean
   site_name?: string
   site_logo?: string
   site_subtitle?: string

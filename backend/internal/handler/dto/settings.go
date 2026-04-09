@@ -63,6 +63,10 @@ type SystemSettings struct {
 	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
+	CheckInEnabled              bool             `json:"checkin_enabled"`
+	CheckInRewardBalance        float64          `json:"checkin_reward_balance"`
+	CheckInTimezone             string           `json:"checkin_timezone"`
+	CheckInHistoryVisible       bool             `json:"checkin_history_visible"`
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`
@@ -127,6 +131,10 @@ type PublicSettings struct {
 	PurchaseSubscriptionURL          string           `json:"purchase_subscription_url"`
 	CustomMenuItems                  []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints                  []CustomEndpoint `json:"custom_endpoints"`
+	CheckInEnabled                   bool             `json:"checkin_enabled"`
+	CheckInRewardBalance             float64          `json:"checkin_reward_balance"`
+	CheckInTimezone                  string           `json:"checkin_timezone"`
+	CheckInHistoryVisible            bool             `json:"checkin_history_visible"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
 	Version                          string           `json:"version"`

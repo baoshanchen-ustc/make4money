@@ -365,6 +365,39 @@ func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
 	})
 }
 
+// GetCheckInHistory handles getting user's check-in reward history.
+// GET /api/v1/admin/users/:id/check-in-history
+func (h *UserHandler) GetCheckInHistory(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	items, total, totalReward, lastCheckInAt, err := h.adminService.GetUserCheckInHistory(c.Request.Context(), userID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := dto.CheckInHistoryItemsFromService(items)
+	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	if pages < 1 {
+		pages = 1
+	}
+	response.Success(c, gin.H{
+		"items":            out,
+		"total":            total,
+		"page":             page,
+		"page_size":        pageSize,
+		"pages":            pages,
+		"total_reward":     totalReward,
+		"total_checkins":   total,
+		"last_check_in_at": lastCheckInAt,
+	})
+}
+
 // ReplaceGroupRequest represents the request to replace a user's exclusive group
 type ReplaceGroupRequest struct {
 	OldGroupID int64 `json:"old_group_id" binding:"required,gt=0"`

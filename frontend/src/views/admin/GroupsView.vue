@@ -144,6 +144,12 @@
                 <span v-else class="text-gray-400 dark:text-gray-500">{{
                   t('admin.groups.subscription.noLimit')
                 }}</span>
+                <span
+                  v-if="row.allow_package_stack"
+                  class="ml-2 inline-flex items-center rounded bg-primary-100 px-1.5 py-0.5 font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                >
+                  {{ t('admin.groups.subscription.allowPackageStackShort') }}
+                </span>
               </div>
             </div>
           </template>
@@ -473,6 +479,17 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+            </div>
+            <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.groups.subscription.allowPackageStack') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.groups.subscription.allowPackageStackHint') }}
+                </p>
+              </div>
+              <Toggle v-model="createForm.allow_package_stack" />
             </div>
           </div>
         </div>
@@ -1190,6 +1207,17 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+            </div>
+            <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.groups.subscription.allowPackageStack') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.groups.subscription.allowPackageStackHint') }}
+                </p>
+              </div>
+              <Toggle v-model="editForm.allow_package_stack" />
             </div>
           </div>
         </div>
@@ -2005,6 +2033,7 @@ const createForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: 'standard' as SubscriptionType,
+  allow_package_stack: false,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -2246,6 +2275,7 @@ const editForm = reactive({
   is_exclusive: false,
   status: 'active' as 'active' | 'inactive',
   subscription_type: 'standard' as SubscriptionType,
+  allow_package_stack: false,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -2393,6 +2423,7 @@ const closeCreateModal = () => {
   createForm.rate_multiplier = 1.0
   createForm.is_exclusive = false
   createForm.subscription_type = 'standard'
+  createForm.allow_package_stack = false
   createForm.daily_limit_usd = null
   createForm.weekly_limit_usd = null
   createForm.monthly_limit_usd = null
@@ -2439,6 +2470,7 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createForm,
+      allow_package_stack: createForm.allow_package_stack,
       daily_limit_usd: normalizeOptionalLimit(createForm.daily_limit_usd as number | string | null),
       weekly_limit_usd: normalizeOptionalLimit(createForm.weekly_limit_usd as number | string | null),
       monthly_limit_usd: normalizeOptionalLimit(createForm.monthly_limit_usd as number | string | null),
@@ -2475,6 +2507,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.is_exclusive = group.is_exclusive
   editForm.status = group.status
   editForm.subscription_type = group.subscription_type || 'standard'
+  editForm.allow_package_stack = group.allow_package_stack ?? false
   editForm.daily_limit_usd = group.daily_limit_usd
   editForm.weekly_limit_usd = group.weekly_limit_usd
   editForm.monthly_limit_usd = group.monthly_limit_usd
@@ -2520,6 +2553,7 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      allow_package_stack: editForm.allow_package_stack,
       daily_limit_usd: normalizeOptionalLimit(editForm.daily_limit_usd as number | string | null),
       weekly_limit_usd: normalizeOptionalLimit(editForm.weekly_limit_usd as number | string | null),
       monthly_limit_usd: normalizeOptionalLimit(editForm.monthly_limit_usd as number | string | null),

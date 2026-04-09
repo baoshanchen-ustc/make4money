@@ -105,6 +105,11 @@ func SubscriptionType(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldSubscriptionType, v))
 }
 
+// AllowPackageStack applies equality check predicate on the "allow_package_stack" field. It's identical to AllowPackageStackEQ.
+func AllowPackageStack(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowPackageStack, v))
+}
+
 // DailyLimitUsd applies equality check predicate on the "daily_limit_usd" field. It's identical to DailyLimitUsdEQ.
 func DailyLimitUsd(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDailyLimitUsd, v))
@@ -703,6 +708,16 @@ func SubscriptionTypeEqualFold(v string) predicate.Group {
 // SubscriptionTypeContainsFold applies the ContainsFold predicate on the "subscription_type" field.
 func SubscriptionTypeContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldSubscriptionType, v))
+}
+
+// AllowPackageStackEQ applies the EQ predicate on the "allow_package_stack" field.
+func AllowPackageStackEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowPackageStack, v))
+}
+
+// AllowPackageStackNEQ applies the NEQ predicate on the "allow_package_stack" field.
+func AllowPackageStackNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAllowPackageStack, v))
 }
 
 // DailyLimitUsdEQ applies the EQ predicate on the "daily_limit_usd" field.

@@ -43,6 +43,10 @@ type SystemSettings struct {
 	PurchaseSubscriptionURL     string
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	CheckInEnabled              bool
+	CheckInRewardBalance        float64
+	CheckInTimezone             string
+	CheckInHistoryVisible       bool
 
 	DefaultConcurrency   int
 	DefaultBalance       float64
@@ -109,10 +113,21 @@ type PublicSettings struct {
 	PurchaseSubscriptionURL     string
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	CheckInEnabled              bool
+	CheckInRewardBalance        float64
+	CheckInTimezone             string
+	CheckInHistoryVisible       bool
 
 	LinuxDoOAuthEnabled bool
 	BackendModeEnabled  bool
 	Version             string
+}
+
+type CheckInSettings struct {
+	Enabled        bool
+	RewardBalance  float64
+	Timezone       string
+	HistoryVisible bool
 }
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）

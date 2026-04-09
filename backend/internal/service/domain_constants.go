@@ -118,6 +118,10 @@ const (
 	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）
 	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
+	SettingKeyCheckInEnabled              = "checkin_enabled"               // 是否启用每日签到
+	SettingKeyCheckInRewardBalance        = "checkin_reward_balance"        // 每日签到余额奖励
+	SettingKeyCheckInTimezone             = "checkin_timezone"              // 每日签到业务时区
+	SettingKeyCheckInHistoryVisible       = "checkin_history_visible"       // 用户侧是否展示签到历史
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"   // 新用户默认并发量

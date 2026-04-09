@@ -162,6 +162,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPurchaseSubscriptionURL,
 		SettingKeyCustomMenuItems,
 		SettingKeyCustomEndpoints,
+		SettingKeyCheckInEnabled,
+		SettingKeyCheckInRewardBalance,
+		SettingKeyCheckInTimezone,
+		SettingKeyCheckInHistoryVisible,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyBackendModeEnabled,
 	}
@@ -207,6 +211,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
+		CheckInEnabled:                   settings[SettingKeyCheckInEnabled] == "true",
+		CheckInRewardBalance:             maxFloat64(0, s.parseFloatOrDefault(settings[SettingKeyCheckInRewardBalance], 0)),
+		CheckInTimezone:                  s.getStringOrDefault(settings, SettingKeyCheckInTimezone, s.defaultTimezone()),
+		CheckInHistoryVisible:            !isFalseSettingValue(settings[SettingKeyCheckInHistoryVisible]),
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 	}, nil
@@ -254,6 +262,10 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PurchaseSubscriptionURL          string          `json:"purchase_subscription_url,omitempty"`
 		CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
 		CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
+		CheckInEnabled                   bool            `json:"checkin_enabled"`
+		CheckInRewardBalance             float64         `json:"checkin_reward_balance"`
+		CheckInTimezone                  string          `json:"checkin_timezone,omitempty"`
+		CheckInHistoryVisible            bool            `json:"checkin_history_visible"`
 		LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
 		BackendModeEnabled               bool            `json:"backend_mode_enabled"`
 		Version                          string          `json:"version,omitempty"`
@@ -279,6 +291,10 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PurchaseSubscriptionURL:          settings.PurchaseSubscriptionURL,
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
+		CheckInEnabled:                   settings.CheckInEnabled,
+		CheckInRewardBalance:             settings.CheckInRewardBalance,
+		CheckInTimezone:                  settings.CheckInTimezone,
+		CheckInHistoryVisible:            settings.CheckInHistoryVisible,
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		Version:                          s.version,
@@ -417,6 +433,19 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 		normalizedWhitelist = []string{}
 	}
 	settings.RegistrationEmailSuffixWhitelist = normalizedWhitelist
+	settings.CheckInTimezone = strings.TrimSpace(settings.CheckInTimezone)
+	if settings.CheckInTimezone == "" {
+		settings.CheckInTimezone = s.defaultTimezone()
+	}
+	if _, err := time.LoadLocation(settings.CheckInTimezone); err != nil {
+		return infraerrors.BadRequest("INVALID_CHECKIN_TIMEZONE", "check-in timezone must be a valid IANA timezone")
+	}
+	if settings.CheckInRewardBalance < 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_BALANCE", "check-in reward balance must be non-negative")
+	}
+	if settings.CheckInEnabled && settings.CheckInRewardBalance <= 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_BALANCE", "check-in reward balance must be greater than 0 when enabled")
+	}
 
 	updates := make(map[string]string)
 
@@ -473,6 +502,10 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
+	updates[SettingKeyCheckInEnabled] = strconv.FormatBool(settings.CheckInEnabled)
+	updates[SettingKeyCheckInRewardBalance] = strconv.FormatFloat(settings.CheckInRewardBalance, 'f', 8, 64)
+	updates[SettingKeyCheckInTimezone] = settings.CheckInTimezone
+	updates[SettingKeyCheckInHistoryVisible] = strconv.FormatBool(settings.CheckInHistoryVisible)
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -802,6 +835,30 @@ func (s *SettingService) GetDefaultSubscriptions(ctx context.Context) []DefaultS
 	return parseDefaultSubscriptions(value)
 }
 
+func (s *SettingService) GetCheckInSettings(ctx context.Context) (*CheckInSettings, error) {
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyCheckInEnabled,
+		SettingKeyCheckInRewardBalance,
+		SettingKeyCheckInTimezone,
+		SettingKeyCheckInHistoryVisible,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get check-in settings: %w", err)
+	}
+
+	timezoneName := s.getStringOrDefault(values, SettingKeyCheckInTimezone, s.defaultTimezone())
+	if _, loadErr := time.LoadLocation(timezoneName); loadErr != nil {
+		timezoneName = s.defaultTimezone()
+	}
+
+	return &CheckInSettings{
+		Enabled:        values[SettingKeyCheckInEnabled] == "true",
+		RewardBalance:  maxFloat64(0, s.parseFloatOrDefault(values[SettingKeyCheckInRewardBalance], 0)),
+		Timezone:       timezoneName,
+		HistoryVisible: !isFalseSettingValue(values[SettingKeyCheckInHistoryVisible]),
+	}, nil
+}
+
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	// 检查是否已有设置
@@ -826,6 +883,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyPurchaseSubscriptionURL:          "",
 		SettingKeyCustomMenuItems:                  "[]",
 		SettingKeyCustomEndpoints:                  "[]",
+		SettingKeyCheckInEnabled:                   "false",
+		SettingKeyCheckInRewardBalance:             "0",
+		SettingKeyCheckInTimezone:                  s.defaultTimezone(),
+		SettingKeyCheckInHistoryVisible:            "true",
 		SettingKeyDefaultConcurrency:               strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                   strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyDefaultSubscriptions:             "[]",
@@ -891,6 +952,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
+		CheckInEnabled:                   settings[SettingKeyCheckInEnabled] == "true",
+		CheckInRewardBalance:             maxFloat64(0, s.parseFloatOrDefault(settings[SettingKeyCheckInRewardBalance], 0)),
+		CheckInTimezone:                  s.getStringOrDefault(settings, SettingKeyCheckInTimezone, s.defaultTimezone()),
+		CheckInHistoryVisible:            !isFalseSettingValue(settings[SettingKeyCheckInHistoryVisible]),
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 	}
 
@@ -1042,6 +1107,31 @@ func (s *SettingService) getStringOrDefault(settings map[string]string, key, def
 		return value
 	}
 	return defaultValue
+}
+
+func (s *SettingService) parseFloatOrDefault(value string, defaultValue float64) float64 {
+	if strings.TrimSpace(value) == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
+func maxFloat64(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func (s *SettingService) defaultTimezone() string {
+	if s.cfg != nil && strings.TrimSpace(s.cfg.Timezone) != "" {
+		return strings.TrimSpace(s.cfg.Timezone)
+	}
+	return "Asia/Shanghai"
 }
 
 // IsTurnstileEnabled 检查是否启用 Turnstile 验证

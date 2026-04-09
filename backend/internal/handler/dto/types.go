@@ -72,10 +72,11 @@ type Group struct {
 	IsExclusive    bool    `json:"is_exclusive"`
 	Status         string  `json:"status"`
 
-	SubscriptionType string   `json:"subscription_type"`
-	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
+	SubscriptionType  string   `json:"subscription_type"`
+	AllowPackageStack bool     `json:"allow_package_stack"`
+	DailyLimitUSD     *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD    *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD   *float64 `json:"monthly_limit_usd"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	ImagePrice1K *float64 `json:"image_price_1k"`
@@ -324,6 +325,47 @@ type AdminRedeemCode struct {
 	Notes string `json:"notes"`
 }
 
+type CheckInHistoryItem struct {
+	ID           int64     `json:"id"`
+	CheckInDate  string    `json:"check_in_date"`
+	CheckedInAt  time.Time `json:"checked_in_at"`
+	RewardType   string    `json:"reward_type"`
+	RewardAmount float64   `json:"reward_amount"`
+}
+
+type CheckInReward struct {
+	Type       string  `json:"type"`
+	Amount     float64 `json:"amount"`
+	NewBalance float64 `json:"new_balance"`
+}
+
+type CheckInStatus struct {
+	Enabled         bool       `json:"enabled"`
+	RewardType      string     `json:"reward_type"`
+	RewardAmount    float64    `json:"reward_amount"`
+	Timezone        string     `json:"timezone"`
+	HistoryVisible  bool       `json:"history_visible"`
+	CheckedInToday  bool       `json:"checked_in_today"`
+	CurrentStreak   int        `json:"current_streak"`
+	TotalCheckIns   int64      `json:"total_checkins"`
+	StreakBroken    bool       `json:"streak_broken"`
+	CheckInDate     string     `json:"check_in_date"`
+	LastCheckInDate *string    `json:"last_check_in_date,omitempty"`
+	LastCheckInAt   *time.Time `json:"last_check_in_at,omitempty"`
+	NextAvailableAt *time.Time `json:"next_available_at,omitempty"`
+}
+
+type CheckInResult struct {
+	CheckedIn        bool          `json:"checked_in"`
+	AlreadyCheckedIn bool          `json:"already_checked_in"`
+	CheckInDate      string        `json:"check_in_date"`
+	CheckedInAt      time.Time     `json:"checked_in_at"`
+	CurrentStreak    int           `json:"current_streak"`
+	TotalCheckIns    int64         `json:"total_checkins"`
+	StreakBroken     bool          `json:"streak_broken"`
+	Reward           CheckInReward `json:"reward"`
+}
+
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
 type UsageLog struct {
 	ID        int64  `json:"id"`
@@ -462,9 +504,10 @@ type UserSubscription struct {
 	UserID  int64 `json:"user_id"`
 	GroupID int64 `json:"group_id"`
 
-	StartsAt  time.Time `json:"starts_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Status    string    `json:"status"`
+	StartsAt     time.Time `json:"starts_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	Status       string    `json:"status"`
+	PackageCount int       `json:"package_count"`
 
 	DailyWindowStart   *time.Time `json:"daily_window_start"`
 	WeeklyWindowStart  *time.Time `json:"weekly_window_start"`

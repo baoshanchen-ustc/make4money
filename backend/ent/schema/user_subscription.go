@@ -45,6 +45,8 @@ func (UserSubscription) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.SubscriptionStatusActive),
+		field.Int("package_count").
+			Default(1),
 
 		field.Time("daily_window_start").
 			Optional().

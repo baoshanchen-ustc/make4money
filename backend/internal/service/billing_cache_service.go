@@ -26,6 +26,7 @@ var (
 type subscriptionCacheData struct {
 	Status       string
 	ExpiresAt    time.Time
+	PackageCount int
 	DailyUsage   float64
 	WeeklyUsage  float64
 	MonthlyUsage float64
@@ -407,6 +408,7 @@ func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) 
 	return &subscriptionCacheData{
 		Status:       data.Status,
 		ExpiresAt:    data.ExpiresAt,
+		PackageCount: data.PackageCount,
 		DailyUsage:   data.DailyUsage,
 		WeeklyUsage:  data.WeeklyUsage,
 		MonthlyUsage: data.MonthlyUsage,
@@ -418,6 +420,7 @@ func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *S
 	return &SubscriptionCacheData{
 		Status:       data.Status,
 		ExpiresAt:    data.ExpiresAt,
+		PackageCount: data.PackageCount,
 		DailyUsage:   data.DailyUsage,
 		WeeklyUsage:  data.WeeklyUsage,
 		MonthlyUsage: data.MonthlyUsage,
@@ -435,6 +438,7 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 	return &subscriptionCacheData{
 		Status:       sub.Status,
 		ExpiresAt:    sub.ExpiresAt,
+		PackageCount: sub.EffectivePackageCount(),
 		DailyUsage:   sub.DailyUsageUSD,
 		WeeklyUsage:  sub.WeeklyUsageUSD,
 		MonthlyUsage: sub.MonthlyUsageUSD,
@@ -714,19 +718,34 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	}
 
 	// 检查限额（使用传入的Group限额配置）
-	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
+	dailyLimit := scaleLimit(group.DailyLimitUSD, subData.PackageCount)
+	if dailyLimit != nil && subData.DailyUsage >= *dailyLimit {
 		return ErrDailyLimitExceeded
 	}
 
-	if group.HasWeeklyLimit() && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
+	weeklyLimit := scaleLimit(group.WeeklyLimitUSD, subData.PackageCount)
+	if weeklyLimit != nil && subData.WeeklyUsage >= *weeklyLimit {
 		return ErrWeeklyLimitExceeded
 	}
 
-	if group.HasMonthlyLimit() && subData.MonthlyUsage >= *group.MonthlyLimitUSD {
+	monthlyLimit := scaleLimit(group.MonthlyLimitUSD, subData.PackageCount)
+	if monthlyLimit != nil && subData.MonthlyUsage >= *monthlyLimit {
 		return ErrMonthlyLimitExceeded
 	}
 
 	return nil
+}
+
+func scaleLimit(limit *float64, packageCount int) *float64 {
+	if limit == nil || *limit <= 0 {
+		return nil
+	}
+	multiplier := packageCount
+	if multiplier <= 0 {
+		multiplier = 1
+	}
+	scaled := *limit * float64(multiplier)
+	return &scaled
 }
 
 type billingCircuitBreakerState int

@@ -160,6 +160,20 @@ func (_c *GroupCreate) SetNillableSubscriptionType(v *string) *GroupCreate {
 	return _c
 }
 
+// SetAllowPackageStack sets the "allow_package_stack" field.
+func (_c *GroupCreate) SetAllowPackageStack(v bool) *GroupCreate {
+	_c.mutation.SetAllowPackageStack(v)
+	return _c
+}
+
+// SetNillableAllowPackageStack sets the "allow_package_stack" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowPackageStack(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowPackageStack(*v)
+	}
+	return _c
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (_c *GroupCreate) SetDailyLimitUsd(v float64) *GroupCreate {
 	_c.mutation.SetDailyLimitUsd(v)
@@ -571,6 +585,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultSubscriptionType
 		_c.mutation.SetSubscriptionType(v)
 	}
+	if _, ok := _c.mutation.AllowPackageStack(); !ok {
+		v := group.DefaultAllowPackageStack
+		_c.mutation.SetAllowPackageStack(v)
+	}
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
@@ -659,6 +677,9 @@ func (_c *GroupCreate) check() error {
 		if err := group.SubscriptionTypeValidator(v); err != nil {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.AllowPackageStack(); !ok {
+		return &ValidationError{Name: "allow_package_stack", err: errors.New(`ent: missing required field "Group.allow_package_stack"`)}
 	}
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)}
@@ -761,6 +782,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
 		_node.SubscriptionType = value
+	}
+	if value, ok := _c.mutation.AllowPackageStack(); ok {
+		_spec.SetField(group.FieldAllowPackageStack, field.TypeBool, value)
+		_node.AllowPackageStack = value
 	}
 	if value, ok := _c.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(group.FieldDailyLimitUsd, field.TypeFloat64, value)
@@ -1117,6 +1142,18 @@ func (u *GroupUpsert) SetSubscriptionType(v string) *GroupUpsert {
 // UpdateSubscriptionType sets the "subscription_type" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateSubscriptionType() *GroupUpsert {
 	u.SetExcluded(group.FieldSubscriptionType)
+	return u
+}
+
+// SetAllowPackageStack sets the "allow_package_stack" field.
+func (u *GroupUpsert) SetAllowPackageStack(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowPackageStack, v)
+	return u
+}
+
+// UpdateAllowPackageStack sets the "allow_package_stack" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowPackageStack() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowPackageStack)
 	return u
 }
 
@@ -1651,6 +1688,20 @@ func (u *GroupUpsertOne) SetSubscriptionType(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateSubscriptionType() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSubscriptionType()
+	})
+}
+
+// SetAllowPackageStack sets the "allow_package_stack" field.
+func (u *GroupUpsertOne) SetAllowPackageStack(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowPackageStack(v)
+	})
+}
+
+// UpdateAllowPackageStack sets the "allow_package_stack" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowPackageStack() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowPackageStack()
 	})
 }
 
@@ -2408,6 +2459,20 @@ func (u *GroupUpsertBulk) SetSubscriptionType(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateSubscriptionType() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSubscriptionType()
+	})
+}
+
+// SetAllowPackageStack sets the "allow_package_stack" field.
+func (u *GroupUpsertBulk) SetAllowPackageStack(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowPackageStack(v)
+	})
+}
+
+// UpdateAllowPackageStack sets the "allow_package_stack" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowPackageStack() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowPackageStack()
 	})
 }
 

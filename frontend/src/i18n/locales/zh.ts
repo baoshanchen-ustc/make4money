@@ -524,6 +524,28 @@ export default {
     addBalanceWithCode: '使用兑换码充值'
   },
 
+  checkIn: {
+    title: '每日签到',
+    description: '每天签到一次，领取账户奖励',
+    disabled: '管理员暂未开启每日签到功能。',
+    checkedInToday: '今日已签到',
+    readyToCheckIn: '今日（{date}）可签到',
+    rewardAmount: '签到奖励：{amount}',
+    checkInNow: '立即签到',
+    checkingIn: '签到中...',
+    checkedInButton: '已签到',
+    currentStreak: '连续签到',
+    totalCheckIns: '累计签到',
+    timezone: '业务时区',
+    lastCheckInAt: '上次签到时间',
+    historyTitle: '最近签到记录',
+    noHistory: '暂无签到记录。',
+    loadFailed: '加载签到状态失败',
+    alreadyCheckedIn: '您今天已经签到过了。',
+    checkInSuccess: '签到成功，已发放奖励 {amount}。',
+    checkInFailed: '签到失败'
+  },
+
   // Groups (shared)
   groups: {
     subscription: '订阅'
@@ -1713,6 +1735,9 @@ export default {
         dailyLimit: '每日限额（USD）',
         weeklyLimit: '每周限额（USD）',
         monthlyLimit: '每月限额（USD）',
+        allowPackageStack: '允许叠加后续套餐',
+        allowPackageStackShort: '可叠加',
+        allowPackageStackHint: '启用后，用户续购同套餐时会累计新的配额份数，并同步延长有效期。',
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
         noLimit: '无限制'
@@ -4408,6 +4433,18 @@ export default {
         subscriptionGroup: '订阅分组',
         subscriptionValidityDays: '有效期（天）'
       },
+      checkIn: {
+        title: '每日签到设置',
+        description: '配置用户每日签到奖励和历史展示',
+        enabled: '启用每日签到',
+        enabledHint: '开启后，用户每天可签到一次领取奖励',
+        rewardBalance: '每日奖励金额',
+        rewardBalanceHint: '每次签到成功后发放的余额金额',
+        timezone: '业务时区',
+        timezoneHint: '用于判定每天签到边界的时区（IANA 格式，如 Asia/Shanghai）',
+        historyVisible: '显示签到历史',
+        historyVisibleHint: '开启后，用户可查看自己的签到记录'
+      },
       claudeCode: {
         title: 'Claude Code 设置',
         description: '控制 Claude Code 客户端访问要求',
@@ -5005,6 +5042,7 @@ export default {
     noActiveSubscriptions: '暂无有效订阅',
     noActiveSubscriptionsDesc: '您没有任何有效订阅。请联系管理员获取订阅。',
     failedToLoad: '加载订阅失败',
+    packageCount: '{count} 份套餐',
     status: {
       active: '有效',
       expired: '已过期',

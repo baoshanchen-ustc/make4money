@@ -1121,15 +1121,25 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		subscription, ok := middleware2.GetSubscriptionFromContext(c)
 		if ok {
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
+			dailyLimit, hasDailyLimit := subscription.EffectiveDailyLimit(apiKey.Group)
+			weeklyLimit, hasWeeklyLimit := subscription.EffectiveWeeklyLimit(apiKey.Group)
+			monthlyLimit, hasMonthlyLimit := subscription.EffectiveMonthlyLimit(apiKey.Group)
 			resp["remaining"] = remaining
 			resp["subscription"] = gin.H{
+				"package_count":     subscription.EffectivePackageCount(),
 				"daily_usage_usd":   subscription.DailyUsageUSD,
 				"weekly_usage_usd":  subscription.WeeklyUsageUSD,
 				"monthly_usage_usd": subscription.MonthlyUsageUSD,
-				"daily_limit_usd":   apiKey.Group.DailyLimitUSD,
-				"weekly_limit_usd":  apiKey.Group.WeeklyLimitUSD,
-				"monthly_limit_usd": apiKey.Group.MonthlyLimitUSD,
 				"expires_at":        subscription.ExpiresAt,
+			}
+			if hasDailyLimit {
+				resp["subscription"].(gin.H)["daily_limit_usd"] = dailyLimit
+			}
+			if hasWeeklyLimit {
+				resp["subscription"].(gin.H)["weekly_limit_usd"] = weeklyLimit
+			}
+			if hasMonthlyLimit {
+				resp["subscription"].(gin.H)["monthly_limit_usd"] = monthlyLimit
 			}
 		}
 
@@ -1175,8 +1185,8 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 	var remainingValues []float64
 
 	// 检查日限额
-	if group.HasDailyLimit() {
-		remaining := *group.DailyLimitUSD - sub.DailyUsageUSD
+	if limit, ok := sub.EffectiveDailyLimit(group); ok {
+		remaining := limit - sub.DailyUsageUSD
 		if remaining <= 0 {
 			return 0
 		}
@@ -1184,8 +1194,8 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 	}
 
 	// 检查周限额
-	if group.HasWeeklyLimit() {
-		remaining := *group.WeeklyLimitUSD - sub.WeeklyUsageUSD
+	if limit, ok := sub.EffectiveWeeklyLimit(group); ok {
+		remaining := limit - sub.WeeklyUsageUSD
 		if remaining <= 0 {
 			return 0
 		}
@@ -1193,8 +1203,8 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 	}
 
 	// 检查月限额
-	if group.HasMonthlyLimit() {
-		remaining := *group.MonthlyLimitUSD - sub.MonthlyUsageUSD
+	if limit, ok := sub.EffectiveMonthlyLimit(group); ok {
+		remaining := limit - sub.MonthlyUsageUSD
 		if remaining <= 0 {
 			return 0
 		}

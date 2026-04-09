@@ -58,6 +58,9 @@ func (Group) Fields() []ent.Field {
 		field.String("subscription_type").
 			MaxLen(20).
 			Default(domain.SubscriptionTypeStandard),
+		field.Bool("allow_package_stack").
+			Default(false).
+			Comment("是否允许续购同套餐时叠加后续套餐额度"),
 		field.Float("daily_limit_usd").
 			Optional().
 			Nillable().

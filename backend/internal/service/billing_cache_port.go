@@ -8,6 +8,7 @@ import (
 type SubscriptionCacheData struct {
 	Status       string
 	ExpiresAt    time.Time
+	PackageCount int
 	DailyUsage   float64
 	WeeklyUsage  float64
 	MonthlyUsage float64

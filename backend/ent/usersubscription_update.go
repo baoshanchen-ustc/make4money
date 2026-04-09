@@ -127,6 +127,27 @@ func (_u *UserSubscriptionUpdate) SetNillableStatus(v *string) *UserSubscription
 	return _u
 }
 
+// SetPackageCount sets the "package_count" field.
+func (_u *UserSubscriptionUpdate) SetPackageCount(v int) *UserSubscriptionUpdate {
+	_u.mutation.ResetPackageCount()
+	_u.mutation.SetPackageCount(v)
+	return _u
+}
+
+// SetNillablePackageCount sets the "package_count" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillablePackageCount(v *int) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetPackageCount(*v)
+	}
+	return _u
+}
+
+// AddPackageCount adds value to the "package_count" field.
+func (_u *UserSubscriptionUpdate) AddPackageCount(v int) *UserSubscriptionUpdate {
+	_u.mutation.AddPackageCount(v)
+	return _u
+}
+
 // SetDailyWindowStart sets the "daily_window_start" field.
 func (_u *UserSubscriptionUpdate) SetDailyWindowStart(v time.Time) *UserSubscriptionUpdate {
 	_u.mutation.SetDailyWindowStart(v)
@@ -480,6 +501,12 @@ func (_u *UserSubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(usersubscription.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.PackageCount(); ok {
+		_spec.SetField(usersubscription.FieldPackageCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPackageCount(); ok {
+		_spec.AddField(usersubscription.FieldPackageCount, field.TypeInt, value)
+	}
 	if value, ok := _u.mutation.DailyWindowStart(); ok {
 		_spec.SetField(usersubscription.FieldDailyWindowStart, field.TypeTime, value)
 	}
@@ -770,6 +797,27 @@ func (_u *UserSubscriptionUpdateOne) SetNillableStatus(v *string) *UserSubscript
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetPackageCount sets the "package_count" field.
+func (_u *UserSubscriptionUpdateOne) SetPackageCount(v int) *UserSubscriptionUpdateOne {
+	_u.mutation.ResetPackageCount()
+	_u.mutation.SetPackageCount(v)
+	return _u
+}
+
+// SetNillablePackageCount sets the "package_count" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillablePackageCount(v *int) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetPackageCount(*v)
+	}
+	return _u
+}
+
+// AddPackageCount adds value to the "package_count" field.
+func (_u *UserSubscriptionUpdateOne) AddPackageCount(v int) *UserSubscriptionUpdateOne {
+	_u.mutation.AddPackageCount(v)
 	return _u
 }
 
@@ -1155,6 +1203,12 @@ func (_u *UserSubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *UserSu
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(usersubscription.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PackageCount(); ok {
+		_spec.SetField(usersubscription.FieldPackageCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPackageCount(); ok {
+		_spec.AddField(usersubscription.FieldPackageCount, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.DailyWindowStart(); ok {
 		_spec.SetField(usersubscription.FieldDailyWindowStart, field.TypeTime, value)

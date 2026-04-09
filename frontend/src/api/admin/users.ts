@@ -4,7 +4,13 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
+import type {
+  AdminUser,
+  UpdateUserRequest,
+  PaginatedResponse,
+  ApiKey,
+  AdminUserCheckInHistoryResponse
+} from '@/types'
 
 /**
  * List all users with pagination
@@ -226,6 +232,18 @@ export async function getUserBalanceHistory(
 }
 
 /**
+ * Get user's daily check-in history
+ * @param id - User ID
+ * @returns Paginated check-in history with summary statistics
+ */
+export async function getUserCheckInHistory(id: number): Promise<AdminUserCheckInHistoryResponse> {
+  const { data } = await apiClient.get<AdminUserCheckInHistoryResponse>(
+    `/admin/users/${id}/check-in-history`
+  )
+  return data
+}
+
+/**
  * Replace user's exclusive group
  * @param userId - User ID
  * @param oldGroupId - Current group ID to replace
@@ -256,6 +274,7 @@ export const usersAPI = {
   getUserApiKeys,
   getUserUsageStats,
   getUserBalanceHistory,
+  getUserCheckInHistory,
   replaceGroup
 }
 

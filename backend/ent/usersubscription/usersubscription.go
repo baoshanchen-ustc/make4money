@@ -31,6 +31,8 @@ const (
 	FieldExpiresAt = "expires_at"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldPackageCount holds the string denoting the package_count field in the database.
+	FieldPackageCount = "package_count"
 	// FieldDailyWindowStart holds the string denoting the daily_window_start field in the database.
 	FieldDailyWindowStart = "daily_window_start"
 	// FieldWeeklyWindowStart holds the string denoting the weekly_window_start field in the database.
@@ -100,6 +102,7 @@ var Columns = []string{
 	FieldStartsAt,
 	FieldExpiresAt,
 	FieldStatus,
+	FieldPackageCount,
 	FieldDailyWindowStart,
 	FieldWeeklyWindowStart,
 	FieldMonthlyWindowStart,
@@ -139,6 +142,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultPackageCount holds the default value on creation for the "package_count" field.
+	DefaultPackageCount int
 	// DefaultDailyUsageUsd holds the default value on creation for the "daily_usage_usd" field.
 	DefaultDailyUsageUsd float64
 	// DefaultWeeklyUsageUsd holds the default value on creation for the "weekly_usage_usd" field.
@@ -195,6 +200,11 @@ func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByPackageCount orders the results by the package_count field.
+func ByPackageCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPackageCount, opts...).ToFunc()
 }
 
 // ByDailyWindowStart orders the results by the daily_window_start field.

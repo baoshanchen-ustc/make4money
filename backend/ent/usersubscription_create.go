@@ -105,6 +105,20 @@ func (_c *UserSubscriptionCreate) SetNillableStatus(v *string) *UserSubscription
 	return _c
 }
 
+// SetPackageCount sets the "package_count" field.
+func (_c *UserSubscriptionCreate) SetPackageCount(v int) *UserSubscriptionCreate {
+	_c.mutation.SetPackageCount(v)
+	return _c
+}
+
+// SetNillablePackageCount sets the "package_count" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillablePackageCount(v *int) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetPackageCount(*v)
+	}
+	return _c
+}
+
 // SetDailyWindowStart sets the "daily_window_start" field.
 func (_c *UserSubscriptionCreate) SetDailyWindowStart(v time.Time) *UserSubscriptionCreate {
 	_c.mutation.SetDailyWindowStart(v)
@@ -330,6 +344,10 @@ func (_c *UserSubscriptionCreate) defaults() error {
 		v := usersubscription.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.PackageCount(); !ok {
+		v := usersubscription.DefaultPackageCount
+		_c.mutation.SetPackageCount(v)
+	}
 	if _, ok := _c.mutation.DailyUsageUsd(); !ok {
 		v := usersubscription.DefaultDailyUsageUsd
 		_c.mutation.SetDailyUsageUsd(v)
@@ -379,6 +397,9 @@ func (_c *UserSubscriptionCreate) check() error {
 		if err := usersubscription.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.PackageCount(); !ok {
+		return &ValidationError{Name: "package_count", err: errors.New(`ent: missing required field "UserSubscription.package_count"`)}
 	}
 	if _, ok := _c.mutation.DailyUsageUsd(); !ok {
 		return &ValidationError{Name: "daily_usage_usd", err: errors.New(`ent: missing required field "UserSubscription.daily_usage_usd"`)}
@@ -448,6 +469,10 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(usersubscription.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.PackageCount(); ok {
+		_spec.SetField(usersubscription.FieldPackageCount, field.TypeInt, value)
+		_node.PackageCount = value
 	}
 	if value, ok := _c.mutation.DailyWindowStart(); ok {
 		_spec.SetField(usersubscription.FieldDailyWindowStart, field.TypeTime, value)
@@ -687,6 +712,24 @@ func (u *UserSubscriptionUpsert) SetStatus(v string) *UserSubscriptionUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *UserSubscriptionUpsert) UpdateStatus() *UserSubscriptionUpsert {
 	u.SetExcluded(usersubscription.FieldStatus)
+	return u
+}
+
+// SetPackageCount sets the "package_count" field.
+func (u *UserSubscriptionUpsert) SetPackageCount(v int) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldPackageCount, v)
+	return u
+}
+
+// UpdatePackageCount sets the "package_count" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdatePackageCount() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldPackageCount)
+	return u
+}
+
+// AddPackageCount adds v to the "package_count" field.
+func (u *UserSubscriptionUpsert) AddPackageCount(v int) *UserSubscriptionUpsert {
+	u.Add(usersubscription.FieldPackageCount, v)
 	return u
 }
 
@@ -993,6 +1036,27 @@ func (u *UserSubscriptionUpsertOne) SetStatus(v string) *UserSubscriptionUpsertO
 func (u *UserSubscriptionUpsertOne) UpdateStatus() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetPackageCount sets the "package_count" field.
+func (u *UserSubscriptionUpsertOne) SetPackageCount(v int) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetPackageCount(v)
+	})
+}
+
+// AddPackageCount adds v to the "package_count" field.
+func (u *UserSubscriptionUpsertOne) AddPackageCount(v int) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddPackageCount(v)
+	})
+}
+
+// UpdatePackageCount sets the "package_count" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdatePackageCount() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdatePackageCount()
 	})
 }
 
@@ -1491,6 +1555,27 @@ func (u *UserSubscriptionUpsertBulk) SetStatus(v string) *UserSubscriptionUpsert
 func (u *UserSubscriptionUpsertBulk) UpdateStatus() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetPackageCount sets the "package_count" field.
+func (u *UserSubscriptionUpsertBulk) SetPackageCount(v int) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetPackageCount(v)
+	})
+}
+
+// AddPackageCount adds v to the "package_count" field.
+func (u *UserSubscriptionUpsertBulk) AddPackageCount(v int) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddPackageCount(v)
+	})
+}
+
+// UpdatePackageCount sets the "package_count" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdatePackageCount() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdatePackageCount()
 	})
 }
 

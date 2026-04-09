@@ -94,6 +94,10 @@ export interface PublicSettings {
   promo_code_enabled: boolean
   password_reset_enabled: boolean
   invitation_code_enabled: boolean
+  checkin_enabled: boolean
+  checkin_reward_balance: number
+  checkin_timezone: string
+  checkin_history_visible: boolean
   turnstile_enabled: boolean
   turnstile_site_key: string
   site_name: string
@@ -123,6 +127,47 @@ export interface AuthResponse {
 
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
+}
+
+export interface CheckInStatus {
+  enabled: boolean
+  reward_type: 'balance'
+  reward_amount: number
+  timezone: string
+  history_visible: boolean
+  checked_in_today: boolean
+  current_streak: number
+  total_checkins: number
+  streak_broken: boolean
+  check_in_date: string
+  last_check_in_date?: string
+  last_check_in_at?: string
+  next_available_at?: string
+}
+
+export interface CheckInReward {
+  type: 'balance'
+  amount: number
+  new_balance: number
+}
+
+export interface CheckInActionResult {
+  checked_in: boolean
+  already_checked_in: boolean
+  check_in_date: string
+  checked_in_at: string
+  current_streak: number
+  total_checkins: number
+  streak_broken: boolean
+  reward: CheckInReward
+}
+
+export interface CheckInHistoryItem {
+  id: number
+  check_in_date: string
+  checked_in_at: string
+  reward_type: 'balance'
+  reward_amount: number
 }
 
 // ==================== Subscription Types ====================
@@ -375,6 +420,7 @@ export interface Group {
   is_exclusive: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
+  allow_package_stack: boolean
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
@@ -484,6 +530,7 @@ export interface CreateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
+  allow_package_stack?: boolean
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
@@ -510,6 +557,7 @@ export interface UpdateGroupRequest {
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
+  allow_package_stack?: boolean
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
@@ -1270,6 +1318,17 @@ export interface UpdateUserRequest {
   group_rates?: Record<number, number | null>
 }
 
+export interface AdminUserCheckInHistoryResponse {
+  items: CheckInHistoryItem[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+  total_reward: number
+  total_checkins: number
+  last_check_in_at?: string
+}
+
 export interface ChangePasswordRequest {
   old_password: string
   new_password: string
@@ -1282,6 +1341,7 @@ export interface UserSubscription {
   user_id: number
   group_id: number
   status: 'active' | 'expired' | 'revoked'
+  package_count: number
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number

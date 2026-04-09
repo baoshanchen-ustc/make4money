@@ -524,6 +524,28 @@ export default {
     addBalanceWithCode: 'Add balance with a code'
   },
 
+  checkIn: {
+    title: 'Daily Check-In',
+    description: 'Check in once per day to receive your account reward',
+    disabled: 'Daily check-in is currently disabled by the administrator.',
+    checkedInToday: 'Checked in today',
+    readyToCheckIn: 'Ready to check in for {date}',
+    rewardAmount: 'Reward: {amount}',
+    checkInNow: 'Check In',
+    checkingIn: 'Checking in...',
+    checkedInButton: 'Checked In',
+    currentStreak: 'Current Streak',
+    totalCheckIns: 'Total Check-Ins',
+    timezone: 'Business Timezone',
+    lastCheckInAt: 'Last Check-In Time',
+    historyTitle: 'Recent Check-In History',
+    noHistory: 'No check-in records yet.',
+    loadFailed: 'Failed to load check-in status',
+    alreadyCheckedIn: 'You have already checked in today.',
+    checkInSuccess: 'Check-in successful, reward {amount} has been credited.',
+    checkInFailed: 'Check-in failed'
+  },
+
   // Groups (shared)
   groups: {
     subscription: 'Sub'
@@ -1627,6 +1649,9 @@ export default {
         dailyLimit: 'Daily Limit (USD)',
         weeklyLimit: 'Weekly Limit (USD)',
         monthlyLimit: 'Monthly Limit (USD)',
+        allowPackageStack: 'Allow Future Package Stacking',
+        allowPackageStackShort: 'Stackable',
+        allowPackageStackHint: 'When enabled, repurchasing the same subscription accumulates another quota package and extends the expiry at the same time.',
         defaultValidityDays: 'Default Validity (Days)',
         validityHint: 'Number of days the subscription is valid when assigned to a user',
         noLimit: 'No limit'
@@ -4243,6 +4268,18 @@ export default {
         subscriptionGroup: 'Subscription Group',
         subscriptionValidityDays: 'Validity (days)'
       },
+      checkIn: {
+        title: 'Daily Check-In Settings',
+        description: 'Configure daily check-in reward and history visibility for users',
+        enabled: 'Enable Daily Check-In',
+        enabledHint: 'Allow users to claim a reward once per day',
+        rewardBalance: 'Daily Reward Amount',
+        rewardBalanceHint: 'Balance amount granted for each successful check-in',
+        timezone: 'Business Timezone',
+        timezoneHint: 'Timezone used for daily check-in boundary (IANA format, e.g. Asia/Shanghai)',
+        historyVisible: 'Show Check-In History',
+        historyVisibleHint: 'Allow users to view their own check-in history records'
+      },
       claudeCode: {
         title: 'Claude Code Settings',
         description: 'Control Claude Code client access requirements',
@@ -4843,6 +4880,7 @@ export default {
     noActiveSubscriptionsDesc:
       "You don't have any active subscriptions. Contact administrator to get one.",
     failedToLoad: 'Failed to load subscriptions',
+    packageCount: '{count} package(s)',
     status: {
       active: 'Active',
       expired: 'Expired',

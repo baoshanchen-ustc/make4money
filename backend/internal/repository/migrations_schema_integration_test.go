@@ -63,6 +63,38 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	var settingsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.settings')").Scan(&settingsRegclass))
 	require.True(t, settingsRegclass.Valid, "expected settings table to exist")
+	requireColumn(t, tx, "settings", "key", "character varying", 100, false)
+	requireColumn(t, tx, "settings", "value", "text", 0, false)
+
+	// check-in related settings keys should be storable in schema-compatible format.
+	checkinSettings := map[string]string{
+		"checkin_enabled":         "true",
+		"checkin_reward_balance":  "1.25000000",
+		"checkin_timezone":        "Asia/Shanghai",
+		"checkin_history_visible": "true",
+	}
+	for key, value := range checkinSettings {
+		_, err := tx.ExecContext(context.Background(), `
+INSERT INTO settings (key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+`, key, value)
+		require.NoError(t, err, "upsert settings.%s", key)
+
+		var got string
+		require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT value FROM settings WHERE key = $1", key).Scan(&got))
+		require.Equal(t, value, got, "settings.%s value mismatch", key)
+	}
+
+	var userCheckinsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_checkins')").Scan(&userCheckinsRegclass))
+	require.True(t, userCheckinsRegclass.Valid, "expected user_checkins table to exist")
+	requireColumn(t, tx, "user_checkins", "user_id", "bigint", 0, false)
+	requireColumn(t, tx, "user_checkins", "checkin_date", "date", 0, false)
+	requireColumn(t, tx, "user_checkins", "reward_amount", "numeric", 0, false)
+	requireColumn(t, tx, "user_checkins", "created_at", "timestamp with time zone", 0, false)
+	requireIndex(t, tx, "user_checkins", "idx_user_checkins_user_date")
+	requireIndex(t, tx, "user_checkins", "idx_user_checkins_date")
+	requireIndex(t, tx, "user_checkins", "idx_user_checkins_user_created_at")
 
 	// security_secrets table should exist
 	var securitySecretsRegclass sql.NullString
@@ -76,6 +108,10 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_subscriptions: deleted_at for soft delete support (migration 012)
 	requireColumn(t, tx, "user_subscriptions", "deleted_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "user_subscriptions", "package_count", "integer", 0, false)
+
+	// groups: stacked subscription package toggle
+	requireColumn(t, tx, "groups", "allow_package_stack", "boolean", 0, false)
 
 	// orphan_allowed_groups_audit table should exist (migration 013)
 	var orphanAuditRegclass sql.NullString
