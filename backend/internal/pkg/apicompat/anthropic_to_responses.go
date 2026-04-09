@@ -426,11 +426,20 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 		out = append(out, ResponsesTool{
 			Type:        "function",
 			Name:        t.Name,
-			Description: augmentClaudeToolDescription(t.Name, t.Description),
+			Description: strings.TrimSpace(t.Description),
 			Parameters:  normalizeToolParameters(t.InputSchema),
 		})
 	}
 	return out
+}
+
+func AugmentClaudeToolDescriptions(tools []ResponsesTool) {
+	for i := range tools {
+		if tools[i].Type != "function" || tools[i].Name == "" {
+			continue
+		}
+		tools[i].Description = augmentClaudeToolDescription(tools[i].Name, tools[i].Description)
+	}
 }
 
 func augmentClaudeToolDescription(name, description string) string {

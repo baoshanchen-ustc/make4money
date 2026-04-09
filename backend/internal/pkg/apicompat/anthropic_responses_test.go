@@ -822,6 +822,72 @@ func TestStreamingWebSearchUsesCompletionAnnotationsWhenSourcesMissing(t *testin
 	assert.Equal(t, "message_stop", events[3].Type)
 }
 
+func TestStreamingWebSearchUsesCompletionSourcesWhenDoneEventHasNone(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_ws_stream_completion_sources", Model: "gpt-5.4"},
+	}, state)
+
+	var doneEvt ResponsesStreamEvent
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type": "response.output_item.done",
+		"output_index": 0,
+		"item": {
+			"type": "web_search_call",
+			"id": "ws_1",
+			"status": "completed",
+			"action": {
+				"type": "search",
+				"query": "latest news"
+			}
+		}
+	}`), &doneEvt))
+
+	events := ResponsesEventToAnthropicEvents(&doneEvt, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "server_tool_use", events[0].ContentBlock.Type)
+
+	var completedEvt ResponsesStreamEvent
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type": "response.completed",
+		"response": {
+			"id": "resp_ws_stream_completion_sources",
+			"model": "gpt-5.4",
+			"status": "completed",
+			"output": [
+				{
+					"type": "web_search_call",
+					"id": "ws_1",
+					"status": "completed",
+					"action": {
+						"type": "search",
+						"query": "latest news",
+						"sources": [
+							{
+								"type": "url",
+								"url": "https://example.com/completion-source",
+								"title": "Completion Source"
+							}
+						]
+					}
+				}
+			]
+		}
+	}`), &completedEvt))
+
+	events = ResponsesEventToAnthropicEvents(&completedEvt, state)
+	require.Len(t, events, 4)
+	assert.Equal(t, "web_search_tool_result", events[0].ContentBlock.Type)
+
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(events[0].ContentBlock.Content, &results))
+	require.NotEmpty(t, results)
+	assert.Equal(t, "https://example.com/completion-source", results[0]["url"])
+	assert.Equal(t, "Completion Source", results[0]["title"])
+}
+
 func TestStreamingIncomplete(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 
@@ -1232,66 +1298,68 @@ func TestAnthropicToResponses_ToolChoiceSpecific(t *testing.T) {
 	assert.Equal(t, "get_weather", fn["name"])
 }
 
-func TestAnthropicToResponses_AugmentsKnownClaudeToolDescriptions(t *testing.T) {
-	req := &AnthropicRequest{
-		Model:     "gpt-5.4",
-		MaxTokens: 1024,
-		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
-		Tools: []AnthropicTool{
-			{Name: "Read", InputSchema: json.RawMessage(`{"type":"object","properties":{"file_path":{"type":"string"}}}`)},
-			{Name: "WebSearch", InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`)},
+func TestAugmentClaudeToolDescriptions_AugmentsKnownClaudeToolDescriptions(t *testing.T) {
+	tools := []ResponsesTool{
+		{Type: "function", Name: "Read", Parameters: json.RawMessage(`{"type":"object","properties":{"file_path":{"type":"string"}}}`)},
+		{Type: "function", Name: "WebSearch", Parameters: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`)},
+	}
+
+	AugmentClaudeToolDescriptions(tools)
+
+	require.Len(t, tools, 2)
+	assert.Equal(t, "Read", tools[0].Name)
+	assert.Contains(t, tools[0].Description, "Use this when you need the exact contents of a known file")
+
+	assert.Equal(t, "WebSearch", tools[1].Name)
+	assert.Contains(t, tools[1].Description, "Use this when you need current external information across multiple sources")
+}
+
+func TestAugmentClaudeToolDescriptions_PreservesOriginalDescriptionForKnownClaudeTool(t *testing.T) {
+	tools := []ResponsesTool{
+		{
+			Type:        "function",
+			Name:        "Bash",
+			Description: "Run a shell command inside the working directory.",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
 		},
 	}
 
-	resp, err := AnthropicToResponses(req)
-	require.NoError(t, err)
-	require.Len(t, resp.Tools, 2)
+	AugmentClaudeToolDescriptions(tools)
 
-	assert.Equal(t, "Read", resp.Tools[0].Name)
-	assert.Contains(t, resp.Tools[0].Description, "Use this when you need the exact contents of a known file")
-
-	assert.Equal(t, "WebSearch", resp.Tools[1].Name)
-	assert.Contains(t, resp.Tools[1].Description, "Use this when you need current external information across multiple sources")
+	require.Len(t, tools, 1)
+	assert.Contains(t, tools[0].Description, "Use this when you need shell commands")
+	assert.Contains(t, tools[0].Description, "Run a shell command inside the working directory.")
 }
 
-func TestAnthropicToResponses_PreservesOriginalDescriptionWhenAugmentingKnownClaudeTool(t *testing.T) {
+func TestAnthropicToResponses_DoesNotAugmentGenericToolDescriptions(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.4",
 		MaxTokens: 1024,
 		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 		Tools: []AnthropicTool{
-			{
-				Name:        "Bash",
-				Description: "Run a shell command inside the working directory.",
-				InputSchema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
-			},
+			{Name: "Read", Description: "Read from a remote knowledge base.", InputSchema: json.RawMessage(`{"type":"object","properties":{"key":{"type":"string"}}}`)},
 		},
 	}
 
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
 	require.Len(t, resp.Tools, 1)
-	assert.Contains(t, resp.Tools[0].Description, "Use this when you need shell commands")
-	assert.Contains(t, resp.Tools[0].Description, "Run a shell command inside the working directory.")
+
+	assert.Equal(t, "Read from a remote knowledge base.", resp.Tools[0].Description)
 }
 
-func TestAnthropicToResponses_AugmentsPrefixedClaudeToolDescriptions(t *testing.T) {
-	req := &AnthropicRequest{
-		Model:     "gpt-5.4",
-		MaxTokens: 1024,
-		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
-		Tools: []AnthropicTool{
-			{Name: "__WebFetch", InputSchema: json.RawMessage(`{"type":"object","properties":{"url":{"type":"string"}}}`)},
-			{Name: "_AskUserQuestion", InputSchema: json.RawMessage(`{"type":"object","properties":{"question":{"type":"string"}}}`)},
-		},
+func TestAugmentClaudeToolDescriptions_PrefixedKnownToolsOnly(t *testing.T) {
+	tools := []ResponsesTool{
+		{Type: "function", Name: "__WebFetch", Parameters: json.RawMessage(`{"type":"object","properties":{"url":{"type":"string"}}}`)},
+		{Type: "function", Name: "_AskUserQuestion", Parameters: json.RawMessage(`{"type":"object","properties":{"question":{"type":"string"}}}`)},
+		{Type: "function", Name: "RemoteRead", Description: "Read from a remote knowledge base."},
 	}
 
-	resp, err := AnthropicToResponses(req)
-	require.NoError(t, err)
-	require.Len(t, resp.Tools, 2)
+	AugmentClaudeToolDescriptions(tools)
 
-	assert.Contains(t, resp.Tools[0].Description, "Use this when a specific URL is already known and the exact page contents matter.")
-	assert.Contains(t, resp.Tools[1].Description, "Use this when a missing human decision would materially change the work.")
+	assert.Contains(t, tools[0].Description, "Use this when a specific URL is already known and the exact page contents matter.")
+	assert.Contains(t, tools[1].Description, "Use this when a missing human decision would materially change the work.")
+	assert.Equal(t, "Read from a remote knowledge base.", tools[2].Description)
 }
 
 // ---------------------------------------------------------------------------

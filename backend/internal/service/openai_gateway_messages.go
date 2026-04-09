@@ -50,6 +50,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if err != nil {
 		return nil, fmt.Errorf("convert anthropic to responses: %w", err)
 	}
+	if IsClaudeCodeClient(c.Request.Context()) {
+		apicompat.AugmentClaudeToolDescriptions(responsesReq.Tools)
+	}
 
 	// Upstream always uses streaming (upstream may not support sync mode).
 	// The client's original preference determines the response format.
@@ -87,7 +90,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 		}
 		codexResult := applyCodexOAuthTransform(reqBody, false, false)
-		if applyEmbeddedDefaultInstructions(reqBody) {
+		if IsClaudeCodeClient(c.Request.Context()) && applyEmbeddedDefaultInstructions(reqBody) {
 			codexResult.Modified = true
 		}
 		forcedTemplateText := ""
