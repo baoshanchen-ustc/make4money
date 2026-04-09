@@ -346,6 +346,132 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 	}
 }
 
+// --- ListWithFilters: status=active excludes rate_limited / temp_unschedulable ---
+
+func (s *AccountRepoSuite) TestListWithFilters_ActiveExcludesRateLimited() {
+	tx := testEntTx(s.T())
+	client := tx.Client()
+	repo := newAccountRepositoryWithSQL(client, tx, nil)
+	ctx := context.Background()
+
+	now := time.Now()
+	futureReset := now.Add(30 * time.Minute)
+	pastReset := now.Add(-30 * time.Minute)
+
+	// 正常 active 账号（无限流）
+	mustCreateAccount(s.T(), client, &service.Account{Name: "normal-active", Status: service.StatusActive})
+	// 正在限流的 active 账号（rate_limit_reset_at 在未来）
+	mustCreateAccount(s.T(), client, &service.Account{
+		Name:             "rate-limited-active",
+		Status:           service.StatusActive,
+		RateLimitedAt:    &now,
+		RateLimitResetAt: &futureReset,
+	})
+	// 限流已过期的 active 账号（rate_limit_reset_at 在过去）
+	mustCreateAccount(s.T(), client, &service.Account{
+		Name:             "expired-rate-limit-active",
+		Status:           service.StatusActive,
+		RateLimitedAt:    &pastReset,
+		RateLimitResetAt: &pastReset,
+	})
+
+	accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "active", "", 0)
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 2, "should return normal + expired-rate-limit, exclude currently rate-limited")
+
+	names := make(map[string]bool)
+	for _, a := range accounts {
+		names[a.Name] = true
+	}
+	s.Require().True(names["normal-active"], "normal active should be included")
+	s.Require().True(names["expired-rate-limit-active"], "expired rate-limit should be included")
+	s.Require().False(names["rate-limited-active"], "currently rate-limited should be excluded")
+}
+
+func (s *AccountRepoSuite) TestListWithFilters_ActiveExcludesTempUnschedulable() {
+	tx := testEntTx(s.T())
+	client := tx.Client()
+	repo := newAccountRepositoryWithSQL(client, tx, nil)
+	ctx := context.Background()
+
+	// 正常 active 账号
+	mustCreateAccount(s.T(), client, &service.Account{Name: "normal-active-2", Status: service.StatusActive})
+	// 临时不可调度的 active 账号（temp_unschedulable_until 在未来）
+	tempUnsched := mustCreateAccount(s.T(), client, &service.Account{Name: "temp-unsched-active", Status: service.StatusActive})
+	until := time.Now().Add(15 * time.Minute)
+	s.Require().NoError(repo.SetTempUnschedulable(ctx, tempUnsched.ID, until, "test reason"))
+
+	accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "active", "", 0)
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 1, "should exclude temp-unschedulable account")
+	s.Require().Equal("normal-active-2", accounts[0].Name)
+}
+
+func (s *AccountRepoSuite) TestListWithFilters_ActiveExcludesBothRateLimitedAndTempUnschedulable() {
+	tx := testEntTx(s.T())
+	client := tx.Client()
+	repo := newAccountRepositoryWithSQL(client, tx, nil)
+	ctx := context.Background()
+
+	now := time.Now()
+	futureReset := now.Add(30 * time.Minute)
+
+	// 正常 active
+	mustCreateAccount(s.T(), client, &service.Account{Name: "clean-active", Status: service.StatusActive})
+	// 限流中
+	mustCreateAccount(s.T(), client, &service.Account{
+		Name:             "rl-account",
+		Status:           service.StatusActive,
+		RateLimitedAt:    &now,
+		RateLimitResetAt: &futureReset,
+	})
+	// 临时不可调度
+	tuAccount := mustCreateAccount(s.T(), client, &service.Account{Name: "tu-account", Status: service.StatusActive})
+	s.Require().NoError(repo.SetTempUnschedulable(ctx, tuAccount.ID, now.Add(10*time.Minute), "test"))
+	// error 状态（不应出现在 active 筛选中）
+	mustCreateAccount(s.T(), client, &service.Account{Name: "error-account", Status: service.StatusError})
+
+	accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "active", "", 0)
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 1, "only clean-active should remain")
+	s.Require().Equal("clean-active", accounts[0].Name)
+}
+
+func (s *AccountRepoSuite) TestListWithFilters_RateLimitedAndTempUnschedulableFiltersUnchanged() {
+	tx := testEntTx(s.T())
+	client := tx.Client()
+	repo := newAccountRepositoryWithSQL(client, tx, nil)
+	ctx := context.Background()
+
+	now := time.Now()
+	futureReset := now.Add(30 * time.Minute)
+
+	// 限流中
+	mustCreateAccount(s.T(), client, &service.Account{
+		Name:             "rl-only",
+		Status:           service.StatusActive,
+		RateLimitedAt:    &now,
+		RateLimitResetAt: &futureReset,
+	})
+	// 临时不可调度
+	tuAccount := mustCreateAccount(s.T(), client, &service.Account{Name: "tu-only", Status: service.StatusActive})
+	s.Require().NoError(repo.SetTempUnschedulable(ctx, tuAccount.ID, now.Add(10*time.Minute), "test"))
+	// 正常 active
+	mustCreateAccount(s.T(), client, &service.Account{Name: "normal", Status: service.StatusActive})
+
+	// rate_limited 筛选应只返回限流中的
+	rlAccounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "rate_limited", "", 0)
+	s.Require().NoError(err)
+	s.Require().Len(rlAccounts, 1)
+	s.Require().Equal("rl-only", rlAccounts[0].Name)
+
+	// temp_unschedulable 筛选应只返回临时不可调度的
+	tuAccounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "temp_unschedulable", "", 0)
+	s.Require().NoError(err)
+	s.Require().Len(tuAccounts, 1)
+	s.Require().Equal("tu-only", tuAccounts[0].Name)
+}
+
 // --- ListByGroup / ListActive / ListByPlatform ---
 
 func (s *AccountRepoSuite) TestListByGroup() {

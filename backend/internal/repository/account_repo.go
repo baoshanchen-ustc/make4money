@@ -486,6 +486,13 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					entsql.GT(col, entsql.Expr("NOW()")),
 				))
 			}))
+		case "active":
+			// active = status 为 active，且排除正在限流和临时不可调度的账号
+			q = q.Where(
+				dbaccount.StatusEQ(status),
+				dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(time.Now())),
+				tempUnschedulablePredicate(),
+			)
 		default:
 			q = q.Where(dbaccount.StatusEQ(status))
 		}
