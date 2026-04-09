@@ -6,6 +6,16 @@ import (
 	"time"
 )
 
+type anthropicWebSearchResult struct {
+	Type  string `json:"type"`
+	URL   string `json:"url,omitempty"`
+	Title string `json:"title,omitempty"`
+}
+
+type pendingAnthropicWebSearchResult struct {
+	ToolUseID string
+}
+
 // ---------------------------------------------------------------------------
 // Non-streaming: ResponsesResponse → AnthropicResponse
 // ---------------------------------------------------------------------------
@@ -14,6 +24,17 @@ import (
 // Anthropic Messages response. Reasoning output items are mapped to thinking
 // blocks; function_call items become tool_use blocks.
 func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicResponse {
+	return ResponsesToAnthropicWithToolNameMap(resp, model, nil)
+}
+
+// ResponsesToAnthropicWithToolNameMap converts a Responses API response directly
+// into an Anthropic Messages response, restoring original Claude tool names
+// where possible.
+func ResponsesToAnthropicWithToolNameMap(
+	resp *ResponsesResponse,
+	model string,
+	toolNameMap map[string]string,
+) *AnthropicResponse {
 	out := &AnthropicResponse{
 		ID:    resp.ID,
 		Type:  "message",
@@ -22,6 +43,8 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 	}
 
 	var blocks []AnthropicContentBlock
+	annotationResults := responsesWebSearchResultsFromAnnotations(resp.Output)
+	useAnnotationResults := responsesCountWebSearchCalls(resp.Output) == 1 && len(annotationResults) > 0
 
 	for _, item := range resp.Output {
 		switch item.Type {
@@ -51,7 +74,7 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:  "tool_use",
 				ID:    fromResponsesCallID(item.CallID),
-				Name:  item.Name,
+				Name:  MapClaudeToolName(item.Name, toolNameMap),
 				Input: json.RawMessage(item.Arguments),
 			})
 		case "web_search_call":
@@ -67,11 +90,15 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 				Name:  "web_search",
 				Input: inputJSON,
 			})
-			emptyResults, _ := json.Marshal([]struct{}{})
+			results := responsesWebSearchResultsFromAction(item.Action)
+			if len(results) == 0 && useAnnotationResults {
+				results = annotationResults
+			}
+			resultsJSON, _ := json.Marshal(results)
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:      "web_search_tool_result",
 				ToolUseID: toolUseID,
-				Content:   emptyResults,
+				Content:   resultsJSON,
 			})
 		}
 	}
@@ -137,13 +164,24 @@ type ResponsesEventToAnthropicState struct {
 	ResponseID string
 	Model      string
 	Created    int64
+
+	ToolNameMap map[string]string
+
+	PendingWebSearchResults []pendingAnthropicWebSearchResult
 }
 
 // NewResponsesEventToAnthropicState returns an initialised stream state.
 func NewResponsesEventToAnthropicState() *ResponsesEventToAnthropicState {
+	return NewResponsesEventToAnthropicStateWithToolNameMap(nil)
+}
+
+// NewResponsesEventToAnthropicStateWithToolNameMap returns an initialised
+// stream state with optional canonical->original Claude tool name mapping.
+func NewResponsesEventToAnthropicStateWithToolNameMap(toolNameMap map[string]string) *ResponsesEventToAnthropicState {
 	return &ResponsesEventToAnthropicState{
 		OutputIndexToBlockIdx: make(map[int]int),
 		Created:               time.Now().Unix(),
+		ToolNameMap:           toolNameMap,
 	}
 }
 
@@ -269,7 +307,7 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 			ContentBlock: &AnthropicContentBlock{
 				Type:  "tool_use",
 				ID:    fromResponsesCallID(evt.Item.CallID),
-				Name:  evt.Item.Name,
+				Name:  MapClaudeToolName(evt.Item.Name, state.ToolNameMap),
 				Input: json.RawMessage("{}"),
 			},
 		})
@@ -432,25 +470,15 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	})
 	state.ContentBlockIndex++
 
-	// Emit web_search_tool_result block (start + stop).
-	// Content is empty because OpenAI does not expose individual search results;
-	// the model consumes them internally and produces text output.
-	emptyResults, _ := json.Marshal([]struct{}{})
-	idx2 := state.ContentBlockIndex
-	events = append(events, AnthropicStreamEvent{
-		Type:  "content_block_start",
-		Index: &idx2,
-		ContentBlock: &AnthropicContentBlock{
-			Type:      "web_search_tool_result",
+	results := responsesWebSearchResultsFromAction(evt.Item.Action)
+	if len(results) == 0 {
+		state.PendingWebSearchResults = append(state.PendingWebSearchResults, pendingAnthropicWebSearchResult{
 			ToolUseID: toolUseID,
-			Content:   emptyResults,
-		},
-	})
-	events = append(events, AnthropicStreamEvent{
-		Type:  "content_block_stop",
-		Index: &idx2,
-	})
-	state.ContentBlockIndex++
+		})
+		return events
+	}
+
+	events = append(events, emitAnthropicWebSearchResultBlock(state, toolUseID, results)...)
 
 	return events
 }
@@ -484,6 +512,21 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		}
 	}
 
+	if len(state.PendingWebSearchResults) > 0 {
+		annotationResults := []anthropicWebSearchResult{}
+		if evt.Response != nil && responsesCountWebSearchCalls(evt.Response.Output) == 1 {
+			annotationResults = responsesWebSearchResultsFromAnnotations(evt.Response.Output)
+		}
+		for i, pending := range state.PendingWebSearchResults {
+			results := []anthropicWebSearchResult{}
+			if i == 0 && len(annotationResults) > 0 {
+				results = annotationResults
+			}
+			events = append(events, emitAnthropicWebSearchResultBlock(state, pending.ToolUseID, results)...)
+		}
+		state.PendingWebSearchResults = nil
+	}
+
 	events = append(events,
 		AnthropicStreamEvent{
 			Type: "message_delta",
@@ -513,4 +556,100 @@ func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamE
 		Type:  "content_block_stop",
 		Index: &idx,
 	}}
+}
+
+func emitAnthropicWebSearchResultBlock(
+	state *ResponsesEventToAnthropicState,
+	toolUseID string,
+	results []anthropicWebSearchResult,
+) []AnthropicStreamEvent {
+	resultsJSON, _ := json.Marshal(results)
+	idx := state.ContentBlockIndex
+	state.ContentBlockIndex++
+	return []AnthropicStreamEvent{
+		{
+			Type:  "content_block_start",
+			Index: &idx,
+			ContentBlock: &AnthropicContentBlock{
+				Type:      "web_search_tool_result",
+				ToolUseID: toolUseID,
+				Content:   resultsJSON,
+			},
+		},
+		{
+			Type:  "content_block_stop",
+			Index: &idx,
+		},
+	}
+}
+
+func responsesCountWebSearchCalls(output []ResponsesOutput) int {
+	count := 0
+	for _, item := range output {
+		if item.Type == "web_search_call" {
+			count++
+		}
+	}
+	return count
+}
+
+func responsesWebSearchResultsFromAction(action *WebSearchAction) []anthropicWebSearchResult {
+	if action == nil {
+		return []anthropicWebSearchResult{}
+	}
+
+	results := make([]anthropicWebSearchResult, 0, len(action.Sources))
+	seen := make(map[string]struct{}, len(action.Sources))
+	for _, source := range action.Sources {
+		if source.URL == "" {
+			continue
+		}
+		key := source.URL + "\n" + source.Title
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		results = append(results, anthropicWebSearchResult{
+			Type:  "web_search_result",
+			URL:   source.URL,
+			Title: source.Title,
+		})
+	}
+	if len(results) == 0 {
+		return []anthropicWebSearchResult{}
+	}
+	return results
+}
+
+func responsesWebSearchResultsFromAnnotations(output []ResponsesOutput) []anthropicWebSearchResult {
+	var results []anthropicWebSearchResult
+	seen := map[string]struct{}{}
+
+	for _, item := range output {
+		if item.Type != "message" {
+			continue
+		}
+		for _, part := range item.Content {
+			for _, ann := range part.Annotations {
+				if ann.Type != "url_citation" || ann.URL == "" {
+					continue
+				}
+				key := ann.URL + "\n" + ann.Title
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+				results = append(results, anthropicWebSearchResult{
+					Type:  "web_search_result",
+					URL:   ann.URL,
+					Title: ann.Title,
+				})
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		return []anthropicWebSearchResult{}
+	}
+	return results
 }

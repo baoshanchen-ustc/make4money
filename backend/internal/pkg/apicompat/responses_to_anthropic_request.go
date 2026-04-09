@@ -149,7 +149,7 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 			if outputContent == "" {
 				outputContent = "(empty)"
 			}
-			contentJSON, _ := json.Marshal(outputContent)
+			contentJSON := marshalAnthropicToolResultContent(outputContent)
 			block := AnthropicContentBlock{
 				Type:      "tool_result",
 				ToolUseID: fromResponsesCallIDToAnthropic(item.CallID),
@@ -196,6 +196,42 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 	messages = mergeConsecutiveMessages(messages)
 
 	return system, messages, nil
+}
+
+func tryDecodeAnthropicToolResultEnvelope(raw string) (*anthropicToolResultEnvelope, bool) {
+	var env anthropicToolResultEnvelope
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		return nil, false
+	}
+	if env.Format != anthropicToolResultEnvelopeFormat {
+		return nil, false
+	}
+	return &env, true
+}
+
+func marshalAnthropicToolResultContent(raw string) json.RawMessage {
+	if env, ok := tryDecodeAnthropicToolResultEnvelope(raw); ok {
+		var blocks []AnthropicContentBlock
+		for _, text := range env.Text {
+			if text == "" {
+				continue
+			}
+			blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: text})
+		}
+		for _, ref := range env.ToolReferences {
+			if ref.ToolName == "" {
+				continue
+			}
+			blocks = append(blocks, AnthropicContentBlock{Type: "tool_reference", ToolName: ref.ToolName})
+		}
+		if len(blocks) > 0 {
+			contentJSON, _ := json.Marshal(blocks)
+			return contentJSON
+		}
+	}
+
+	contentJSON, _ := json.Marshal(raw)
+	return contentJSON
 }
 
 // extractTextFromContent extracts text from a content field that may be a

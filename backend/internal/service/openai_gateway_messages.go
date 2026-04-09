@@ -43,6 +43,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	applyOpenAICompatModelNormalization(&anthropicReq)
 	normalizedModel := anthropicReq.Model
 	clientStream := anthropicReq.Stream // client's original stream preference
+	toolNameMap := apicompat.ClaudeToolNameMapFromTools(anthropicToolsToResponsesTools(anthropicReq.Tools))
 
 	// 2. Convert Anthropic → Responses
 	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
@@ -86,6 +87,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 		}
 		codexResult := applyCodexOAuthTransform(reqBody, false, false)
+		if applyEmbeddedDefaultInstructions(reqBody) {
+			codexResult.Modified = true
+		}
 		forcedTemplateText := ""
 		if s.cfg != nil {
 			forcedTemplateText = s.cfg.Gateway.ForcedCodexInstructionsTemplate
@@ -207,10 +211,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	var result *OpenAIForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, toolNameMap, startTime)
 	} else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
-		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, toolNameMap, startTime)
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -245,6 +249,21 @@ func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError)
 }
 
+func anthropicToolsToResponsesTools(tools []apicompat.AnthropicTool) []apicompat.ResponsesTool {
+	if len(tools) == 0 {
+		return nil
+	}
+
+	out := make([]apicompat.ResponsesTool, 0, len(tools))
+	for _, tool := range tools {
+		out = append(out, apicompat.ResponsesTool{
+			Type: "function",
+			Name: tool.Name,
+		})
+	}
+	return out
+}
+
 // handleAnthropicBufferedStreamingResponse reads all Responses SSE events from
 // the upstream streaming response, finds the terminal event (response.completed
 // / response.incomplete / response.failed), converts the complete response to
@@ -257,6 +276,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
+	toolNameMap map[string]string,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
@@ -318,7 +338,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
 	}
 
-	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
+	anthropicResp := apicompat.ResponsesToAnthropicWithToolNameMap(finalResponse, originalModel, toolNameMap)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -347,6 +367,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
+	toolNameMap map[string]string,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
@@ -360,7 +381,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
 
-	state := apicompat.NewResponsesEventToAnthropicState()
+	state := apicompat.NewResponsesEventToAnthropicStateWithToolNameMap(toolNameMap)
 	state.Model = originalModel
 	var usage OpenAIUsage
 	var firstTokenMs *int
