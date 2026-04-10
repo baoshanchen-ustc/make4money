@@ -105,7 +105,8 @@
         </li>
       </ol>
       <p class="mt-2 text-xs text-blue-600 dark:text-blue-400">
-        💡 数据库价格按 <strong>model_key 精确匹配</strong>，模型名称需与请求中的模型名（小写后）完全一致。Priority 服务层可配置独立单价，未填时回退至 2x 倍率。
+        💡 数据库价格按 <strong>model_key 精确匹配</strong>，模型名称需与请求中的模型名（小写后）完全一致。<br />
+        🔶 <strong>Priority 价格</strong>：OpenAI 的优先服务层（<code class="rounded bg-blue-100 px-1 dark:bg-blue-900">service_tier: "auto"</code>）会收取约 2× 标准价，可在此单独配置；其他厂商无需填写此字段，留 0 即可。
       </p>
     </div>
 
@@ -138,13 +139,52 @@
               <label class="label">{{ t('admin.modelPricings.outputPrice') }}</label>
               <input v-model.number="form.output_price_per_million" type="number" step="any" min="0" class="input" />
             </div>
+            <!-- Priority fields with explanation -->
+            <div class="col-span-2">
+              <!-- Priority explanation callout -->
+              <div v-if="!showPriorityTip" class="mb-2 flex items-center gap-1.5">
+                <span class="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                  Priority 服务层价格
+                </span>
+                <button type="button" @click="showPriorityTip = true"
+                  class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+                  :title="t('admin.modelPricings.priorityTipTitle')">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+                  </svg>
+                  {{ t('admin.modelPricings.priorityTipTitle') }}
+                </button>
+              </div>
+              <div v-else class="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex items-start gap-2">
+                    <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                      <p class="text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">
+                        {{ t('admin.modelPricings.priorityTipTitle') }}
+                      </p>
+                      <p class="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                        {{ t('admin.modelPricings.priorityTipBody') }}
+                      </p>
+                    </div>
+                  </div>
+                  <button type="button" @click="showPriorityTip = false" class="flex-shrink-0 text-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-200">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
             <div>
               <label class="label">{{ t('admin.modelPricings.inputPricePriority') }}</label>
-              <input v-model.number="form.input_price_per_million_priority" type="number" step="any" min="0" class="input" />
+              <input v-model.number="form.input_price_per_million_priority" type="number" step="any" min="0" class="input" :placeholder="t('admin.modelPricings.priorityPlaceholder')" />
             </div>
             <div>
               <label class="label">{{ t('admin.modelPricings.outputPricePriority') }}</label>
-              <input v-model.number="form.output_price_per_million_priority" type="number" step="any" min="0" class="input" />
+              <input v-model.number="form.output_price_per_million_priority" type="number" step="any" min="0" class="input" :placeholder="t('admin.modelPricings.priorityPlaceholder')" />
             </div>
             <div>
               <label class="label">{{ t('admin.modelPricings.cacheReadPrice') }}</label>
@@ -152,7 +192,7 @@
             </div>
             <div>
               <label class="label">{{ t('admin.modelPricings.cacheReadPricePriority') }}</label>
-              <input v-model.number="form.cache_read_price_per_million_priority" type="number" step="any" min="0" class="input" />
+              <input v-model.number="form.cache_read_price_per_million_priority" type="number" step="any" min="0" class="input" :placeholder="t('admin.modelPricings.priorityPlaceholder')" />
             </div>
             <div>
               <label class="label">{{ t('admin.modelPricings.cacheCreationPrice') }}</label>
@@ -239,6 +279,7 @@ async function loadEntries() {
 // ── Create / Edit ─────────────────────────────────────────────────────────────
 const showDialog = ref(false)
 const isEditing = ref(false)
+const showPriorityTip = ref(false)
 const editingId = ref<number | null>(null)
 const submitting = ref(false)
 
@@ -262,6 +303,7 @@ function openCreate() {
   isEditing.value = false
   editingId.value = null
   form.value = emptyForm()
+  showPriorityTip.value = false
   showDialog.value = true
 }
 
@@ -281,6 +323,7 @@ function openEdit(entry: ModelPricingEntry) {
     enabled: entry.enabled,
     note: entry.note
   }
+  showPriorityTip.value = false
   showDialog.value = true
 }
 
