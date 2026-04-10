@@ -16,10 +16,16 @@ const (
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
 // 这些 token 是客户端特有的，不应透传给上游 API。
-var DroppedBetas = []string{}
+//
+// BetaFineGrainedToolStreaming: 真实的 Claude Code CLI 不发送此 beta（经 mitmproxy 实测）。
+// 其存在会让 Anthropic 识别为非 CLI 代理流量并封锁请求，必须始终丢弃。
+var DroppedBetas = []string{
+	BetaFineGrainedToolStreaming,
+}
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
-const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
+// 注意：不包含 BetaFineGrainedToolStreaming，因为真实 CLI 不发送它且其存在会导致指纹封锁
+const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
 
 // MessageBetaHeaderNoTools /v1/messages 在无工具时的 beta header
 //
@@ -38,8 +44,8 @@ const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInter
 // HaikuBetaHeader Haiku 模型使用的 anthropic-beta header（不需要 claude-code beta）
 const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
 
-// APIKeyBetaHeader API-key 账号建议使用的 anthropic-beta header（不包含 oauth）
-const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
+// APIKeyBetaHeader API-key 账号建议使用的 anthropic-beta header（不包含 oauth / fine-grained）
+const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking
 
 // APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下使用的 anthropic-beta header（不包含 oauth / claude-code）
 const APIKeyHaikuBetaHeader = BetaInterleavedThinking

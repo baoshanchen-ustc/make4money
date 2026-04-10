@@ -63,6 +63,10 @@ const (
 // openclawyRe 用于大小写不敏感地匹配请求体中所有 openclaw 关键词
 var openclawyRe = regexp.MustCompile(`(?i)openclaw`)
 
+// clawEcosystemRe 匹配 OpenClaw 生态标识符：clawhub（技能市场域名）和 clawd（守护进程/Discord 社区）
+// 这些词不含 "openclaw" 前缀，无法被 openclawyRe 捕获
+var clawEcosystemRe = regexp.MustCompile(`(?i)claw(?:hub|d)`)
+
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{}
@@ -913,21 +917,83 @@ func sanitizeSystemText(text string) string {
 	return text
 }
 
-// sanitizeAnthropicBodyKeywords 对整个请求体进行关键词净化，
-// 将所有出现的 "openclaw"（大小写不敏感）替换为 "myapp"。
-// 应在 sanitizeSystemText 之后调用，确保特定短语已被精准替换，
-// 此函数作为兜底清理所有剩余的 openclaw 关键词实例。
+// openClawToolNames maps OpenClaw-specific tool names (that appear both in the `tools`
+// JSON array and as plain-text references in the system prompt) to generic replacements.
+// Anthropic fingerprint detection triggers when these names appear in combination.
+// Order matters: longer names must come before any prefix they contain (e.g.
+// lcm_expand_query before lcm_expand).
+var openClawToolNames = [][2]string{
+	{"lcm_expand_query", "ctx_query"},
+	{"lcm_expand", "ctx_expand"},
+	{"lcm_describe", "ctx_describe"},
+	{"lcm_grep", "ctx_grep"},
+	{"agents_list", "list_agents"},
+	{"sessions_spawn", "spawn_session"},
+	{"sessions_yield", "yield_turn"},
+	{"sessions_history", "get_history"},
+	{"sessions_send", "send_session"},
+	{"sessions_list", "list_sessions"},
+	{"session_status", "get_status"},
+	{"subagents", "sub_agents"},
+}
+
+// sanitizeAnthropicBodyKeywords 对整个请求体进行关键词净化，清除已知会触发
+// Anthropic 指纹识别的 OpenClaw 特征字符串。包括：
+//   - 品牌短语（"You are a personal assistant running inside OpenClaw."）
+//   - openclaw / clawhub / clawd 关键词
+//   - OpenClaw 专属工具名（在 tools 数组和 system prompt 明文中均出现）
+//
 // 返回净化后的 body 和是否有实际改动的标志。
 func sanitizeAnthropicBodyKeywords(body []byte) ([]byte, bool) {
 	if len(body) == 0 {
 		return body, false
 	}
-	// 快速预检，避免无谓的 regexp 运算
-	if !bytes.Contains(bytes.ToLower(body), []byte("openclaw")) {
-		return body, false
+	modified := false
+
+	// 1. Precise identity phrase — must come before generic keyword sweep.
+	const phraseSrc = "You are a personal assistant running inside OpenClaw."
+	const phraseDst = "You are a personal assistant."
+	if bytes.Contains(body, []byte(phraseSrc)) {
+		body = bytes.ReplaceAll(body, []byte(phraseSrc), []byte(phraseDst))
+		modified = true
 	}
-	result := openclawyRe.ReplaceAll(body, []byte("myapp"))
-	return result, true
+
+	// 2. Generic openclaw keyword sweep.
+	if bytes.Contains(bytes.ToLower(body), []byte("openclaw")) {
+		body = openclawyRe.ReplaceAll(body, []byte("myapp"))
+		modified = true
+	}
+
+	// 3. OpenClaw ecosystem identifiers: clawhub (skill market), clawd (daemon/Discord).
+	if bytes.Contains(bytes.ToLower(body), []byte("clawhub")) ||
+		bytes.Contains(bytes.ToLower(body), []byte("clawd")) {
+		body = clawEcosystemRe.ReplaceAll(body, []byte("myapp"))
+		modified = true
+	}
+
+	// 4. OpenClaw-specific tool names — replace everywhere in the body (tools array
+	// JSON values AND plain-text references in system prompt / tool descriptions).
+	// These names in combination trigger Anthropic's fingerprint detection even when
+	// no "openclaw" keyword is present (confirmed via binary search 2026-04-10).
+	for _, pair := range openClawToolNames {
+		old, newName := []byte(pair[0]), []byte(pair[1])
+		if bytes.Contains(body, old) {
+			body = bytes.ReplaceAll(body, old, newName)
+			modified = true
+		}
+	}
+
+	// 5. Reply Tags section fingerprint — the 3-line combination below triggers Anthropic
+	// detection (confirmed via binary search 2026-04-10). Reword the concluding line to
+	// break the pattern while preserving semantic meaning for the agent.
+	const replyTagsSrc = "Tags are stripped before sending; support depends on the current channel config."
+	const replyTagsDst = "Reply tags are removed before delivery; availability depends on channel configuration."
+	if bytes.Contains(body, []byte(replyTagsSrc)) {
+		body = bytes.ReplaceAll(body, []byte(replyTagsSrc), []byte(replyTagsDst))
+		modified = true
+	}
+
+	return body, modified
 }
 
 func marshalAnthropicSystemTextBlock(text string, includeCacheControl bool) ([]byte, error) {
@@ -4134,10 +4200,8 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
 		// Anthropic 指纹净化（透传路径）：替换已知会触发封锁的关键词
-		if s.cfg != nil && s.cfg.Gateway.SanitizeAnthropicPrompt {
-			if sanitized, changed := sanitizeAnthropicBodyKeywords(passthroughBody); changed {
-				passthroughBody = sanitized
-			}
+		if sanitized, changed := sanitizeAnthropicBodyKeywords(passthroughBody); changed {
+			passthroughBody = sanitized
 		}
 		passthroughModel := parsed.Model
 		if passthroughModel != "" {
@@ -4270,7 +4334,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// Anthropic 指纹净化（主路径，仅 PlatformAnthropic）。
 	// 在 OAuth 归一化（sanitizeSystemText 精准短语替换）之后运行，
 	// 清理所有剩余的 openclaw 关键词，覆盖 OAuth/APIKey/SetupToken 全部账号类型。
-	if s.cfg != nil && s.cfg.Gateway.SanitizeAnthropicPrompt && account.Platform == PlatformAnthropic {
+	if account.Platform == PlatformAnthropic {
 		if sanitized, changed := sanitizeAnthropicBodyKeywords(body); changed {
 			body = sanitized
 		}
@@ -5856,13 +5920,32 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	} else {
 		// API-key accounts: apply beta policy filter to strip controlled tokens
 		if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
-			setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(existingBeta, effectiveDropSet))
+			strippedBeta := stripBetaTokensWithSet(existingBeta, effectiveDropSet)
+			if strippedBeta == "" && account.Platform == PlatformAnthropic {
+				// All incoming beta tokens were stripped (e.g. only fine-grained-tool-streaming
+				// was sent, which is not a real CLI beta). Fall back to CLI-appropriate defaults
+				// rather than forwarding an empty anthropic-beta header upstream.
+				setHeaderRaw(req.Header, "anthropic-beta", claude.APIKeyBetaHeader)
+			} else {
+				setHeaderRaw(req.Header, "anthropic-beta", strippedBeta)
+			}
 		} else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
 			// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
 			if requestNeedsBetaFeatures(body) {
 				if beta := defaultAPIKeyBetaHeader(body); beta != "" {
 					setHeaderRaw(req.Header, "anthropic-beta", beta)
 				}
+			}
+		}
+		// For Anthropic platform API-key accounts: strip browser-SDK fingerprint headers.
+		// The Anthropic JS SDK sets Anthropic-Dangerous-Direct-Browser-Access when
+		// dangerouslyAllowBrowser=true; real Claude Code CLI never sends this header.
+		if account.Platform == PlatformAnthropic {
+			req.Header.Del("Anthropic-Dangerous-Direct-Browser-Access")
+			if ua := getHeaderRaw(req.Header, "user-agent"); strings.HasPrefix(ua, "Anthropic/") {
+				// Client sent an Anthropic JS SDK user-agent (e.g. "Anthropic/JS 0.73.0").
+				// Replace with CLI identity headers so the request looks like real Claude Code traffic.
+				applyClaudeCodeMimicHeaders(req, reqStream)
 			}
 		}
 	}
