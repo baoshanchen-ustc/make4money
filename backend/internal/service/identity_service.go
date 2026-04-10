@@ -26,13 +26,13 @@ var (
 
 // 默认指纹值（当客户端未提供时使用）
 var defaultFingerprint = Fingerprint{
-	UserAgent:               "claude-cli/2.1.22 (external, cli)",
+	UserAgent:               "claude-cli/2.1.88 (external, cli)",
 	StainlessLang:           "js",
-	StainlessPackageVersion: "0.70.0",
-	StainlessOS:             "Linux",
-	StainlessArch:           "arm64",
+	StainlessPackageVersion: "0.74.0",
+	StainlessOS:             resolveStainlessOS(),
+	StainlessArch:           resolveStainlessArch(),
 	StainlessRuntime:        "node",
-	StainlessRuntimeVersion: "v24.13.0",
+	StainlessRuntimeVersion: "v22.13.0",
 }
 
 // Fingerprint represents account fingerprint data
@@ -132,7 +132,7 @@ func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fin
 	// 获取x-stainless-*头，如果没有则使用默认值
 	fp.StainlessLang = getHeaderOrDefault(headers, "X-Stainless-Lang", defaultFingerprint.StainlessLang)
 	fp.StainlessPackageVersion = getHeaderOrDefault(headers, "X-Stainless-Package-Version", defaultFingerprint.StainlessPackageVersion)
-	fp.StainlessOS = getHeaderOrDefault(headers, "X-Stainless-OS", defaultFingerprint.StainlessOS)
+	fp.StainlessOS = getHeaderOrDefault(headers, "X-Stainless-Os", defaultFingerprint.StainlessOS)
 	fp.StainlessArch = getHeaderOrDefault(headers, "X-Stainless-Arch", defaultFingerprint.StainlessArch)
 	fp.StainlessRuntime = getHeaderOrDefault(headers, "X-Stainless-Runtime", defaultFingerprint.StainlessRuntime)
 	fp.StainlessRuntimeVersion = getHeaderOrDefault(headers, "X-Stainless-Runtime-Version", defaultFingerprint.StainlessRuntimeVersion)
@@ -152,7 +152,7 @@ func mergeHeadersIntoFingerprint(fp *Fingerprint, headers http.Header) {
 	// X-Stainless-* 头：仅在请求中实际携带时才更新，否则保留缓存值
 	mergeHeader(headers, "X-Stainless-Lang", &fp.StainlessLang)
 	mergeHeader(headers, "X-Stainless-Package-Version", &fp.StainlessPackageVersion)
-	mergeHeader(headers, "X-Stainless-OS", &fp.StainlessOS)
+	mergeHeader(headers, "X-Stainless-Os", &fp.StainlessOS)
 	mergeHeader(headers, "X-Stainless-Arch", &fp.StainlessArch)
 	mergeHeader(headers, "X-Stainless-Runtime", &fp.StainlessRuntime)
 	mergeHeader(headers, "X-Stainless-Runtime-Version", &fp.StainlessRuntimeVersion)
@@ -174,7 +174,7 @@ func getHeaderOrDefault(headers http.Header, key, defaultValue string) string {
 }
 
 // ApplyFingerprint 将指纹应用到请求头（覆盖原有的x-stainless-*头）
-// 使用 setHeaderRaw 保持原始大小写（如 X-Stainless-OS 而非 X-Stainless-Os）
+// 使用 setHeaderRaw 保持原始大小写（如 X-Stainless-Os）
 func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 	if fp == nil {
 		return
@@ -193,7 +193,7 @@ func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 		setHeaderRaw(req.Header, "X-Stainless-Package-Version", fp.StainlessPackageVersion)
 	}
 	if fp.StainlessOS != "" {
-		setHeaderRaw(req.Header, "X-Stainless-OS", fp.StainlessOS)
+		setHeaderRaw(req.Header, "X-Stainless-Os", fp.StainlessOS)
 	}
 	if fp.StainlessArch != "" {
 		setHeaderRaw(req.Header, "X-Stainless-Arch", fp.StainlessArch)

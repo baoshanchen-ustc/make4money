@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,9 +17,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -54,6 +57,17 @@ const (
 	defaultModelsListCacheTTL    = 15 * time.Second
 	postUsageBillingTimeout      = 15 * time.Second
 	debugGatewayBodyEnv          = "SUB2API_DEBUG_GATEWAY_BODY"
+	// Claude Code billing header fingerprint salt (mirrors Claude Code validator requirement).
+	claudeCodeBillingFingerprintSalt = "59cf53e54c78"
+	defaultClaudeCodeEntrypoint      = "cli"
+	betaRedactThinking               = "redact-thinking-2026-02-12"
+	betaContextManagement            = "context-management-2025-06-27"
+	betaPromptCachingScope           = "prompt-caching-scope-2026-01-05"
+	betaAdvancedToolUse              = "advanced-tool-use-2025-11-20"
+	betaEffort                       = "effort-2025-11-24"
+	betaStructuredOutputs            = "structured-outputs-2025-12-15"
+	claudeCodeSessionTTLMin          = 30 * time.Minute
+	claudeCodeSessionTTLMax          = 300 * time.Minute
 )
 
 const (
@@ -88,7 +102,16 @@ var (
 	modelsListCacheHitTotal   atomic.Int64
 	modelsListCacheMissTotal  atomic.Int64
 	modelsListCacheStoreTotal atomic.Int64
+
+	claudeCodeSessionMu    sync.Mutex
+	claudeCodeSessionCache = map[string]claudeCodeSessionEntry{}
 )
+
+type claudeCodeSessionEntry struct {
+	id       string
+	lastUsed time.Time
+	ttl      time.Duration
+}
 
 func GatewayWindowCostPrefetchStats() (cacheHit, cacheMiss, batchSQL, fallback, errCount int64) {
 	return windowCostPrefetchCacheHitTotal.Load(),
@@ -213,6 +236,111 @@ func safeHeaderValueForLog(key string, v string) string {
 	default:
 		return strings.TrimSpace(v)
 	}
+}
+
+func extractDownstreamAPIKey(headers http.Header) string {
+	if headers == nil {
+		return ""
+	}
+	auth := strings.TrimSpace(headers.Get("authorization"))
+	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return strings.TrimSpace(auth[7:])
+	}
+	if k := strings.TrimSpace(headers.Get("x-api-key")); k != "" {
+		return k
+	}
+	if k := strings.TrimSpace(headers.Get("x-goog-api-key")); k != "" {
+		return k
+	}
+	return ""
+}
+
+func hashAPIKeyForSession(apiKey string) string {
+	if strings.TrimSpace(apiKey) == "" {
+		return "default"
+	}
+	sum := sha256.Sum256([]byte(apiKey))
+	return hex.EncodeToString(sum[:])
+}
+
+func randomClaudeCodeSessionTTL() time.Duration {
+	if claudeCodeSessionTTLMax <= claudeCodeSessionTTLMin {
+		return claudeCodeSessionTTLMin
+	}
+	jitter := mathrand.Int63n(int64(claudeCodeSessionTTLMax - claudeCodeSessionTTLMin))
+	return claudeCodeSessionTTLMin + time.Duration(jitter)
+}
+
+func getOrCreateClaudeCodeSessionID(apiKeyHash string) string {
+	if strings.TrimSpace(apiKeyHash) == "" {
+		apiKeyHash = "default"
+	}
+	now := time.Now()
+	claudeCodeSessionMu.Lock()
+	defer claudeCodeSessionMu.Unlock()
+
+	if entry, ok := claudeCodeSessionCache[apiKeyHash]; ok {
+		if now.Sub(entry.lastUsed) < entry.ttl {
+			entry.lastUsed = now
+			claudeCodeSessionCache[apiKeyHash] = entry
+			return entry.id
+		}
+	}
+
+	for key, entry := range claudeCodeSessionCache {
+		if now.Sub(entry.lastUsed) >= entry.ttl {
+			delete(claudeCodeSessionCache, key)
+		}
+	}
+
+	id := generateRandomUUID()
+	claudeCodeSessionCache[apiKeyHash] = claudeCodeSessionEntry{
+		id:       id,
+		lastUsed: now,
+		ttl:      randomClaudeCodeSessionTTL(),
+	}
+	return id
+}
+
+func formatClaudeOAuthMetadataUserID(deviceID, accountUUID, sessionID string) string {
+	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(sessionID) == "" {
+		return ""
+	}
+	raw, err := json.Marshal(jsonUserID{
+		DeviceID:    strings.TrimSpace(deviceID),
+		AccountUUID: strings.TrimSpace(accountUUID),
+		SessionID:   strings.TrimSpace(sessionID),
+	})
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func forceClaudeOAuthMetadataUserID(body []byte, userID string) ([]byte, bool) {
+	if len(body) == 0 || strings.TrimSpace(userID) == "" {
+		return body, false
+	}
+
+	metadata := gjson.GetBytes(body, "metadata")
+	if !metadata.Exists() || metadata.Type == gjson.Null {
+		raw, err := marshalAnthropicMetadata(userID)
+		if err != nil {
+			return body, false
+		}
+		return setJSONRawBytes(body, "metadata", raw)
+	}
+
+	trimmedRaw := strings.TrimSpace(metadata.Raw)
+	if strings.HasPrefix(trimmedRaw, "{") {
+		return setJSONValueBytes(body, "metadata.user_id", userID)
+	}
+
+	raw, err := marshalAnthropicMetadata(userID)
+	if err != nil {
+		return body, false
+	}
+	return setJSONRawBytes(body, "metadata", raw)
 }
 
 func extractSystemPreviewFromBody(body []byte) string {
@@ -891,6 +1019,9 @@ type claudeOAuthNormalizeOptions struct {
 	injectMetadata          bool
 	metadataUserID          string
 	stripSystemCacheControl bool
+	applySystemCloaking     bool
+	cloakingCLIVersion      string
+	cloakingEntrypoint      string
 }
 
 // sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
@@ -1053,6 +1184,257 @@ func ensureClaudeOAuthMetadataUserID(body []byte, userID string) ([]byte, bool) 
 	return setJSONRawBytes(body, "metadata", raw)
 }
 
+func resolveClaudeCodeCLIVersion(ua string) string {
+	if v := ExtractCLIVersion(strings.TrimSpace(ua)); v != "" {
+		return v
+	}
+	if v := ExtractCLIVersion(claude.DefaultHeaders["User-Agent"]); v != "" {
+		return v
+	}
+	return "2.1.88"
+}
+
+func extractFirstAnthropicUserMessageText(body []byte) string {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return ""
+	}
+
+	text := ""
+	messages.ForEach(func(_, item gjson.Result) bool {
+		if item.Get("role").String() != "user" {
+			return true
+		}
+		content := item.Get("content")
+		if !content.Exists() {
+			return false
+		}
+		if content.Type == gjson.String {
+			text = content.String()
+			return false
+		}
+		if content.IsArray() {
+			content.ForEach(func(_, part gjson.Result) bool {
+				if part.Get("type").String() != "text" {
+					return true
+				}
+				t := part.Get("text")
+				if t.Exists() && t.Type == gjson.String {
+					text = t.String()
+					return false
+				}
+				return true
+			})
+		}
+		return false
+	})
+	return text
+}
+
+func computeClaudeCodeBillingFingerprint(messageText, version string) string {
+	runes := []rune(messageText)
+	indices := []int{4, 7, 20}
+	chars := make([]rune, 0, len(indices))
+	for _, idx := range indices {
+		if idx >= 0 && idx < len(runes) {
+			chars = append(chars, runes[idx])
+			continue
+		}
+		chars = append(chars, '0')
+	}
+
+	input := claudeCodeBillingFingerprintSalt + string(chars) + version
+	sum := sha256.Sum256([]byte(input))
+	return hex.EncodeToString(sum[:])[:3]
+}
+
+func generateClaudeCodeBillingHeader(body []byte, cliVersion, entrypoint, workload string) string {
+	msgText := extractFirstAnthropicUserMessageText(body)
+	fp := computeClaudeCodeBillingFingerprint(msgText, cliVersion)
+	workloadPair := ""
+	if strings.TrimSpace(workload) != "" {
+		workloadPair = " cc_workload=" + strings.TrimSpace(workload) + ";"
+	}
+	return "x-anthropic-billing-header: cc_version=" + cliVersion + "." + fp + "; cc_entrypoint=" + entrypoint + ";" + workloadPair
+}
+
+func isBillingHeaderSystemText(text string) bool {
+	return strings.Contains(text, "x-anthropic-billing-header")
+}
+
+func isClaudeCodePrefixSystemText(text string) bool {
+	return strings.Contains(text, "You are Claude Code")
+}
+
+func ensureClaudeOAuthSystemCloaking(body []byte, cliVersion, entrypoint string) ([]byte, bool) {
+	if len(body) == 0 {
+		return body, false
+	}
+	if cliVersion == "" {
+		cliVersion = resolveClaudeCodeCLIVersion("")
+	}
+	if entrypoint == "" {
+		entrypoint = defaultClaudeCodeEntrypoint
+	}
+
+	sys := gjson.GetBytes(body, "system")
+	var remaining [][]byte
+	var billingRaw []byte
+	var prefixRaw []byte
+
+	collectTextBlock := func(raw []byte, text string) {
+		if billingRaw == nil && isBillingHeaderSystemText(text) {
+			billingRaw = raw
+			return
+		}
+		if prefixRaw == nil && isClaudeCodePrefixSystemText(text) {
+			prefixRaw = raw
+			return
+		}
+		remaining = append(remaining, raw)
+	}
+
+	switch {
+	case !sys.Exists() || sys.Type == gjson.Null:
+		// no-op: we will synthesize billing + prefix blocks below.
+	case sys.Type == gjson.String:
+		text := sys.String()
+		raw, err := marshalAnthropicSystemTextBlock(text, false)
+		if err == nil {
+			collectTextBlock(raw, text)
+		}
+	case sys.IsArray():
+		sys.ForEach(func(_, item gjson.Result) bool {
+			itemText := ""
+			if item.Type == gjson.String {
+				itemText = item.String()
+				raw, err := marshalAnthropicSystemTextBlock(itemText, false)
+				if err == nil {
+					collectTextBlock(raw, itemText)
+					return true
+				}
+			}
+			if item.Get("type").String() == "text" {
+				textResult := item.Get("text")
+				if textResult.Exists() && textResult.Type == gjson.String {
+					itemText = textResult.String()
+				}
+			}
+			raw := []byte(item.Raw)
+			if itemText != "" {
+				collectTextBlock(raw, itemText)
+				return true
+			}
+			remaining = append(remaining, raw)
+			return true
+		})
+	default:
+		remaining = append(remaining, []byte(sys.Raw))
+	}
+
+	if billingRaw == nil {
+		billingHeader := generateClaudeCodeBillingHeader(body, cliVersion, entrypoint, "")
+		raw, err := marshalAnthropicSystemTextBlock(billingHeader, false)
+		if err == nil {
+			billingRaw = raw
+		}
+	}
+	if prefixRaw == nil {
+		raw, err := marshalAnthropicSystemTextBlock(claudeCodeSystemPrompt, true)
+		if err == nil {
+			prefixRaw = raw
+		}
+	}
+	if billingRaw == nil || prefixRaw == nil {
+		return body, false
+	}
+
+	items := make([][]byte, 0, len(remaining)+2)
+	items = append(items, billingRaw, prefixRaw)
+	items = append(items, remaining...)
+	next, ok := setJSONRawBytes(body, "system", buildJSONArrayRaw(items))
+	if !ok {
+		return body, false
+	}
+	return next, true
+}
+
+func isStructuredOutputRequest(body []byte) bool {
+	outputType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "output_config.type").String()))
+	if outputType == "json_object" || outputType == "json_schema" {
+		return true
+	}
+	if gjson.GetBytes(body, "output_config.json_schema").Exists() {
+		return true
+	}
+	// Keep compatibility with OpenAI-style payloads that may pass through unified gateways.
+	responseFormatType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "response_format.type").String()))
+	if responseFormatType == "json_object" || responseFormatType == "json_schema" {
+		return true
+	}
+	return false
+}
+
+func buildAuth2APIDynamicBetaTokens(modelID string, structured bool) []string {
+	isHaiku := strings.Contains(strings.ToLower(modelID), "haiku")
+	if isHaiku {
+		if structured {
+			return []string{
+				claude.BetaOAuth,
+				claude.BetaInterleavedThinking,
+				betaRedactThinking,
+				betaContextManagement,
+				betaPromptCachingScope,
+				betaStructuredOutputs,
+			}
+		}
+		return []string{
+			claude.BetaOAuth,
+			claude.BetaInterleavedThinking,
+			betaRedactThinking,
+			betaContextManagement,
+			betaPromptCachingScope,
+			claude.BetaClaudeCode,
+		}
+	}
+
+	if structured {
+		return []string{
+			claude.BetaClaudeCode,
+			claude.BetaOAuth,
+			claude.BetaInterleavedThinking,
+			betaRedactThinking,
+			betaContextManagement,
+			betaPromptCachingScope,
+			betaAdvancedToolUse,
+			betaEffort,
+			betaStructuredOutputs,
+		}
+	}
+	return []string{
+		claude.BetaClaudeCode,
+		claude.BetaOAuth,
+		claude.BetaInterleavedThinking,
+		betaRedactThinking,
+		betaContextManagement,
+		betaPromptCachingScope,
+		betaAdvancedToolUse,
+		betaEffort,
+	}
+}
+
+func joinBetaTokens(tokens []string) string {
+	filtered := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		filtered = append(filtered, token)
+	}
+	return strings.Join(filtered, ",")
+}
+
 func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAuthNormalizeOptions) ([]byte, string) {
 	if len(body) == 0 {
 		return body, modelID
@@ -1060,6 +1442,13 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 
 	out := body
 	modified := false
+
+	if opts.applySystemCloaking {
+		if next, changed := ensureClaudeOAuthSystemCloaking(out, opts.cloakingCLIVersion, opts.cloakingEntrypoint); changed {
+			out = next
+			modified = true
+		}
+	}
 
 	if next, changed := normalizeClaudeOAuthSystemBody(out, opts); changed {
 		out = next
@@ -4165,29 +4554,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
 	if shouldMimicClaudeCode {
-		// 智能注入 Claude Code 系统提示词（仅 OAuth/SetupToken 账号需要）
-		// 条件：1) OAuth/SetupToken 账号  2) 不是 Claude Code 客户端  3) 不是 Haiku 模型  4) system 中还没有 Claude Code 提示词
-		if !strings.Contains(strings.ToLower(reqModel), "haiku") &&
-			!systemIncludesClaudeCodePrompt(parsed.System) {
-			body = injectClaudeCodePrompt(body, parsed.System)
-		}
-
-		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: true}
-		if s.identityService != nil {
-			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
-			if err == nil && fp != nil {
-				// metadata 透传开启时跳过 metadata 注入
-				_, mimicMPT := s.settingService.GetGatewayForwardingSettings(ctx)
-				if !mimicMPT {
-					if metadataUserID := s.buildOAuthMetadataUserID(parsed, account, fp); metadataUserID != "" {
-						normalizeOpts.injectMetadata = true
-						normalizeOpts.metadataUserID = metadataUserID
-					}
-				}
-			}
-		}
-
-		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
+		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, claudeOAuthNormalizeOptions{
+			stripSystemCacheControl: true,
+		})
 	}
 
 	// 强制执行 cache_control 块数量限制（最多 4 个）
@@ -5839,34 +6208,49 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		clientHeaders = c.Request.Header
 	}
 
-	// OAuth账号：应用统一指纹和metadata重写（受设置开关控制）
+	downstreamAPIKeyHash := hashAPIKeyForSession(extractDownstreamAPIKey(clientHeaders))
+	sessionID := strings.TrimSpace(getHeaderRaw(clientHeaders, "x-claude-code-session-id"))
+	if sessionID == "" {
+		sessionID = getOrCreateClaudeCodeSessionID(downstreamAPIKeyHash)
+	}
+
+	// OAuth账号：对齐 Claude Code 请求身份（指纹 + system cloaking + metadata.user_id）。
 	var fingerprint *Fingerprint
 	enableFP, enableMPT := true, false
 	if s.settingService != nil {
 		enableFP, enableMPT = s.settingService.GetGatewayForwardingSettings(ctx)
 	}
-	if account.IsOAuth() && s.identityService != nil {
-		// 1. 获取或创建指纹（包含随机生成的ClientID）
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
-		if err != nil {
-			logger.LegacyPrintf("service.gateway", "Warning: failed to get fingerprint for account %d: %v", account.ID, err)
-			// 失败时降级为透传原始headers
-		} else {
-			if enableFP {
+	if account.IsOAuth() {
+		cliVersion := resolveClaudeCodeCLIVersion("")
+		deviceID := ""
+		if s.identityService != nil {
+			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
+			if err != nil {
+				logger.LegacyPrintf("service.gateway", "Warning: failed to get fingerprint for account %d: %v", account.ID, err)
+			} else if fp != nil {
 				fingerprint = fp
-			}
-
-			// 2. 重写metadata.user_id（需要指纹中的ClientID和账号的account_uuid）
-			// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
-			// 当 metadata 透传开启时跳过重写
-			if !enableMPT {
-				accountUUID := account.GetExtraString("account_uuid")
-				if accountUUID != "" && fp.ClientID != "" {
-					if newBody, err := s.identityService.RewriteUserIDWithMasking(ctx, body, account, accountUUID, fp.ClientID, fp.UserAgent); err == nil && len(newBody) > 0 {
-						body = newBody
-					}
+				if strings.TrimSpace(fp.ClientID) == "" {
+					fp.ClientID = generateClientID()
 				}
+				deviceID = strings.TrimSpace(fp.ClientID)
+				cliVersion = resolveClaudeCodeCLIVersion(fp.UserAgent)
 			}
+		}
+		if deviceID == "" {
+			deviceID = generateClientID()
+		}
+
+		if next, changed := ensureClaudeOAuthSystemCloaking(body, cliVersion, defaultClaudeCodeEntrypoint); changed {
+			body = next
+		}
+
+		metadataUserID := formatClaudeOAuthMetadataUserID(
+			deviceID,
+			strings.TrimSpace(account.GetExtraString("account_uuid")),
+			sessionID,
+		)
+		if next, changed := forceClaudeOAuthMetadataUserID(body, metadataUserID); changed {
+			body = next
 		}
 	}
 
@@ -5894,7 +6278,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	// OAuth账号：应用缓存的指纹到请求头（覆盖白名单透传的头）
-	if fingerprint != nil {
+	if fingerprint != nil && s.identityService != nil {
 		s.identityService.ApplyFingerprint(req, fingerprint)
 	}
 
@@ -5906,33 +6290,24 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 	if tokenType == "oauth" {
-		applyClaudeOAuthHeaderDefaults(req)
+		applyClaudeOAuthHeaderDefaults(req, reqStream)
+		if sessionID != "" {
+			setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", sessionID)
+		}
 	}
 
 	// Build effective drop set: merge static defaults with dynamic beta policy filter rules
 	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account)
 	effectiveDropSet := mergeDropSets(policyFilterSet)
-	effectiveDropWithClaudeCodeSet := mergeDropSets(policyFilterSet, claude.BetaClaudeCode)
 
 	// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
 	if tokenType == "oauth" {
 		if mimicClaudeCode {
-			// 非 Claude Code 客户端：按 opencode 的策略处理：
-			// - 强制 Claude Code 指纹相关请求头（尤其是 user-agent/x-stainless/x-app）
-			// - 保留 incoming beta 的同时，确保 OAuth 所需 beta 存在
+			// 非 Claude Code 客户端：强制 Claude Code 风格请求头。
 			applyClaudeCodeMimicHeaders(req, reqStream)
-
-			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			// Match real Claude CLI traffic (per mitmproxy reports):
-			// messages requests typically use only oauth + interleaved-thinking.
-			// Also drop claude-code beta if a downstream client added it.
-			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropWithClaudeCodeSet))
-		} else {
-			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
-			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
-			setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBetaHeader), effectiveDropSet))
 		}
+		clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
+		setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(s.getBetaHeader(modelID, body, clientBetaHeader), effectiveDropSet))
 	} else {
 		// API-key accounts: apply beta policy filter to strip controlled tokens
 		if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
@@ -5943,15 +6318,6 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 				if beta := defaultAPIKeyBetaHeader(body); beta != "" {
 					setHeaderRaw(req.Header, "anthropic-beta", beta)
 				}
-			}
-		}
-	}
-
-	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 			}
 		}
 	}
@@ -5978,51 +6344,18 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	return req, nil
 }
 
-// getBetaHeader 处理anthropic-beta header
-// 对于OAuth账号，需要确保包含oauth-2025-04-20
-func (s *GatewayService) getBetaHeader(modelID string, clientBetaHeader string) string {
-	// 如果客户端传了anthropic-beta
+// getBetaHeader 处理 anthropic-beta header（按 auth2api 动态策略）
+// 1) 客户端提供 anthropic-beta：保持原值并补齐 oauth beta（在首位）
+// 2) 客户端未提供：按模型 + structured 输出动态生成默认值
+func (s *GatewayService) getBetaHeader(modelID string, body []byte, clientBetaHeader string) string {
+	clientBetaHeader = strings.TrimSpace(clientBetaHeader)
 	if clientBetaHeader != "" {
-		// 已包含oauth beta则直接返回
 		if strings.Contains(clientBetaHeader, claude.BetaOAuth) {
 			return clientBetaHeader
 		}
-
-		// 需要添加oauth beta
-		parts := strings.Split(clientBetaHeader, ",")
-		for i, p := range parts {
-			parts[i] = strings.TrimSpace(p)
-		}
-
-		// 在claude-code-20250219后面插入oauth beta
-		claudeCodeIdx := -1
-		for i, p := range parts {
-			if p == claude.BetaClaudeCode {
-				claudeCodeIdx = i
-				break
-			}
-		}
-
-		if claudeCodeIdx >= 0 {
-			// 在claude-code后面插入
-			newParts := make([]string, 0, len(parts)+1)
-			newParts = append(newParts, parts[:claudeCodeIdx+1]...)
-			newParts = append(newParts, claude.BetaOAuth)
-			newParts = append(newParts, parts[claudeCodeIdx+1:]...)
-			return strings.Join(newParts, ",")
-		}
-
-		// 没有claude-code，放在第一位
 		return claude.BetaOAuth + "," + clientBetaHeader
 	}
-
-	// 客户端没传，根据模型生成
-	// haiku 模型不需要 claude-code beta
-	if strings.Contains(strings.ToLower(modelID), "haiku") {
-		return claude.HaikuBetaHeader
-	}
-
-	return claude.DefaultBetaHeader
+	return joinBetaTokens(buildAuth2APIDynamicBetaTokens(modelID, isStructuredOutputRequest(body)))
 }
 
 func requestNeedsBetaFeatures(body []byte) bool {
@@ -6045,12 +6378,16 @@ func defaultAPIKeyBetaHeader(body []byte) string {
 	return claude.APIKeyBetaHeader
 }
 
-func applyClaudeOAuthHeaderDefaults(req *http.Request) {
+func applyClaudeOAuthHeaderDefaults(req *http.Request, isStream bool) {
 	if req == nil {
 		return
 	}
 	if getHeaderRaw(req.Header, "Accept") == "" {
-		setHeaderRaw(req.Header, "Accept", "application/json")
+		if isStream {
+			setHeaderRaw(req.Header, "Accept", "text/event-stream")
+		} else {
+			setHeaderRaw(req.Header, "Accept", "application/json")
+		}
 	}
 	for key, value := range claude.DefaultHeaders {
 		if value == "" {
@@ -6059,6 +6396,39 @@ func applyClaudeOAuthHeaderDefaults(req *http.Request) {
 		if getHeaderRaw(req.Header, key) == "" {
 			setHeaderRaw(req.Header, resolveWireCasing(key), value)
 		}
+	}
+	if getHeaderRaw(req.Header, "X-Stainless-Arch") == "" {
+		setHeaderRaw(req.Header, "X-Stainless-Arch", resolveStainlessArch())
+	}
+	if getHeaderRaw(req.Header, "X-Stainless-Os") == "" {
+		setHeaderRaw(req.Header, "X-Stainless-Os", resolveStainlessOS())
+	}
+	if getHeaderRaw(req.Header, "x-client-request-id") == "" {
+		setHeaderRaw(req.Header, "x-client-request-id", uuid.NewString())
+	}
+}
+
+func resolveStainlessArch() string {
+	switch runtime.GOARCH {
+	case "arm64":
+		return "arm64"
+	case "amd64":
+		return "x64"
+	default:
+		return "x86"
+	}
+}
+
+func resolveStainlessOS() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "MacOS"
+	case "windows":
+		return "Windows"
+	case "freebsd":
+		return "FreeBSD"
+	default:
+		return "Linux"
 	}
 }
 
@@ -6354,7 +6724,7 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 		return
 	}
 	// Start with the standard defaults (fill missing).
-	applyClaudeOAuthHeaderDefaults(req)
+	applyClaudeOAuthHeaderDefaults(req, isStream)
 	// Then force key headers to match Claude Code fingerprint regardless of what the client sent.
 	// 使用 resolveWireCasing 确保 key 与真实 wire format 一致（如 "x-app" 而非 "X-App"）
 	for key, value := range claude.DefaultHeaders {
@@ -6363,10 +6733,12 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 		}
 		setHeaderRaw(req.Header, resolveWireCasing(key), value)
 	}
-	// Real Claude CLI uses Accept: application/json (even for streaming).
-	setHeaderRaw(req.Header, "Accept", "application/json")
+	setHeaderRaw(req.Header, "X-Stainless-Arch", resolveStainlessArch())
+	setHeaderRaw(req.Header, "X-Stainless-Os", resolveStainlessOS())
 	if isStream {
-		setHeaderRaw(req.Header, "x-stainless-helper-method", "stream")
+		setHeaderRaw(req.Header, "Accept", "text/event-stream")
+	} else {
+		setHeaderRaw(req.Header, "Accept", "application/json")
 	}
 }
 
@@ -8595,25 +8967,19 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		clientHeaders = c.Request.Header
 	}
 
-	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
-	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
-	ctEnableFP, ctEnableMPT := true, false
-	if s.settingService != nil {
-		ctEnableFP, ctEnableMPT = s.settingService.GetGatewayForwardingSettings(ctx)
+	downstreamAPIKeyHash := hashAPIKeyForSession(extractDownstreamAPIKey(clientHeaders))
+	sessionID := strings.TrimSpace(getHeaderRaw(clientHeaders, "x-claude-code-session-id"))
+	if sessionID == "" {
+		sessionID = getOrCreateClaudeCodeSessionID(downstreamAPIKeyHash)
 	}
+
 	var ctFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
 		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
-		if err == nil {
+		if err == nil && fp != nil {
 			ctFingerprint = fp
-			if !ctEnableMPT {
-				accountUUID := account.GetExtraString("account_uuid")
-				if accountUUID != "" && fp.ClientID != "" {
-					if newBody, err := s.identityService.RewriteUserIDWithMasking(ctx, body, account, accountUUID, fp.ClientID, fp.UserAgent); err == nil && len(newBody) > 0 {
-						body = newBody
-					}
-				}
-			}
+		} else if err != nil {
+			logger.LegacyPrintf("service.gateway", "Warning: failed to get fingerprint for count_tokens account %d: %v", account.ID, err)
 		}
 	}
 
@@ -8640,8 +9006,8 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		}
 	}
 
-	// OAuth 账号：应用指纹到请求头（受设置开关控制）
-	if ctEnableFP && ctFingerprint != nil {
+	// OAuth 账号：应用指纹到请求头
+	if ctFingerprint != nil && s.identityService != nil {
 		s.identityService.ApplyFingerprint(req, ctFingerprint)
 	}
 
@@ -8653,7 +9019,10 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 	if tokenType == "oauth" {
-		applyClaudeOAuthHeaderDefaults(req)
+		applyClaudeOAuthHeaderDefaults(req, false)
+		if sessionID != "" {
+			setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", sessionID)
+		}
 	}
 
 	// Build effective drop set for count_tokens: merge static defaults with dynamic beta policy filter rules
@@ -8663,22 +9032,10 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	if tokenType == "oauth" {
 		if mimicClaudeCode {
 			applyClaudeCodeMimicHeaders(req, false)
-
-			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			requiredBetas := []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinking, claude.BetaTokenCounting}
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, ctEffectiveDropSet))
-		} else {
-			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
-			if clientBetaHeader == "" {
-				setHeaderRaw(req.Header, "anthropic-beta", claude.CountTokensBetaHeader)
-			} else {
-				beta := s.getBetaHeader(modelID, clientBetaHeader)
-				if !strings.Contains(beta, claude.BetaTokenCounting) {
-					beta = beta + "," + claude.BetaTokenCounting
-				}
-				setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(beta, ctEffectiveDropSet))
-			}
 		}
+		clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
+		beta := s.getBetaHeader(modelID, body, clientBetaHeader)
+		setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(beta, ctEffectiveDropSet))
 	} else {
 		// API-key accounts: apply beta policy filter to strip controlled tokens
 		if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
@@ -8689,15 +9046,6 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 				if beta := defaultAPIKeyBetaHeader(body); beta != "" {
 					setHeaderRaw(req.Header, "anthropic-beta", beta)
 				}
-			}
-		}
-	}
-
-	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 			}
 		}
 	}

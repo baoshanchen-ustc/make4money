@@ -20,7 +20,7 @@ var headerWireCasing = map[string]string{
 	"x-stainless-timeout":         "X-Stainless-Timeout",
 	"x-stainless-lang":            "X-Stainless-Lang",
 	"x-stainless-package-version": "X-Stainless-Package-Version",
-	"x-stainless-os":              "X-Stainless-OS",
+	"x-stainless-os":              "X-Stainless-Os",
 	"x-stainless-arch":            "X-Stainless-Arch",
 	"x-stainless-runtime":         "X-Stainless-Runtime",
 	"x-stainless-runtime-version": "X-Stainless-Runtime-Version",
@@ -51,7 +51,7 @@ var headerWireOrder = []string{
 	"X-Stainless-Timeout",
 	"X-Stainless-Lang",
 	"X-Stainless-Package-Version",
-	"X-Stainless-OS",
+	"X-Stainless-Os",
 	"X-Stainless-Arch",
 	"X-Stainless-Runtime",
 	"X-Stainless-Runtime-Version",
@@ -81,7 +81,7 @@ func init() {
 	}
 }
 
-// resolveWireCasing 将 Go canonical key（如 X-Stainless-Os）映射为真实 wire casing（如 X-Stainless-OS）。
+// resolveWireCasing 将 Go canonical key（如 X-Stainless-Os）映射为真实 wire casing（如 X-Stainless-Os）。
 // 如果 map 中没有对应条目，返回原始 key 不变。
 func resolveWireCasing(key string) string {
 	if wk, ok := headerWireCasing[strings.ToLower(key)]; ok {
