@@ -196,6 +196,20 @@ func (_c *ModelPricingCreate) SetNillableEnabled(v *bool) *ModelPricingCreate {
 	return _c
 }
 
+// SetOverrideLitellm sets the "override_litellm" field.
+func (_c *ModelPricingCreate) SetOverrideLitellm(v bool) *ModelPricingCreate {
+	_c.mutation.SetOverrideLitellm(v)
+	return _c
+}
+
+// SetNillableOverrideLitellm sets the "override_litellm" field if the given value is not nil.
+func (_c *ModelPricingCreate) SetNillableOverrideLitellm(v *bool) *ModelPricingCreate {
+	if v != nil {
+		_c.SetOverrideLitellm(*v)
+	}
+	return _c
+}
+
 // SetNote sets the "note" field.
 func (_c *ModelPricingCreate) SetNote(v string) *ModelPricingCreate {
 	_c.mutation.SetNote(v)
@@ -293,6 +307,10 @@ func (_c *ModelPricingCreate) defaults() error {
 		v := modelpricing.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
+	if _, ok := _c.mutation.OverrideLitellm(); !ok {
+		v := modelpricing.DefaultOverrideLitellm
+		_c.mutation.SetOverrideLitellm(v)
+	}
 	return nil
 }
 
@@ -340,6 +358,9 @@ func (_c *ModelPricingCreate) check() error {
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "ModelPricing.enabled"`)}
+	}
+	if _, ok := _c.mutation.OverrideLitellm(); !ok {
+		return &ValidationError{Name: "override_litellm", err: errors.New(`ent: missing required field "ModelPricing.override_litellm"`)}
 	}
 	if v, ok := _c.mutation.Note(); ok {
 		if err := modelpricing.NoteValidator(v); err != nil {
@@ -424,6 +445,10 @@ func (_c *ModelPricingCreate) createSpec() (*ModelPricing, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(modelpricing.FieldEnabled, field.TypeBool, value)
 		_node.Enabled = value
+	}
+	if value, ok := _c.mutation.OverrideLitellm(); ok {
+		_spec.SetField(modelpricing.FieldOverrideLitellm, field.TypeBool, value)
+		_node.OverrideLitellm = value
 	}
 	if value, ok := _c.mutation.Note(); ok {
 		_spec.SetField(modelpricing.FieldNote, field.TypeString, value)
@@ -676,6 +701,18 @@ func (u *ModelPricingUpsert) SetEnabled(v bool) *ModelPricingUpsert {
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
 func (u *ModelPricingUpsert) UpdateEnabled() *ModelPricingUpsert {
 	u.SetExcluded(modelpricing.FieldEnabled)
+	return u
+}
+
+// SetOverrideLitellm sets the "override_litellm" field.
+func (u *ModelPricingUpsert) SetOverrideLitellm(v bool) *ModelPricingUpsert {
+	u.Set(modelpricing.FieldOverrideLitellm, v)
+	return u
+}
+
+// UpdateOverrideLitellm sets the "override_litellm" field to the value that was provided on create.
+func (u *ModelPricingUpsert) UpdateOverrideLitellm() *ModelPricingUpsert {
+	u.SetExcluded(modelpricing.FieldOverrideLitellm)
 	return u
 }
 
@@ -970,6 +1007,20 @@ func (u *ModelPricingUpsertOne) SetEnabled(v bool) *ModelPricingUpsertOne {
 func (u *ModelPricingUpsertOne) UpdateEnabled() *ModelPricingUpsertOne {
 	return u.Update(func(s *ModelPricingUpsert) {
 		s.UpdateEnabled()
+	})
+}
+
+// SetOverrideLitellm sets the "override_litellm" field.
+func (u *ModelPricingUpsertOne) SetOverrideLitellm(v bool) *ModelPricingUpsertOne {
+	return u.Update(func(s *ModelPricingUpsert) {
+		s.SetOverrideLitellm(v)
+	})
+}
+
+// UpdateOverrideLitellm sets the "override_litellm" field to the value that was provided on create.
+func (u *ModelPricingUpsertOne) UpdateOverrideLitellm() *ModelPricingUpsertOne {
+	return u.Update(func(s *ModelPricingUpsert) {
+		s.UpdateOverrideLitellm()
 	})
 }
 
@@ -1433,6 +1484,20 @@ func (u *ModelPricingUpsertBulk) SetEnabled(v bool) *ModelPricingUpsertBulk {
 func (u *ModelPricingUpsertBulk) UpdateEnabled() *ModelPricingUpsertBulk {
 	return u.Update(func(s *ModelPricingUpsert) {
 		s.UpdateEnabled()
+	})
+}
+
+// SetOverrideLitellm sets the "override_litellm" field.
+func (u *ModelPricingUpsertBulk) SetOverrideLitellm(v bool) *ModelPricingUpsertBulk {
+	return u.Update(func(s *ModelPricingUpsert) {
+		s.SetOverrideLitellm(v)
+	})
+}
+
+// UpdateOverrideLitellm sets the "override_litellm" field to the value that was provided on create.
+func (u *ModelPricingUpsertBulk) UpdateOverrideLitellm() *ModelPricingUpsertBulk {
+	return u.Update(func(s *ModelPricingUpsert) {
+		s.UpdateOverrideLitellm()
 	})
 }
 

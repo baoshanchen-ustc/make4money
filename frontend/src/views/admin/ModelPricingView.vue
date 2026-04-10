@@ -274,6 +274,18 @@
             <span class="text-xs text-gray-500 dark:text-dark-400">{{ value || '—' }}</span>
           </template>
 
+          <!-- Override LiteLLM -->
+          <template #cell-override_litellm="{ value }">
+            <span
+              v-if="value"
+              class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              :title="t('admin.modelPricings.overrideLitellmTooltip')"
+            >
+              {{ t('admin.modelPricings.overrideLitellm') }}
+            </span>
+            <span v-else class="text-xs text-gray-400">—</span>
+          </template>
+
           <!-- Actions -->
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-2">
@@ -402,11 +414,15 @@
           </div>
         </div>
 
-        <!-- enabled + note -->
-        <div class="flex items-center gap-3">
+        <!-- enabled + override_litellm + note -->
+        <div class="flex items-center gap-4">
           <label class="flex items-center gap-2 cursor-pointer">
             <input v-model="form.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
             <span class="text-sm">{{ t('admin.modelPricings.enabled') }}</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer" :title="t('admin.modelPricings.overrideLitellmTooltip')">
+            <input v-model="form.override_litellm" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-amber-600" />
+            <span class="text-sm text-amber-600 dark:text-amber-400">{{ t('admin.modelPricings.overrideLitellm') }}</span>
           </label>
         </div>
         <div>
@@ -468,6 +484,7 @@ const columns: Column[] = [
   { key: 'cache_read_price_per_million', label: '缓存价格' },
   { key: 'enabled', label: t('admin.modelPricings.enabled') },
   { key: 'litellm_compare', label: t('admin.modelPricings.litellmCompare') },
+  { key: 'override_litellm', label: t('admin.modelPricings.overrideLitellm') },
   { key: 'note', label: t('admin.modelPricings.note') },
   { key: 'actions', label: t('common.actions') }
 ]
@@ -501,6 +518,7 @@ const emptyForm = (): UpsertModelPricingRequest => ({
   cache_read_price_per_million_priority: 0,
   cache_creation_price_per_million: 0,
   enabled: false, // 默认禁用，防止意外创建 0 成本计费配置
+  override_litellm: false,
   note: ''
 })
 
@@ -528,6 +546,7 @@ function openEdit(entry: ModelPricingEntry) {
     cache_read_price_per_million_priority: entry.cache_read_price_per_million_priority,
     cache_creation_price_per_million: entry.cache_creation_price_per_million,
     enabled: entry.enabled,
+    override_litellm: entry.override_litellm,
     note: entry.note
   }
   showPriorityTip.value = false

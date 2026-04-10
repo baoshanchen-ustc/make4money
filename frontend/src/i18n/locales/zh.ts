@@ -3165,6 +3165,8 @@ export default {
       cacheReadCreation: '缓存读取 / 创建',
       priorityPrice: 'Priority 服务层',
       activeTag: '生效中',
+      overrideLitellm: '覆盖 LiteLLM',
+      overrideLitellmTooltip: '开启后，此条数据库价格将优先于 LiteLLM 动态价格生效（适用于免费模型或强制覆盖场景）',
     },
 
     // Proxies Management

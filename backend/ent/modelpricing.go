@@ -43,6 +43,8 @@ type ModelPricing struct {
 	CacheCreationPricePerMillion float64 `json:"cache_creation_price_per_million,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled bool `json:"enabled,omitempty"`
+	// When true, this DB price takes priority over LiteLLM dynamic pricing
+	OverrideLitellm bool `json:"override_litellm,omitempty"`
 	// Admin notes for this pricing entry
 	Note         string `json:"note,omitempty"`
 	selectValues sql.SelectValues
@@ -53,7 +55,7 @@ func (*ModelPricing) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case modelpricing.FieldEnabled:
+		case modelpricing.FieldEnabled, modelpricing.FieldOverrideLitellm:
 			values[i] = new(sql.NullBool)
 		case modelpricing.FieldInputPricePerMillion, modelpricing.FieldOutputPricePerMillion, modelpricing.FieldInputPricePerMillionPriority, modelpricing.FieldOutputPricePerMillionPriority, modelpricing.FieldCacheReadPricePerMillion, modelpricing.FieldCacheReadPricePerMillionPriority, modelpricing.FieldCacheCreationPricePerMillion:
 			values[i] = new(sql.NullFloat64)
@@ -163,6 +165,12 @@ func (_m *ModelPricing) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Enabled = value.Bool
 			}
+		case modelpricing.FieldOverrideLitellm:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field override_litellm", values[i])
+			} else if value.Valid {
+				_m.OverrideLitellm = value.Bool
+			}
 		case modelpricing.FieldNote:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field note", values[i])
@@ -245,6 +253,9 @@ func (_m *ModelPricing) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))
+	builder.WriteString(", ")
+	builder.WriteString("override_litellm=")
+	builder.WriteString(fmt.Sprintf("%v", _m.OverrideLitellm))
 	builder.WriteString(", ")
 	builder.WriteString("note=")
 	builder.WriteString(_m.Note)

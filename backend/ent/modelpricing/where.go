@@ -119,6 +119,11 @@ func Enabled(v bool) predicate.ModelPricing {
 	return predicate.ModelPricing(sql.FieldEQ(FieldEnabled, v))
 }
 
+// OverrideLitellm applies equality check predicate on the "override_litellm" field. It's identical to OverrideLitellmEQ.
+func OverrideLitellm(v bool) predicate.ModelPricing {
+	return predicate.ModelPricing(sql.FieldEQ(FieldOverrideLitellm, v))
+}
+
 // Note applies equality check predicate on the "note" field. It's identical to NoteEQ.
 func Note(v string) predicate.ModelPricing {
 	return predicate.ModelPricing(sql.FieldEQ(FieldNote, v))
@@ -682,6 +687,16 @@ func EnabledEQ(v bool) predicate.ModelPricing {
 // EnabledNEQ applies the NEQ predicate on the "enabled" field.
 func EnabledNEQ(v bool) predicate.ModelPricing {
 	return predicate.ModelPricing(sql.FieldNEQ(FieldEnabled, v))
+}
+
+// OverrideLitellmEQ applies the EQ predicate on the "override_litellm" field.
+func OverrideLitellmEQ(v bool) predicate.ModelPricing {
+	return predicate.ModelPricing(sql.FieldEQ(FieldOverrideLitellm, v))
+}
+
+// OverrideLitellmNEQ applies the NEQ predicate on the "override_litellm" field.
+func OverrideLitellmNEQ(v bool) predicate.ModelPricing {
+	return predicate.ModelPricing(sql.FieldNEQ(FieldOverrideLitellm, v))
 }
 
 // NoteEQ applies the EQ predicate on the "note" field.

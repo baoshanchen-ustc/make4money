@@ -3065,6 +3065,8 @@ export default {
       cacheReadCreation: 'Cache Read / Creation',
       priorityPrice: 'Priority Tier',
       activeTag: 'Active',
+      overrideLitellm: 'Override LiteLLM',
+      overrideLitellmTooltip: 'When enabled, this DB price takes priority over LiteLLM dynamic pricing (useful for free models or forced overrides)',
     },
 
     // Proxies

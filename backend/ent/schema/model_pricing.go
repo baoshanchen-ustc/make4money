@@ -79,6 +79,11 @@ func (ModelPricing) Fields() []ent.Field {
 		field.Bool("enabled").
 			Default(true),
 
+		// override_litellm：设为 true 时，数据库价格优先于 LiteLLM 动态价格生效
+		field.Bool("override_litellm").
+			Default(false).
+			Comment("When true, this DB price takes priority over LiteLLM dynamic pricing"),
+
 		// 备注
 		field.String("note").
 			MaxLen(500).

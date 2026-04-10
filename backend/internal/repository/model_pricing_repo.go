@@ -68,6 +68,7 @@ func (r *modelPricingRepository) Create(ctx context.Context, entry *service.Mode
 		SetCacheReadPricePerMillionPriority(entry.CacheReadPricePerMillionPriority).
 		SetCacheCreationPricePerMillion(entry.CacheCreationPricePerMillion).
 		SetEnabled(entry.Enabled).
+		SetOverrideLitellm(entry.OverrideLitellm).
 		SetNillableNote(nilIfEmpty(entry.Note)).
 		Save(ctx)
 	if err != nil {
@@ -89,6 +90,7 @@ func (r *modelPricingRepository) Update(ctx context.Context, id int64, entry *se
 		SetCacheReadPricePerMillionPriority(entry.CacheReadPricePerMillionPriority).
 		SetCacheCreationPricePerMillion(entry.CacheCreationPricePerMillion).
 		SetEnabled(entry.Enabled).
+		SetOverrideLitellm(entry.OverrideLitellm).
 		SetNillableNote(nilIfEmpty(entry.Note)).
 		Save(ctx)
 	if err != nil {
@@ -124,6 +126,7 @@ func entToServiceModelPricing(row *dbent.ModelPricing) service.ModelPricingEntry
 		CacheReadPricePerMillionPriority: row.CacheReadPricePerMillionPriority,
 		CacheCreationPricePerMillion:     row.CacheCreationPricePerMillion,
 		Enabled:                          row.Enabled,
+		OverrideLitellm:                  row.OverrideLitellm,
 		Note:                             row.Note,
 	}
 }

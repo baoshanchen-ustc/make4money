@@ -61,6 +61,18 @@ func (s *ModelPricingService) GetCachedPricing(modelKey string) *ModelPricing {
 	return entry.ToModelPricing()
 }
 
+// GetCachedEntry 从内存缓存查询某个 modelKey 的完整价格条目（含 OverrideLitellm 标志）。
+// 返回 nil 表示未命中缓存。
+func (s *ModelPricingService) GetCachedEntry(modelKey string) *ModelPricingEntry {
+	s.mu.RLock()
+	entry, ok := s.cache[modelKey]
+	s.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	return entry
+}
+
 // List 返回所有价格条目（含 disabled）。
 func (s *ModelPricingService) List(ctx context.Context) ([]ModelPricingEntry, error) {
 	return s.repo.List(ctx)

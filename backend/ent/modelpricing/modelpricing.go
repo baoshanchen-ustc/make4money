@@ -40,6 +40,8 @@ const (
 	FieldCacheCreationPricePerMillion = "cache_creation_price_per_million"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
+	// FieldOverrideLitellm holds the string denoting the override_litellm field in the database.
+	FieldOverrideLitellm = "override_litellm"
 	// FieldNote holds the string denoting the note field in the database.
 	FieldNote = "note"
 	// Table holds the table name of the modelpricing in the database.
@@ -62,6 +64,7 @@ var Columns = []string{
 	FieldCacheReadPricePerMillionPriority,
 	FieldCacheCreationPricePerMillion,
 	FieldEnabled,
+	FieldOverrideLitellm,
 	FieldNote,
 }
 
@@ -109,6 +112,8 @@ var (
 	DefaultCacheCreationPricePerMillion float64
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
+	// DefaultOverrideLitellm holds the default value on creation for the "override_litellm" field.
+	DefaultOverrideLitellm bool
 	// NoteValidator is a validator for the "note" field. It is called by the builders before save.
 	NoteValidator func(string) error
 )
@@ -184,6 +189,11 @@ func ByCacheCreationPricePerMillion(opts ...sql.OrderTermOption) OrderOption {
 // ByEnabled orders the results by the enabled field.
 func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnabled, opts...).ToFunc()
+}
+
+// ByOverrideLitellm orders the results by the override_litellm field.
+func ByOverrideLitellm(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOverrideLitellm, opts...).ToFunc()
 }
 
 // ByNote orders the results by the note field.

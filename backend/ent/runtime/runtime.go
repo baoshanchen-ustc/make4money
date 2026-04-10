@@ -631,8 +631,12 @@ func init() {
 	modelpricingDescEnabled := modelpricingFields[9].Descriptor()
 	// modelpricing.DefaultEnabled holds the default value on creation for the enabled field.
 	modelpricing.DefaultEnabled = modelpricingDescEnabled.Default.(bool)
+	// modelpricingDescOverrideLitellm is the schema descriptor for override_litellm field.
+	modelpricingDescOverrideLitellm := modelpricingFields[10].Descriptor()
+	// modelpricing.DefaultOverrideLitellm holds the default value on creation for the override_litellm field.
+	modelpricing.DefaultOverrideLitellm = modelpricingDescOverrideLitellm.Default.(bool)
 	// modelpricingDescNote is the schema descriptor for note field.
-	modelpricingDescNote := modelpricingFields[10].Descriptor()
+	modelpricingDescNote := modelpricingFields[11].Descriptor()
 	// modelpricing.NoteValidator is a validator for the "note" field. It is called by the builders before save.
 	modelpricing.NoteValidator = modelpricingDescNote.Validators[0].(func(string) error)
 	promocodeFields := schema.PromoCode{}.Fields()

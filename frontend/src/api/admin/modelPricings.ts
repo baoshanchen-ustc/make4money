@@ -17,6 +17,7 @@ export interface ModelPricingEntry {
   cache_read_price_per_million_priority: number
   cache_creation_price_per_million: number
   enabled: boolean
+  override_litellm: boolean
   note: string
   created_at: string
   updated_at: string
@@ -33,6 +34,7 @@ export interface UpsertModelPricingRequest {
   cache_read_price_per_million_priority: number
   cache_creation_price_per_million: number
   enabled: boolean
+  override_litellm: boolean
   note?: string
 }
 

@@ -399,6 +399,15 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	// 标准化模型名称（转小写）
 	model = strings.ToLower(model)
 
+	// 检查数据库是否有 override_litellm=true 的条目，若有则跳过 LiteLLM 直接使用数据库价格。
+	if s.modelPricingService != nil {
+		dbEntry := s.modelPricingService.GetCachedEntry(model)
+		if dbEntry != nil && dbEntry.OverrideLitellm {
+			log.Printf("[Billing] Using DB pricing (override_litellm=true) for model: %s", model)
+			return s.applyModelSpecificPricingPolicy(model, dbEntry.ToModelPricing()), nil
+		}
+	}
+
 	// 1. 优先从动态价格服务获取
 	if s.pricingService != nil {
 		litellmPricing := s.pricingService.GetModelPricing(model)

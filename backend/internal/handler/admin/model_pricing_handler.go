@@ -45,6 +45,7 @@ type modelPricingResponse struct {
 	CacheReadPricePerMillionPriority float64 `json:"cache_read_price_per_million_priority"`
 	CacheCreationPricePerMillion     float64 `json:"cache_creation_price_per_million"`
 	Enabled                          bool    `json:"enabled"`
+	OverrideLitellm                  bool    `json:"override_litellm"`
 	Note                             string  `json:"note"`
 	CreatedAt                        string  `json:"created_at"`
 	UpdatedAt                        string  `json:"updated_at"`
@@ -61,6 +62,7 @@ type upsertModelPricingRequest struct {
 	CacheReadPricePerMillionPriority float64 `json:"cache_read_price_per_million_priority" binding:"min=0"`
 	CacheCreationPricePerMillion     float64 `json:"cache_creation_price_per_million" binding:"min=0"`
 	Enabled                          bool    `json:"enabled"`
+	OverrideLitellm                  bool    `json:"override_litellm"`
 	Note                             string  `json:"note"`
 }
 
@@ -141,6 +143,7 @@ func requestToEntry(req upsertModelPricingRequest) service.ModelPricingEntry {
 		CacheReadPricePerMillionPriority: req.CacheReadPricePerMillionPriority,
 		CacheCreationPricePerMillion:     req.CacheCreationPricePerMillion,
 		Enabled:                          req.Enabled,
+		OverrideLitellm:                  req.OverrideLitellm,
 		Note:                             req.Note,
 	}
 }
@@ -158,6 +161,7 @@ func entryToResponse(e service.ModelPricingEntry) modelPricingResponse {
 		CacheReadPricePerMillionPriority: e.CacheReadPricePerMillionPriority,
 		CacheCreationPricePerMillion:     e.CacheCreationPricePerMillion,
 		Enabled:                          e.Enabled,
+		OverrideLitellm:                  e.OverrideLitellm,
 		Note:                             e.Note,
 		CreatedAt:                        e.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:                        e.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),

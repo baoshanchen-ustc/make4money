@@ -14288,6 +14288,7 @@ type ModelPricingMutation struct {
 	cache_creation_price_per_million         *float64
 	addcache_creation_price_per_million      *float64
 	enabled                                  *bool
+	override_litellm                         *bool
 	note                                     *string
 	clearedFields                            map[string]struct{}
 	done                                     bool
@@ -15027,6 +15028,42 @@ func (m *ModelPricingMutation) ResetEnabled() {
 	m.enabled = nil
 }
 
+// SetOverrideLitellm sets the "override_litellm" field.
+func (m *ModelPricingMutation) SetOverrideLitellm(b bool) {
+	m.override_litellm = &b
+}
+
+// OverrideLitellm returns the value of the "override_litellm" field in the mutation.
+func (m *ModelPricingMutation) OverrideLitellm() (r bool, exists bool) {
+	v := m.override_litellm
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOverrideLitellm returns the old "override_litellm" field's value of the ModelPricing entity.
+// If the ModelPricing object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelPricingMutation) OldOverrideLitellm(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOverrideLitellm is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOverrideLitellm requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOverrideLitellm: %w", err)
+	}
+	return oldValue.OverrideLitellm, nil
+}
+
+// ResetOverrideLitellm resets all changes to the "override_litellm" field.
+func (m *ModelPricingMutation) ResetOverrideLitellm() {
+	m.override_litellm = nil
+}
+
 // SetNote sets the "note" field.
 func (m *ModelPricingMutation) SetNote(s string) {
 	m.note = &s
@@ -15110,7 +15147,7 @@ func (m *ModelPricingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelPricingMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.created_at != nil {
 		fields = append(fields, modelpricing.FieldCreatedAt)
 	}
@@ -15150,6 +15187,9 @@ func (m *ModelPricingMutation) Fields() []string {
 	if m.enabled != nil {
 		fields = append(fields, modelpricing.FieldEnabled)
 	}
+	if m.override_litellm != nil {
+		fields = append(fields, modelpricing.FieldOverrideLitellm)
+	}
 	if m.note != nil {
 		fields = append(fields, modelpricing.FieldNote)
 	}
@@ -15187,6 +15227,8 @@ func (m *ModelPricingMutation) Field(name string) (ent.Value, bool) {
 		return m.CacheCreationPricePerMillion()
 	case modelpricing.FieldEnabled:
 		return m.Enabled()
+	case modelpricing.FieldOverrideLitellm:
+		return m.OverrideLitellm()
 	case modelpricing.FieldNote:
 		return m.Note()
 	}
@@ -15224,6 +15266,8 @@ func (m *ModelPricingMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldCacheCreationPricePerMillion(ctx)
 	case modelpricing.FieldEnabled:
 		return m.OldEnabled(ctx)
+	case modelpricing.FieldOverrideLitellm:
+		return m.OldOverrideLitellm(ctx)
 	case modelpricing.FieldNote:
 		return m.OldNote(ctx)
 	}
@@ -15325,6 +15369,13 @@ func (m *ModelPricingMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEnabled(v)
+		return nil
+	case modelpricing.FieldOverrideLitellm:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOverrideLitellm(v)
 		return nil
 	case modelpricing.FieldNote:
 		v, ok := value.(string)
@@ -15528,6 +15579,9 @@ func (m *ModelPricingMutation) ResetField(name string) error {
 		return nil
 	case modelpricing.FieldEnabled:
 		m.ResetEnabled()
+		return nil
+	case modelpricing.FieldOverrideLitellm:
+		m.ResetOverrideLitellm()
 		return nil
 	case modelpricing.FieldNote:
 		m.ResetNote()

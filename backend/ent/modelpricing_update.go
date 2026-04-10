@@ -249,6 +249,20 @@ func (_u *ModelPricingUpdate) SetNillableEnabled(v *bool) *ModelPricingUpdate {
 	return _u
 }
 
+// SetOverrideLitellm sets the "override_litellm" field.
+func (_u *ModelPricingUpdate) SetOverrideLitellm(v bool) *ModelPricingUpdate {
+	_u.mutation.SetOverrideLitellm(v)
+	return _u
+}
+
+// SetNillableOverrideLitellm sets the "override_litellm" field if the given value is not nil.
+func (_u *ModelPricingUpdate) SetNillableOverrideLitellm(v *bool) *ModelPricingUpdate {
+	if v != nil {
+		_u.SetOverrideLitellm(*v)
+	}
+	return _u
+}
+
 // SetNote sets the "note" field.
 func (_u *ModelPricingUpdate) SetNote(v string) *ModelPricingUpdate {
 	_u.mutation.SetNote(v)
@@ -410,6 +424,9 @@ func (_u *ModelPricingUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(modelpricing.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.OverrideLitellm(); ok {
+		_spec.SetField(modelpricing.FieldOverrideLitellm, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Note(); ok {
 		_spec.SetField(modelpricing.FieldNote, field.TypeString, value)
@@ -658,6 +675,20 @@ func (_u *ModelPricingUpdateOne) SetNillableEnabled(v *bool) *ModelPricingUpdate
 	return _u
 }
 
+// SetOverrideLitellm sets the "override_litellm" field.
+func (_u *ModelPricingUpdateOne) SetOverrideLitellm(v bool) *ModelPricingUpdateOne {
+	_u.mutation.SetOverrideLitellm(v)
+	return _u
+}
+
+// SetNillableOverrideLitellm sets the "override_litellm" field if the given value is not nil.
+func (_u *ModelPricingUpdateOne) SetNillableOverrideLitellm(v *bool) *ModelPricingUpdateOne {
+	if v != nil {
+		_u.SetOverrideLitellm(*v)
+	}
+	return _u
+}
+
 // SetNote sets the "note" field.
 func (_u *ModelPricingUpdateOne) SetNote(v string) *ModelPricingUpdateOne {
 	_u.mutation.SetNote(v)
@@ -849,6 +880,9 @@ func (_u *ModelPricingUpdateOne) sqlSave(ctx context.Context) (_node *ModelPrici
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(modelpricing.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.OverrideLitellm(); ok {
+		_spec.SetField(modelpricing.FieldOverrideLitellm, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Note(); ok {
 		_spec.SetField(modelpricing.FieldNote, field.TypeString, value)

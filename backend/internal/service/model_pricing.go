@@ -21,6 +21,7 @@ type ModelPricingEntry struct {
 	CacheReadPricePerMillionPriority float64
 	CacheCreationPricePerMillion     float64
 	Enabled                          bool
+	OverrideLitellm                  bool // 数据库价格优先于 LiteLLM
 	Note                             string
 }
 

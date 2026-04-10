@@ -568,6 +568,7 @@ var (
 		{Name: "cache_read_price_per_million_priority", Type: field.TypeFloat64, Default: 0},
 		{Name: "cache_creation_price_per_million", Type: field.TypeFloat64, Default: 0},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "override_litellm", Type: field.TypeBool, Default: false},
 		{Name: "note", Type: field.TypeString, Nullable: true, Size: 500},
 	}
 	// ModelPricingsTable holds the schema information for the "model_pricings" table.
@@ -576,8 +577,6 @@ var (
 		Columns:    ModelPricingsColumns,
 		PrimaryKey: []*schema.Column{ModelPricingsColumns[0]},
 		Indexes: []*schema.Index{
-			// active 记录的唯一性由迁移 SQL 中的 partial unique index 保证，不在此定义复合唯一约束。
-			// CREATE UNIQUE INDEX model_pricings_model_key_active_unique_idx ON model_pricings (model_key) WHERE deleted_at IS NULL
 			{
 				Name:    "modelpricing_enabled",
 				Unique:  false,
