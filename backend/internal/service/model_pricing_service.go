@@ -162,3 +162,9 @@ func validatePricingEntry(entry *ModelPricingEntry) error {
 func normalizeModelKey(entry *ModelPricingEntry) {
 	entry.ModelKey = strings.ToLower(strings.TrimSpace(entry.ModelKey))
 }
+
+// GetByKey 按 model_key 精确查询价格条目（含 disabled）。
+// 未找到返回 nil, nil。
+func (s *ModelPricingService) GetByKey(ctx context.Context, modelKey string) (*ModelPricingEntry, error) {
+	return s.repo.GetByKey(ctx, modelKey)
+}

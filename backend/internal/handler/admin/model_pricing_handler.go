@@ -2,6 +2,7 @@ package admin
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -12,7 +13,8 @@ import (
 // ModelPricingHandler handles admin model pricing management.
 type ModelPricingHandler struct {
 	svc        *service.ModelPricingService
-	pricingSvc *service.PricingService // 可选，nil 时 LiteLLM 列显示 null
+	pricingSvc *service.PricingService  // 可选，nil 时 LiteLLM 列显示 null
+	billingSvc *service.BillingService  // 新增
 }
 
 func NewModelPricingHandler(svc *service.ModelPricingService) *ModelPricingHandler {
@@ -22,6 +24,11 @@ func NewModelPricingHandler(svc *service.ModelPricingService) *ModelPricingHandl
 // SetPricingService 注入 PricingService（启动后调用，非必须）
 func (h *ModelPricingHandler) SetPricingService(svc *service.PricingService) {
 	h.pricingSvc = svc
+}
+
+// SetBillingService 注入 BillingService（启动后调用，非必须）
+func (h *ModelPricingHandler) SetBillingService(svc *service.BillingService) {
+	h.billingSvc = svc
 }
 
 // modelPricingResponse is the JSON shape returned to the frontend.
@@ -202,11 +209,108 @@ func (h *ModelPricingHandler) fetchLiteLLMSnapshot(modelKey string) *liteLLMPric
 		return nil
 	}
 	return &liteLLMPriceSnapshot{
+		InputPerMillion:          p.InputCostPerToken * toMillion,
+		OutputPerMillion:         p.OutputCostPerToken * toMillion,
+		CacheReadPerMillion:      p.CacheReadInputTokenCost * toMillion,
+		CacheCreationPerMillion:  p.CacheCreationInputTokenCost * toMillion,
+		InputPriorityPerMillion:  p.InputCostPerTokenPriority * toMillion,
+		OutputPriorityPerMillion: p.OutputCostPerTokenPriority * toMillion,
+	}
+}
+
+// priceTier 单层价格数据（per-million USD）
+type priceTier struct {
+	InputPerMillion         float64 `json:"input_per_million"`
+	OutputPerMillion        float64 `json:"output_per_million"`
+	CacheReadPerMillion     float64 `json:"cache_read_per_million"`
+	CacheCreationPerMillion float64 `json:"cache_creation_per_million"`
+	InputPriorityPerMillion  float64 `json:"input_priority_per_million"`
+	OutputPriorityPerMillion float64 `json:"output_priority_per_million"`
+}
+
+// modelPricingLookupResponse 三层价格对比
+type modelPricingLookupResponse struct {
+	Model        string     `json:"model"`
+	LiteLLM      *priceTier `json:"litellm"`
+	Database     *priceTier `json:"database"`
+	Fallback     *priceTier `json:"fallback"`
+	ActiveSource string     `json:"active_source"`
+}
+
+// Lookup handles GET /admin/model-pricings/lookup?model=xxx
+func (h *ModelPricingHandler) Lookup(c *gin.Context) {
+	model := strings.ToLower(strings.TrimSpace(c.Query("model")))
+	if model == "" {
+		response.BadRequest(c, "model query parameter is required")
+		return
+	}
+
+	resp := modelPricingLookupResponse{Model: model}
+
+	// 1. LiteLLM 层
+	if h.pricingSvc != nil {
+		if p := h.pricingSvc.GetModelPricing(model); p != nil {
+			resp.LiteLLM = liteLLMToPriceTier(p)
+		}
+	}
+
+	// 2. 数据库层（精确匹配 model_key，且 enabled=true）
+	dbEntry, err := h.svc.GetByKey(c.Request.Context(), model)
+	if err == nil && dbEntry != nil && dbEntry.Enabled {
+		resp.Database = dbEntryToPriceTier(dbEntry)
+	}
+
+	// 3. Fallback 层
+	if h.billingSvc != nil {
+		if p := h.billingSvc.GetFallbackPricing(model); p != nil {
+			resp.Fallback = modelPricingToPriceTier(p)
+		}
+	}
+
+	// 确定生效层
+	switch {
+	case resp.LiteLLM != nil:
+		resp.ActiveSource = "litellm"
+	case resp.Database != nil:
+		resp.ActiveSource = "database"
+	case resp.Fallback != nil:
+		resp.ActiveSource = "fallback"
+	default:
+		resp.ActiveSource = "none"
+	}
+
+	response.Success(c, resp)
+}
+
+func liteLLMToPriceTier(p *service.LiteLLMModelPricing) *priceTier {
+	return &priceTier{
 		InputPerMillion:         p.InputCostPerToken * toMillion,
 		OutputPerMillion:        p.OutputCostPerToken * toMillion,
 		CacheReadPerMillion:     p.CacheReadInputTokenCost * toMillion,
 		CacheCreationPerMillion: p.CacheCreationInputTokenCost * toMillion,
 		InputPriorityPerMillion:  p.InputCostPerTokenPriority * toMillion,
 		OutputPriorityPerMillion: p.OutputCostPerTokenPriority * toMillion,
+	}
+}
+
+func dbEntryToPriceTier(e *service.ModelPricingEntry) *priceTier {
+	return &priceTier{
+		InputPerMillion:         e.InputPricePerMillion,
+		OutputPerMillion:        e.OutputPricePerMillion,
+		CacheReadPerMillion:     e.CacheReadPricePerMillion,
+		CacheCreationPerMillion: e.CacheCreationPricePerMillion,
+		InputPriorityPerMillion:  e.InputPricePerMillionPriority,
+		OutputPriorityPerMillion: e.OutputPricePerMillionPriority,
+	}
+}
+
+func modelPricingToPriceTier(p *service.ModelPricing) *priceTier {
+	return &priceTier{
+		InputPerMillion:         p.InputPricePerToken * toMillion,
+		OutputPerMillion:        p.OutputPricePerToken * toMillion,
+		CacheReadPerMillion:     p.CacheReadPricePerToken * toMillion,
+		CacheCreationPerMillion: p.CacheCreationPricePerToken * toMillion,
+		InputPriorityPerMillion:  p.InputPricePerTokenPriority * toMillion,
+		OutputPriorityPerMillion: p.OutputPricePerTokenPriority * toMillion,
 	}
 }

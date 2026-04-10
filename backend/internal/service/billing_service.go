@@ -852,3 +852,8 @@ func (s *BillingService) getDefaultImagePrice(model string, imageSize string) fl
 
 	return basePrice
 }
+
+// GetFallbackPricing 返回指定 modelKey 的硬编码 Fallback 价格，未命中返回 nil。
+func (s *BillingService) GetFallbackPricing(modelKey string) *ModelPricing {
+	return s.fallbackPrices[strings.ToLower(strings.TrimSpace(modelKey))]
+}
