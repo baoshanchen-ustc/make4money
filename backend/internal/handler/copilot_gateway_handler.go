@@ -167,6 +167,12 @@ func (h *CopilotGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 	reqModel := modelResult.String()
 
+	// accounts/msft/routers/* 是微软内部路由标识符，不是合法模型，直接拒绝
+	if strings.HasPrefix(reqModel, "accounts/") {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model not supported: "+reqModel)
+		return
+	}
+
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
@@ -614,6 +620,13 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+
+	// accounts/msft/routers/* 是微软内部路由标识符，不是合法模型，直接拒绝
+	if strings.HasPrefix(reqModel, "accounts/") {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model not supported: "+reqModel)
+		return
+	}
+
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
@@ -966,6 +979,13 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+
+	// accounts/msft/routers/* 是微软内部路由标识符，不是合法模型，直接拒绝
+	if strings.HasPrefix(reqModel, "accounts/") {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model not supported: "+reqModel)
+		return
+	}
+
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 	reqMaxTokens := int(gjson.GetBytes(body, "max_tokens").Int())
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
