@@ -55,5 +55,49 @@ export async function remove(id: number): Promise<void> {
   await apiClient.delete(`/admin/model-pricings/${id}`)
 }
 
-export const modelPricingsAPI = { list, create, update, remove }
+// ── Compare API ───────────────────────────────────────────────────────────────
+
+/** 单层价格数据（per-million USD），null 表示该层无数据 */
+export interface PriceTier {
+  input_per_million: number
+  output_per_million: number
+  cache_read_per_million: number
+  cache_creation_per_million: number
+  input_priority_per_million: number
+  output_priority_per_million: number
+}
+
+/** Compare API 返回的单行：数据库条目 + LiteLLM 对比 */
+export interface ModelPricingCompareItem extends ModelPricingEntry {
+  litellm: PriceTier | null
+}
+
+// ── Lookup API ────────────────────────────────────────────────────────────────
+
+export type ActiveSource = 'litellm' | 'database' | 'fallback' | 'none'
+
+/** Lookup API 返回的三层价格对比 */
+export interface ModelPricingLookup {
+  model: string
+  litellm: PriceTier | null
+  database: PriceTier | null
+  fallback: PriceTier | null
+  active_source: ActiveSource
+}
+
+/** 获取数据库所有条目并附带 LiteLLM 价格快照（用于对比列） */
+export async function compare(): Promise<ModelPricingCompareItem[]> {
+  const { data } = await apiClient.get<ModelPricingCompareItem[]>('/admin/model-pricings/compare')
+  return data
+}
+
+/** 查询任意模型在三层的价格对比 */
+export async function lookup(model: string): Promise<ModelPricingLookup> {
+  const { data } = await apiClient.get<ModelPricingLookup>('/admin/model-pricings/lookup', {
+    params: { model }
+  })
+  return data
+}
+
+export const modelPricingsAPI = { list, create, update, remove, compare, lookup }
 export default modelPricingsAPI
