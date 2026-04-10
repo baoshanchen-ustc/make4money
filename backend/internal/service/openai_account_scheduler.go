@@ -266,6 +266,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 		if selection != nil && selection.Account != nil {
 			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
+				if selection.ReleaseFunc != nil {
+					selection.ReleaseFunc()
+				}
 				selection = nil
 			}
 		}
