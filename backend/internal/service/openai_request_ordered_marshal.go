@@ -34,7 +34,7 @@ func marshalOpenAIResponsesRequestBodyOrdered(reqBody map[string]any) ([]byte, e
 	}
 
 	var buf bytes.Buffer
-	buf.WriteByte('{')
+	_ = buf.WriteByte('{')
 	first := true
 	written := make(map[string]struct{}, len(reqBody))
 
@@ -48,12 +48,12 @@ func marshalOpenAIResponsesRequestBodyOrdered(reqBody map[string]any) ([]byte, e
 			return err
 		}
 		if !first {
-			buf.WriteByte(',')
+			_ = buf.WriteByte(',')
 		}
 		first = false
-		buf.Write(keyJSON)
-		buf.WriteByte(':')
-		buf.Write(valueJSON)
+		_, _ = buf.Write(keyJSON)
+		_ = buf.WriteByte(':')
+		_, _ = buf.Write(valueJSON)
 		written[key] = struct{}{}
 		return nil
 	}
@@ -82,6 +82,6 @@ func marshalOpenAIResponsesRequestBodyOrdered(reqBody map[string]any) ([]byte, e
 		}
 	}
 
-	buf.WriteByte('}')
+	_ = buf.WriteByte('}')
 	return buf.Bytes(), nil
 }

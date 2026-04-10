@@ -14,6 +14,13 @@ exceptions:
     mitigation: "Load only on export; restrict export permissions and data scope"
     expires_on: "2026-07-06"
     owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-3p68-rc4w-qgx5"
+    severity: critical
+    reason: "NO_PROXY bypass affects proxy env handling; frontend requests do not rely on NO_PROXY semantics"
+    mitigation: "Pin axios >=1.13.5 and keep proxy env unset in frontend runtime"
+    expires_on: "2026-07-15"
+    owner: "security@your-domain"
   - package: lodash
     advisory: "GHSA-r5fr-rjxr-66jc"
     severity: high

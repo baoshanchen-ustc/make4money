@@ -272,7 +272,7 @@ func collapseResponsesPlainTextParts(parts []ResponsesContentPart) (string, bool
 		if part.Type != "input_text" {
 			return "", false
 		}
-		b.WriteString(part.Text)
+		_, _ = b.WriteString(part.Text)
 	}
 	return b.String(), true
 }
