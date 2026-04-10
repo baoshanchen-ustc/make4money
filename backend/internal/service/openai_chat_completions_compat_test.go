@@ -14,7 +14,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestForwardAsChatCompletions_OAuthDoesNotInjectClaudeCompatInstructionsByDefault(t *testing.T) {
+func TestForwardAsChatCompletions_OAuthSuppliesDefaultInstructionsWhenMissing(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
 
@@ -52,6 +52,6 @@ func TestForwardAsChatCompletions_OAuthDoesNotInjectClaudeCompatInstructionsByDe
 	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.1")
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.False(t, gjson.GetBytes(upstream.lastBody, "instructions").Exists())
+	require.NotEmpty(t, strings.TrimSpace(gjson.GetBytes(upstream.lastBody, "instructions").String()))
 	require.Equal(t, "ok", gjson.GetBytes(rec.Body.Bytes(), "choices.0.message.content").String())
 }
