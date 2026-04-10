@@ -2096,6 +2096,7 @@ const smtpPasswordManuallyEdited = ref(false)
 const testEmailAddress = ref('')
 const registrationEmailSuffixWhitelistTags = ref<string[]>([])
 const registrationEmailSuffixWhitelistDraft = ref('')
+const tablePageSizeOptionsInput = ref('10, 20, 50, 100')
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true)
@@ -2413,6 +2414,9 @@ async function loadSettings() {
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       settings.registration_email_suffix_whitelist
     )
+    tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
+      Array.isArray(settings.table_page_size_options) ? settings.table_page_size_options : [10, 20, 50, 100]
+    )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
     smtpPasswordManuallyEdited.value = false
@@ -2575,6 +2579,9 @@ async function saveSettings() {
     }
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
+    )
+    tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
+      Array.isArray(updated.table_page_size_options) ? updated.table_page_size_options : [10, 20, 50, 100]
     )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
