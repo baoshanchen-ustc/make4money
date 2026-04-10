@@ -518,6 +518,72 @@ func TestStreamingEmptyResponse(t *testing.T) {
 	assert.Equal(t, "end_turn", events[0].Delta.StopReason)
 }
 
+func TestStreamingDoneTreatedAsCompleted(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_done", Model: "gpt-5.4"},
+	}, state)
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:  "response.output_text.delta",
+		Delta: "ok",
+	}, state)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.done",
+		Response: &ResponsesResponse{
+			Status: "completed",
+			Usage:  &ResponsesUsage{InputTokens: 7, OutputTokens: 2},
+		},
+	}, state)
+
+	require.Len(t, events, 3)
+	assert.Equal(t, "content_block_stop", events[0].Type)
+	assert.Equal(t, "message_delta", events[1].Type)
+	assert.Equal(t, "end_turn", events[1].Delta.StopReason)
+	assert.Equal(t, 7, events[1].Usage.InputTokens)
+	assert.Equal(t, 2, events[1].Usage.OutputTokens)
+	assert.Equal(t, "message_stop", events[2].Type)
+}
+
+func TestStreamingCancelledVariantsTreatedAsCompleted(t *testing.T) {
+	tests := []string{"response.cancelled", "response.canceled"}
+
+	for _, eventType := range tests {
+		t.Run(eventType, func(t *testing.T) {
+			state := NewResponsesEventToAnthropicState()
+
+			ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+				Type:     "response.created",
+				Response: &ResponsesResponse{ID: "resp_cancel", Model: "gpt-5.4"},
+			}, state)
+
+			ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+				Type:  "response.output_text.delta",
+				Delta: "bye",
+			}, state)
+
+			events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+				Type: eventType,
+				Response: &ResponsesResponse{
+					Status: "canceled",
+					Usage:  &ResponsesUsage{InputTokens: 9, OutputTokens: 1},
+				},
+			}, state)
+
+			require.Len(t, events, 3)
+			assert.Equal(t, "content_block_stop", events[0].Type)
+			assert.Equal(t, "message_delta", events[1].Type)
+			assert.Equal(t, "end_turn", events[1].Delta.StopReason)
+			assert.Equal(t, 9, events[1].Usage.InputTokens)
+			assert.Equal(t, 1, events[1].Usage.OutputTokens)
+			assert.Equal(t, "message_stop", events[2].Type)
+		})
+	}
+}
+
 func TestResponsesAnthropicEventToSSE(t *testing.T) {
 	evt := AnthropicStreamEvent{
 		Type: "message_start",
