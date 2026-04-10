@@ -346,10 +346,6 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	if !s.isAccountRequestCompatible(account, req) {
 		return nil, nil
 	}
-	if req.RequireCompact && openAICompactSupportTier(account) == 0 {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, nil
-	}
 	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
@@ -639,29 +635,6 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
 	}
 
-	if req.RequireCompact {
-		bestTier := 0
-		for _, account := range filtered {
-			tier := openAICompactSupportTier(account)
-			if tier > bestTier {
-				bestTier = tier
-			}
-		}
-		if bestTier == 0 {
-			return nil, 0, 0, 0, ErrNoAvailableCompactAccounts
-		}
-		compactFiltered := make([]*Account, 0, len(filtered))
-		compactLoadReq := make([]AccountWithConcurrency, 0, len(loadReq))
-		for idx, account := range filtered {
-			if openAICompactSupportTier(account) == bestTier {
-				compactFiltered = append(compactFiltered, account)
-				compactLoadReq = append(compactLoadReq, loadReq[idx])
-			}
-		}
-		filtered = compactFiltered
-		loadReq = compactLoadReq
-	}
-
 	loadMap := map[int64]*AccountLoadInfo{}
 	if s.service.concurrencyService != nil {
 		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
@@ -746,13 +719,43 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	if topK <= 0 {
 		topK = 1
 	}
-	rankedCandidates := selectTopKOpenAICandidates(candidates, topK)
-	selectionOrder := buildOpenAIWeightedSelectionOrder(rankedCandidates, req)
+	buildSelectionOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+		if len(pool) == 0 {
+			return nil
+		}
+		groupTopK := topK
+		if groupTopK > len(pool) {
+			groupTopK = len(pool)
+		}
+		ranked := selectTopKOpenAICandidates(pool, groupTopK)
+		return buildOpenAIWeightedSelectionOrder(ranked, req)
+	}
+
+	selectionOrder := make([]openAIAccountCandidateScore, 0, len(candidates))
+	if req.RequireCompact {
+		supported := make([]openAIAccountCandidateScore, 0, len(candidates))
+		unknown := make([]openAIAccountCandidateScore, 0, len(candidates))
+		for _, candidate := range candidates {
+			switch openAICompactSupportTier(candidate.account) {
+			case 2:
+				supported = append(supported, candidate)
+			case 1:
+				unknown = append(unknown, candidate)
+			}
+		}
+		if len(supported) == 0 && len(unknown) == 0 {
+			return nil, 0, 0, 0, ErrNoAvailableCompactAccounts
+		}
+		selectionOrder = append(selectionOrder, buildSelectionOrder(supported)...)
+		selectionOrder = append(selectionOrder, buildSelectionOrder(unknown)...)
+	} else {
+		selectionOrder = buildSelectionOrder(candidates)
+	}
 
 	for i := 0; i < len(selectionOrder); i++ {
 		candidate := selectionOrder[i]
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, req.RequireCompact)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(fresh, req) {
+		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, false)
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
 			continue
 		}
 		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, req.RequireCompact)
@@ -778,7 +781,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	for _, candidate := range selectionOrder {
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, req.RequireCompact)
+		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, false)
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+			continue
+		}
+		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, req.RequireCompact)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(fresh, req) {
 			continue
 		}

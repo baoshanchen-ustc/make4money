@@ -1261,6 +1261,30 @@ func isOpenAIAccountEligibleForRequest(account *Account, requestedModel string, 
 	return true
 }
 
+func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
+	if len(accounts) == 0 {
+		return nil
+	}
+	supported := make([]*Account, 0, len(accounts))
+	unknown := make([]*Account, 0, len(accounts))
+	unsupported := make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		switch openAICompactSupportTier(account) {
+		case 2:
+			supported = append(supported, account)
+		case 1:
+			unknown = append(unknown, account)
+		default:
+			unsupported = append(unsupported, account)
+		}
+	}
+	out := make([]*Account, 0, len(accounts))
+	out = append(out, supported...)
+	out = append(out, unknown...)
+	out = append(out, unsupported...)
+	return out
+}
+
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64) (*Account, error) {
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -1339,10 +1363,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 
 	// 验证账号是否可用于当前请求
 	// Verify account is usable for current request
-	if !isOpenAIAccountEligibleForRequest(account, requestedModel, requireCompact) {
-		if requireCompact && openAICompactSupportTier(account) == 0 {
-			_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-		}
+	if !isOpenAIAccountEligibleForRequest(account, requestedModel, false) {
 		return nil
 	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, requireCompact)
@@ -1537,7 +1558,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if clearSticky {
 					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 				}
-				if !clearSticky && isOpenAIAccountEligibleForRequest(account, requestedModel, requireCompact) {
+				if !clearSticky && isOpenAIAccountEligibleForRequest(account, requestedModel, false) {
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, requireCompact)
 					if account == nil {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1593,26 +1614,6 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return nil, ErrNoAvailableAccounts
 	}
 
-	if requireCompact {
-		bestTier := 0
-		for _, acc := range candidates {
-			tier := openAICompactSupportTier(acc)
-			if tier > bestTier {
-				bestTier = tier
-			}
-		}
-		if bestTier == 0 {
-			return nil, ErrNoAvailableCompactAccounts
-		}
-		filteredCandidates := make([]*Account, 0, len(candidates))
-		for _, acc := range candidates {
-			if openAICompactSupportTier(acc) == bestTier {
-				filteredCandidates = append(filteredCandidates, acc)
-			}
-		}
-		candidates = filteredCandidates
-	}
-
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
 	for _, acc := range candidates {
 		accountLoads = append(accountLoads, AccountWithConcurrency{
@@ -1625,8 +1626,15 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
+		if requireCompact {
+			ordered = prioritizeOpenAICompactAccounts(ordered)
+		}
 		for _, acc := range ordered {
-			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, requireCompact)
+			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, false)
+			if fresh == nil {
+				continue
+			}
+			fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 			if fresh == nil {
 				continue
 			}
@@ -1678,8 +1686,34 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			})
 			shuffleWithinSortGroups(available)
 
-			for _, item := range available {
-				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel, requireCompact)
+			appendTier := func(out []accountWithLoad, tier int) []accountWithLoad {
+				for _, item := range available {
+					switch {
+					case !requireCompact:
+						out = append(out, item)
+					case openAICompactSupportTier(item.account) == tier:
+						out = append(out, item)
+					}
+				}
+				return out
+			}
+			selectionOrder := make([]accountWithLoad, 0, len(available))
+			if requireCompact {
+				selectionOrder = appendTier(selectionOrder, 2)
+				selectionOrder = appendTier(selectionOrder, 1)
+				if len(selectionOrder) == 0 {
+					return nil, ErrNoAvailableCompactAccounts
+				}
+			} else {
+				selectionOrder = appendTier(selectionOrder, 0)
+			}
+
+			for _, item := range selectionOrder {
+				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel, false)
+				if fresh == nil {
+					continue
+				}
+				fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 				if fresh == nil {
 					continue
 				}
@@ -1699,8 +1733,15 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
+	if requireCompact {
+		candidates = prioritizeOpenAICompactAccounts(candidates)
+	}
 	for _, acc := range candidates {
-		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, requireCompact)
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, false)
+		if fresh == nil {
+			continue
+		}
+		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 		if fresh == nil {
 			continue
 		}
@@ -1773,6 +1814,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return nil
 	}
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
+		if !isOpenAIAccountEligibleForRequest(account, requestedModel, requireCompact) {
+			return nil
+		}
 		return account
 	}
 
@@ -2769,14 +2813,14 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	if reqStream {
-		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime)
+		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamModel)
 		if err != nil {
 			return nil, err
 		}
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
 	} else {
-		usage, err = s.handleNonStreamingResponsePassthrough(ctx, resp, c)
+		usage, err = s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamModel)
 		if err != nil {
 			return nil, err
 		}
@@ -3104,6 +3148,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	startTime time.Time,
+	originalModel string,
+	mappedModel string,
 ) (*openaiStreamingResultPassthrough, error) {
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
@@ -3137,12 +3183,20 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 	defer putSSEScannerBuf64K(scanBuf)
+	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
+			if needModelReplace && strings.Contains(data, mappedModel) {
+				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
+					dataBytes = []byte(replacedData)
+					trimmedData = strings.TrimSpace(replacedData)
+				}
+			}
 			if trimmedData == "[DONE]" {
 				sawDone = true
 			}
@@ -3203,6 +3257,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
+	originalModel string,
+	mappedModel string,
 ) (*OpenAIUsage, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -3214,7 +3270,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	// stream=false was requested. Without this conversion the client would
 	// receive raw SSE text or a terminal event with empty output.
 	if isEventStreamResponse(resp.Header) {
-		return s.handlePassthroughSSEToJSON(resp, c, body)
+		return s.handlePassthroughSSEToJSON(resp, c, body, originalModel, mappedModel)
 	}
 
 	usage := &OpenAIUsage{}
@@ -3236,6 +3292,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if contentType == "" {
 		contentType = "application/json"
 	}
+	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
+		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	}
 	c.Data(resp.StatusCode, contentType, body)
 	return usage, nil
 }
@@ -3243,7 +3302,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 // handlePassthroughSSEToJSON converts an SSE response body into a JSON
 // response for the passthrough path. It mirrors handleSSEToJSON but skips
 // model replacement (passthrough does not remap models).
-func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte) (*OpenAIUsage, error) {
+func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel string, mappedModel string) (*OpenAIUsage, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
@@ -3262,6 +3321,9 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			}
 		}
 		body = finalResponse
+		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
+			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+		}
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
 	} else {
@@ -3274,6 +3336,9 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
+		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
+			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
+		}
 	}
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
