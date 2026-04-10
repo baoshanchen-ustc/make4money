@@ -246,6 +246,12 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 	parts = append(parts, toolResultImageParts...)
 
 	if len(parts) > 0 {
+		if text, ok := collapseResponsesPlainTextParts(parts); ok {
+			content, _ := json.Marshal(text)
+			out = append(out, ResponsesInputItem{Role: "user", Content: content})
+			return out, nil
+		}
+
 		content, err := json.Marshal(parts)
 		if err != nil {
 			return nil, err
@@ -254,6 +260,21 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 	}
 
 	return out, nil
+}
+
+func collapseResponsesPlainTextParts(parts []ResponsesContentPart) (string, bool) {
+	if len(parts) == 0 {
+		return "", false
+	}
+
+	var b strings.Builder
+	for _, part := range parts {
+		if part.Type != "input_text" {
+			return "", false
+		}
+		b.WriteString(part.Text)
+	}
+	return b.String(), true
 }
 
 // anthropicAssistantToResponses handles an Anthropic assistant message.

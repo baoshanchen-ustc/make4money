@@ -44,6 +44,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	normalizedModel := anthropicReq.Model
 	clientStream := anthropicReq.Stream // client's original stream preference
 	toolNameMap := apicompat.ClaudeToolNameMapFromTools(anthropicToolsToResponsesTools(anthropicReq.Tools))
+	stripAnthropicBillingHeaderFromSystem(&anthropicReq)
 
 	// 2. Convert Anthropic → Responses
 	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
@@ -90,12 +91,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 		}
 		codexResult := applyCodexOAuthTransform(reqBody, false, false)
-		if IsClaudeCodeClient(c.Request.Context()) && applyEmbeddedDefaultInstructions(reqBody) {
-			codexResult.Modified = true
-		}
 		forcedTemplateText := ""
 		if s.cfg != nil {
 			forcedTemplateText = s.cfg.Gateway.ForcedCodexInstructionsTemplate
+		}
+		if IsClaudeCodeClient(c.Request.Context()) &&
+			strings.TrimSpace(forcedTemplateText) == "" &&
+			applyEmbeddedDefaultInstructions(reqBody) {
+			codexResult.Modified = true
 		}
 		templateUpstreamModel := upstreamModel
 		if codexResult.NormalizedModel != "" {
@@ -122,7 +125,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		// OAuth codex transform forces stream=true upstream, so always use
 		// the streaming response handler regardless of what the client asked.
 		isStream = true
-		responsesBody, err = json.Marshal(reqBody)
+		responsesBody, err = marshalOpenAIResponsesRequestBodyOrdered(reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
 		}
@@ -595,4 +598,76 @@ func writeAnthropicError(c *gin.Context, statusCode int, errType, message string
 			"message": message,
 		},
 	})
+}
+
+func stripAnthropicBillingHeaderFromSystem(req *apicompat.AnthropicRequest) {
+	if req == nil || len(req.System) == 0 {
+		return
+	}
+
+	if cleaned, ok := stripAnthropicBillingHeaderFromRawSystem(req.System); ok {
+		req.System = cleaned
+	}
+}
+
+func stripAnthropicBillingHeaderFromRawSystem(raw json.RawMessage) (json.RawMessage, bool) {
+	var systemText string
+	if err := json.Unmarshal(raw, &systemText); err == nil {
+		cleaned, changed := stripAnthropicBillingHeaderText(systemText)
+		if !changed {
+			return raw, false
+		}
+		encoded, err := json.Marshal(cleaned)
+		if err != nil {
+			return raw, false
+		}
+		return encoded, true
+	}
+
+	var blocks []apicompat.AnthropicContentBlock
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return raw, false
+	}
+
+	filtered := make([]apicompat.AnthropicContentBlock, 0, len(blocks))
+	changed := false
+	for _, block := range blocks {
+		if block.Type == "text" {
+			cleaned, textChanged := stripAnthropicBillingHeaderText(block.Text)
+			if textChanged {
+				changed = true
+				block.Text = cleaned
+			}
+			if textChanged && strings.TrimSpace(block.Text) == "" {
+				continue
+			}
+		}
+		filtered = append(filtered, block)
+	}
+	if !changed {
+		return raw, false
+	}
+
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return raw, false
+	}
+	return encoded, true
+}
+
+func stripAnthropicBillingHeaderText(text string) (string, bool) {
+	lines := strings.Split(text, "\n")
+	filtered := make([]string, 0, len(lines))
+	changed := false
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "x-anthropic-billing-header:") {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	if !changed {
+		return text, false
+	}
+	return strings.TrimSpace(strings.Join(filtered, "\n")), true
 }

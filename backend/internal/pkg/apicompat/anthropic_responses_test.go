@@ -35,6 +35,39 @@ func TestAnthropicToResponses_BasicText(t *testing.T) {
 	assert.Equal(t, "user", items[0].Role)
 }
 
+func TestAnthropicToResponses_UserPlainTextCanonicalizesAcrossAnthropicShapes(t *testing.T) {
+	stringReq := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 128,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"好的，继续"`)},
+		},
+	}
+	blockReq := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 128,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"好的，继续"}]`)},
+		},
+	}
+
+	stringResp, err := AnthropicToResponses(stringReq)
+	require.NoError(t, err)
+	blockResp, err := AnthropicToResponses(blockReq)
+	require.NoError(t, err)
+
+	var stringItems []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(stringResp.Input, &stringItems))
+	require.Len(t, stringItems, 1)
+
+	var blockItems []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(blockResp.Input, &blockItems))
+	require.Len(t, blockItems, 1)
+
+	require.Equal(t, stringItems[0].Role, blockItems[0].Role)
+	require.Equal(t, stringItems[0].Content, blockItems[0].Content)
+}
+
 func TestAnthropicToResponses_SystemPrompt(t *testing.T) {
 	t.Run("string", func(t *testing.T) {
 		req := &AnthropicRequest{
