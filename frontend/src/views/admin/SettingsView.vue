@@ -2487,7 +2487,7 @@ const smtpPasswordManuallyEdited = ref(false)
 const testEmailAddress = ref('')
 const registrationEmailSuffixWhitelistTags = ref<string[]>([])
 const registrationEmailSuffixWhitelistDraft = ref('')
-const tablePageSizeOptionsInput = ref('10, 20, 50')
+const tablePageSizeOptionsInput = ref('10, 20, 50, 100')
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true)
