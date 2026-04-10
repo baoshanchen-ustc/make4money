@@ -267,14 +267,14 @@ func collapseResponsesPlainTextParts(parts []ResponsesContentPart) (string, bool
 		return "", false
 	}
 
-	var b strings.Builder
+	texts := make([]string, 0, len(parts))
 	for _, part := range parts {
 		if part.Type != "input_text" {
 			return "", false
 		}
-		_, _ = b.WriteString(part.Text)
+		texts = append(texts, part.Text)
 	}
-	return b.String(), true
+	return strings.Join(texts, ""), true
 }
 
 // anthropicAssistantToResponses handles an Anthropic assistant message.

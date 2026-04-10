@@ -34,7 +34,9 @@ func marshalOpenAIResponsesRequestBodyOrdered(reqBody map[string]any) ([]byte, e
 	}
 
 	var buf bytes.Buffer
-	_ = buf.WriteByte('{')
+	if err := buf.WriteByte('{'); err != nil {
+		return nil, err
+	}
 	first := true
 	written := make(map[string]struct{}, len(reqBody))
 
@@ -48,12 +50,20 @@ func marshalOpenAIResponsesRequestBodyOrdered(reqBody map[string]any) ([]byte, e
 			return err
 		}
 		if !first {
-			_ = buf.WriteByte(',')
+			if err := buf.WriteByte(','); err != nil {
+				return err
+			}
 		}
 		first = false
-		_, _ = buf.Write(keyJSON)
-		_ = buf.WriteByte(':')
-		_, _ = buf.Write(valueJSON)
+		if _, err := buf.Write(keyJSON); err != nil {
+			return err
+		}
+		if err := buf.WriteByte(':'); err != nil {
+			return err
+		}
+		if _, err := buf.Write(valueJSON); err != nil {
+			return err
+		}
 		written[key] = struct{}{}
 		return nil
 	}
@@ -82,6 +92,8 @@ func marshalOpenAIResponsesRequestBodyOrdered(reqBody map[string]any) ([]byte, e
 		}
 	}
 
-	_ = buf.WriteByte('}')
+	if err := buf.WriteByte('}'); err != nil {
+		return nil, err
+	}
 	return buf.Bytes(), nil
 }
