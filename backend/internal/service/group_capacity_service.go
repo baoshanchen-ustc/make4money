@@ -49,40 +49,71 @@ func (s *GroupCapacityService) GetAllGroupCapacity(ctx context.Context) ([]Group
 		return nil, err
 	}
 
-	results := make([]GroupCapacitySummary, 0, len(groups))
+	results := make([]GroupCapacitySummary, len(groups))
+	groupIndex := make(map[int64]int, len(groups))
 	for i := range groups {
-		cap, err := s.getGroupCapacity(ctx, groups[i].ID)
-		if err != nil {
-			// Skip groups with errors, return partial results
-			continue
-		}
-		cap.GroupID = groups[i].ID
-		results = append(results, cap)
+		results[i] = GroupCapacitySummary{GroupID: groups[i].ID}
+		groupIndex[groups[i].ID] = i
 	}
-	return results, nil
-}
 
-func (s *GroupCapacityService) getGroupCapacity(ctx context.Context, groupID int64) (GroupCapacitySummary, error) {
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
+	accounts, err := s.accountRepo.ListSchedulable(ctx)
 	if err != nil {
-		return GroupCapacitySummary{}, err
+		return nil, err
 	}
 	if len(accounts) == 0 {
-		return GroupCapacitySummary{}, nil
+		return results, nil
 	}
 
-	// Collect account IDs and config values
 	accountIDs := make([]int64, 0, len(accounts))
 	sessionTimeouts := make(map[int64]time.Duration)
-	var concurrencyMax, sessionsMax, rpmMax int
 
 	for i := range accounts {
 		acc := &accounts[i]
 		accountIDs = append(accountIDs, acc.ID)
-		concurrencyMax += acc.Concurrency
+		applyAccountCapacityToGroups(acc, groupIndex, results, sessionTimeouts)
+	}
+
+	concurrencyMap := make(map[int64]int, len(accountIDs))
+	if s.concurrencyService != nil {
+		concurrencyMap, _ = s.concurrencyService.GetAccountConcurrencyBatch(ctx, accountIDs)
+		if concurrencyMap == nil {
+			concurrencyMap = make(map[int64]int, len(accountIDs))
+		}
+	}
+
+	var sessionsMap map[int64]int
+	if len(sessionTimeouts) > 0 && s.sessionLimitCache != nil {
+		sessionsMap, _ = s.sessionLimitCache.GetActiveSessionCountBatch(ctx, accountIDs, sessionTimeouts)
+	}
+
+	var rpmMap map[int64]int
+	if s.rpmCache != nil {
+		rpmMap, _ = s.rpmCache.GetRPMBatch(ctx, accountIDs)
+	}
+
+	for i := range accounts {
+		acc := &accounts[i]
+		applyAccountRuntimeToGroups(acc, groupIndex, results, concurrencyMap[acc.ID], sessionsMap, rpmMap)
+	}
+
+	return results, nil
+}
+
+func applyAccountCapacityToGroups(
+	acc *Account,
+	groupIndex map[int64]int,
+	results []GroupCapacitySummary,
+	sessionTimeouts map[int64]time.Duration,
+) {
+	for _, groupID := range acc.GroupIDs {
+		idx, ok := groupIndex[groupID]
+		if !ok {
+			continue
+		}
+		results[idx].ConcurrencyMax += acc.Concurrency
 
 		if ms := acc.GetMaxSessions(); ms > 0 {
-			sessionsMax += ms
+			results[idx].SessionsMax += ms
 			timeout := time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 			if timeout <= 0 {
 				timeout = 5 * time.Minute
@@ -91,41 +122,35 @@ func (s *GroupCapacityService) getGroupCapacity(ctx context.Context, groupID int
 		}
 
 		if rpm := acc.GetBaseRPM(); rpm > 0 {
-			rpmMax += rpm
+			results[idx].RPMMax += rpm
 		}
 	}
+}
 
-	// Batch query runtime data from Redis
-	concurrencyMap, _ := s.concurrencyService.GetAccountConcurrencyBatch(ctx, accountIDs)
-
-	var sessionsMap map[int64]int
-	if sessionsMax > 0 && s.sessionLimitCache != nil {
-		sessionsMap, _ = s.sessionLimitCache.GetActiveSessionCountBatch(ctx, accountIDs, sessionTimeouts)
+func applyAccountRuntimeToGroups(
+	acc *Account,
+	groupIndex map[int64]int,
+	results []GroupCapacitySummary,
+	concurrencyUsed int,
+	sessionsMap map[int64]int,
+	rpmMap map[int64]int,
+) {
+	sessionsUsed := 0
+	rpmUsed := 0
+	if sessionsMap != nil {
+		sessionsUsed = sessionsMap[acc.ID]
+	}
+	if rpmMap != nil {
+		rpmUsed = rpmMap[acc.ID]
 	}
 
-	var rpmMap map[int64]int
-	if rpmMax > 0 && s.rpmCache != nil {
-		rpmMap, _ = s.rpmCache.GetRPMBatch(ctx, accountIDs)
-	}
-
-	// Aggregate
-	var concurrencyUsed, sessionsUsed, rpmUsed int
-	for _, id := range accountIDs {
-		concurrencyUsed += concurrencyMap[id]
-		if sessionsMap != nil {
-			sessionsUsed += sessionsMap[id]
+	for _, groupID := range acc.GroupIDs {
+		idx, ok := groupIndex[groupID]
+		if !ok {
+			continue
 		}
-		if rpmMap != nil {
-			rpmUsed += rpmMap[id]
-		}
+		results[idx].ConcurrencyUsed += concurrencyUsed
+		results[idx].SessionsUsed += sessionsUsed
+		results[idx].RPMUsed += rpmUsed
 	}
-
-	return GroupCapacitySummary{
-		ConcurrencyUsed: concurrencyUsed,
-		ConcurrencyMax:  concurrencyMax,
-		SessionsUsed:    sessionsUsed,
-		SessionsMax:     sessionsMax,
-		RPMUsed:         rpmUsed,
-		RPMMax:          rpmMax,
-	}, nil
 }
