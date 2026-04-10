@@ -14,9 +14,6 @@ var ErrModelPricingNotFound = infraerrors.NotFound("MODEL_PRICING_NOT_FOUND", "m
 // ErrModelPricingExists 是重复 model_key 冲突时返回的错误，映射到 HTTP 409。
 var ErrModelPricingExists = infraerrors.Conflict("MODEL_PRICING_EXISTS", "a pricing entry with this model_key already exists")
 
-// ErrZeroPriceEnabled 是"全 0 且启用"校验失败时返回的错误，映射到 HTTP 400。
-var ErrZeroPriceEnabled = infraerrors.BadRequest("MODEL_PRICING_ZERO_PRICE", "enabled pricing must have at least one price > 0")
-
 // ModelPricingService 管理模型计费价格配置。
 // 提供 CRUD 操作，并维护内存缓存供 BillingService 高效查询。
 type ModelPricingService struct {
@@ -140,21 +137,12 @@ func (s *ModelPricingService) updateCacheEntry(entry *ModelPricingEntry) {
 
 // validatePricingEntry 校验入参合法性：
 //   - model_key 规范化后不能为空
-//   - enabled=true 时至少有一类价格 > 0，防止意外创建 0 成本计费配置
+//   - 允许全 0 价格（用于免费模型）
 func validatePricingEntry(entry *ModelPricingEntry) error {
 	if entry.ModelKey == "" {
 		return infraerrors.BadRequest("MODEL_PRICING_EMPTY_KEY", "model_key must not be empty")
 	}
-	if !entry.Enabled {
-		return nil
-	}
-	if entry.InputPricePerMillion > 0 ||
-		entry.OutputPricePerMillion > 0 ||
-		entry.CacheReadPricePerMillion > 0 ||
-		entry.CacheCreationPricePerMillion > 0 {
-		return nil
-	}
-	return ErrZeroPriceEnabled
+	return nil
 }
 
 // normalizeModelKey 规范化 model_key：去除首尾空白并转小写。
