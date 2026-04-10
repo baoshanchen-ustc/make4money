@@ -70,6 +70,12 @@ func ResponsesToAnthropicWithToolNameMap(
 						Text: part.Text,
 					})
 				}
+				if part.Type == "refusal" && part.Refusal != "" {
+					blocks = append(blocks, AnthropicContentBlock{
+						Type: "text",
+						Text: part.Refusal,
+					})
+				}
 			}
 		case "function_call":
 			blocks = append(blocks, AnthropicContentBlock{
@@ -109,7 +115,7 @@ func ResponsesToAnthropicWithToolNameMap(
 	}
 	out.Content = blocks
 
-	out.StopReason = responsesStatusToAnthropicStopReason(resp.Status, resp.IncompleteDetails, blocks)
+	out.StopReason = responsesStatusToAnthropicStopReason(resp.Status, resp.IncompleteDetails, resp.Output, blocks)
 
 	if resp.Usage != nil {
 		out.Usage = AnthropicUsage{
@@ -124,14 +130,29 @@ func ResponsesToAnthropicWithToolNameMap(
 	return out
 }
 
-func responsesStatusToAnthropicStopReason(status string, details *ResponsesIncompleteDetails, blocks []AnthropicContentBlock) string {
+func responsesStatusToAnthropicStopReason(
+	status string,
+	details *ResponsesIncompleteDetails,
+	output []ResponsesOutput,
+	blocks []AnthropicContentBlock,
+) string {
 	switch status {
 	case "incomplete":
-		if details != nil && details.Reason == "max_output_tokens" {
-			return "max_tokens"
+		if details != nil {
+			switch details.Reason {
+			case "max_output_tokens":
+				return "max_tokens"
+			case "content_filter":
+				return "refusal"
+			case "model_context_window_exceeded":
+				return "model_context_window_exceeded"
+			}
 		}
 		return "end_turn"
 	case "completed":
+		if responsesOutputHasRefusal(output) {
+			return "refusal"
+		}
 		if len(blocks) > 0 && blocks[len(blocks)-1].Type == "tool_use" {
 			return "tool_use"
 		}
@@ -504,10 +525,21 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		}
 		switch evt.Response.Status {
 		case "incomplete":
-			if evt.Response.IncompleteDetails != nil && evt.Response.IncompleteDetails.Reason == "max_output_tokens" {
-				stopReason = "max_tokens"
+			if evt.Response.IncompleteDetails != nil {
+				switch evt.Response.IncompleteDetails.Reason {
+				case "max_output_tokens":
+					stopReason = "max_tokens"
+				case "content_filter":
+					stopReason = "refusal"
+				case "model_context_window_exceeded":
+					stopReason = "model_context_window_exceeded"
+				}
 			}
 		case "completed":
+			if responsesOutputHasRefusal(evt.Response.Output) {
+				stopReason = "refusal"
+				break
+			}
 			if state.ContentBlockIndex > 0 && state.CurrentBlockType == "tool_use" {
 				stopReason = "tool_use"
 			}
@@ -549,6 +581,20 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	)
 	state.MessageStopSent = true
 	return events
+}
+
+func responsesOutputHasRefusal(output []ResponsesOutput) bool {
+	for _, item := range output {
+		if item.Type != "message" {
+			continue
+		}
+		for _, part := range item.Content {
+			if part.Type == "refusal" && part.Refusal != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {

@@ -27,7 +27,7 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
 		Stream:      req.Stream,
-		Include:     []string{"reasoning.encrypted_content"},
+		Include:     responsesIncludeForAnthropicTools(req.Tools),
 	}
 
 	storeFalse := false
@@ -60,14 +60,26 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 
 	// Convert tool_choice
 	if len(req.ToolChoice) > 0 {
-		tc, err := convertAnthropicToolChoiceToResponses(req.ToolChoice)
+		tc, parallelToolCalls, err := convertAnthropicToolChoiceToResponses(req.ToolChoice)
 		if err != nil {
 			return nil, fmt.Errorf("convert tool_choice: %w", err)
 		}
 		out.ToolChoice = tc
+		out.ParallelToolCalls = parallelToolCalls
 	}
 
 	return out, nil
+}
+
+func responsesIncludeForAnthropicTools(tools []AnthropicTool) []string {
+	include := []string{"reasoning.encrypted_content"}
+	for _, tool := range tools {
+		if strings.HasPrefix(tool.Type, "web_search") {
+			include = append(include, "web_search_call.action.sources")
+			break
+		}
+	}
+	return include
 }
 
 // convertAnthropicToolChoiceToResponses maps Anthropic tool_choice to Responses format.
@@ -76,30 +88,41 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 //	{"type":"any"}             → "required"
 //	{"type":"none"}            → "none"
 //	{"type":"tool","name":"X"} → {"type":"function","function":{"name":"X"}}
-func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, error) {
+func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, *bool, error) {
 	var tc struct {
-		Type string `json:"type"`
-		Name string `json:"name"`
+		Type                   string `json:"type"`
+		Name                   string `json:"name"`
+		DisableParallelToolUse bool   `json:"disable_parallel_tool_use,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &tc); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	var parallelToolCalls *bool
+	if tc.DisableParallelToolUse {
+		v := false
+		parallelToolCalls = &v
 	}
 
 	switch tc.Type {
 	case "auto":
-		return json.Marshal("auto")
+		out, err := json.Marshal("auto")
+		return out, parallelToolCalls, err
 	case "any":
-		return json.Marshal("required")
+		out, err := json.Marshal("required")
+		return out, parallelToolCalls, err
 	case "none":
-		return json.Marshal("none")
+		out, err := json.Marshal("none")
+		return out, parallelToolCalls, err
 	case "tool":
-		return json.Marshal(map[string]any{
+		out, err := json.Marshal(map[string]any{
 			"type":     "function",
 			"function": map[string]string{"name": tc.Name},
 		})
+		return out, parallelToolCalls, err
 	default:
 		// Pass through unknown types as-is
-		return raw, nil
+		return raw, parallelToolCalls, nil
 	}
 }
 
@@ -210,6 +233,10 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 			if b.Text != "" {
 				parts = append(parts, ResponsesContentPart{Type: "input_text", Text: b.Text})
 			}
+		case "document":
+			if part := anthropicDocumentToResponsesPart(b); part != nil {
+				parts = append(parts, *part)
+			}
 		case "image":
 			if uri := anthropicImageToDataURI(b.Source); uri != "" {
 				parts = append(parts, ResponsesContentPart{Type: "input_image", ImageURL: uri})
@@ -317,6 +344,39 @@ func anthropicImageToDataURI(src *AnthropicImageSource) string {
 		mediaType = "image/png"
 	}
 	return "data:" + mediaType + ";base64," + src.Data
+}
+
+func anthropicDocumentToResponsesPart(b AnthropicContentBlock) *ResponsesContentPart {
+	if b.Source == nil {
+		return nil
+	}
+
+	part := &ResponsesContentPart{
+		Type:     "input_file",
+		Filename: strings.TrimSpace(b.Title),
+	}
+
+	switch strings.ToLower(strings.TrimSpace(b.Source.Type)) {
+	case "base64":
+		if b.Source.Data == "" {
+			return nil
+		}
+		part.FileData = b.Source.Data
+	case "url":
+		if b.Source.URL == "" {
+			return nil
+		}
+		part.FileURL = b.Source.URL
+	case "file":
+		if b.Source.FileID == "" {
+			return nil
+		}
+		part.FileID = b.Source.FileID
+	default:
+		return nil
+	}
+
+	return part
 }
 
 // convertToolResultOutput extracts text and image content from a tool_result
@@ -428,6 +488,7 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 			Name:        t.Name,
 			Description: strings.TrimSpace(t.Description),
 			Parameters:  normalizeToolParameters(t.InputSchema),
+			Strict:      t.Strict,
 		})
 	}
 	return out

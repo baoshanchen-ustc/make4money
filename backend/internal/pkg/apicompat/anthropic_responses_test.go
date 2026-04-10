@@ -74,6 +74,7 @@ func TestAnthropicToResponses_SystemPrompt(t *testing.T) {
 }
 
 func TestAnthropicToResponses_ToolUse(t *testing.T) {
+	strict := true
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
 		MaxTokens: 1024,
@@ -83,7 +84,7 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 			{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"call_1","content":"Sunny, 72°F"}]`)},
 		},
 		Tools: []AnthropicTool{
-			{Name: "get_weather", Description: "Get weather", InputSchema: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`)},
+			{Name: "get_weather", Description: "Get weather", InputSchema: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`), Strict: &strict},
 		},
 	}
 
@@ -94,6 +95,8 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	require.Len(t, resp.Tools, 1)
 	assert.Equal(t, "function", resp.Tools[0].Type)
 	assert.Equal(t, "get_weather", resp.Tools[0].Name)
+	require.NotNil(t, resp.Tools[0].Strict)
+	assert.True(t, *resp.Tools[0].Strict)
 
 	// Check input items
 	var items []ResponsesInputItem
@@ -511,6 +514,65 @@ func TestResponsesToAnthropic_EmptyOutput(t *testing.T) {
 	assert.Equal(t, "", anth.Content[0].Text)
 }
 
+func TestResponsesToAnthropic_RefusalContentMapsStopReason(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_refusal",
+		Model:  "gpt-5.4",
+		Status: "completed",
+		Output: []ResponsesOutput{
+			{
+				Type: "message",
+				Content: []ResponsesContentPart{
+					{Type: "refusal", Refusal: "I’m sorry, I can’t help with that."},
+				},
+			},
+		},
+	}
+
+	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
+	assert.Equal(t, "refusal", anth.StopReason)
+	require.Len(t, anth.Content, 1)
+	assert.Equal(t, "text", anth.Content[0].Type)
+	assert.Equal(t, "I’m sorry, I can’t help with that.", anth.Content[0].Text)
+}
+
+func TestResponsesToAnthropic_ContentFilterIncompleteMapsToRefusal(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_content_filter",
+		Model:  "gpt-5.4",
+		Status: "incomplete",
+		Output: []ResponsesOutput{},
+		IncompleteDetails: &ResponsesIncompleteDetails{
+			Reason: "content_filter",
+		},
+	}
+
+	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
+	assert.Equal(t, "refusal", anth.StopReason)
+}
+
+func TestResponsesToAnthropic_ModelContextWindowExceededMapsStopReason(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_ctx_limit",
+		Model:  "gpt-5.4",
+		Status: "incomplete",
+		Output: []ResponsesOutput{
+			{
+				Type: "message",
+				Content: []ResponsesContentPart{
+					{Type: "output_text", Text: "Partial answer"},
+				},
+			},
+		},
+		IncompleteDetails: &ResponsesIncompleteDetails{
+			Reason: "model_context_window_exceeded",
+		},
+	}
+
+	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
+	assert.Equal(t, "model_context_window_exceeded", anth.StopReason)
+}
+
 func TestResponsesToAnthropicRequest_RestoresToolReferenceEnvelope(t *testing.T) {
 	input, err := json.Marshal([]ResponsesInputItem{
 		{
@@ -544,6 +606,67 @@ func TestResponsesToAnthropicRequest_RestoresToolReferenceEnvelope(t *testing.T)
 	require.Equal(t, "WebFetch", inner[1]["tool_name"])
 	require.Equal(t, "tool_reference", inner[2]["type"])
 	require.Equal(t, "AskUserQuestion", inner[2]["tool_name"])
+}
+
+func TestResponsesToAnthropicRequest_RestoresDocumentBlocks(t *testing.T) {
+	input, err := json.Marshal([]ResponsesInputItem{
+		{
+			Role: "user",
+			Content: json.RawMessage(`[
+				{"type":"input_file","file_data":"JVBERi0x","filename":"report.pdf"},
+				{"type":"input_file","file_url":"https://example.com/report.pdf","filename":"remote.pdf"},
+				{"type":"input_file","file_id":"file_abc123","filename":"stored.pdf"},
+				{"type":"input_text","text":"Summarize these files"}
+			]`),
+		},
+	})
+	require.NoError(t, err)
+
+	req := &ResponsesRequest{
+		Model: "gpt-5.4",
+		Input: input,
+	}
+
+	out, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 1)
+
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(out.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 4)
+	require.Equal(t, "document", blocks[0].Type)
+	require.Equal(t, "report.pdf", blocks[0].Title)
+	require.NotNil(t, blocks[0].Source)
+	require.Equal(t, "base64", blocks[0].Source.Type)
+	require.Equal(t, "JVBERi0x", blocks[0].Source.Data)
+	require.Equal(t, "document", blocks[1].Type)
+	require.Equal(t, "url", blocks[1].Source.Type)
+	require.Equal(t, "https://example.com/report.pdf", blocks[1].Source.URL)
+	require.Equal(t, "document", blocks[2].Type)
+	require.Equal(t, "file", blocks[2].Source.Type)
+	require.Equal(t, "file_abc123", blocks[2].Source.FileID)
+	require.Equal(t, "text", blocks[3].Type)
+	require.Equal(t, "Summarize these files", blocks[3].Text)
+}
+
+func TestResponsesToAnthropicRequest_RestoresDisableParallelToolUse(t *testing.T) {
+	req := &ResponsesRequest{
+		Model:      "gpt-5.4",
+		Input:      json.RawMessage(`[]`),
+		ToolChoice: json.RawMessage(`"required"`),
+		ParallelToolCalls: func() *bool {
+			v := false
+			return &v
+		}(),
+	}
+
+	out, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+
+	var toolChoice map[string]any
+	require.NoError(t, json.Unmarshal(out.ToolChoice, &toolChoice))
+	require.Equal(t, "any", toolChoice["type"])
+	require.Equal(t, true, toolChoice["disable_parallel_tool_use"])
 }
 
 // ---------------------------------------------------------------------------
@@ -1136,6 +1259,54 @@ func TestStreamingFailedNoOutput(t *testing.T) {
 	assert.Equal(t, "message_stop", events[1].Type)
 }
 
+func TestStreamingIncompleteContentFilterMapsToRefusal(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_refusal_stream", Model: "gpt-5.4"},
+	}, state)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.incomplete",
+		Response: &ResponsesResponse{
+			Status: "incomplete",
+			IncompleteDetails: &ResponsesIncompleteDetails{
+				Reason: "content_filter",
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	assert.Equal(t, "refusal", events[0].Delta.StopReason)
+	assert.Equal(t, "message_stop", events[1].Type)
+}
+
+func TestStreamingIncompleteContextWindowMapsStopReason(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_ctx_stream", Model: "gpt-5.4"},
+	}, state)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.incomplete",
+		Response: &ResponsesResponse{
+			Status: "incomplete",
+			IncompleteDetails: &ResponsesIncompleteDetails{
+				Reason: "model_context_window_exceeded",
+			},
+		},
+	}, state)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	assert.Equal(t, "model_context_window_exceeded", events[0].Delta.StopReason)
+	assert.Equal(t, "message_stop", events[1].Type)
+}
+
 func TestResponsesToAnthropic_Failed(t *testing.T) {
 	resp := &ResponsesResponse{
 		ID:     "resp_fail_3",
@@ -1152,6 +1323,40 @@ func TestResponsesToAnthropic_Failed(t *testing.T) {
 	// Should have at least an empty text block
 	require.Len(t, anth.Content, 1)
 	assert.Equal(t, "text", anth.Content[0].Type)
+}
+
+func TestAnthropicToResponsesResponse_RefusalProducesRefusalPart(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:         "msg_refusal",
+		Model:      "claude-opus-4-6",
+		StopReason: "refusal",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "I can’t help with that request."},
+		},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	assert.Equal(t, "completed", out.Status)
+	require.Len(t, out.Output, 1)
+	require.Len(t, out.Output[0].Content, 1)
+	assert.Equal(t, "refusal", out.Output[0].Content[0].Type)
+	assert.Equal(t, "I can’t help with that request.", out.Output[0].Content[0].Refusal)
+}
+
+func TestAnthropicToResponsesResponse_ContextWindowExceededProducesIncompleteReason(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:         "msg_ctx_limit",
+		Model:      "claude-opus-4-6",
+		StopReason: "model_context_window_exceeded",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "Partial answer"},
+		},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	assert.Equal(t, "incomplete", out.Status)
+	require.NotNil(t, out.IncompleteDetails)
+	assert.Equal(t, "model_context_window_exceeded", out.IncompleteDetails.Reason)
 }
 
 // ---------------------------------------------------------------------------
@@ -1220,6 +1425,38 @@ func TestAnthropicToResponses_NoThinking(t *testing.T) {
 	// Default effort applies (high → high) when no thinking/output_config is set.
 	require.NotNil(t, resp.Reasoning)
 	assert.Equal(t, "high", resp.Reasoning.Effort)
+}
+
+func TestAnthropicToResponses_WebSearchRequestsSourcesInclude(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 256,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Find current updates"`)}},
+		Tools: []AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	assert.Contains(t, resp.Include, "reasoning.encrypted_content")
+	assert.Contains(t, resp.Include, "web_search_call.action.sources")
+}
+
+func TestAnthropicToResponses_DoesNotRequestSourcesIncludeWithoutWebSearchTool(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 256,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Tools: []AnthropicTool{
+			{Name: "Read", InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	assert.Contains(t, resp.Include, "reasoning.encrypted_content")
+	assert.NotContains(t, resp.Include, "web_search_call.action.sources")
 }
 
 // ---------------------------------------------------------------------------
@@ -1347,7 +1584,7 @@ func TestAnthropicToResponses_ToolChoiceAny(t *testing.T) {
 		Model:      "gpt-5.2",
 		MaxTokens:  1024,
 		Messages:   []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
-		ToolChoice: json.RawMessage(`{"type":"any"}`),
+		ToolChoice: json.RawMessage(`{"type":"any","disable_parallel_tool_use":true}`),
 	}
 
 	resp, err := AnthropicToResponses(req)
@@ -1356,6 +1593,8 @@ func TestAnthropicToResponses_ToolChoiceAny(t *testing.T) {
 	var tc string
 	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "required", tc)
+	require.NotNil(t, resp.ParallelToolCalls)
+	assert.False(t, *resp.ParallelToolCalls)
 }
 
 func TestAnthropicToResponses_ToolChoiceSpecific(t *testing.T) {
@@ -1472,6 +1711,88 @@ func TestAnthropicToResponses_UserImageBlock(t *testing.T) {
 	assert.Equal(t, "What is in this image?", parts[0].Text)
 	assert.Equal(t, "input_image", parts[1].Type)
 	assert.Equal(t, "data:image/png;base64,iVBOR", parts[1].ImageURL)
+}
+
+func TestAnthropicToResponses_UserDocumentBlockBase64PDF(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 256,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"document","title":"report.pdf","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0x"}},
+				{"type":"text","text":"Summarize this PDF"}
+			]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "JVBERi0x", parts[0].FileData)
+	assert.Equal(t, "report.pdf", parts[0].Filename)
+	assert.Equal(t, "input_text", parts[1].Type)
+}
+
+func TestAnthropicToResponses_UserDocumentBlockURLPDF(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 256,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"document","title":"report.pdf","source":{"type":"url","url":"https://example.com/report.pdf"}},
+				{"type":"text","text":"Summarize this PDF"}
+			]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "https://example.com/report.pdf", parts[0].FileURL)
+	assert.Equal(t, "report.pdf", parts[0].Filename)
+}
+
+func TestAnthropicToResponses_UserDocumentBlockFileIDPDF(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.4",
+		MaxTokens: 256,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"document","title":"report.pdf","source":{"type":"file","file_id":"file_abc123"}},
+				{"type":"text","text":"Summarize this PDF"}
+			]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "file_abc123", parts[0].FileID)
+	assert.Equal(t, "report.pdf", parts[0].Filename)
 }
 
 func TestAnthropicToResponses_ImageOnlyUserMessage(t *testing.T) {

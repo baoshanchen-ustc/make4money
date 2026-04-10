@@ -62,10 +62,13 @@ type AnthropicContentBlock struct {
 	// type=text
 	Text string `json:"text,omitempty"`
 
+	// type=document
+	Title string `json:"title,omitempty"`
+
 	// type=thinking
 	Thinking string `json:"thinking,omitempty"`
 
-	// type=image
+	// type=image | document
 	Source *AnthropicImageSource `json:"source,omitempty"`
 
 	// type=tool_use
@@ -87,6 +90,8 @@ type AnthropicImageSource struct {
 	Type      string `json:"type"` // "base64"
 	MediaType string `json:"media_type"`
 	Data      string `json:"data"`
+	URL       string `json:"url,omitempty"`
+	FileID    string `json:"file_id,omitempty"`
 }
 
 // AnthropicTool describes a tool available to the model.
@@ -95,6 +100,7 @@ type AnthropicTool struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
 	InputSchema json.RawMessage `json:"input_schema"` // JSON Schema object
+	Strict      *bool           `json:"strict,omitempty"`
 }
 
 // AnthropicResponse is the non-streaming response from POST /v1/messages.
@@ -166,18 +172,19 @@ type AnthropicDelta struct {
 
 // ResponsesRequest is the request body for POST /v1/responses.
 type ResponsesRequest struct {
-	Model           string              `json:"model"`
-	Input           json.RawMessage     `json:"input"` // string or []ResponsesInputItem
-	MaxOutputTokens *int                `json:"max_output_tokens,omitempty"`
-	Temperature     *float64            `json:"temperature,omitempty"`
-	TopP            *float64            `json:"top_p,omitempty"`
-	Stream          bool                `json:"stream,omitempty"`
-	Tools           []ResponsesTool     `json:"tools,omitempty"`
-	Include         []string            `json:"include,omitempty"`
-	Store           *bool               `json:"store,omitempty"`
-	Reasoning       *ResponsesReasoning `json:"reasoning,omitempty"`
-	ToolChoice      json.RawMessage     `json:"tool_choice,omitempty"`
-	ServiceTier     string              `json:"service_tier,omitempty"`
+	Model             string              `json:"model"`
+	Input             json.RawMessage     `json:"input"` // string or []ResponsesInputItem
+	MaxOutputTokens   *int                `json:"max_output_tokens,omitempty"`
+	Temperature       *float64            `json:"temperature,omitempty"`
+	TopP              *float64            `json:"top_p,omitempty"`
+	Stream            bool                `json:"stream,omitempty"`
+	Tools             []ResponsesTool     `json:"tools,omitempty"`
+	Include           []string            `json:"include,omitempty"`
+	Store             *bool               `json:"store,omitempty"`
+	Reasoning         *ResponsesReasoning `json:"reasoning,omitempty"`
+	ToolChoice        json.RawMessage     `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool               `json:"parallel_tool_calls,omitempty"`
+	ServiceTier       string              `json:"service_tier,omitempty"`
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -210,7 +217,12 @@ type ResponsesInputItem struct {
 type ResponsesContentPart struct {
 	Type        string                `json:"type"` // "input_text" | "output_text" | "input_image"
 	Text        string                `json:"text,omitempty"`
+	Refusal     string                `json:"refusal,omitempty"`
 	ImageURL    string                `json:"image_url,omitempty"` // data URI for input_image
+	FileData    string                `json:"file_data,omitempty"`
+	FileURL     string                `json:"file_url,omitempty"`
+	FileID      string                `json:"file_id,omitempty"`
+	Filename    string                `json:"filename,omitempty"`
 	Annotations []ResponsesAnnotation `json:"annotations,omitempty"`
 }
 

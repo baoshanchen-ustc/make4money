@@ -45,10 +45,17 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 			}
 		case "text":
 			if block.Text != "" {
-				msgParts = append(msgParts, ResponsesContentPart{
-					Type: "output_text",
-					Text: block.Text,
-				})
+				if resp.StopReason == "refusal" {
+					msgParts = append(msgParts, ResponsesContentPart{
+						Type:    "refusal",
+						Refusal: block.Text,
+					})
+				} else {
+					msgParts = append(msgParts, ResponsesContentPart{
+						Type: "output_text",
+						Text: block.Text,
+					})
+				}
 			}
 		case "tool_use":
 			args := "{}"
@@ -91,7 +98,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	// Map stop_reason → status
 	out.Status = anthropicStopReasonToResponsesStatus(resp.StopReason, resp.Content)
 	if out.Status == "incomplete" {
-		out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
+		out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: anthropicStopReasonToResponsesIncompleteReason(resp.StopReason)}
 	}
 
 	// Usage
@@ -112,12 +119,23 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 // anthropicStopReasonToResponsesStatus maps Anthropic stop_reason to Responses status.
 func anthropicStopReasonToResponsesStatus(stopReason string, blocks []AnthropicContentBlock) string {
 	switch stopReason {
-	case "max_tokens":
+	case "max_tokens", "model_context_window_exceeded":
 		return "incomplete"
 	case "end_turn", "tool_use", "stop_sequence":
 		return "completed"
+	case "refusal":
+		return "completed"
 	default:
 		return "completed"
+	}
+}
+
+func anthropicStopReasonToResponsesIncompleteReason(stopReason string) string {
+	switch stopReason {
+	case "model_context_window_exceeded":
+		return "model_context_window_exceeded"
+	default:
+		return "max_output_tokens"
 	}
 }
 

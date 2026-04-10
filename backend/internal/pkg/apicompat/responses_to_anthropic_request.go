@@ -44,7 +44,7 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 
 	// Convert tool_choice (reverse of convertAnthropicToolChoiceToResponses)
 	if len(req.ToolChoice) > 0 {
-		tc, err := convertResponsesToAnthropicToolChoice(req.ToolChoice)
+		tc, err := convertResponsesToAnthropicToolChoice(req.ToolChoice, req.ParallelToolCalls)
 		if err != nil {
 			return nil, fmt.Errorf("convert tool_choice: %w", err)
 		}
@@ -295,6 +295,10 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 					Source: src,
 				})
 			}
+		case "input_file":
+			if block := responsesInputFileToAnthropicDocument(p); block != nil {
+				blocks = append(blocks, *block)
+			}
 		}
 	}
 
@@ -436,6 +440,7 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 				Name:        t.Name,
 				Description: t.Description,
 				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
+				Strict:      t.Strict,
 			})
 		default:
 			// Pass through unknown tool types
@@ -465,17 +470,19 @@ func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 //	"required"                                 → {"type":"any"}
 //	"none"                                     → {"type":"none"}
 //	{"type":"function","function":{"name":"X"}} → {"type":"tool","name":"X"}
-func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage, error) {
+func convertResponsesToAnthropicToolChoice(raw json.RawMessage, parallelToolCalls *bool) (json.RawMessage, error) {
+	disableParallel := parallelToolCalls != nil && !*parallelToolCalls
+
 	// Try as string first
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
 		switch s {
 		case "auto":
-			return json.Marshal(map[string]string{"type": "auto"})
+			return marshalAnthropicToolChoice("auto", "", disableParallel)
 		case "required":
-			return json.Marshal(map[string]string{"type": "any"})
+			return marshalAnthropicToolChoice("any", "", disableParallel)
 		case "none":
-			return json.Marshal(map[string]string{"type": "none"})
+			return marshalAnthropicToolChoice("none", "", disableParallel)
 		default:
 			return raw, nil
 		}
@@ -489,12 +496,49 @@ func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage
 		} `json:"function"`
 	}
 	if err := json.Unmarshal(raw, &tc); err == nil && tc.Type == "function" && tc.Function.Name != "" {
-		return json.Marshal(map[string]string{
-			"type": "tool",
-			"name": tc.Function.Name,
-		})
+		return marshalAnthropicToolChoice("tool", tc.Function.Name, disableParallel)
 	}
 
 	// Pass through unknown
 	return raw, nil
+}
+
+func marshalAnthropicToolChoice(choiceType string, name string, disableParallel bool) (json.RawMessage, error) {
+	out := map[string]any{"type": choiceType}
+	if name != "" {
+		out["name"] = name
+	}
+	if disableParallel {
+		out["disable_parallel_tool_use"] = true
+	}
+	return json.Marshal(out)
+}
+
+func responsesInputFileToAnthropicDocument(part ResponsesContentPart) *AnthropicContentBlock {
+	block := &AnthropicContentBlock{
+		Type:  "document",
+		Title: strings.TrimSpace(part.Filename),
+	}
+
+	switch {
+	case strings.TrimSpace(part.FileData) != "":
+		block.Source = &AnthropicImageSource{
+			Type: "base64",
+			Data: part.FileData,
+		}
+	case strings.TrimSpace(part.FileURL) != "":
+		block.Source = &AnthropicImageSource{
+			Type: "url",
+			URL:  part.FileURL,
+		}
+	case strings.TrimSpace(part.FileID) != "":
+		block.Source = &AnthropicImageSource{
+			Type:   "file",
+			FileID: part.FileID,
+		}
+	default:
+		return nil
+	}
+
+	return block
 }
