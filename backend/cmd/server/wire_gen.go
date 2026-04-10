@@ -225,6 +225,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		log.Printf("[Warn] failed to load model pricing cache: %v", err2)
 	}
 	modelPricingHandler := admin.NewModelPricingHandler(modelPricingService)
+	modelPricingHandler.SetPricingService(pricingService)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, copilotOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, adminAPIKeyHandler, scheduledTestHandler, copilotAnalyticsHandler, modelPricingHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)

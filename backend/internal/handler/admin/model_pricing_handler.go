@@ -11,11 +11,17 @@ import (
 
 // ModelPricingHandler handles admin model pricing management.
 type ModelPricingHandler struct {
-	svc *service.ModelPricingService
+	svc        *service.ModelPricingService
+	pricingSvc *service.PricingService // 可选，nil 时 LiteLLM 列显示 null
 }
 
 func NewModelPricingHandler(svc *service.ModelPricingService) *ModelPricingHandler {
 	return &ModelPricingHandler{svc: svc}
+}
+
+// SetPricingService 注入 PricingService（启动后调用，非必须）
+func (h *ModelPricingHandler) SetPricingService(svc *service.PricingService) {
+	h.pricingSvc = svc
 }
 
 // modelPricingResponse is the JSON shape returned to the frontend.
@@ -148,5 +154,59 @@ func entryToResponse(e service.ModelPricingEntry) modelPricingResponse {
 		Note:                             e.Note,
 		CreatedAt:                        e.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:                        e.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+// liteLLMPriceSnapshot LiteLLM 动态价格快照（per-million USD）
+type liteLLMPriceSnapshot struct {
+	InputPerMillion         float64 `json:"input_per_million"`
+	OutputPerMillion        float64 `json:"output_per_million"`
+	CacheReadPerMillion     float64 `json:"cache_read_per_million"`
+	CacheCreationPerMillion float64 `json:"cache_creation_per_million"`
+	InputPriorityPerMillion  float64 `json:"input_priority_per_million"`
+	OutputPriorityPerMillion float64 `json:"output_priority_per_million"`
+}
+
+// modelPricingCompareItem 对比视图的单行数据
+type modelPricingCompareItem struct {
+	modelPricingResponse
+	LiteLLM *liteLLMPriceSnapshot `json:"litellm"`
+}
+
+// Compare handles GET /admin/model-pricings/compare
+func (h *ModelPricingHandler) Compare(c *gin.Context) {
+	entries, err := h.svc.List(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]modelPricingCompareItem, 0, len(entries))
+	for _, e := range entries {
+		item := modelPricingCompareItem{
+			modelPricingResponse: entryToResponse(e),
+			LiteLLM:              h.fetchLiteLLMSnapshot(e.ModelKey),
+		}
+		out = append(out, item)
+	}
+	response.Success(c, out)
+}
+
+const toMillion = 1_000_000.0
+
+func (h *ModelPricingHandler) fetchLiteLLMSnapshot(modelKey string) *liteLLMPriceSnapshot {
+	if h.pricingSvc == nil {
+		return nil
+	}
+	p := h.pricingSvc.GetModelPricing(modelKey)
+	if p == nil {
+		return nil
+	}
+	return &liteLLMPriceSnapshot{
+		InputPerMillion:         p.InputCostPerToken * toMillion,
+		OutputPerMillion:        p.OutputCostPerToken * toMillion,
+		CacheReadPerMillion:     p.CacheReadInputTokenCost * toMillion,
+		CacheCreationPerMillion: p.CacheCreationInputTokenCost * toMillion,
+		InputPriorityPerMillion:  p.InputCostPerTokenPriority * toMillion,
+		OutputPriorityPerMillion: p.OutputCostPerTokenPriority * toMillion,
 	}
 }
