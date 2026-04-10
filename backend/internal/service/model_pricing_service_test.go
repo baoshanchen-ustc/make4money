@@ -171,19 +171,21 @@ func TestUpdate_BlankModelKeyReturns400(t *testing.T) {
 // 全 0 且启用返回 400
 // ---------------------------------------------------------------------------
 
-func TestCreate_ZeroPriceEnabledReturns400(t *testing.T) {
+// ---------------------------------------------------------------------------
+// 全 0 且启用：现已允许（支持免费模型）
+// ---------------------------------------------------------------------------
+
+func TestCreate_ZeroPriceEnabledAllowed(t *testing.T) {
 	repo := &stubModelPricingRepo{}
 	svc := newTestModelPricingService(repo)
 
 	entry := &ModelPricingEntry{
 		ModelKey: "gpt-5.1",
 		Enabled:  true,
-		// 所有价格字段均为 0（零值）
+		// 所有价格字段均为 0（零值）：免费模型场景
 	}
 	_, err := svc.Create(context.Background(), entry)
-	require.Error(t, err)
-	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
-	require.Equal(t, "MODEL_PRICING_ZERO_PRICE", infraerrors.Reason(err))
+	require.NoError(t, err)
 }
 
 func TestCreate_DisabledWithZeroPriceSucceeds(t *testing.T) {
