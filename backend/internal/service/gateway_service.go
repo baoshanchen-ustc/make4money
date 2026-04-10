@@ -67,9 +67,11 @@ var openclawyRe = regexp.MustCompile(`(?i)openclaw`)
 // 这些词不含 "openclaw" 前缀，无法被 openclawyRe 捕获
 var clawEcosystemRe = regexp.MustCompile(`(?i)claw(?:hub|d)`)
 
-// replyToTagRe 匹配 OpenClaw 的回复路由标签，包括 [[reply_to_current]] 和 [[reply_to:<id>]]。
-// 这些标签出现在 assistant 历史消息中，会触发 Anthropic 指纹识别，需要在转发前清除。
-var replyToTagRe = regexp.MustCompile(`\[\[reply_to(?:_current|:[^\]]*)\]\]\s*`)
+// replyToTagRe 匹配 OpenClaw 的回复路由标签，包括以下所有形式：
+//   [[reply_to_current]]  [[reply_to:<id>]]
+//   [[ reply_to_current ]]  [[ reply_to: 123 ]]  （括号内有空格的变体）
+// 这些标签出现在 system prompt 说明文档和 assistant 历史消息中，会触发 Anthropic 指纹识别。
+var replyToTagRe = regexp.MustCompile(`\[\[\s*reply_to(?:_current|\s*:[^\]]*)\s*\]\]\s*`)
 
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
