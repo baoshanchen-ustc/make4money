@@ -429,7 +429,6 @@ func TestAPIKeyService_GetByKey_IgnoresVersion2AuthCacheSnapshotAfterSchemaBump(
 	require.NotNil(t, apiKey.Group)
 	require.Equal(t, "gpt-5.4-nano", apiKey.Group.MessagesDispatchModelConfig.OpusMappedModel)
 }
-
 func TestAPIKeyService_GetByKey_NegativeCache(t *testing.T) {
 	cache := &authCacheStub{}
 	repo := &authRepoStub{
