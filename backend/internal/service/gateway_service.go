@@ -67,6 +67,10 @@ var openclawyRe = regexp.MustCompile(`(?i)openclaw`)
 // 这些词不含 "openclaw" 前缀，无法被 openclawyRe 捕获
 var clawEcosystemRe = regexp.MustCompile(`(?i)claw(?:hub|d)`)
 
+// replyToTagRe 匹配 OpenClaw 的回复路由标签，包括 [[reply_to_current]] 和 [[reply_to:<id>]]。
+// 这些标签出现在 assistant 历史消息中，会触发 Anthropic 指纹识别，需要在转发前清除。
+var replyToTagRe = regexp.MustCompile(`\[\[reply_to(?:_current|:[^\]]*)\]\]\s*`)
+
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{}
@@ -938,10 +942,13 @@ var openClawToolNames = [][2]string{
 }
 
 // sanitizeAnthropicBodyKeywords 对整个请求体进行关键词净化，清除已知会触发
-// Anthropic 指纹识别的 OpenClaw 特征字符串。包括：
-//   - 品牌短语（"You are a personal assistant running inside OpenClaw."）
-//   - openclaw / clawhub / clawd 关键词
-//   - OpenClaw 专属工具名（在 tools 数组和 system prompt 明文中均出现）
+// Anthropic 指纹识别的 OpenClaw 特征字符串。
+//
+// 净化策略：
+//   - 品牌关键词（openclaw/clawhub/clawd）：全量替换，覆盖 system/tools/描述等所有字段
+//   - OpenClaw 专属工具名：仅替换 system 字段文本，不改动 tools 数组的 name 字段，
+//     确保 OpenClaw 能正确识别 Claude 返回的 tool_use 调用
+//   - Reply Tags 指纹短语：全量替换（纯描述文字，无功能影响）
 //
 // 返回净化后的 body 和是否有实际改动的标志。
 func sanitizeAnthropicBodyKeywords(body []byte) ([]byte, bool) {
@@ -958,7 +965,7 @@ func sanitizeAnthropicBodyKeywords(body []byte) ([]byte, bool) {
 		modified = true
 	}
 
-	// 2. Generic openclaw keyword sweep.
+	// 2. Generic openclaw keyword sweep (full-body: brand name in any field is safe to replace).
 	if bytes.Contains(bytes.ToLower(body), []byte("openclaw")) {
 		body = openclawyRe.ReplaceAll(body, []byte("myapp"))
 		modified = true
@@ -971,15 +978,31 @@ func sanitizeAnthropicBodyKeywords(body []byte) ([]byte, bool) {
 		modified = true
 	}
 
-	// 4. OpenClaw-specific tool names — replace everywhere in the body (tools array
-	// JSON values AND plain-text references in system prompt / tool descriptions).
-	// These names in combination trigger Anthropic's fingerprint detection even when
-	// no "openclaw" keyword is present (confirmed via binary search 2026-04-10).
-	for _, pair := range openClawToolNames {
-		old, newName := []byte(pair[0]), []byte(pair[1])
-		if bytes.Contains(body, old) {
-			body = bytes.ReplaceAll(body, old, newName)
-			modified = true
+	// 4. OpenClaw-specific tool names — SYSTEM FIELD ONLY.
+	//
+	// Binary search (2026-04-10) confirmed that tool names like sessions_send / subagents
+	// appearing in the system prompt text trigger detection.  The tools array itself does
+	// NOT trigger ("clean system + 59 tools → OK"), so we only sanitize the system field
+	// to avoid breaking OpenClaw's tool-dispatch (Claude must return the original tool name
+	// so OpenClaw can route the call to the correct handler).
+	//
+	// system can be a plain string or an array of content blocks; gjson returns the raw
+	// JSON value in both cases, which we then string-replace and write back via sjson.
+	systemRaw := gjson.GetBytes(body, "system")
+	if systemRaw.Exists() {
+		origSystem := systemRaw.Raw // raw JSON (quoted string or array)
+		newSystem := origSystem
+		for _, pair := range openClawToolNames {
+			old, newName := pair[0], pair[1]
+			if strings.Contains(newSystem, old) {
+				newSystem = strings.ReplaceAll(newSystem, old, newName)
+			}
+		}
+		if newSystem != origSystem {
+			if updated, err := sjson.SetRawBytes(body, "system", []byte(newSystem)); err == nil {
+				body = updated
+				modified = true
+			}
 		}
 	}
 
@@ -990,6 +1013,20 @@ func sanitizeAnthropicBodyKeywords(body []byte) ([]byte, bool) {
 	const replyTagsDst = "Reply tags are removed before delivery; availability depends on channel configuration."
 	if bytes.Contains(body, []byte(replyTagsSrc)) {
 		body = bytes.ReplaceAll(body, []byte(replyTagsSrc), []byte(replyTagsDst))
+		modified = true
+	}
+
+	// 6. [[reply_to_current]] / [[reply_to:<id>]] tags in conversation history.
+	//
+	// OpenClaw appends these routing annotations to every assistant reply for its internal
+	// dispatch. The tags accumulate in the messages array (past assistant turns) and appear
+	// verbatim in the JSON body forwarded to Anthropic. When a conversation grows to tens of
+	// turns the combined occurrences trigger fingerprint detection.
+	//
+	// Safe to strip full-body: these tokens are plain text annotations with no JSON-structural
+	// significance; they never appear as JSON keys or enum values.
+	if replyToTagRe.Match(body) {
+		body = replyToTagRe.ReplaceAll(body, nil)
 		modified = true
 	}
 
