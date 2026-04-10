@@ -1698,9 +1698,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if requireCompact {
 				selectionOrder = appendTier(selectionOrder, 2)
 				selectionOrder = appendTier(selectionOrder, 1)
-				if len(selectionOrder) == 0 {
-					return nil, ErrNoAvailableCompactAccounts
-				}
+				selectionOrder = appendTier(selectionOrder, 0)
 			} else {
 				selectionOrder = appendTier(selectionOrder, 0)
 			}
