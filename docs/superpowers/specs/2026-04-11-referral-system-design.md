@@ -2,7 +2,7 @@
 
 **日期**: 2026-04-11  
 **状态**: 待实现  
-**版本**: v2（根据 Codex review 修订，修复 3 个 blocking + 4 个 medium 问题）  
+**版本**: v3（根据 Codex round-2 review 修订）  
 **范围**: 2层分销系统，支持注册奖励 + 消费返佣，引入分销员角色，全后台可配置
 
 ---
@@ -26,9 +26,7 @@
 2. **分销员推广**：具备 `distributor` 角色的用户，拥有独立奖励规则，并可查看直接下级的脱敏使用统计
 3. **全后台可配置**：普通用户和分销员的所有奖励参数独立配置，支持独立开关
 
-### v2 修订说明
-
-本版本修复 Codex review 指出的问题：
+### v2 修订说明（根据 Codex round-1 review）
 
 | 问题 | 修复方式 |
 |------|---------|
@@ -40,6 +38,17 @@
 | 计费挂载点描述不准确 | 明确挂载在 `applyUsageBilling` 成功后 |
 | 角色修改接口未详细说明 | 补充专用接口、允许转换、验证规则 |
 | 分销员统计查询复杂度 | 明确聚合方式（实时查询 + 缓存） |
+
+### v3 修订说明（根据 Codex round-2 review）
+
+| 问题 | 修复方式 |
+|------|---------|
+| 分销员「消费总额」数据来源错误 | 改为聚合 `usage_logs.actual_cost`，「贡献返佣」仍来自 commission_events |
+| 订阅消费是否参与返佣未明确 | 明确：仅 `BalanceCost > 0` 触发返佣，订阅消费不参与 |
+| 角色修改 cache invalidation 粒度错误 | 改为 `InvalidateAuthCacheByUserID` |
+| `/distributor` 路由包含仅 user 可见的申请记录 | 申请入口和进度统一移至用户个人中心 `/user/referral` |
+| `referral_relations` 描述与内容不符 | 表描述改为「关系表，存图结构 + 建立时策略快照」 |
+| 残留对已删除 `*_commission_rate_l2` 配置的引用 | 删除该段说明，改为简洁表述 |
 
 ---
 
@@ -93,7 +102,7 @@ L1（邀请人，user 或 distributor）
 - L3 消费 → L2 获返佣（level=1 关系，从 L3 视角看 L2 是其直接邀请人）
 - L1 不参与 L3 的消费返佣
 
-因此 `*_commission_rate_l2` 配置项实际含义是：**作为直接邀请人时**（即任何 level=1 关系中的 inviter），所适用的比例。不存在第二套比例，只有一套"作为直接邀请人的返佣比例"。
+返佣只发生在 level=1 关系（直接邀请人），每个角色只有一套 `commission_rate` 配置，不存在第二套比例。
 
 ---
 
@@ -112,9 +121,9 @@ CREATE TABLE referral_codes (
 );
 ```
 
-### 4.2 新增表：`referral_relations`（关系表，仅存图结构）
+### 4.2 新增表：`referral_relations`（关系表，存图结构 + 建立时策略快照）
 
-记录邀请关系链，不存储任何金额或聚合数据。
+记录邀请关系链，以及建立关系时的奖励策略快照（金额、返佣比例），不存储聚合统计数据。
 
 ```sql
 CREATE TABLE referral_relations (
@@ -292,8 +301,10 @@ CREATE INDEX idx_distributor_applications_status  ON distributor_applications (s
 
 挂载点：`applyUsageBilling` 返回 `applied=true` 之后（即计费确认成功后），异步执行。
 
+**返佣仅适用于余额扣费（`BalanceCost > 0`）**。通过订阅套餐消费的用量（`SubscriptionCost`）不产生分销返佣，这是有意设计：订阅用量已通过套餐定价体现，不应再叠加返佣成本。
+
 ```
-applyUsageBilling 成功（billing applied=true）
+applyUsageBilling 成功（billing applied=true）且 BalanceCost > 0
   │
   └─ 异步触发 referral commission worker：
        参数：usage_request_id（即 UsageBillingCommand.RequestID），
@@ -352,10 +363,10 @@ applyUsageBilling 成功（billing applied=true）
 | 邮箱 | 脱敏（`u***@gmail.com`） |
 | 注册时间 | 完整显示 |
 | 状态 | active / disabled |
-| 消费总额 | 聚合自 `referral_commission_events` |
+| 消费总额 | 聚合自 `usage_logs.actual_cost`（含订阅和余额消费） |
 | 调用次数 | 聚合自 `usage_logs` |
 | 最近活跃时间 | `usage_logs` 最新记录时间 |
-| 为我贡献返佣 | 聚合自 `referral_commission_events` |
+| 为我贡献返佣 | 聚合自 `referral_commission_events`（仅余额扣费部分） |
 
 **查询实现**：实时聚合 + Redis 缓存（TTL 5 分钟），避免每次全表扫描。
 
@@ -364,12 +375,13 @@ applyUsageBilling 成功（billing applied=true）
 ### 6.2 控制台页面结构
 
 ```
-/distributor
+/distributor                   （仅 distributor 角色可访问）
 ├── 概览（总邀请人数、累计注册奖励、累计返佣）
 ├── 我的邀请码（专属码 + 一键复制链接）
-├── 下级列表（L2 统计，分页，邮箱模糊搜索）
-└── 申请记录（查看分销员申请状态，仅 user 角色可见）
+└── 下级列表（L2 统计，分页，邮箱模糊搜索）
 ```
+
+> 分销员申请入口和申请进度查看放在**用户个人中心**（`/user/referral`），不在 `/distributor` 路由下。`/distributor` 仅对已通过审核的 `distributor` 角色开放。
 
 ---
 
@@ -438,7 +450,7 @@ applyUsageBilling 成功（billing applied=true）
 **验证规则**：
 - 仅允许 `user ↔ distributor` 互转
 - `admin` 角色不可通过此接口修改
-- 修改后使 auth cache 失效（调用 `InvalidateAuthCacheByKey`）
+- 修改后调用 `InvalidateAuthCacheByUserID` 使该用户所有 API key 的 auth cache 失效
 
 ---
 
@@ -471,7 +483,7 @@ applyUsageBilling 成功（billing applied=true）
 - `backend/internal/setup/handler.go` — 注册新路由
 
 ### 前端新增
-- `frontend/src/views/user/ReferralView.vue`
+- `frontend/src/views/user/ReferralView.vue` — 用户邀请页：专属码、邀请统计、申请分销员入口 + 申请进度
 - `frontend/src/views/distributor/DistributorLayout.vue`
 - `frontend/src/views/distributor/OverviewView.vue`
 - `frontend/src/views/distributor/InviteesView.vue`
