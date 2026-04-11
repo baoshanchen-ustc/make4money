@@ -454,10 +454,84 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *accountRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "")
+	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "", nil)
 }
 
-func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
+func normalizeAccountPlanTypeFilters(planTypes []string) ([]string, bool) {
+	normalized := make([]string, 0, len(planTypes))
+	seen := make(map[string]struct{}, len(planTypes))
+	includeUnknown := false
+	for _, planType := range planTypes {
+		normalizedValue := service.NormalizeAccountPlanTypeFilterValue(planType)
+		if normalizedValue == "" {
+			continue
+		}
+		if normalizedValue == service.AccountPlanTypeUnknownFilter {
+			includeUnknown = true
+			continue
+		}
+		if _, ok := seen[normalizedValue]; ok {
+			continue
+		}
+		seen[normalizedValue] = struct{}{}
+		normalized = append(normalized, normalizedValue)
+	}
+	return normalized, includeUnknown
+}
+
+func accountPlanTypePredicate(planTypes []string) dbpredicate.Account {
+	return dbpredicate.Account(func(s *entsql.Selector) {
+		normalizedPlanTypes, includeUnknown := normalizeAccountPlanTypeFilters(planTypes)
+		if len(normalizedPlanTypes) == 0 && !includeUnknown {
+			return
+		}
+
+		path := sqljson.Path("plan_type")
+		predicates := make([]*entsql.Predicate, 0, 2)
+
+		if len(normalizedPlanTypes) > 0 {
+			args := make([]any, 0, len(normalizedPlanTypes)+1)
+			seen := make(map[string]struct{}, len(normalizedPlanTypes)+1)
+			for _, planType := range normalizedPlanTypes {
+				if _, ok := seen[planType]; !ok {
+					args = append(args, planType)
+					seen[planType] = struct{}{}
+				}
+				if planType == "pro" {
+					if _, ok := seen["chatgptpro"]; !ok {
+						args = append(args, "chatgptpro")
+						seen["chatgptpro"] = struct{}{}
+					}
+				}
+			}
+			predicates = append(predicates, sqljson.ValueIn(dbaccount.FieldCredentials, args, path))
+		}
+
+		if includeUnknown {
+			recognizedArgs := make([]any, 0, len(service.AccountRecognizedPlanTypes)+1)
+			for _, planType := range service.AccountRecognizedPlanTypes {
+				recognizedArgs = append(recognizedArgs, planType)
+			}
+			recognizedArgs = append(recognizedArgs, "chatgptpro")
+			predicates = append(predicates, entsql.Or(
+				entsql.Not(sqljson.HasKey(dbaccount.FieldCredentials, path)),
+				sqljson.ValueIsNull(dbaccount.FieldCredentials, path),
+				sqljson.ValueNotIn(dbaccount.FieldCredentials, recognizedArgs, path),
+			))
+		}
+
+		switch len(predicates) {
+		case 0:
+			return
+		case 1:
+			s.Where(predicates[0])
+		default:
+			s.Where(entsql.Or(predicates...))
+		}
+	})
+}
+
+func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, planTypes []string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.client.Account.Query()
 
 	if platform != "" {
@@ -548,6 +622,9 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 				s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, privacyMode, path))
 			}
 		}))
+	}
+	if len(planTypes) > 0 {
+		q = q.Where(accountPlanTypePredicate(planTypes))
 	}
 
 	total, err := q.Count(ctx)

@@ -27,30 +27,38 @@ import type {
  * @param filters - Optional filters
  * @returns Paginated list of accounts
  */
+type AccountListFilters = {
+  platform?: string
+  type?: string
+  status?: string
+  group?: string
+  search?: string
+  privacy_mode?: string
+  plan_types?: string[]
+  lite?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
+}
+
+function buildAccountListParams(page: number, pageSize: number, filters?: AccountListFilters) {
+  return {
+    page,
+    page_size: pageSize,
+    ...filters,
+    plan_types: filters?.plan_types?.length ? filters.plan_types.join(',') : undefined
+  }
+}
+
 export async function list(
   page: number = 1,
   pageSize: number = 20,
-  filters?: {
-    platform?: string
-    type?: string
-    status?: string
-    group?: string
-    search?: string
-    privacy_mode?: string
-    lite?: string
-    sort_by?: string
-    sort_order?: 'asc' | 'desc'
-  },
+  filters?: AccountListFilters,
   options?: {
     signal?: AbortSignal
   }
 ): Promise<PaginatedResponse<Account>> {
   const { data } = await apiClient.get<PaginatedResponse<Account>>('/admin/accounts', {
-    params: {
-      page,
-      page_size: pageSize,
-      ...filters
-    },
+    params: buildAccountListParams(page, pageSize, filters),
     signal: options?.signal
   })
   return data
@@ -65,17 +73,7 @@ export interface AccountListWithEtagResult {
 export async function listWithEtag(
   page: number = 1,
   pageSize: number = 20,
-  filters?: {
-    platform?: string
-    type?: string
-    status?: string
-    group?: string
-    search?: string
-    privacy_mode?: string
-    lite?: string
-    sort_by?: string
-    sort_order?: 'asc' | 'desc'
-  },
+  filters?: AccountListFilters,
   options?: {
     signal?: AbortSignal
     etag?: string | null
@@ -87,11 +85,7 @@ export async function listWithEtag(
   }
 
   const response = await apiClient.get<PaginatedResponse<Account>>('/admin/accounts', {
-    params: {
-      page,
-      page_size: pageSize,
-      ...filters
-    },
+    params: buildAccountListParams(page, pageSize, filters),
     headers,
     signal: options?.signal,
     validateStatus: (status) => (status >= 200 && status < 300) || status === 304

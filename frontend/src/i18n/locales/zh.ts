@@ -2093,8 +2093,17 @@ export default {
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',
+      allPlanTypes: '全部订阅类型',
+      planTypesSelected: '已选 {count} 项',
       ungroupedGroup: '未分配分组',
       oauthType: 'OAuth',
+      planType: {
+        free: 'Free',
+        team: 'Team',
+        plus: 'Plus',
+        pro: 'Pro',
+        unknown: '未识别'
+      },
       // Schedulable toggle
       schedulable: '参与调度',
       schedulableHint: '开启后账号参与API请求调度',

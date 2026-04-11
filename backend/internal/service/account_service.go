@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -16,6 +17,21 @@ var (
 
 const AccountListGroupUngrouped int64 = -1
 const AccountPrivacyModeUnsetFilter = "__unset__"
+const AccountPlanTypeUnknownFilter = "unknown"
+
+var AccountRecognizedPlanTypes = []string{"free", "team", "plus", "pro"}
+
+func NormalizeAccountPlanTypeFilterValue(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "", "__unset__", "unset", "unknown", "unrecognized", "unrecognised", "null", "none", "empty":
+		return AccountPlanTypeUnknownFilter
+	case "chatgptpro":
+		return "pro"
+	default:
+		return normalized
+	}
+}
 
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
@@ -37,7 +53,7 @@ type AccountRepository interface {
 	Delete(ctx context.Context, id int64) error
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, planTypes []string) ([]Account, *pagination.PaginationResult, error)
 	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
 	ListActive(ctx context.Context) ([]Account, error)
 	ListByPlatform(ctx context.Context, platform string) ([]Account, error)

@@ -634,6 +634,7 @@ const {
     privacy_mode: '',
     group: '',
     search: '',
+    plan_types: [],
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -829,9 +830,9 @@ const refreshAccountsIncrementally = async () => {
         privacy_mode?: string
         group?: string
         search?: string
+        plan_types?: string[]
         sort_by?: string
         sort_order?: AccountSortOrder
-
       },
       { etag: autoRefreshETag.value }
     )
@@ -1162,6 +1163,31 @@ const handleBulkUpdated = () => { showBulkEdit.value = false; clearSelection(); 
 const handleDataImported = () => { showImportData.value = false; reload() }
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
+
+const normalizePlanTypeFilterValues = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item).trim().toLowerCase()).filter(Boolean)
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map(item => item.trim().toLowerCase())
+      .filter(Boolean)
+  }
+  return []
+}
+
+const normalizeAccountPlanTypeForFilter = (account: Account): string => {
+  const rawPlanType = typeof account.credentials?.plan_type === 'string'
+    ? account.credentials.plan_type.trim().toLowerCase()
+    : ''
+
+  if (!rawPlanType) return 'unknown'
+  if (rawPlanType === 'chatgptpro') return 'pro'
+  if (['free', 'team', 'plus', 'pro'].includes(rawPlanType)) return rawPlanType
+  return 'unknown'
+}
+
 const buildAccountQueryFilters = () => ({
   platform: params.platform || '',
   type: params.type || '',
@@ -1169,9 +1195,11 @@ const buildAccountQueryFilters = () => ({
   group: params.group || '',
   privacy_mode: params.privacy_mode || '',
   search: params.search || '',
+  plan_types: normalizePlanTypeFilterValues(params.plan_types),
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
 })
+
 const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
   if (filters.platform && account.platform !== filters.platform) return false
@@ -1210,6 +1238,10 @@ const accountMatchesCurrentFilters = (account: Account) => {
     } else if (privacyMode !== filters.privacy_mode) {
       return false
     }
+  }
+  if (filters.plan_types.length > 0) {
+    const accountPlanType = normalizeAccountPlanTypeForFilter(account)
+    if (!filters.plan_types.includes(accountPlanType)) return false
   }
   const search = String(filters.search || '').trim().toLowerCase()
   if (search && !account.name.toLowerCase().includes(search)) return false
