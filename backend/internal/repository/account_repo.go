@@ -486,14 +486,31 @@ func accountPlanTypePredicate(planTypes []string) dbpredicate.Account {
 			return
 		}
 
-		rawPlanExpr := "LOWER(COALESCE(" + s.C(dbaccount.FieldCredentials) + "->>'plan_type', ''))"
-		normalizedPlanExpr := "CASE WHEN " + rawPlanExpr + " = 'chatgptpro' THEN 'pro' ELSE " + rawPlanExpr + " END"
+		path := sqljson.Path("plan_type")
 		predicates := make([]*entsql.Predicate, 0, len(normalizedPlanTypes)+1)
 		for _, planType := range normalizedPlanTypes {
-			predicates = append(predicates, entsql.ExprP(normalizedPlanExpr+" = ?", planType))
+			switch planType {
+			case "pro":
+				predicates = append(predicates, entsql.Or(
+					sqljson.ValueEQ(dbaccount.FieldCredentials, "pro", path),
+					sqljson.ValueEQ(dbaccount.FieldCredentials, "chatgptpro", path),
+				))
+			default:
+				predicates = append(predicates, sqljson.ValueEQ(dbaccount.FieldCredentials, planType, path))
+			}
 		}
 		if includeUnknown {
-			predicates = append(predicates, entsql.ExprP(normalizedPlanExpr+" NOT IN (?, ?, ?, ?)", service.AccountRecognizedPlanTypes[0], service.AccountRecognizedPlanTypes[1], service.AccountRecognizedPlanTypes[2], service.AccountRecognizedPlanTypes[3]))
+			predicates = append(predicates, entsql.And(
+				entsql.Or(
+					entsql.Not(sqljson.HasKey(dbaccount.FieldCredentials, path)),
+					sqljson.ValueIsNull(dbaccount.FieldCredentials, path),
+					sqljson.ValueEQ(dbaccount.FieldCredentials, "", path),
+					entsql.And(
+						entsql.Not(sqljson.ValueIn(dbaccount.FieldCredentials, []any{"free", "team", "plus", "pro", "chatgptpro"}, path)),
+						entsql.Not(sqljson.ValueIsNull(dbaccount.FieldCredentials, path)),
+					),
+				),
+			))
 		}
 
 		switch len(predicates) {
