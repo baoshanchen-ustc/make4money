@@ -184,9 +184,23 @@
               <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestInspect.fields.clientModel') }}</div>
               <div class="mt-1 font-mono text-xs text-gray-900 dark:text-white">{{ usageInspect.model || '—' }}</div>
             </div>
-            <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-900">
-              <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestInspect.fields.upstreamModel') }}</div>
-              <div class="mt-1 font-mono text-xs text-gray-900 dark:text-white">
+            <div
+              class="rounded-lg p-3"
+              :class="isModelMapped
+                ? 'bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-200 dark:ring-amber-800/50'
+                : 'bg-gray-50 dark:bg-dark-900'"
+            >
+              <div class="flex items-center gap-1">
+                <span
+                  class="text-[10px] font-bold uppercase"
+                  :class="isModelMapped ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'"
+                >{{ t('admin.ops.requestInspect.fields.upstreamModel') }}</span>
+                <span v-if="isModelMapped" class="text-[10px] font-bold text-amber-500 dark:text-amber-400">↓ 已映射</span>
+              </div>
+              <div
+                class="mt-1 font-mono text-xs"
+                :class="isModelMapped ? 'text-amber-700 dark:text-amber-300 font-bold' : 'text-gray-900 dark:text-white'"
+              >
                 {{ usageUpstreamModelDisplay }}
               </div>
             </div>
@@ -334,6 +348,15 @@ const usageUpstreamModelDisplay = computed(() => {
   const up = (u.upstream_model || '').trim()
   if (up) return up
   return (u.model || '').trim() || '—'
+})
+
+/** true when the upstream model differs from the client-requested model */
+const isModelMapped = computed(() => {
+  const u = usageInspect.value
+  if (!u) return false
+  const clientModel = (u.model || '').trim()
+  const upstreamModel = (u.upstream_model || '').trim()
+  return upstreamModel !== '' && upstreamModel !== clientModel
 })
 
 const statusClass = computed(() => {
