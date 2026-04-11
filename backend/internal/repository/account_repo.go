@@ -486,13 +486,14 @@ func accountPlanTypePredicate(planTypes []string) dbpredicate.Account {
 			return
 		}
 
-		planExpr := "LOWER(COALESCE(" + s.C(dbaccount.FieldCredentials) + "->>'plan_type', ''))"
-		predicates := make([]*entsql.Predicate, 0, 2)
-		if len(normalizedPlanTypes) > 0 {
-			predicates = append(predicates, entsql.ExprP(planExpr+" = ANY(?)", pq.Array(normalizedPlanTypes)))
+		rawPlanExpr := "LOWER(COALESCE(" + s.C(dbaccount.FieldCredentials) + "->>'plan_type', ''))"
+		normalizedPlanExpr := "CASE WHEN " + rawPlanExpr + " = 'chatgptpro' THEN 'pro' ELSE " + rawPlanExpr + " END"
+		predicates := make([]*entsql.Predicate, 0, len(normalizedPlanTypes)+1)
+		for _, planType := range normalizedPlanTypes {
+			predicates = append(predicates, entsql.ExprP(normalizedPlanExpr+" = ?", planType))
 		}
 		if includeUnknown {
-			predicates = append(predicates, entsql.ExprP("NOT ("+planExpr+" = ANY(?))", pq.Array(service.AccountRecognizedPlanTypes)))
+			predicates = append(predicates, entsql.ExprP(normalizedPlanExpr+" NOT IN (?, ?, ?, ?)", service.AccountRecognizedPlanTypes[0], service.AccountRecognizedPlanTypes[1], service.AccountRecognizedPlanTypes[2], service.AccountRecognizedPlanTypes[3]))
 		}
 
 		switch len(predicates) {
