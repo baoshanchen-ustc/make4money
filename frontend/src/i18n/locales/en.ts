@@ -4030,6 +4030,7 @@ export default {
         fields: {
           clientModel: 'Client model',
           upstreamModel: 'Upstream model',
+          modelMapped: '↓ Mapped',
           inboundEndpoint: 'Inbound API path',
           upstreamEndpoint: 'Upstream API path',
           tokens: 'Tokens (in / out)',

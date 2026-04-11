@@ -201,7 +201,7 @@ WITH combined AS (
     0 AS input_tokens,
     0 AS output_tokens,
     NULL::TEXT AS upstream_model,
-    NULL::TEXT AS api_key_name,
+    ak.name AS api_key_name,
     o.spans::TEXT AS spans_json
   FROM ops_error_logs o
   LEFT JOIN groups g ON g.id = o.group_id
@@ -368,9 +368,9 @@ LIMIT $%d OFFSET $%d
 			&groupNameStr,
 			&accountNameStr,
 			&anomalyTypes,
-			&spansJSON,
 			&upstreamModel,
 			&apiKeyName,
+			&spansJSON,
 		); err != nil {
 			return nil, 0, err
 		}

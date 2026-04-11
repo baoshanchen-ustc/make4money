@@ -4195,6 +4195,7 @@ export default {
         fields: {
           clientModel: '客户端模型',
           upstreamModel: '上游模型',
+          modelMapped: '↓ 已映射',
           inboundEndpoint: '入站 API 路径',
           upstreamEndpoint: '上游 API 路径',
           tokens: 'Token（入 / 出）',

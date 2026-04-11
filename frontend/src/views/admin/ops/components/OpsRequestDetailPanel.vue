@@ -195,7 +195,7 @@
                   class="text-[10px] font-bold uppercase"
                   :class="isModelMapped ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'"
                 >{{ t('admin.ops.requestInspect.fields.upstreamModel') }}</span>
-                <span v-if="isModelMapped" class="text-[10px] font-bold text-amber-500 dark:text-amber-400">↓ 已映射</span>
+                <span v-if="isModelMapped" class="text-[10px] font-bold text-amber-500 dark:text-amber-400">{{ t('admin.ops.requestInspect.fields.modelMapped') }}</span>
               </div>
               <div
                 class="mt-1 font-mono text-xs"
