@@ -3950,6 +3950,9 @@ export default {
           anomaly: 'Anomaly',
           actions: 'Actions',
           userKey: 'User / Key',
+          user: 'User',
+          keyName: 'Key Name',
+          keyMasked: 'Key',
           groupAccount: 'Group / Account'
         },
         detail: {

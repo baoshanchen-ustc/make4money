@@ -4117,6 +4117,9 @@ export default {
           anomaly: '异常',
           actions: '操作',
           userKey: '用户 / Key',
+          user: '用户',
+          keyName: 'Key 名称',
+          keyMasked: '密钥',
           groupAccount: '分组 / 账号'
         },
         detail: {
