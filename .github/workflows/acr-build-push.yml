@@ -1,0 +1,73 @@
+name: Build and Push to ACR
+
+# Manual trigger only — this workflow lives on the fork (shuanbao0/sub2api)
+# and is NOT intended for the upstream repository.
+on:
+  workflow_dispatch:
+    inputs:
+      tag_suffix:
+        description: 'Optional extra tag to apply (in addition to latest + sha). Leave empty to skip.'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ACR
+        run: |
+          echo "${{ secrets.ACR_PASS }}" | docker login \
+            crpi-5mbh0qm9ti5c2olw.cn-wulanchabu.personal.cr.aliyuncs.com \
+            -u "${{ secrets.ACR_USER }}" --password-stdin
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          REGISTRY=crpi-5mbh0qm9ti5c2olw.cn-wulanchabu.personal.cr.aliyuncs.com
+          IMAGE=$REGISTRY/shuanbaoai/sub2api
+          {
+            echo "${IMAGE}:latest"
+            echo "${IMAGE}:${{ github.sha }}"
+            if [ -n "${{ github.event.inputs.tag_suffix }}" ]; then
+              echo "${IMAGE}:${{ github.event.inputs.tag_suffix }}"
+            fi
+          } | tee /tmp/tags.txt
+          {
+            echo 'list<<EOF'
+            cat /tmp/tags.txt
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.tags.outputs.list }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ github.sha }}
+            COMMIT=${{ github.sha }}
+
+      - name: Summary
+        run: |
+          echo "### Pushed images" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/tags.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
