@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -60,6 +61,63 @@ const (
 	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
 )
 
+const usageLogNotPersistedAlertHistorySize = 64
+
+// UsageLogNotPersistedAlert captures billing-succeeded usage log failures for downstream tooling.
+type UsageLogNotPersistedAlert struct {
+	Timestamp time.Time
+	LogKey    string
+	RequestID string
+	UserID    int64
+	AccountID int64
+	Error     string
+}
+
+type UsageLogNotPersistedMetricsSnapshot struct {
+	Total          int64                       `json:"total"`
+	Recent1mTotal  int64                       `json:"recent_1m_total"`
+	Recent5mTotal  int64                       `json:"recent_5m_total"`
+	Recent15mTotal int64                       `json:"recent_15m_total"`
+	Last           *UsageLogNotPersistedAlert  `json:"last,omitempty"`
+	Recent         []UsageLogNotPersistedAlert `json:"recent"`
+}
+
+// BillingCompensationCandidate marks a usage log that failed after billing succeeded.
+type BillingCompensationCandidate struct {
+	Timestamp             time.Time `json:"timestamp"`
+	LogKey                string    `json:"log_key"`
+	RequestID             string    `json:"request_id"`
+	UserID                int64     `json:"user_id"`
+	APIKeyID              int64     `json:"api_key_id"`
+	AccountID             int64     `json:"account_id"`
+	GroupID               *int64    `json:"group_id,omitempty"`
+	SubscriptionID        *int64    `json:"subscription_id,omitempty"`
+	Model                 string    `json:"model"`
+	RequestedModel        string    `json:"requested_model,omitempty"`
+	UpstreamModel         *string   `json:"upstream_model,omitempty"`
+	InputTokens           int       `json:"input_tokens"`
+	OutputTokens          int       `json:"output_tokens"`
+	CacheCreationTokens   int       `json:"cache_creation_tokens"`
+	CacheReadTokens       int       `json:"cache_read_tokens"`
+	ImageOutputTokens     int       `json:"image_output_tokens"`
+	TotalCost             float64   `json:"total_cost"`
+	ActualCost            float64   `json:"actual_cost"`
+	RateMultiplier        float64   `json:"rate_multiplier"`
+	AccountRateMultiplier *float64  `json:"account_rate_multiplier,omitempty"`
+	BillingType           int8      `json:"billing_type"`
+	RequestType           int16     `json:"request_type"`
+	Error                 string    `json:"error"`
+}
+
+type BillingCompensationSnapshot struct {
+	Total          int64                          `json:"total"`
+	Recent1mTotal  int64                          `json:"recent_1m_total"`
+	Recent5mTotal  int64                          `json:"recent_5m_total"`
+	Recent15mTotal int64                          `json:"recent_15m_total"`
+	Last           *BillingCompensationCandidate  `json:"last,omitempty"`
+	Recent         []BillingCompensationCandidate `json:"recent"`
+}
+
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{}
@@ -71,6 +129,8 @@ type accountWithLoad struct {
 }
 
 var ForceCacheBillingContextKey = forceCacheBillingKeyType{}
+
+const billingCompensationHistorySize = 64
 
 var (
 	windowCostPrefetchCacheHitTotal  atomic.Int64
@@ -85,9 +145,15 @@ var (
 	userGroupRateCacheSFSharedTotal atomic.Int64
 	userGroupRateCacheFallbackTotal atomic.Int64
 
-	modelsListCacheHitTotal   atomic.Int64
-	modelsListCacheMissTotal  atomic.Int64
-	modelsListCacheStoreTotal atomic.Int64
+	modelsListCacheHitTotal       atomic.Int64
+	modelsListCacheMissTotal      atomic.Int64
+	modelsListCacheStoreTotal     atomic.Int64
+	usageLogNotPersistedAlerts    atomic.Int64
+	usageLogNotPersistedEventsMu  sync.Mutex
+	usageLogNotPersistedEvents    []UsageLogNotPersistedAlert
+	billingCompensationTotal      atomic.Int64
+	billingCompensationMu         sync.Mutex
+	billingCompensationCandidates []BillingCompensationCandidate
 )
 
 func GatewayWindowCostPrefetchStats() (cacheHit, cacheMiss, batchSQL, fallback, errCount int64) {
@@ -147,6 +213,30 @@ func cloneStringSlice(src []string) []string {
 	dst := make([]string, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func cloneStringPointer(src *string) *string {
+	if src == nil {
+		return nil
+	}
+	dst := strings.TrimSpace(*src)
+	return &dst
+}
+
+func cloneInt64Pointer(src *int64) *int64 {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneFloat64Pointer(src *float64) *float64 {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
 }
 
 // IsForceCacheBilling 检查是否启用强制缓存计费
@@ -7561,8 +7651,18 @@ func (s *GatewayService) billingDeps() *billingDeps {
 }
 
 func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
+	_ = tryWriteUsageLogBestEffort(ctx, repo, usageLog, logKey)
+}
+
+func writeBilledUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
+	if err := tryWriteUsageLogBestEffort(ctx, repo, usageLog, logKey); err != nil {
+		recordBillingCompensationCandidate(logKey, usageLog, err)
+	}
+}
+
+func tryWriteUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) error {
 	if repo == nil || usageLog == nil {
-		return
+		return nil
 	}
 	usageCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
@@ -7570,19 +7670,238 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	if writer, ok := repo.(usageLogBestEffortWriter); ok {
 		if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
 			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
-			if IsUsageLogCreateDropped(err) {
-				return
-			}
 			if _, syncErr := repo.Create(usageCtx, usageLog); syncErr != nil {
 				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
+				logUsageLogNotPersisted(logKey, usageLog, syncErr)
+				return syncErr
 			}
 		}
-		return
+		return nil
 	}
 
 	if _, err := repo.Create(usageCtx, usageLog); err != nil {
 		logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
+		logUsageLogNotPersisted(logKey, usageLog, err)
+		return err
 	}
+	return nil
+}
+
+func logUsageLogNotPersisted(logKey string, usageLog *UsageLog, err error) {
+	if usageLog == nil || err == nil {
+		return
+	}
+	alert := UsageLogNotPersistedAlert{
+		Timestamp: time.Now(),
+		LogKey:    logKey,
+		RequestID: strings.TrimSpace(usageLog.RequestID),
+		UserID:    usageLog.UserID,
+		AccountID: usageLog.AccountID,
+		Error:     err.Error(),
+	}
+	usageLogNotPersistedAlerts.Add(1)
+	recordUsageLogNotPersistedAlert(alert)
+	logger.LegacyPrintf("service.usage", "[UsageLog] %s request_id=%s user_id=%d account_id=%d err=%v",
+		strings.TrimSpace(logKey), strings.TrimSpace(usageLog.RequestID), usageLog.UserID, usageLog.AccountID, err)
+	logger.WriteSinkEvent("warn", OpsRuntimeUsageLogComponent, "usage log not persisted", map[string]any{
+		"log_key":         alert.LogKey,
+		"request_id":      alert.RequestID,
+		"user_id":         alert.UserID,
+		"account_id":      alert.AccountID,
+		"api_key_id":      usageLog.APIKeyID,
+		"group_id":        usageLog.GroupID,
+		"subscription_id": usageLog.SubscriptionID,
+		"model":           strings.TrimSpace(usageLog.Model),
+		"requested_model": strings.TrimSpace(usageLog.RequestedModel),
+		"upstream_model":  usageLog.UpstreamModel,
+		"billing_type":    usageLog.BillingType,
+		"request_type":    usageLog.RequestType,
+		"total_cost":      usageLog.TotalCost,
+		"actual_cost":     usageLog.ActualCost,
+		"error":           alert.Error,
+	})
+}
+
+func UsageLogNotPersistedAlertTotal() int64 {
+	return usageLogNotPersistedAlerts.Load()
+}
+
+func SnapshotUsageLogNotPersistedMetrics() UsageLogNotPersistedMetricsSnapshot {
+	history := UsageLogNotPersistedAlertsHistory()
+	now := time.Now()
+	var recent1m int64
+	var recent5m int64
+	var recent15m int64
+	for _, item := range history {
+		if item.Timestamp.IsZero() {
+			continue
+		}
+		age := now.Sub(item.Timestamp)
+		if age <= time.Minute {
+			recent1m++
+		}
+		if age <= 5*time.Minute {
+			recent5m++
+		}
+		if age <= 15*time.Minute {
+			recent15m++
+		}
+	}
+	snapshot := UsageLogNotPersistedMetricsSnapshot{
+		Total:          usageLogNotPersistedAlerts.Load(),
+		Recent1mTotal:  recent1m,
+		Recent5mTotal:  recent5m,
+		Recent15mTotal: recent15m,
+		Recent:         history,
+	}
+	if n := len(history); n > 0 {
+		last := history[n-1]
+		snapshot.Last = &last
+	}
+	return snapshot
+}
+
+func resetUsageLogNotPersistedAlertsForTest() {
+	usageLogNotPersistedAlerts.Store(0)
+	usageLogNotPersistedEventsMu.Lock()
+	usageLogNotPersistedEvents = usageLogNotPersistedEvents[:0]
+	usageLogNotPersistedEventsMu.Unlock()
+}
+
+func recordUsageLogNotPersistedAlert(alert UsageLogNotPersistedAlert) {
+	usageLogNotPersistedEventsMu.Lock()
+	if len(usageLogNotPersistedEvents) >= usageLogNotPersistedAlertHistorySize {
+		copy(usageLogNotPersistedEvents, usageLogNotPersistedEvents[1:])
+		usageLogNotPersistedEvents[len(usageLogNotPersistedEvents)-1] = alert
+	} else {
+		usageLogNotPersistedEvents = append(usageLogNotPersistedEvents, alert)
+	}
+	usageLogNotPersistedEventsMu.Unlock()
+}
+
+func UsageLogNotPersistedAlertsHistory() []UsageLogNotPersistedAlert {
+	usageLogNotPersistedEventsMu.Lock()
+	defer usageLogNotPersistedEventsMu.Unlock()
+	history := make([]UsageLogNotPersistedAlert, len(usageLogNotPersistedEvents))
+	copy(history, usageLogNotPersistedEvents)
+	return history
+}
+
+func recordBillingCompensationCandidate(logKey string, usageLog *UsageLog, err error) {
+	if usageLog == nil || err == nil {
+		return
+	}
+	candidate := BillingCompensationCandidate{
+		Timestamp:             time.Now(),
+		LogKey:                strings.TrimSpace(logKey),
+		RequestID:             strings.TrimSpace(usageLog.RequestID),
+		UserID:                usageLog.UserID,
+		APIKeyID:              usageLog.APIKeyID,
+		AccountID:             usageLog.AccountID,
+		GroupID:               cloneInt64Pointer(usageLog.GroupID),
+		SubscriptionID:        cloneInt64Pointer(usageLog.SubscriptionID),
+		Model:                 strings.TrimSpace(usageLog.Model),
+		RequestedModel:        strings.TrimSpace(usageLog.RequestedModel),
+		UpstreamModel:         cloneStringPointer(usageLog.UpstreamModel),
+		InputTokens:           usageLog.InputTokens,
+		OutputTokens:          usageLog.OutputTokens,
+		CacheCreationTokens:   usageLog.CacheCreationTokens,
+		CacheReadTokens:       usageLog.CacheReadTokens,
+		ImageOutputTokens:     usageLog.ImageOutputTokens,
+		TotalCost:             usageLog.TotalCost,
+		ActualCost:            usageLog.ActualCost,
+		RateMultiplier:        usageLog.RateMultiplier,
+		AccountRateMultiplier: cloneFloat64Pointer(usageLog.AccountRateMultiplier),
+		BillingType:           usageLog.BillingType,
+		RequestType:           int16(usageLog.RequestType),
+		Error:                 err.Error(),
+	}
+	billingCompensationTotal.Add(1)
+	billingCompensationMu.Lock()
+	if len(billingCompensationCandidates) >= billingCompensationHistorySize {
+		copy(billingCompensationCandidates, billingCompensationCandidates[1:])
+		billingCompensationCandidates[len(billingCompensationCandidates)-1] = candidate
+	} else {
+		billingCompensationCandidates = append(billingCompensationCandidates, candidate)
+	}
+	billingCompensationMu.Unlock()
+	logger.LegacyPrintf("service.usage", "[BillingCompensation] %s request_id=%s user_id=%d account_id=%d billing_type=%d err=%v",
+		strings.TrimSpace(logKey), strings.TrimSpace(usageLog.RequestID), usageLog.UserID, usageLog.AccountID, usageLog.BillingType, err)
+	logger.WriteSinkEvent("warn", OpsRuntimeBillingCompensationComponent, "billing compensation candidate", map[string]any{
+		"log_key":                 candidate.LogKey,
+		"request_id":              candidate.RequestID,
+		"user_id":                 candidate.UserID,
+		"api_key_id":              candidate.APIKeyID,
+		"account_id":              candidate.AccountID,
+		"group_id":                candidate.GroupID,
+		"subscription_id":         candidate.SubscriptionID,
+		"model":                   candidate.Model,
+		"requested_model":         candidate.RequestedModel,
+		"upstream_model":          candidate.UpstreamModel,
+		"input_tokens":            candidate.InputTokens,
+		"output_tokens":           candidate.OutputTokens,
+		"cache_creation_tokens":   candidate.CacheCreationTokens,
+		"cache_read_tokens":       candidate.CacheReadTokens,
+		"image_output_tokens":     candidate.ImageOutputTokens,
+		"total_cost":              candidate.TotalCost,
+		"actual_cost":             candidate.ActualCost,
+		"rate_multiplier":         candidate.RateMultiplier,
+		"account_rate_multiplier": candidate.AccountRateMultiplier,
+		"billing_type":            candidate.BillingType,
+		"request_type":            candidate.RequestType,
+		"error":                   candidate.Error,
+	})
+}
+
+func BillingCompensationCandidatesHistory() []BillingCompensationCandidate {
+	billingCompensationMu.Lock()
+	defer billingCompensationMu.Unlock()
+	history := make([]BillingCompensationCandidate, len(billingCompensationCandidates))
+	copy(history, billingCompensationCandidates)
+	return history
+}
+
+func SnapshotBillingCompensationCandidates() BillingCompensationSnapshot {
+	history := BillingCompensationCandidatesHistory()
+	now := time.Now()
+	var recent1m int64
+	var recent5m int64
+	var recent15m int64
+	for _, item := range history {
+		if item.Timestamp.IsZero() {
+			continue
+		}
+		age := now.Sub(item.Timestamp)
+		if age <= time.Minute {
+			recent1m++
+		}
+		if age <= 5*time.Minute {
+			recent5m++
+		}
+		if age <= 15*time.Minute {
+			recent15m++
+		}
+	}
+
+	snapshot := BillingCompensationSnapshot{
+		Total:          billingCompensationTotal.Load(),
+		Recent1mTotal:  recent1m,
+		Recent5mTotal:  recent5m,
+		Recent15mTotal: recent15m,
+		Recent:         history,
+	}
+	if n := len(snapshot.Recent); n > 0 {
+		last := snapshot.Recent[n-1]
+		snapshot.Last = &last
+	}
+	return snapshot
+}
+
+func resetBillingCompensationCandidatesForTest() {
+	billingCompensationTotal.Store(0)
+	billingCompensationMu.Lock()
+	billingCompensationCandidates = billingCompensationCandidates[:0]
+	billingCompensationMu.Unlock()
 }
 
 // recordUsageOpts 内部选项，参数化 RecordUsage 与 RecordUsageWithLongContext 的差异点。
@@ -7769,7 +8088,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if billingErr != nil {
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	writeBilledUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
 	return nil
 }

@@ -56,11 +56,41 @@ func Logger() gin.HandlerFunc {
 			fields = append(fields, zap.String("model", model))
 		}
 
+		fields = append(fields, zap.Time("completed_at", endTime))
 		l := logger.FromContext(c.Request.Context()).With(fields...)
-		l.Info("http request completed", zap.Time("completed_at", endTime))
+		l.Info("http request completed")
+		requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
+		clientRequestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
+		sinkFields := map[string]any{
+			"component":         "http.access",
+			"request_id":        requestID,
+			"client_request_id": clientRequestID,
+			"status_code":       statusCode,
+			"latency_ms":        latency.Milliseconds(),
+			"client_ip":         clientIP,
+			"protocol":          protocol,
+			"method":            method,
+			"path":              path,
+		}
+		if hasAccountID && accountID > 0 {
+			sinkFields["account_id"] = accountID
+		}
+		if platform != "" {
+			sinkFields["platform"] = platform
+		}
+		if model != "" {
+			sinkFields["model"] = model
+		}
+
+		logger.WriteSinkEvent("info", "http.access", "http request completed", sinkFields)
 
 		if len(c.Errors) > 0 {
 			l.Warn("http request contains gin errors", zap.String("errors", c.Errors.String()))
+			errorFields := map[string]any{
+				"component": "http.access",
+				"errors":    c.Errors.String(),
+			}
+			logger.WriteSinkEvent("warn", "http.access", "http request contains gin errors", errorFields)
 		}
 	}
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -31,6 +32,8 @@ const (
 	defaultUsageRecordAutoScaleCooldown    = 10 * time.Second
 	usageRecordDropLogInterval             = 5 * time.Second
 )
+
+var defaultUsageRecordWorkerPool atomic.Pointer[UsageRecordWorkerPool]
 
 // UsageRecordTask 是提交到使用量记录池的任务。
 // 任务实现应自行处理业务错误日志；池本身只负责调度与超时控制。
@@ -65,17 +68,20 @@ type UsageRecordWorkerPoolOptions struct {
 
 // UsageRecordWorkerPoolStats 使用量记录池运行时统计。
 type UsageRecordWorkerPoolStats struct {
-	MaxConcurrency     int
-	RunningWorkers     int64
-	WaitingTasks       uint64
-	SubmittedTasks     uint64
-	CompletedTasks     uint64
-	SuccessfulTasks    uint64
-	FailedTasks        uint64
-	DroppedTasks       uint64
-	DroppedQueueFull   uint64
-	DroppedPoolStopped uint64
-	SyncFallbackTasks  uint64
+	MaxConcurrency     int    `json:"max_concurrency"`
+	RunningWorkers     int64  `json:"running_workers"`
+	WaitingTasks       uint64 `json:"waiting_tasks"`
+	QueueDepth         uint64 `json:"queue_depth"`
+	SubmittedTasks     uint64 `json:"submitted_tasks"`
+	CompletedTasks     uint64 `json:"completed_tasks"`
+	SuccessfulTasks    uint64 `json:"successful_tasks"`
+	FailedTasks        uint64 `json:"failed_tasks"`
+	DroppedTasks       uint64 `json:"dropped_tasks"`
+	DroppedQueueFull   uint64 `json:"dropped_queue_full"`
+	DroppedPoolStopped uint64 `json:"dropped_pool_stopped"`
+	SyncFallbackTasks  uint64 `json:"sync_fallback_tasks"`
+	TaskTimeouts       uint64 `json:"task_timeouts"`
+	TaskPanics         uint64 `json:"task_panics"`
 }
 
 // UsageRecordWorkerPool 提供“有界队列 + 固定 worker”的异步执行器。
@@ -89,6 +95,8 @@ type UsageRecordWorkerPool struct {
 	droppedQueueFull      atomic.Uint64
 	droppedPoolStopped    atomic.Uint64
 	syncFallback          atomic.Uint64
+	taskTimeouts          atomic.Uint64
+	taskPanics            atomic.Uint64
 	lastDropLogNanos      atomic.Int64
 	autoScaleEnabled      bool
 	autoScaleMinWorkers   int
@@ -137,6 +145,7 @@ func NewUsageRecordWorkerPoolWithOptions(opts UsageRecordWorkerPoolOptions) *Usa
 	if p.autoScaleEnabled {
 		p.startAutoScaler()
 	}
+	defaultUsageRecordWorkerPool.Store(p)
 	return p
 }
 
@@ -185,22 +194,33 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 
 // Stats 返回当前池状态与计数器。
 func (p *UsageRecordWorkerPool) Stats() UsageRecordWorkerPoolStats {
-	if p == nil || p.pool == nil {
+	if p == nil {
 		return UsageRecordWorkerPoolStats{}
 	}
-	return UsageRecordWorkerPoolStats{
-		MaxConcurrency:     p.pool.MaxConcurrency(),
-		RunningWorkers:     p.pool.RunningWorkers(),
-		WaitingTasks:       p.pool.WaitingTasks(),
-		SubmittedTasks:     p.pool.SubmittedTasks(),
-		CompletedTasks:     p.pool.CompletedTasks(),
-		SuccessfulTasks:    p.pool.SuccessfulTasks(),
-		FailedTasks:        p.pool.FailedTasks(),
-		DroppedTasks:       p.pool.DroppedTasks(),
+	stats := UsageRecordWorkerPoolStats{
+		TaskTimeouts:       p.taskTimeouts.Load(),
+		TaskPanics:         p.taskPanics.Load(),
 		DroppedQueueFull:   p.droppedQueueFull.Load(),
 		DroppedPoolStopped: p.droppedPoolStopped.Load(),
 		SyncFallbackTasks:  p.syncFallback.Load(),
 	}
+	if p.pool == nil {
+		return stats
+	}
+	waiting := p.pool.WaitingTasks()
+	stats.MaxConcurrency = p.pool.MaxConcurrency()
+	stats.RunningWorkers = p.pool.RunningWorkers()
+	stats.WaitingTasks = waiting
+	stats.QueueDepth = waiting
+	stats.SubmittedTasks = p.pool.SubmittedTasks()
+	stats.CompletedTasks = p.pool.CompletedTasks()
+	stats.SuccessfulTasks = p.pool.SuccessfulTasks()
+	stats.FailedTasks = p.pool.FailedTasks()
+	stats.DroppedTasks = p.pool.DroppedTasks()
+	stats.DroppedQueueFull = p.droppedQueueFull.Load()
+	stats.DroppedPoolStopped = p.droppedPoolStopped.Load()
+	stats.SyncFallbackTasks = p.syncFallback.Load()
+	return stats
 }
 
 // Stop 停止池并等待队列任务完成。
@@ -214,7 +234,16 @@ func (p *UsageRecordWorkerPool) Stop() {
 		}
 		p.lifecycleWg.Wait()
 		p.pool.StopAndWait()
+		defaultUsageRecordWorkerPool.CompareAndSwap(p, nil)
 	})
+}
+
+// SnapshotUsageRecordWorkerPoolStats returns stats for the default worker pool when available.
+func SnapshotUsageRecordWorkerPoolStats() UsageRecordWorkerPoolStats {
+	if pool := defaultUsageRecordWorkerPool.Load(); pool != nil {
+		return pool.Stats()
+	}
+	return UsageRecordWorkerPoolStats{}
 }
 
 func (p *UsageRecordWorkerPool) startAutoScaler() {
@@ -324,6 +353,13 @@ func (p *UsageRecordWorkerPool) execute(task UsageRecordTask) {
 				zap.String("component", "service.usage_record_worker_pool"),
 				zap.Any("panic", recovered),
 			).Error("usage_record.task_panic")
+			p.taskPanics.Add(1)
+		}
+	}()
+
+	defer func() {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			p.taskTimeouts.Add(1)
 		}
 	}()
 

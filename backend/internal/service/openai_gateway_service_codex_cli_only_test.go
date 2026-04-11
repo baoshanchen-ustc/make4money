@@ -175,6 +175,15 @@ func TestLogOpenAIInstructionsRequiredDebug_LogsRequestDetails(t *testing.T) {
 		"Instructions are required",
 		body,
 		[]byte(`{"error":{"message":"Instructions are required","type":"invalid_request_error","param":"instructions","code":"missing_required_parameter"}}`),
+		buildOpenAIInstructionsRequiredDebugMeta(
+			c,
+			body,
+			httptest.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", nil),
+			"gpt-5.1-codex",
+			"o4-mini",
+			false,
+			"rid-debug-1",
+		),
 	)
 
 	require.True(t, logSink.ContainsMessageAtLevel("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查", "warn"))
@@ -183,6 +192,15 @@ func TestLogOpenAIInstructionsRequiredDebug_LogsRequestDetails(t *testing.T) {
 	require.True(t, logSink.ContainsFieldValue("request_query", "trace=1"))
 	require.True(t, logSink.ContainsFieldValue("account_name", "codex max套餐"))
 	require.True(t, logSink.ContainsFieldValue("request_headers", "openai-beta"))
+	require.True(t, logSink.ContainsFieldValue("inbound_endpoint", "/v1/responses"))
+	require.True(t, logSink.ContainsFieldValue("upstream_endpoint", "chatgpt.com/backend-api/codex/responses"))
+	require.True(t, logSink.ContainsFieldValue("request_type", "responses.nonstream"))
+	require.True(t, logSink.ContainsFieldValue("requested_model", "gpt-5.1-codex"))
+	require.True(t, logSink.ContainsFieldValue("upstream_model", "o4-mini"))
+	require.True(t, logSink.ContainsFieldValue("instructions_state", "missing"))
+	require.True(t, logSink.ContainsFieldValue("upstream_error_type", "invalid_request_error"))
+	require.True(t, logSink.ContainsFieldValue("upstream_error_param", "instructions"))
+	require.True(t, logSink.ContainsFieldValue("upstream_error_code", "missing_required_parameter"))
 	require.True(t, logSink.ContainsField("request_body_size"))
 	require.False(t, logSink.ContainsField("request_body_preview"))
 }
@@ -206,6 +224,7 @@ func TestLogOpenAIInstructionsRequiredDebug_NonTargetErrorSkipped(t *testing.T) 
 		"forbidden",
 		body,
 		[]byte(`{"error":{"message":"forbidden"}}`),
+		buildOpenAIInstructionsRequiredDebugMeta(c, body, nil, "gpt-5.1-codex", "gpt-5.1-codex", false, ""),
 	)
 
 	require.False(t, logSink.ContainsMessage("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查"))
@@ -281,6 +300,15 @@ func TestOpenAIGatewayService_Forward_LogsInstructionsRequiredDetails(t *testing
 	require.True(t, logSink.ContainsFieldValue("request_user_agent", "codex_cli_rs/0.1.0"))
 	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.1-codex"))
 	require.True(t, logSink.ContainsFieldValue("request_headers", "openai-beta"))
+	require.True(t, logSink.ContainsFieldValue("inbound_endpoint", "/v1/responses"))
+	require.True(t, logSink.ContainsFieldValue("upstream_endpoint", "api.openai.com/v1/responses"))
+	require.True(t, logSink.ContainsFieldValue("request_type", "responses.nonstream"))
+	require.True(t, logSink.ContainsFieldValue("requested_model", "gpt-5.1-codex"))
+	require.True(t, logSink.ContainsFieldValue("upstream_model", "gpt-5.1-codex"))
+	require.True(t, logSink.ContainsFieldValue("instructions_state", "missing"))
+	require.True(t, logSink.ContainsFieldValue("upstream_error_type", "invalid_request_error"))
+	require.True(t, logSink.ContainsFieldValue("upstream_error_param", "instructions"))
+	require.True(t, logSink.ContainsFieldValue("upstream_error_code", "missing_required_parameter"))
 	require.True(t, logSink.ContainsField("request_body_size"))
 	require.False(t, logSink.ContainsField("request_body_preview"))
 }

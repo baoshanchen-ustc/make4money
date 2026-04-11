@@ -32,16 +32,50 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 			want:  true,
 		},
 		{
-			name:  "access component",
-			event: &logger.LogEvent{Level: "info", Component: "http.access"},
-			want:  true,
+			name: "http access success kept out",
+			event: &logger.LogEvent{
+				Level:     "info",
+				Component: "http.access",
+				Fields: map[string]any{
+					"status_code": 200,
+					"latency_ms":  10,
+				},
+			},
+			want: false,
 		},
 		{
-			name: "access component from fields (real zap path)",
+			name: "http access failure status from fields",
 			event: &logger.LogEvent{
 				Level:     "info",
 				Component: "",
-				Fields:    map[string]any{"component": "http.access"},
+				Fields: map[string]any{
+					"component":   "http.access",
+					"status_code": 500,
+				},
+			},
+			want: true,
+		},
+		{
+			name: "http access slow request",
+			event: &logger.LogEvent{
+				Level:     "info",
+				Component: "http.access",
+				Fields: map[string]any{
+					"status_code": 200,
+					"latency_ms":  slowRequestLatencyMsThreshold + 1,
+				},
+			},
+			want: true,
+		},
+		{
+			name: "http access gin errors flag",
+			event: &logger.LogEvent{
+				Level:     "info",
+				Component: "http.access",
+				Fields: map[string]any{
+					"status_code": 200,
+					"errors":      "gin panic",
+				},
 			},
 			want: true,
 		},
@@ -309,5 +343,52 @@ func TestOpsSystemLogSink_HelperFunctions(t *testing.T) {
 		} else if got != nil {
 			t.Fatalf("asInt64Ptr(%v) should be nil, got %d", tc.in, *got)
 		}
+	}
+}
+
+func TestOpsSystemLogSink_WriteSinkEvent(t *testing.T) {
+	sink := &OpsSystemLogSink{
+		queue: make(chan *logger.LogEvent, 1),
+	}
+	logger.SetSink(sink)
+	defer logger.SetSink(nil)
+
+	logger.WriteSinkEvent("info", "http.access", "http request completed", map[string]any{
+		"component": "http.access",
+		"method":    "POST",
+	})
+
+	if got := len(sink.queue); got != 1 {
+		t.Fatalf("sink queue len = %d, want 1", got)
+	}
+	evt := <-sink.queue
+	if evt.Component != "http.access" {
+		t.Fatalf("component = %q, want http.access", evt.Component)
+	}
+	if evt.Level != "info" {
+		t.Fatalf("level = %q, want info", evt.Level)
+	}
+}
+
+func TestOpsSystemLogSink_WriteSinkEvent_IgnoresRuntimeLevel(t *testing.T) {
+	sink := &OpsSystemLogSink{
+		queue: make(chan *logger.LogEvent, 1),
+	}
+	logger.SetSink(sink)
+	t.Cleanup(func() {
+		logger.SetSink(nil)
+		_ = logger.SetLevel("info")
+	})
+
+	if err := logger.SetLevel("warn"); err != nil {
+		t.Fatalf("SetLevel = %v", err)
+	}
+
+	logger.WriteSinkEvent("info", "http.access", "level gate bypass", map[string]any{
+		"component": "http.access",
+	})
+
+	if got := len(sink.queue); got != 1 {
+		t.Fatalf("sink queue len = %d, want 1", got)
 	}
 }

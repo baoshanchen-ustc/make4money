@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -167,6 +168,28 @@ func TestOpenAIEnsureForwardErrorResponse_DoesNotOverrideWrittenResponse(t *test
 	require.False(t, wrote)
 	require.Equal(t, http.StatusTeapot, w.Code)
 	assert.Equal(t, "already written", w.Body.String())
+}
+
+func TestOpenAIHandleConcurrencyError_ServiceUnavailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	h := &OpenAIGatewayHandler{}
+	err := fmt.Errorf("redis down: %w", service.ErrConcurrencyServiceUnavailable)
+	h.handleConcurrencyError(c, err, "account", false)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var parsed map[string]any
+	err = json.Unmarshal(w.Body.Bytes(), &parsed)
+	require.NoError(t, err)
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "service_unavailable", errorObj["type"])
+	assert.Contains(t, errorObj["message"], "Concurrency controls temporarily unavailable")
 }
 
 func TestShouldLogOpenAIForwardFailureAsWarn(t *testing.T) {

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -37,6 +39,8 @@ func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	opsErrorLogDropped.Store(0)
 	opsErrorLogProcessed.Store(0)
 	opsErrorLogSanitized.Store(0)
+	opsErrorLogPersistedSuccess.Store(0)
+	opsErrorLogPersistedFailure.Store(0)
 	opsErrorLogLastDropLogAt.Store(0)
 
 	opsErrorLogShutdownCh = make(chan struct{})
@@ -318,4 +322,37 @@ func TestSetOpsEndpointContext_NilContext(t *testing.T) {
 	require.NotPanics(t, func() {
 		setOpsEndpointContext(nil, "model", int16(1))
 	})
+}
+
+func TestFlushOpsErrorLogBatch_PersistCounters(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+
+	entry := &service.OpsInsertErrorLogInput{
+		ErrorPhase: "upstream",
+		ErrorType:  "upstream_error",
+	}
+
+	successRepo := &handlerOpsRepoMock{}
+	successSvc := service.NewOpsService(successRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	flushOpsErrorLogBatch([]opsErrorLogJob{{ops: successSvc, entry: entry}})
+
+	require.Equal(t, int64(1), OpsErrorLogPersistedSuccessTotal())
+	require.Equal(t, int64(0), OpsErrorLogPersistedFailureTotal())
+
+	resetOpsErrorLoggerStateForTest(t)
+
+	failRepo := &handlerOpsRepoMock{
+		InsertErrorLogFn: func(ctx context.Context, input *service.OpsInsertErrorLogInput) (int64, error) {
+			return 0, errors.New("boom")
+		},
+		BatchInsertErrorLogsFn: func(ctx context.Context, inputs []*service.OpsInsertErrorLogInput) (int64, error) {
+			return 0, errors.New("boom")
+		},
+	}
+
+	failSvc := service.NewOpsService(failRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	flushOpsErrorLogBatch([]opsErrorLogJob{{ops: failSvc, entry: entry}})
+
+	require.Equal(t, int64(0), OpsErrorLogPersistedSuccessTotal())
+	require.Equal(t, int64(1), OpsErrorLogPersistedFailureTotal())
 }

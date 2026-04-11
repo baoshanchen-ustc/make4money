@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"sync/atomic"
@@ -88,6 +90,15 @@ type ConcurrencyService struct {
 	cache ConcurrencyCache
 }
 
+var ErrConcurrencyServiceUnavailable = errors.New("concurrency service unavailable")
+
+func wrapConcurrencyUnavailable(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %v", ErrConcurrencyServiceUnavailable, err)
+}
+
 // NewConcurrencyService creates a new ConcurrencyService
 func NewConcurrencyService(cache ConcurrencyCache) *ConcurrencyService {
 	return &ConcurrencyService{cache: cache}
@@ -140,7 +151,7 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 
 	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
 	if err != nil {
-		return nil, err
+		return nil, wrapConcurrencyUnavailable(err)
 	}
 
 	if acquired {
@@ -179,7 +190,7 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 
 	acquired, err := s.cache.AcquireUserSlot(ctx, userID, maxConcurrency, requestID)
 	if err != nil {
-		return nil, err
+		return nil, wrapConcurrencyUnavailable(err)
 	}
 
 	if acquired {

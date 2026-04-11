@@ -1,3 +1,5 @@
+//go:build unit
+
 package service
 
 import (
@@ -27,6 +29,13 @@ func (s *openAIRecordUsageLogRepoStub) Create(ctx context.Context, log *UsageLog
 	s.lastLog = log
 	s.lastCtxErr = ctx.Err()
 	return s.inserted, s.err
+}
+
+func (s *openAIRecordUsageLogRepoStub) CreateBestEffort(ctx context.Context, log *UsageLog) error {
+	s.calls++
+	s.lastLog = log
+	s.lastCtxErr = ctx.Err()
+	return s.err
 }
 
 type openAIRecordUsageBillingRepoStub struct {
@@ -263,6 +272,33 @@ func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) 
 	require.Equal(t, "/v1/responses", *usageRepo.lastLog.UpstreamEndpoint)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_ImageOnlyTokens(t *testing.T) {
+	usage := OpenAIUsage{ImageOutputTokens: 12}
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_image_only",
+			Usage:     usage,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey:  &APIKey{ID: 100},
+		User:    &User{ID: 200},
+		Account: &Account{ID: 300},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 12, usageRepo.lastLog.ImageOutputTokens)
+	require.Equal(t, 1, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_FallsBackToGroupDefaultRateOnResolverError(t *testing.T) {
 	groupID := int64(12)
 	groupRate := 1.6
@@ -421,12 +457,14 @@ func TestOpenAIGatewayServiceRecordUsage_BillsWhenUsageLogCreateReturnsError(t *
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 2, usageRepo.calls)
 	require.Equal(t, 1, userRepo.deductCalls)
 	require.Equal(t, 0, subRepo.incrementCalls)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
+	resetUsageLogNotPersistedAlertsForTest()
+	resetBillingCompensationCandidatesForTest()
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -453,10 +491,15 @@ func TestOpenAIGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t 
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 2, usageRepo.calls)
 	require.Equal(t, 1, userRepo.deductCalls)
 	require.Equal(t, 0, subRepo.incrementCalls)
 	require.Equal(t, 1, quotaSvc.quotaCalls)
+	require.Equal(t, int64(1), SnapshotUsageLogNotPersistedMetrics().Total)
+	candidates := SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(1), candidates.Total)
+	require.NotNil(t, candidates.Last)
+	require.Equal(t, "resp_not_persisted", candidates.Last.RequestID)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_BillingUsesDetachedContext(t *testing.T) {
@@ -491,6 +534,89 @@ func TestOpenAIGatewayServiceRecordUsage_BillingUsesDetachedContext(t *testing.T
 	require.NoError(t, userRepo.lastCtxErr)
 	require.Equal(t, 1, quotaSvc.quotaCalls)
 	require.NoError(t, quotaSvc.lastQuotaCtxErr)
+}
+
+func TestWriteUsageLogBestEffort_NotPersistedAlertOpenAI(t *testing.T) {
+	resetUsageLogNotPersistedAlertsForTest()
+	resetBillingCompensationCandidatesForTest()
+	usageLog := &UsageLog{
+		RequestID: "openai-usage-alert",
+		UserID:    200,
+		AccountID: 300,
+	}
+	repo := &openAIRecordUsageLogRepoStub{
+		inserted: false,
+		err:      errors.New("persist failed"),
+	}
+
+	writeUsageLogBestEffort(context.Background(), repo, usageLog, "openai.usage")
+
+	require.Equal(t, int64(1), UsageLogNotPersistedAlertTotal())
+	history := UsageLogNotPersistedAlertsHistory()
+	require.Len(t, history, 1)
+	require.Equal(t, "openai.usage", history[0].LogKey)
+	require.Equal(t, "openai-usage-alert", history[0].RequestID)
+	require.Equal(t, int64(200), history[0].UserID)
+	require.Equal(t, int64(300), history[0].AccountID)
+	snapshot := SnapshotUsageLogNotPersistedMetrics()
+	require.Equal(t, int64(1), snapshot.Total)
+	require.Equal(t, int64(1), snapshot.Recent1mTotal)
+	require.Equal(t, int64(1), snapshot.Recent5mTotal)
+	require.Equal(t, int64(1), snapshot.Recent15mTotal)
+	require.NotNil(t, snapshot.Last)
+	require.Equal(t, "openai-usage-alert", snapshot.Last.RequestID)
+	require.Len(t, snapshot.Recent, 1)
+	writeUsageLogBestEffort(context.Background(), repo, usageLog, "openai.usage")
+	candidates := SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(0), candidates.Total)
+
+	writeBilledUsageLogBestEffort(context.Background(), repo, usageLog, "openai.usage")
+	candidates = SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(1), candidates.Total)
+	require.Equal(t, int64(1), candidates.Recent1mTotal)
+	require.Equal(t, int64(1), candidates.Recent5mTotal)
+	require.Equal(t, int64(1), candidates.Recent15mTotal)
+	require.NotNil(t, candidates.Last)
+	require.Equal(t, "openai-usage-alert", candidates.Last.RequestID)
+	require.Equal(t, "openai.usage", candidates.Last.LogKey)
+	require.Len(t, candidates.Recent, 1)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_BillingSuccessTracksCompensationCandidateOnUsageFailure(t *testing.T) {
+	resetUsageLogNotPersistedAlertsForTest()
+	resetBillingCompensationCandidatesForTest()
+
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{
+		bestEffortErr: errors.New("queue blocked"),
+		createErr:     errors.New("sync failed"),
+	}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_compensation_candidate",
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+			},
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 10047, Quota: 100},
+		User:    &User{ID: 20047},
+		Account: &Account{ID: 30047},
+	})
+
+	require.NoError(t, err)
+	snapshot := SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(1), snapshot.Total)
+	require.Equal(t, int64(1), snapshot.Recent1mTotal)
+	require.NotNil(t, snapshot.Last)
+	require.Equal(t, "openai_compensation_candidate", snapshot.Last.RequestID)
+	require.Equal(t, int64(20047), snapshot.Last.UserID)
+	require.Equal(t, int64(30047), snapshot.Last.AccountID)
+	require.Equal(t, int64(1), SnapshotUsageLogNotPersistedMetrics().Total)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_BillingRepoUsesDetachedContext(t *testing.T) {
@@ -609,6 +735,33 @@ func TestOpenAIGatewayServiceRecordUsage_PrefersClientRequestIDOverUpstreamReque
 	require.Equal(t, "client:openai-client-stable-123", billingRepo.lastCmd.RequestID)
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, "client:openai-client-stable-123", usageRepo.lastLog.RequestID)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_UsesUpstreamRequestIDWhenContextEmpty(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai-upstream-987",
+			Usage: OpenAIUsage{
+				InputTokens:  9,
+				OutputTokens: 5,
+			},
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 10051},
+		User:    &User{ID: 20051},
+		Account: &Account{ID: 30051},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "openai-upstream-987", billingRepo.lastCmd.RequestID)
+	require.Equal(t, "openai-upstream-987", usageRepo.lastLog.RequestID)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_GeneratesRequestIDWhenAllSourcesMissing(t *testing.T) {

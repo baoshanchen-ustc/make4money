@@ -3,6 +3,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -484,4 +485,61 @@ func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_DeletesEmptySlotKey
 	exists, err := s.rdb.Exists(s.ctx, accountSlotKey).Result()
 	require.NoError(s.T(), err)
 	require.EqualValues(s.T(), 0, exists)
+}
+
+func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_ScanBudgetExceeded() {
+	origScanCount := cleanupScanCount
+	origScanBudget := cleanupScanBudgetIterations
+	origDeleteBudget := cleanupDeleteBudgetIterations
+	cleanupScanCount = 1
+	cleanupScanBudgetIterations = 1
+	cleanupDeleteBudgetIterations = 1024
+	defer func() {
+		cleanupScanCount = origScanCount
+		cleanupScanBudgetIterations = origScanBudget
+		cleanupDeleteBudgetIterations = origDeleteBudget
+	}()
+
+	for i := 0; i < 4; i++ {
+		key := fmt.Sprintf("%s%d", accountSlotKeyPrefix, 1000+i)
+		require.NoError(s.T(), s.rdb.ZAdd(s.ctx, key,
+			redis.Z{Score: float64(time.Now().Unix()), Member: fmt.Sprintf("oldproc-%d", i)},
+		).Err())
+	}
+	for i := 0; i < 4; i++ {
+		key := fmt.Sprintf("%s%d", userSlotKeyPrefix, 2000+i)
+		require.NoError(s.T(), s.rdb.ZAdd(s.ctx, key,
+			redis.Z{Score: float64(time.Now().Unix()), Member: fmt.Sprintf("oldproc-user-%d", i)},
+		).Err())
+	}
+
+	err := s.cache.CleanupStaleProcessSlots(s.ctx, "activeproc-")
+	require.ErrorIs(s.T(), err, errCleanupScanBudgetExceeded)
+}
+
+func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_DeleteBudgetExceeded() {
+	origDeleteBudget := cleanupDeleteBudgetIterations
+	origScanBudget := cleanupScanBudgetIterations
+	cleanupDeleteBudgetIterations = 0
+	cleanupScanBudgetIterations = 1024
+	defer func() {
+		cleanupDeleteBudgetIterations = origDeleteBudget
+		cleanupScanBudgetIterations = origScanBudget
+	}()
+
+	accountID := int64(910)
+	accountSlotKey := fmt.Sprintf("%s%d", accountSlotKeyPrefix, accountID)
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, accountSlotKey,
+		redis.Z{Score: float64(time.Now().Unix()), Member: "oldproc-1"},
+	).Err())
+
+	err := s.cache.CleanupStaleProcessSlots(s.ctx, "activeproc-")
+	require.ErrorIs(s.T(), err, errCleanupDeleteBudgetExceeded)
+}
+
+func (s *ConcurrencyCacheSuite) TestCleanupStaleProcessSlots_ContextCanceled() {
+	ctx, cancel := context.WithCancel(s.ctx)
+	cancel()
+	err := s.cache.CleanupStaleProcessSlots(ctx, "activeproc-")
+	require.ErrorIs(s.T(), err, context.Canceled, "expected context cancellation to propagate")
 }

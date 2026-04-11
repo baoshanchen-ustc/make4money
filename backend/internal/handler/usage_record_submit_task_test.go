@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -128,4 +129,68 @@ func TestOpenAIGatewayHandlerSubmitUsageRecordTask_WithoutPool_TaskPanicRecovere
 		called.Store(true)
 	})
 	require.True(t, called.Load(), "panic 后后续任务应仍可执行")
+}
+
+func TestGatewayHandlerSubmitUsageRecordTask_PoolDroppedFallback(t *testing.T) {
+	pool := prepareDroppingUsageRecordPool(t)
+	h := &GatewayHandler{usageRecordWorkerPool: pool}
+	var called atomic.Bool
+
+	h.submitUsageRecordTask(func(ctx context.Context) {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("expected deadline in fallback context")
+		}
+		called.Store(true)
+	})
+
+	require.True(t, called.Load())
+}
+
+func TestOpenAIGatewayHandlerSubmitUsageRecordTask_PoolDroppedFallback(t *testing.T) {
+	pool := prepareDroppingUsageRecordPool(t)
+	h := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
+	var called atomic.Bool
+
+	h.submitUsageRecordTask(func(ctx context.Context) {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("expected deadline in fallback context")
+		}
+		called.Store(true)
+	})
+
+	require.True(t, called.Load())
+}
+
+func prepareDroppingUsageRecordPool(t *testing.T) *service.UsageRecordWorkerPool {
+	t.Helper()
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount:           1,
+		QueueSize:             1,
+		TaskTimeout:           time.Minute,
+		OverflowPolicy:        config.UsageRecordOverflowPolicyDrop,
+		OverflowSamplePercent: 0,
+		AutoScaleEnabled:      false,
+	})
+
+	blocker := make(chan struct{})
+	queueBlocker := make(chan struct{})
+
+	if mode := pool.Submit(func(ctx context.Context) {
+		<-blocker
+	}); mode != service.UsageRecordSubmitModeEnqueued {
+		t.Fatalf("expected first blocking task to enqueue, got %s", mode)
+	}
+	if mode := pool.Submit(func(ctx context.Context) {
+		<-queueBlocker
+	}); mode != service.UsageRecordSubmitModeEnqueued {
+		t.Fatalf("expected queue task to enqueue, got %s", mode)
+	}
+
+	t.Cleanup(func() {
+		close(blocker)
+		close(queueBlocker)
+		pool.Stop()
+	})
+
+	return pool
 }

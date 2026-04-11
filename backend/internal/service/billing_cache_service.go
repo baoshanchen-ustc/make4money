@@ -96,6 +96,7 @@ type BillingCacheService struct {
 	cacheWriteMu       sync.RWMutex
 	stopped            atomic.Bool
 	balanceLoadSF      singleflight.Group
+	subscriptionLoadSF singleflight.Group
 	// 丢弃日志节流计数器（减少高负载下日志噪音）
 	cacheWriteDropFullCount     uint64
 	cacheWriteDropFullLastLog   int64
@@ -386,21 +387,28 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 		return s.convertFromPortsData(cacheData), nil
 	}
 
-	// 缓存未命中，从数据库读取
-	data, err := s.getSubscriptionFromDB(ctx, userID, groupID)
+	key := fmt.Sprintf("%d:%d", userID, groupID)
+	value, err, _ := s.subscriptionLoadSF.Do(key, func() (any, error) {
+		data, innerErr := s.getSubscriptionFromDB(ctx, userID, groupID)
+		if innerErr != nil {
+			return nil, innerErr
+		}
+		_ = s.enqueueCacheWrite(cacheWriteTask{
+			kind:             cacheWriteSetSubscription,
+			userID:           userID,
+			groupID:          groupID,
+			subscriptionData: data,
+		})
+		return data, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	// 异步建立缓存
-	_ = s.enqueueCacheWrite(cacheWriteTask{
-		kind:             cacheWriteSetSubscription,
-		userID:           userID,
-		groupID:          groupID,
-		subscriptionData: data,
-	})
-
-	return data, nil
+	data, ok := value.(*subscriptionCacheData)
+	if !ok || data == nil {
+		return nil, fmt.Errorf("unexpected subscription data type: %T", value)
+	}
+	return copySubscriptionData(data), nil
 }
 
 func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
@@ -423,6 +431,14 @@ func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *S
 		MonthlyUsage: data.MonthlyUsage,
 		Version:      data.Version,
 	}
+}
+
+func copySubscriptionData(src *subscriptionCacheData) *subscriptionCacheData {
+	if src == nil {
+		return nil
+	}
+	cp := *src
+	return &cp
 }
 
 // getSubscriptionFromDB 从数据库获取订阅数据

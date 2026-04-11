@@ -1413,25 +1413,27 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(task service.UsageRecordTas
 		return
 	}
 	if h.usageRecordWorkerPool != nil {
-		h.usageRecordWorkerPool.Submit(task)
+		if mode := h.usageRecordWorkerPool.Submit(task); mode == service.UsageRecordSubmitModeDropped {
+			logger.L().With(
+				zap.String("component", "handler.openai_gateway.responses"),
+				zap.String("drop_reason", "queue_full_or_pool_stopped"),
+			).Warn("openai.usage_record_task_dropped, running sync fallback")
+			runUsageRecordTaskSync(task, "handler.openai_gateway.responses")
+		}
 		return
 	}
 	// 回退路径：worker 池未注入时同步执行，避免退回到无界 goroutine 模式。
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			logger.L().With(
-				zap.String("component", "handler.openai_gateway.responses"),
-				zap.Any("panic", recovered),
-			).Error("openai.usage_record_task_panic_recovered")
-		}
-	}()
-	task(ctx)
+	runUsageRecordTaskSync(task, "handler.openai_gateway.responses")
 }
 
 // handleConcurrencyError handles concurrency-related errors with proper 429 response
 func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
+	if errors.Is(err, service.ErrConcurrencyServiceUnavailable) {
+		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "service_unavailable",
+			"Concurrency controls temporarily unavailable, please retry later", streamStarted)
+		return
+	}
+
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
 		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
 }

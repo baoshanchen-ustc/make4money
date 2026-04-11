@@ -201,7 +201,7 @@ func TestLogger_HealthPathSkipped(t *testing.T) {
 	}
 }
 
-func TestLogger_AccessLogDroppedWhenLevelWarn(t *testing.T) {
+func TestLogger_AccessLogStillIndexedWhenLevelWarn(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sink := initMiddlewareTestLoggerWithLevel(t, "warn")
 
@@ -220,9 +220,13 @@ func TestLogger_AccessLogDroppedWhenLevelWarn(t *testing.T) {
 	}
 
 	events := sink.list()
+	found := false
 	for _, event := range events {
 		if event != nil && event.Message == "http request completed" {
-			t.Fatalf("access log should not be indexed when level=warn: %+v", event)
+			found = true
 		}
+	}
+	if !found {
+		t.Fatalf("expected access log to be indexed when level=warn")
 	}
 }
