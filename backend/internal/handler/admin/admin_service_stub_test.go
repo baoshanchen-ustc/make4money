@@ -22,6 +22,9 @@ type stubAdminService struct {
 	updatedProxyIDs      []int64
 	updatedProxies       []*service.UpdateProxyInput
 	testedProxyIDs       []int64
+	deletedAccountIDs    []int64
+	deleteAccountErr     error
+	deleteAccountErrByID map[int64]error
 	createAccountErr     error
 	updateAccountErr     error
 	bulkUpdateAccountErr error
@@ -228,15 +231,27 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 }
 
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
+	for i := range s.accounts {
+		if s.accounts[i].ID == id {
+			acc := s.accounts[i]
+			return &acc, nil
+		}
+	}
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
 }
 
 func (s *stubAdminService) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*service.Account, error) {
 	out := make([]*service.Account, 0, len(ids))
+	byID := make(map[int64]service.Account, len(s.accounts))
+	for _, account := range s.accounts {
+		byID[account.ID] = account
+	}
 	for _, id := range ids {
-		account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
-		out = append(out, &account)
+		if account, ok := byID[id]; ok {
+			acc := account
+			out = append(out, &acc)
+		}
 	}
 	return out, nil
 }
@@ -261,7 +276,13 @@ func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *s
 }
 
 func (s *stubAdminService) DeleteAccount(ctx context.Context, id int64) error {
-	return nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deletedAccountIDs = append(s.deletedAccountIDs, id)
+	if err, ok := s.deleteAccountErrByID[id]; ok {
+		return err
+	}
+	return s.deleteAccountErr
 }
 
 func (s *stubAdminService) RefreshAccountCredentials(ctx context.Context, id int64) (*service.Account, error) {

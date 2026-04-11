@@ -43,6 +43,19 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 	}
 }
 
+type accountTestRunner interface {
+	TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string) error
+	RunTestBackground(ctx context.Context, accountID int64, modelID string) (*service.ScheduledTestResult, error)
+}
+
+type accountRuntimeRecoveryService interface {
+	RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*service.SuccessfulTestRecoveryResult, error)
+	RecoverAccountState(ctx context.Context, accountID int64, options service.AccountRecoveryOptions) (*service.SuccessfulTestRecoveryResult, error)
+	ClearRateLimit(ctx context.Context, accountID int64) error
+	GetTempUnschedStatus(ctx context.Context, accountID int64) (*service.TempUnschedState, error)
+	ClearTempUnschedulable(ctx context.Context, accountID int64) error
+}
+
 // AccountHandler handles admin account management
 type AccountHandler struct {
 	adminService            service.AdminService
@@ -50,9 +63,9 @@ type AccountHandler struct {
 	openaiOAuthService      *service.OpenAIOAuthService
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
-	rateLimitService        *service.RateLimitService
+	rateLimitService        accountRuntimeRecoveryService
 	accountUsageService     *service.AccountUsageService
-	accountTestService      *service.AccountTestService
+	accountTestService      accountTestRunner
 	concurrencyService      *service.ConcurrencyService
 	crsSyncService          *service.CRSSyncService
 	sessionLimitCache       service.SessionLimitCache
@@ -76,21 +89,26 @@ func NewAccountHandler(
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 ) *AccountHandler {
-	return &AccountHandler{
+	handler := &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,
 		openaiOAuthService:      openaiOAuthService,
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
-		rateLimitService:        rateLimitService,
 		accountUsageService:     accountUsageService,
-		accountTestService:      accountTestService,
 		concurrencyService:      concurrencyService,
 		crsSyncService:          crsSyncService,
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 	}
+	if rateLimitService != nil {
+		handler.rateLimitService = rateLimitService
+	}
+	if accountTestService != nil {
+		handler.accountTestService = accountTestService
+	}
+	return handler
 }
 
 // CreateAccountRequest represents create account request
@@ -154,6 +172,35 @@ type CheckMixedChannelRequest struct {
 	Platform  string  `json:"platform" binding:"required"`
 	GroupIDs  []int64 `json:"group_ids"`
 	AccountID *int64  `json:"account_id"`
+}
+
+type ErrorAccountCleanupPreviewRequest struct {
+	ModelID string `json:"model_id"`
+}
+
+type ErrorAccountCleanupExecuteRequest struct {
+	AccountIDs []int64 `json:"account_ids" binding:"required,min=1"`
+}
+
+type ErrorAccountCleanupPreviewItem struct {
+	AccountID       int64  `json:"account_id"`
+	Name            string `json:"name"`
+	Platform        string `json:"platform"`
+	Type            string `json:"type"`
+	TestStatus      string `json:"test_status"`
+	Recovered       bool   `json:"recovered"`
+	DeleteCandidate bool   `json:"delete_candidate"`
+	Error           string `json:"error,omitempty"`
+	RecoveryError   string `json:"recovery_error,omitempty"`
+}
+
+type ErrorAccountCleanupPreviewResult struct {
+	TotalError       int                              `json:"total_error"`
+	Tested           int                              `json:"tested"`
+	Recovered        int                              `json:"recovered"`
+	DeleteCandidates int                              `json:"delete_candidates"`
+	CandidateIDs     []int64                          `json:"candidate_ids"`
+	Results          []ErrorAccountCleanupPreviewItem `json:"results"`
 }
 
 // AccountWithConcurrency extends Account with real-time concurrency info
@@ -1054,6 +1101,175 @@ func (h *AccountHandler) BatchClearError(c *gin.Context) {
 		"success": successCount,
 		"failed":  failedCount,
 		"errors":  errors,
+	})
+}
+
+// PreviewErrorCleanup retests all error accounts, recovers the healthy ones,
+// and returns the accounts that are still failing and can be deleted safely.
+// POST /api/v1/admin/accounts/error-cleanup/preview
+func (h *AccountHandler) PreviewErrorCleanup(c *gin.Context) {
+	if h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "account test service unavailable")
+		return
+	}
+	if h.rateLimitService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "rate limit service unavailable")
+		return
+	}
+
+	var req ErrorAccountCleanupPreviewRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.BadRequest(c, "Invalid request: "+err.Error())
+			return
+		}
+	}
+
+	ctx := c.Request.Context()
+	accounts, err := h.listAccountsFiltered(ctx, "", "", service.StatusError, "", 0, "", "name", "asc")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	items := make([]ErrorAccountCleanupPreviewItem, len(accounts))
+	const maxConcurrency = 5
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
+
+	for i := range accounts {
+		idx := i
+		acc := accounts[i]
+		g.Go(func() error {
+			item := ErrorAccountCleanupPreviewItem{
+				AccountID: acc.ID,
+				Name:      acc.Name,
+				Platform:  acc.Platform,
+				Type:      acc.Type,
+			}
+
+			testResult, testErr := h.accountTestService.RunTestBackground(gctx, acc.ID, req.ModelID)
+			if testErr != nil || testResult == nil || testResult.Status != "success" {
+				item.TestStatus = "failed"
+				item.DeleteCandidate = true
+				switch {
+				case testResult != nil && strings.TrimSpace(testResult.ErrorMessage) != "":
+					item.Error = strings.TrimSpace(testResult.ErrorMessage)
+				case testErr != nil:
+					item.Error = testErr.Error()
+				default:
+					item.Error = "test failed"
+				}
+				items[idx] = item
+				return nil
+			}
+
+			item.TestStatus = "success"
+			if _, recoverErr := h.rateLimitService.RecoverAccountAfterSuccessfulTest(gctx, acc.ID); recoverErr != nil {
+				item.RecoveryError = recoverErr.Error()
+			} else {
+				item.Recovered = true
+			}
+			items[idx] = item
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	result := ErrorAccountCleanupPreviewResult{
+		TotalError:   len(accounts),
+		Tested:       len(items),
+		CandidateIDs: make([]int64, 0),
+		Results:      items,
+	}
+	for _, item := range items {
+		if item.Recovered {
+			result.Recovered++
+		}
+		if item.DeleteCandidate {
+			result.DeleteCandidates++
+			result.CandidateIDs = append(result.CandidateIDs, item.AccountID)
+		}
+	}
+
+	response.Success(c, result)
+}
+
+// ExecuteErrorCleanup deletes the accounts that still remain in error state after preview.
+// POST /api/v1/admin/accounts/error-cleanup/execute
+func (h *AccountHandler) ExecuteErrorCleanup(c *gin.Context) {
+	var req ErrorAccountCleanupExecuteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+	accounts, err := h.adminService.GetAccountsByIDs(ctx, req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	accountByID := make(map[int64]*service.Account, len(accounts))
+	for _, acc := range accounts {
+		if acc == nil {
+			continue
+		}
+		accountByID[acc.ID] = acc
+	}
+
+	var successCount, failedCount int
+	warnings := make([]gin.H, 0)
+	errors := make([]gin.H, 0)
+	eligible := make([]*service.Account, 0, len(req.AccountIDs))
+
+	for _, accountID := range req.AccountIDs {
+		acc, ok := accountByID[accountID]
+		if !ok {
+			failedCount++
+			errors = append(errors, gin.H{
+				"account_id": accountID,
+				"error":      "account not found",
+			})
+			continue
+		}
+		if acc.Status != service.StatusError {
+			warnings = append(warnings, gin.H{
+				"account_id": accountID,
+				"warning":    "account status is no longer error",
+			})
+			continue
+		}
+		eligible = append(eligible, acc)
+	}
+
+	for _, acc := range eligible {
+		if err := h.adminService.DeleteAccount(ctx, acc.ID); err != nil {
+			failedCount++
+			errors = append(errors, gin.H{
+				"account_id": acc.ID,
+				"error":      err.Error(),
+			})
+			continue
+		}
+		successCount++
+	}
+
+	response.Success(c, gin.H{
+		"total":    len(req.AccountIDs),
+		"success":  successCount,
+		"failed":   failedCount,
+		"errors":   errors,
+		"warnings": warnings,
 	})
 }
 

@@ -591,6 +591,27 @@ export interface BatchOperationResult {
   warnings?: Array<{ account_id: number; warning: string }>
 }
 
+export interface ErrorAccountCleanupPreviewItem {
+  account_id: number
+  name: string
+  platform: string
+  type: string
+  test_status: 'success' | 'failed'
+  recovered: boolean
+  delete_candidate: boolean
+  error?: string
+  recovery_error?: string
+}
+
+export interface ErrorAccountCleanupPreviewResult {
+  total_error: number
+  tested: number
+  recovered: number
+  delete_candidates: number
+  candidate_ids: number[]
+  results: ErrorAccountCleanupPreviewItem[]
+}
+
 /**
  * Batch clear account errors
  * @param accountIds - Array of account IDs
@@ -613,6 +634,30 @@ export async function batchRefresh(accountIds: number[]): Promise<BatchOperation
     account_ids: accountIds,
   }, {
     timeout: 120000  // 120s timeout for large batch refreshes
+  })
+  return data
+}
+
+/**
+ * Preview cleanup for all error accounts.
+ * Retests each error account, auto-recovers healthy ones, and returns delete candidates.
+ */
+export async function previewErrorCleanup(modelId?: string): Promise<ErrorAccountCleanupPreviewResult> {
+  const payload = modelId ? { model_id: modelId } : {}
+  const { data } = await apiClient.post<ErrorAccountCleanupPreviewResult>('/admin/accounts/error-cleanup/preview', payload, {
+    timeout: 300000
+  })
+  return data
+}
+
+/**
+ * Delete the error accounts that still failed after preview.
+ */
+export async function executeErrorCleanup(accountIds: number[]): Promise<BatchOperationResult> {
+  const { data } = await apiClient.post<BatchOperationResult>('/admin/accounts/error-cleanup/execute', {
+    account_ids: accountIds
+  }, {
+    timeout: 120000
   })
   return data
 }
@@ -663,6 +708,8 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
+  previewErrorCleanup,
+  executeErrorCleanup,
   setPrivacy
 }
 

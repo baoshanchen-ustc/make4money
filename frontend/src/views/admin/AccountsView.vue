@@ -118,6 +118,19 @@
               </div>
             </template>
             <template #beforeCreate>
+              <button
+                @click="handlePreviewErrorCleanup"
+                :disabled="errorCleanupPreviewing || errorCleanupExecuting"
+                class="btn btn-danger"
+              >
+                {{
+                  errorCleanupPreviewing
+                    ? t('admin.accounts.errorCleanup.previewing')
+                    : errorCleanupExecuting
+                      ? t('admin.accounts.errorCleanup.executing')
+                      : t('admin.accounts.errorCleanup.action')
+                }}
+              </button>
               <button @click="showImportData = true" class="btn btn-secondary">
                 {{ t('admin.accounts.dataImport') }}
               </button>
@@ -294,6 +307,7 @@
     <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :selected-platforms="selPlatforms" :selected-types="selTypes" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog :show="showErrorCleanupDialog" :title="t('admin.accounts.errorCleanup.title')" :message="errorCleanupConfirmMessage" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmErrorCleanup" @cancel="cancelErrorCleanup" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
       <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
         <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
@@ -312,6 +326,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { ErrorAccountCleanupPreviewResult } from '@/api/admin/accounts'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -376,6 +391,7 @@ const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
+const showErrorCleanupDialog = ref(false)
 const showReAuth = ref(false)
 const showTest = ref(false)
 const showStats = ref(false)
@@ -391,6 +407,9 @@ const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
+const errorCleanupPreview = ref<ErrorAccountCleanupPreviewResult | null>(null)
+const errorCleanupPreviewing = ref(false)
+const errorCleanupExecuting = ref(false)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
 
@@ -745,6 +764,7 @@ const isAnyModalOpen = computed(() => {
     showBulkEdit.value ||
     showTempUnsched.value ||
     showDeleteDialog.value ||
+    showErrorCleanupDialog.value ||
     showReAuth.value ||
     showTest.value ||
     showStats.value ||
@@ -1354,6 +1374,75 @@ const handleSetPrivacy = async (a: Account) => {
   } catch (error: any) {
     console.error('Failed to set privacy:', error)
     appStore.showError(error?.response?.data?.message || t('admin.accounts.privacyFailed'))
+  }
+}
+const errorCleanupConfirmMessage = computed(() => {
+  const preview = errorCleanupPreview.value
+  if (!preview) return ''
+  return t('admin.accounts.errorCleanup.confirm', {
+    total: preview.total_error,
+    recovered: preview.recovered,
+    delete: preview.delete_candidates,
+  })
+})
+const handlePreviewErrorCleanup = async () => {
+  if (errorCleanupPreviewing.value || errorCleanupExecuting.value) return
+  errorCleanupPreviewing.value = true
+  try {
+    const preview = await adminAPI.accounts.previewErrorCleanup()
+    errorCleanupPreview.value = preview
+    if (preview.total_error === 0) {
+      errorCleanupPreview.value = null
+      appStore.showSuccess(t('admin.accounts.errorCleanup.noErrorAccounts'))
+      await reload()
+      return
+    }
+    if (preview.delete_candidates === 0) {
+      appStore.showSuccess(t('admin.accounts.errorCleanup.recoveredOnly', { count: preview.recovered }))
+      await reload()
+      errorCleanupPreview.value = null
+      return
+    }
+    showErrorCleanupDialog.value = true
+  } catch (error: any) {
+    console.error('Failed to preview error cleanup:', error)
+    appStore.showError(error?.response?.data?.message || t('admin.accounts.errorCleanup.previewFailed'))
+  } finally {
+    errorCleanupPreviewing.value = false
+  }
+}
+const cancelErrorCleanup = async () => {
+  const shouldReload = (errorCleanupPreview.value?.recovered || 0) > 0
+  showErrorCleanupDialog.value = false
+  errorCleanupPreview.value = null
+  if (shouldReload) {
+    await reload()
+  }
+}
+const confirmErrorCleanup = async () => {
+  const preview = errorCleanupPreview.value
+  if (!preview || errorCleanupExecuting.value) return
+  errorCleanupExecuting.value = true
+  try {
+    const result = await adminAPI.accounts.executeErrorCleanup(preview.candidate_ids)
+    showErrorCleanupDialog.value = false
+    errorCleanupPreview.value = null
+    const skipped = result.warnings?.length || 0
+    if (result.failed > 0 || skipped > 0) {
+      appStore.showError(t('admin.accounts.errorCleanup.executePartial', {
+        success: result.success,
+        failed: result.failed,
+        skipped,
+      }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.errorCleanup.executeSuccess', { count: result.success }))
+    }
+    await reload()
+  } catch (error: any) {
+    console.error('Failed to execute error cleanup:', error)
+    appStore.showError(error?.response?.data?.message || t('admin.accounts.errorCleanup.executeFailed'))
+  } finally {
+    errorCleanupExecuting.value = false
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
