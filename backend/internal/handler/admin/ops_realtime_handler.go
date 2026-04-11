@@ -150,6 +150,9 @@ func (h *OpsHandler) GetAccountAvailability(c *gin.Context) {
 		"group":    groupStats,
 		"account":  accountStats,
 	}
+	if summary := service.SummarizeTokenRefreshFailures(accountStats); summary != nil {
+		payload["token_refresh_failures"] = summary
+	}
 	if collectedAt != nil {
 		payload["timestamp"] = collectedAt.UTC()
 	}

@@ -50,22 +50,24 @@ type UserConcurrencyInfo struct {
 
 // PlatformAvailability aggregates account availability by platform.
 type PlatformAvailability struct {
-	Platform       string `json:"platform"`
-	TotalAccounts  int64  `json:"total_accounts"`
-	AvailableCount int64  `json:"available_count"`
-	RateLimitCount int64  `json:"rate_limit_count"`
-	ErrorCount     int64  `json:"error_count"`
+	Platform                 string `json:"platform"`
+	TotalAccounts            int64  `json:"total_accounts"`
+	AvailableCount           int64  `json:"available_count"`
+	RateLimitCount           int64  `json:"rate_limit_count"`
+	ErrorCount               int64  `json:"error_count"`
+	TokenRefreshFailureCount int64  `json:"token_refresh_failure_count"`
 }
 
 // GroupAvailability aggregates account availability by group.
 type GroupAvailability struct {
-	GroupID        int64  `json:"group_id"`
-	GroupName      string `json:"group_name"`
-	Platform       string `json:"platform"`
-	TotalAccounts  int64  `json:"total_accounts"`
-	AvailableCount int64  `json:"available_count"`
-	RateLimitCount int64  `json:"rate_limit_count"`
-	ErrorCount     int64  `json:"error_count"`
+	GroupID                  int64  `json:"group_id"`
+	GroupName                string `json:"group_name"`
+	Platform                 string `json:"platform"`
+	TotalAccounts            int64  `json:"total_accounts"`
+	AvailableCount           int64  `json:"available_count"`
+	RateLimitCount           int64  `json:"rate_limit_count"`
+	ErrorCount               int64  `json:"error_count"`
+	TokenRefreshFailureCount int64  `json:"token_refresh_failure_count"`
 }
 
 // AccountAvailability represents current availability for a single account.
@@ -83,10 +85,21 @@ type AccountAvailability struct {
 	IsOverloaded  bool `json:"is_overloaded"`
 	HasError      bool `json:"has_error"`
 
-	RateLimitResetAt       *time.Time `json:"rate_limit_reset_at"`
-	RateLimitRemainingSec  *int64     `json:"rate_limit_remaining_sec"`
-	OverloadUntil          *time.Time `json:"overload_until"`
-	OverloadRemainingSec   *int64     `json:"overload_remaining_sec"`
-	ErrorMessage           string     `json:"error_message"`
-	TempUnschedulableUntil *time.Time `json:"temp_unschedulable_until,omitempty"`
+	RateLimitResetAt          *time.Time `json:"rate_limit_reset_at"`
+	RateLimitRemainingSec     *int64     `json:"rate_limit_remaining_sec"`
+	OverloadUntil             *time.Time `json:"overload_until"`
+	OverloadRemainingSec      *int64     `json:"overload_remaining_sec"`
+	ErrorMessage              string     `json:"error_message"`
+	TempUnschedulableUntil    *time.Time `json:"temp_unschedulable_until,omitempty"`
+	TokenRefreshFailureReason string     `json:"token_refresh_failure_reason,omitempty"`
+	TokenRefreshFailureClass  string     `json:"token_refresh_failure_class,omitempty"`
+	TokenRefreshFailedAt      string     `json:"token_refresh_failed_at,omitempty"`
+}
+
+type TokenRefreshFailureRealtimeSummary struct {
+	TotalAccounts      int64            `json:"total_accounts"`
+	PermanentCount     int64            `json:"permanent_count"`
+	ByReason           map[string]int64 `json:"by_reason,omitempty"`
+	ByClass            map[string]int64 `json:"by_class,omitempty"`
+	AffectedAccountIDs []int64          `json:"affected_account_ids,omitempty"`
 }

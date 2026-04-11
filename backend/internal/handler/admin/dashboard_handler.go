@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -178,13 +179,125 @@ func (h *DashboardHandler) BackfillAggregation(c *gin.Context) {
 // GetRealtimeMetrics handles getting real-time system metrics
 // GET /api/v1/admin/dashboard/realtime
 func (h *DashboardHandler) GetRealtimeMetrics(c *gin.Context) {
-	// Return mock data for now
+	requestsPerMinute := int64(0)
+	averageResponseTime := float64(0)
+	if h.dashboardService != nil {
+		if stats, err := h.dashboardService.GetDashboardStats(c.Request.Context()); err == nil && stats != nil {
+			requestsPerMinute = stats.Rpm
+			averageResponseTime = stats.AverageDurationMs
+		}
+	}
+
+	windowHit, windowMiss, windowBatchSQL, windowFallback, windowErr := service.GatewayWindowCostPrefetchStats()
+	rateHit, rateMiss, rateLoad, rateSingleflightShared, rateFallback := service.GatewayUserGroupRateCacheStats()
+	modelsHit, modelsMiss, modelsStore := service.GatewayModelsListCacheStats()
+
 	response.Success(c, gin.H{
-		"active_requests":       0,
-		"requests_per_minute":   0,
-		"average_response_time": 0,
-		"error_rate":            0.0,
+		"active_requests":          0,
+		"requests_per_minute":      requestsPerMinute,
+		"average_response_time":    averageResponseTime,
+		"error_rate":               0.0,
+		"redis_pool":               repository.SnapshotDefaultRedisPoolStats(),
+		"usage_log_not_persisted":  usageLogNotPersistedPayload(),
+		"billing_compensation":     billingCompensationPayload(),
+		"scheduler_outbox":         service.SnapshotSchedulerOutboxRuntimeMetrics(),
+		"usage_record_worker_pool": service.SnapshotUsageRecordWorkerPoolStats(),
+		"gateway_hotpath": gin.H{
+			"window_cost_prefetch": gin.H{
+				"cache_hit_total":  windowHit,
+				"cache_miss_total": windowMiss,
+				"batch_sql_total":  windowBatchSQL,
+				"fallback_total":   windowFallback,
+				"error_total":      windowErr,
+			},
+			"user_group_rate_cache": gin.H{
+				"cache_hit_total":           rateHit,
+				"cache_miss_total":          rateMiss,
+				"load_total":                rateLoad,
+				"singleflight_shared_total": rateSingleflightShared,
+				"fallback_total":            rateFallback,
+			},
+			"models_list_cache": gin.H{
+				"cache_hit_total":  modelsHit,
+				"cache_miss_total": modelsMiss,
+				"store_total":      modelsStore,
+			},
+		},
+		"cleanup_status": service.SnapshotCleanupStats(),
+		"usage_cleanup_status": service.SnapshotUsageCleanupStats(),
 	})
+}
+
+func billingCompensationPayload() gin.H {
+	snapshot := service.SnapshotBillingCompensationCandidates()
+	payload := gin.H{
+		"total":            snapshot.Total,
+		"recent_1m_total":  snapshot.Recent1mTotal,
+		"recent_5m_total":  snapshot.Recent5mTotal,
+		"recent_15m_total": snapshot.Recent15mTotal,
+		"recent_count":     len(snapshot.Recent),
+		"details":          snapshot.Recent,
+		"snapshot":         snapshot,
+	}
+	if snapshot.Last != nil {
+		payload["last_request_id"] = snapshot.Last.RequestID
+		payload["last_error"] = snapshot.Last.Error
+		payload["last_account_id"] = snapshot.Last.AccountID
+	}
+	if len(snapshot.Recent) > 0 {
+		ids := make([]string, len(snapshot.Recent))
+		for i, candidate := range snapshot.Recent {
+			ids[i] = candidate.RequestID
+		}
+		payload["recent_request_ids"] = ids
+	}
+	if snapshot.Last != nil {
+		payload["last_candidate"] = gin.H{
+			"request_id":  snapshot.Last.RequestID,
+			"user_id":     snapshot.Last.UserID,
+			"account_id":  snapshot.Last.AccountID,
+			"api_key_id":  snapshot.Last.APIKeyID,
+			"total_cost":  snapshot.Last.TotalCost,
+			"actual_cost": snapshot.Last.ActualCost,
+			"error":       snapshot.Last.Error,
+			"timestamp":   snapshot.Last.Timestamp,
+		}
+		payload["manual_hint"] = gin.H{
+			"note":         "手动核对并重放该 usage，确保 request_id 与 billing_key 一致",
+			"request_id":   snapshot.Last.RequestID,
+			"account_id":   snapshot.Last.AccountID,
+			"billing_type": snapshot.Last.BillingType,
+		}
+	}
+	if snapshot.Total == 0 && len(snapshot.Recent) == 0 {
+		payload["fallback"] = gin.H{
+			"reason":          "snapshot_empty",
+			"recent_logs":     []string{service.OpsRuntimeBillingCompensationComponent, service.OpsRuntimeUsageLogComponent},
+			"usage_alert_ids": extractUsageAlertIDs(service.SnapshotUsageLogNotPersistedMetrics()),
+			"items":           snapshot.Recent,
+		}
+	}
+	lastRequestID := ""
+	if snapshot.Last != nil {
+		lastRequestID = snapshot.Last.RequestID
+	}
+	payload["ops_search"] = attachOpsSearchLastDetailEndpoint(opsSearchHint(
+		"/api/v1/admin/ops/billing-compensation",
+		"/api/v1/admin/ops/billing-compensation/:request_id",
+		"Go to the ops endpoint when you need to inspect persisted billing compensation candidates for replay.",
+	), lastRequestID)
+	return payload
+}
+
+func extractUsageAlertIDs(snapshot service.UsageLogNotPersistedMetricsSnapshot) []string {
+	if len(snapshot.Recent) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(snapshot.Recent))
+	for _, alert := range snapshot.Recent {
+		result = append(result, alert.RequestID)
+	}
+	return result
 }
 
 // GetUsageTrend handles getting usage trend data

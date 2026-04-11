@@ -799,6 +799,13 @@ type OpsCleanupConfig struct {
 	ErrorLogRetentionDays      int `mapstructure:"error_log_retention_days"`
 	MinuteMetricsRetentionDays int `mapstructure:"minute_metrics_retention_days"`
 	HourlyMetricsRetentionDays int `mapstructure:"hourly_metrics_retention_days"`
+	// Max rows safety guard (0 disables row-count governance).
+	SystemLogMaxRows int64 `mapstructure:"system_log_max_rows"`
+	ErrorLogMaxRows  int64 `mapstructure:"error_log_max_rows"`
+	// When true, the max rows guard emits stats/optional deletion; defaults to false.
+	MaxRowsEnabled bool `mapstructure:"max_rows_enabled"`
+	// When true, any max rows guard runs operate in dry run (metric only) mode.
+	MaxRowsDryRun bool `mapstructure:"max_rows_dry_run"`
 }
 
 type OpsAggregationConfig struct {
@@ -910,6 +917,7 @@ type DashboardAggregationConfig struct {
 // DashboardAggregationRetentionConfig 预聚合保留窗口
 type DashboardAggregationRetentionConfig struct {
 	UsageLogsDays         int `mapstructure:"usage_logs_days"`
+	UsageLogsMaxRows      int64 `mapstructure:"usage_logs_max_rows"`
 	UsageBillingDedupDays int `mapstructure:"usage_billing_dedup_days"`
 	HourlyDays            int `mapstructure:"hourly_days"`
 	DailyDays             int `mapstructure:"daily_days"`
@@ -2222,8 +2230,17 @@ func (c *Config) Validate() error {
 	if c.Ops.Cleanup.HourlyMetricsRetentionDays < 0 {
 		return fmt.Errorf("ops.cleanup.hourly_metrics_retention_days must be non-negative")
 	}
+	if c.Ops.Cleanup.SystemLogMaxRows < 0 {
+		return fmt.Errorf("ops.cleanup.system_log_max_rows must be non-negative")
+	}
+	if c.Ops.Cleanup.ErrorLogMaxRows < 0 {
+		return fmt.Errorf("ops.cleanup.error_log_max_rows must be non-negative")
+	}
 	if c.Ops.Cleanup.Enabled && strings.TrimSpace(c.Ops.Cleanup.Schedule) == "" {
 		return fmt.Errorf("ops.cleanup.schedule is required when ops.cleanup.enabled=true")
+	}
+	if c.DashboardAgg.Retention.UsageLogsMaxRows < 0 {
+		return fmt.Errorf("dashboard_aggregation.retention.usage_logs_max_rows must be non-negative")
 	}
 	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
 		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")

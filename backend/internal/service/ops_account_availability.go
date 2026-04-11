@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -58,6 +59,8 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 		isRateLimited := acc.RateLimitResetAt != nil && now.Before(*acc.RateLimitResetAt)
 		isOverloaded := acc.OverloadUntil != nil && now.Before(*acc.OverloadUntil)
 		hasError := acc.Status == StatusError
+		tokenRefreshFailureClass := strings.TrimSpace(acc.GetExtraString("token_refresh_failure_class"))
+		hasPermanentRefreshFailure := tokenRefreshFailureClass == "permanent"
 
 		// Normalize exclusive status flags so the UI doesn't show conflicting badges.
 		if hasError {
@@ -84,6 +87,9 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 			if hasError {
 				p.ErrorCount++
 			}
+			if hasPermanentRefreshFailure {
+				p.TokenRefreshFailureCount++
+			}
 		}
 
 		for _, grp := range acc.Groups {
@@ -108,6 +114,9 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 			if hasError {
 				g.ErrorCount++
 			}
+			if hasPermanentRefreshFailure {
+				g.TokenRefreshFailureCount++
+			}
 		}
 
 		displayGroupID := int64(0)
@@ -130,7 +139,10 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 			IsOverloaded:  isOverloaded,
 			HasError:      hasError,
 
-			ErrorMessage: acc.ErrorMessage,
+			ErrorMessage:              acc.ErrorMessage,
+			TokenRefreshFailureReason: strings.TrimSpace(acc.GetExtraString("token_refresh_failure_reason")),
+			TokenRefreshFailureClass:  strings.TrimSpace(acc.GetExtraString("token_refresh_failure_class")),
+			TokenRefreshFailedAt:      strings.TrimSpace(acc.GetExtraString("token_refresh_failed_at")),
 		}
 
 		if isRateLimited && acc.RateLimitResetAt != nil {
@@ -191,4 +203,48 @@ func (s *OpsService) GetAccountAvailability(ctx context.Context, platformFilter 
 		Accounts:    accountStats,
 		CollectedAt: collectedAt,
 	}, nil
+}
+
+func SummarizeTokenRefreshFailures(accounts map[int64]*AccountAvailability) *TokenRefreshFailureRealtimeSummary {
+	if len(accounts) == 0 {
+		return nil
+	}
+	summary := &TokenRefreshFailureRealtimeSummary{
+		ByReason: make(map[string]int64),
+		ByClass:  make(map[string]int64),
+	}
+	for accountID, acc := range accounts {
+		if acc == nil {
+			continue
+		}
+		reason := strings.TrimSpace(acc.TokenRefreshFailureReason)
+		class := strings.TrimSpace(acc.TokenRefreshFailureClass)
+		if reason == "" && class == "" {
+			continue
+		}
+		summary.TotalAccounts++
+		summary.AffectedAccountIDs = append(summary.AffectedAccountIDs, accountID)
+		if reason != "" {
+			summary.ByReason[reason]++
+		}
+		if class != "" {
+			summary.ByClass[class]++
+			if class == "permanent" {
+				summary.PermanentCount++
+			}
+		}
+	}
+	if summary.TotalAccounts == 0 {
+		return nil
+	}
+	if len(summary.AffectedAccountIDs) > 20 {
+		summary.AffectedAccountIDs = summary.AffectedAccountIDs[:20]
+	}
+	if len(summary.ByReason) == 0 {
+		summary.ByReason = nil
+	}
+	if len(summary.ByClass) == 0 {
+		summary.ByClass = nil
+	}
+	return summary
 }

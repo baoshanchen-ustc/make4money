@@ -389,23 +389,10 @@ func (r *opsRepository) listHourlyMetricsRows(ctx context.Context, filter *servi
 		groupID = filter.GroupID
 	}
 
-	switch {
-	case groupID != nil && *groupID > 0:
-		where += fmt.Sprintf(" AND group_id = $%d", idx)
-		args = append(args, *groupID)
-		idx++
-		if platform != "" {
-			where += fmt.Sprintf(" AND platform = $%d", idx)
-			args = append(args, platform)
-			// idx++ removed - not used after this
-		}
-	case platform != "":
-		where += fmt.Sprintf(" AND platform = $%d AND group_id IS NULL", idx)
-		args = append(args, platform)
-		// idx++ removed - not used after this
-	default:
-		where += " AND platform IS NULL AND group_id IS NULL"
-	}
+	filterClause, filterArgs, nextIdx := buildHourlyMetricsFilter(platform, groupID, idx)
+	where += filterClause
+	args = append(args, filterArgs...)
+	idx = nextIdx
 
 	q := `
 SELECT
@@ -474,6 +461,31 @@ ORDER BY bucket_start ASC`
 		return nil, err
 	}
 	return out, nil
+}
+
+func buildHourlyMetricsFilter(platform string, groupID *int64, idx int) (string, []any, int) {
+	clause := ""
+	args := make([]any, 0, 2)
+
+	switch {
+	case groupID != nil && *groupID > 0:
+		clause += fmt.Sprintf(" AND group_id = $%d", idx)
+		args = append(args, *groupID)
+		idx++
+		if platform != "" {
+			clause += fmt.Sprintf(" AND platform = $%d", idx)
+			args = append(args, platform)
+			idx++
+		}
+	case platform != "":
+		clause += fmt.Sprintf(" AND platform = $%d AND group_id IS NULL", idx)
+		args = append(args, platform)
+		idx++
+	default:
+		clause += " AND group_id IS NULL"
+	}
+
+	return clause, args, idx
 }
 
 func aggregateHourlyRows(rows []opsHourlyMetricsRow) opsDashboardPartial {

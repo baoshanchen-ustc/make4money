@@ -22,6 +22,11 @@ const (
 	usageCleanupWorkerName = "usage_cleanup_worker"
 )
 
+var (
+	usageCleanupLastTaskID  atomic.Int64
+	usageCleanupDeletedRows atomic.Int64
+)
+
 // UsageCleanupService 负责创建与执行使用记录清理任务
 type UsageCleanupService struct {
 	repo        UsageCleanupRepository
@@ -254,6 +259,24 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 			logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] trigger dashboard recompute: task=%d start=%s end=%s", task.ID, task.Filters.StartTime.UTC().Format(time.RFC3339), task.Filters.EndTime.UTC().Format(time.RFC3339))
 		}
 	}
+	recordUsageCleanupStats(task.ID, deletedTotal)
+}
+
+func recordUsageCleanupStats(taskID, deletedTotal int64) {
+	usageCleanupLastTaskID.Store(taskID)
+	usageCleanupDeletedRows.Store(deletedTotal)
+}
+
+func SnapshotUsageCleanupStats() UsageCleanupStats {
+	return UsageCleanupStats{
+		LastTaskID:      usageCleanupLastTaskID.Load(),
+		LastDeletedRows: usageCleanupDeletedRows.Load(),
+	}
+}
+
+type UsageCleanupStats struct {
+	LastTaskID      int64 `json:"last_task_id"`
+	LastDeletedRows int64 `json:"last_deleted_rows"`
 }
 
 func (s *UsageCleanupService) markTaskFailed(taskID int64, deletedRows int64, err error) {

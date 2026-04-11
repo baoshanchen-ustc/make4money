@@ -47,6 +47,7 @@ type OpsService struct {
 
 	// getAccountAvailability is a unit-test hook for overriding account availability lookup.
 	getAccountAvailability func(ctx context.Context, platformFilter string, groupIDFilter *int64) (*OpsAccountAvailability, error)
+	tokenRefreshSummaryFn func(ctx context.Context, platformFilter string, groupIDFilter *int64) *OpsTokenRefreshSummary
 
 	concurrencyService        *ConcurrencyService
 	gatewayService            *GatewayService
