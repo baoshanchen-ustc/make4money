@@ -66,3 +66,10 @@ type SchedulerCache interface {
 	// SetOutboxWatermark 保存 outbox 水位。
 	SetOutboxWatermark(ctx context.Context, id int64) error
 }
+
+// SchedulerOwnedBucketLockCache 是可选增强接口。
+// 实现方可提供 owner-token 锁语义，避免误删他人持有的 bucket lock。
+type SchedulerOwnedBucketLockCache interface {
+	TryLockBucketWithOwner(ctx context.Context, bucket SchedulerBucket, owner string, ttl time.Duration) (bool, error)
+	ReleaseBucketLock(ctx context.Context, bucket SchedulerBucket, owner string) error
+}

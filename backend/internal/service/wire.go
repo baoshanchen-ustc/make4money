@@ -193,9 +193,10 @@ func ProvideSchedulerSnapshotService(
 	outboxRepo SchedulerOutboxRepository,
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
+	checkpointRepo SchedulerOutboxCheckpointRepository,
 	cfg *config.Config,
 ) *SchedulerSnapshotService {
-	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, cfg)
+	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, checkpointRepo, cfg)
 	svc.Start()
 	return svc
 }

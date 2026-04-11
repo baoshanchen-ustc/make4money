@@ -26,6 +26,13 @@ const (
 	defaultSchedulerSnapshotWriteChunkSize = 256
 )
 
+var releaseSchedulerBucketLockScript = redis.NewScript(`
+	if redis.call("GET", KEYS[1]) == ARGV[1] then
+		return redis.call("DEL", KEYS[1])
+	end
+	return 0
+`)
+
 type schedulerCache struct {
 	rdb            *redis.Client
 	mgetChunkSize  int
@@ -78,9 +85,8 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		return nil, false, err
 	}
 	if len(ids) == 0 {
-		// 空快照视为缓存未命中，触发数据库回退查询
-		// 这解决了新分组创建后立即绑定账号时的竞态条件问题
-		return nil, false, nil
+		// 空快照也应该视作有效缓存命中，避免频繁回退到数据库
+		return make([]*service.Account, 0), true, nil
 	}
 
 	keys := make([]string, 0, len(ids))
@@ -230,6 +236,20 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 func (c *schedulerCache) TryLockBucket(ctx context.Context, bucket service.SchedulerBucket, ttl time.Duration) (bool, error) {
 	key := schedulerBucketKey(schedulerLockPrefix, bucket)
 	return c.rdb.SetNX(ctx, key, time.Now().UnixNano(), ttl).Result()
+}
+
+func (c *schedulerCache) TryLockBucketWithOwner(ctx context.Context, bucket service.SchedulerBucket, owner string, ttl time.Duration) (bool, error) {
+	key := schedulerBucketKey(schedulerLockPrefix, bucket)
+	return c.rdb.SetNX(ctx, key, owner, ttl).Result()
+}
+
+func (c *schedulerCache) ReleaseBucketLock(ctx context.Context, bucket service.SchedulerBucket, owner string) error {
+	key := schedulerBucketKey(schedulerLockPrefix, bucket)
+	_, err := releaseSchedulerBucketLockScript.Run(ctx, c.rdb, []string{key}, owner).Result()
+	if err == redis.Nil {
+		return nil
+	}
+	return err
 }
 
 func (c *schedulerCache) ListBuckets(ctx context.Context) ([]service.SchedulerBucket, error) {
@@ -426,6 +446,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"window_cost_sticky_reserve",
 		"max_sessions",
 		"session_idle_timeout_minutes",
+		"privacy_mode",
+		"model_rate_limits",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {

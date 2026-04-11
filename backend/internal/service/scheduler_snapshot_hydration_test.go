@@ -91,7 +91,7 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 		},
 	}
 
-	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, nil, nil, nil)
+	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, nil, nil, nil, nil)
 	groupID := int64(2)
 	svc := &OpenAIGatewayService{
 		schedulerSnapshot: schedulerSnapshot,
@@ -139,7 +139,7 @@ func TestGatewaySelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedu
 		},
 	}
 
-	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, nil, nil, nil)
+	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, nil, nil, nil, nil)
 	svc := &GatewayService{
 		schedulerSnapshot: schedulerSnapshot,
 		cache:             &mockGatewayCacheForPlatform{},

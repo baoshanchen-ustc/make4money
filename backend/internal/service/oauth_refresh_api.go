@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,7 +20,8 @@ type OAuthRefreshExecutor interface {
 	CacheKey(account *Account) string
 }
 
-const defaultRefreshLockTTL = 60 * time.Second
+const defaultRefreshLockTTL = 120 * time.Second
+const minRefreshLockTTL = 120 * time.Second
 
 // OAuthRefreshResult 统一刷新结果
 type OAuthRefreshResult struct {
@@ -36,6 +38,20 @@ type OAuthRefreshAPI struct {
 	tokenCache  GeminiTokenCache // 可选，nil = 无分布式锁
 	lockTTL     time.Duration
 	localLocks  sync.Map // key: cacheKey string -> value: *sync.Mutex
+	metrics     *OAuthRefreshAPIMetrics
+}
+
+// OAuthRefreshAPIMetrics 收集 refresh 关键路径的事件计数，可在需要时挂载
+type OAuthRefreshAPIMetrics struct {
+	LockDegradationCount atomic.Int64
+	LocalLockWaitCount   atomic.Int64
+	LocalLockWaitNanos   atomic.Int64
+	RaceRecoveryCount    atomic.Int64
+}
+
+// SetMetrics 向 API 注入指标容器
+func (api *OAuthRefreshAPI) SetMetrics(metrics *OAuthRefreshAPIMetrics) {
+	api.metrics = metrics
 }
 
 // NewOAuthRefreshAPI 创建统一刷新 API
@@ -44,6 +60,9 @@ func NewOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCac
 	ttl := defaultRefreshLockTTL
 	if len(lockTTL) > 0 && lockTTL[0] > 0 {
 		ttl = lockTTL[0]
+	}
+	if ttl < minRefreshLockTTL {
+		ttl = minRefreshLockTTL
 	}
 	return &OAuthRefreshAPI{
 		accountRepo: accountRepo,
@@ -81,19 +100,46 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	cacheKey := executor.CacheKey(account)
 
 	// 0. 获取进程内互斥锁（防止同一进程内的并发刷新竞争）
+	localLockWaitStart := time.Now()
 	localMu := api.getLocalLock(cacheKey)
 	localMu.Lock()
+	localLockWait := time.Since(localLockWaitStart)
+	if api.metrics != nil {
+		api.metrics.LocalLockWaitCount.Add(1)
+		api.metrics.LocalLockWaitNanos.Add(localLockWait.Nanoseconds())
+	}
+	if localLockWait >= time.Millisecond {
+		slog.Info("oauth_refresh_local_lock_wait",
+			"account_id", account.ID,
+			"cache_key", cacheKey,
+			"wait_ms", localLockWait.Milliseconds(),
+			"refresh_window", refreshWindow,
+		)
+	}
 	defer localMu.Unlock()
 
 	// 1. 获取分布式锁
 	lockAcquired := false
+	ownerToken := fmt.Sprintf("%d:%d", account.ID, time.Now().UnixNano())
+	alignedTTL := api.lockTTL
+	if refreshWindow > alignedTTL {
+		alignedTTL = refreshWindow
+	}
+	if alignedTTL < minRefreshLockTTL {
+		alignedTTL = minRefreshLockTTL
+	}
 	if api.tokenCache != nil {
-		acquired, lockErr := api.tokenCache.AcquireRefreshLock(ctx, cacheKey, api.lockTTL)
+		acquired, lockErr := api.tokenCache.AcquireRefreshLock(ctx, cacheKey, alignedTTL, ownerToken)
 		if lockErr != nil {
 			// Redis 错误，降级为无锁刷新（进程内互斥锁仍生效）
+			if api.metrics != nil {
+				api.metrics.LockDegradationCount.Add(1)
+			}
 			slog.Warn("oauth_refresh_lock_failed_degraded",
 				"account_id", account.ID,
 				"cache_key", cacheKey,
+				"refresh_window", refreshWindow,
+				"lock_ttl", alignedTTL,
 				"error", lockErr,
 			)
 		} else if !acquired {
@@ -101,7 +147,7 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 			return &OAuthRefreshResult{LockHeld: true}, nil
 		} else {
 			lockAcquired = true
-			defer func() { _ = api.tokenCache.ReleaseRefreshLock(ctx, cacheKey) }()
+			defer func() { _ = api.tokenCache.ReleaseRefreshLock(ctx, cacheKey, ownerToken) }()
 		}
 	}
 
@@ -165,9 +211,24 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	}, nil
 }
 
-// isInvalidGrantError 检查错误是否为 invalid_grant
+// isInvalidGrantError 检查错误是否属于 OAuth 刷新竞争的典型信号
+var refreshRaceErrorNeedles = []string{
+	"invalid_grant",
+	"refresh_token_reused",
+	"invalid_request_error",
+}
+
 func isInvalidGrantError(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "invalid_grant")
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, needle := range refreshRaceErrorNeedles {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // tryRecoverFromRefreshRace 在 invalid_grant 错误后尝试竞争恢复
@@ -187,6 +248,9 @@ func (api *OAuthRefreshAPI) tryRecoverFromRefreshRace(ctx context.Context, usedA
 	}
 	// refresh_token 不同 → 另一个 worker 已成功刷新
 	if usedRT != currentRT {
+		if api.metrics != nil {
+			api.metrics.RaceRecoveryCount.Add(1)
+		}
 		return reReadAccount, true
 	}
 	return nil, false

@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -16,22 +19,256 @@ import (
 var (
 	ErrSchedulerCacheNotReady   = errors.New("scheduler cache not ready")
 	ErrSchedulerFallbackLimited = errors.New("scheduler db fallback limited")
+	errOutboxPoisonEvent        = errors.New("scheduler outbox poison event")
+	errOutboxRetryable          = errors.New("scheduler outbox retryable error")
+	schedulerBucketLockOwnerSeq atomic.Uint64
 )
+
+// SchedulerOutboxCheckpointRepository persists watermark checkpoints for resilience.
+type SchedulerOutboxCheckpointRepository interface {
+	GetCheckpointWatermark(ctx context.Context) (int64, error)
+	SetCheckpointWatermark(ctx context.Context, watermark int64) error
+}
+
+type SchedulerOutboxRuntimeEvent struct {
+	Timestamp          time.Time `json:"timestamp"`
+	ID                 int64     `json:"id"`
+	EventType          string    `json:"event_type"`
+	Reason             string    `json:"reason"`
+	Error              string    `json:"error"`
+	PayloadDecodeError string    `json:"payload_decode_error,omitempty"`
+}
+
+type SchedulerOutboxRuntimeMetrics struct {
+	PoisonTotal                  int64                        `json:"poison_total"`
+	TransientTotal               int64                        `json:"transient_total"`
+	PayloadDecodePoisonTotal     int64                        `json:"payload_decode_poison_total"`
+	MalformedPayloadPoisonTotal  int64                        `json:"malformed_payload_poison_total"`
+	UnknownEventPoisonTotal      int64                        `json:"unknown_event_poison_total"`
+	LockContentionTransientTotal int64                        `json:"lock_contention_transient_total"`
+	DBTransientTotal             int64                        `json:"db_transient_total"`
+	CacheTransientTotal          int64                        `json:"cache_transient_total"`
+	OtherTransientTotal          int64                        `json:"other_transient_total"`
+	CheckpointFallbackTotal      int64                        `json:"checkpoint_fallback_total"`
+	CheckpointReadFailureTotal   int64                        `json:"checkpoint_read_failure_total"`
+	CheckpointWriteFailureTotal  int64                        `json:"checkpoint_write_failure_total"`
+	LastCheckpointWatermark      int64                        `json:"last_checkpoint_watermark"`
+	LastPoison                   *SchedulerOutboxRuntimeEvent `json:"last_poison,omitempty"`
+	LastTransient                *SchedulerOutboxRuntimeEvent `json:"last_transient,omitempty"`
+}
+
+var (
+	schedulerOutboxPoisonTotal                  atomic.Int64
+	schedulerOutboxTransientTotal               atomic.Int64
+	schedulerOutboxPayloadDecodePoisonTotal     atomic.Int64
+	schedulerOutboxMalformedPayloadPoisonTotal  atomic.Int64
+	schedulerOutboxUnknownEventPoisonTotal      atomic.Int64
+	schedulerOutboxLockContentionTransientTotal atomic.Int64
+	schedulerOutboxDBTransientTotal             atomic.Int64
+	schedulerOutboxCacheTransientTotal          atomic.Int64
+	schedulerOutboxOtherTransientTotal          atomic.Int64
+	schedulerOutboxCheckpointFallbackTotal      atomic.Int64
+	schedulerOutboxCheckpointReadFailureTotal   atomic.Int64
+	schedulerOutboxCheckpointWriteFailureTotal  atomic.Int64
+	schedulerOutboxLastCheckpointWatermark      atomic.Int64
+	schedulerOutboxRuntimeMu                    sync.Mutex
+	schedulerOutboxLastPoison                   *SchedulerOutboxRuntimeEvent
+	schedulerOutboxLastTransient                *SchedulerOutboxRuntimeEvent
+)
+
+const (
+	fallbackCooldownDuration         = 30 * time.Second
+	schedulerBucketLockTTL           = 30 * time.Second
+	outboxRetryBaseBackoff           = 2 * time.Second
+	outboxRetryLockContentionBackoff = 5 * time.Second
+	outboxRetryMaxBackoff            = 30 * time.Second
+)
+
+type schedulerOutboxRetryState struct {
+	NextAttemptAt time.Time
+	Attempts      int
+	LastReason    string
+}
+
+func markOutboxPoison(err error) error {
+	if err == nil {
+		return errOutboxPoisonEvent
+	}
+	if errors.Is(err, errOutboxPoisonEvent) {
+		return err
+	}
+	return fmt.Errorf("%w: %v", errOutboxPoisonEvent, err)
+}
+
+func wrapOutboxRetryable(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, errOutboxRetryable) || errors.Is(err, errOutboxPoisonEvent) {
+		return err
+	}
+	return fmt.Errorf("%w: %v", errOutboxRetryable, err)
+}
+
+func SnapshotSchedulerOutboxRuntimeMetrics() SchedulerOutboxRuntimeMetrics {
+	schedulerOutboxRuntimeMu.Lock()
+	defer schedulerOutboxRuntimeMu.Unlock()
+
+	snapshot := SchedulerOutboxRuntimeMetrics{
+		PoisonTotal:                  schedulerOutboxPoisonTotal.Load(),
+		TransientTotal:               schedulerOutboxTransientTotal.Load(),
+		PayloadDecodePoisonTotal:     schedulerOutboxPayloadDecodePoisonTotal.Load(),
+		MalformedPayloadPoisonTotal:  schedulerOutboxMalformedPayloadPoisonTotal.Load(),
+		UnknownEventPoisonTotal:      schedulerOutboxUnknownEventPoisonTotal.Load(),
+		LockContentionTransientTotal: schedulerOutboxLockContentionTransientTotal.Load(),
+		DBTransientTotal:             schedulerOutboxDBTransientTotal.Load(),
+		CacheTransientTotal:          schedulerOutboxCacheTransientTotal.Load(),
+		OtherTransientTotal:          schedulerOutboxOtherTransientTotal.Load(),
+		CheckpointFallbackTotal:      schedulerOutboxCheckpointFallbackTotal.Load(),
+		CheckpointReadFailureTotal:   schedulerOutboxCheckpointReadFailureTotal.Load(),
+		CheckpointWriteFailureTotal:  schedulerOutboxCheckpointWriteFailureTotal.Load(),
+		LastCheckpointWatermark:      schedulerOutboxLastCheckpointWatermark.Load(),
+	}
+	if schedulerOutboxLastPoison != nil {
+		last := *schedulerOutboxLastPoison
+		snapshot.LastPoison = &last
+	}
+	if schedulerOutboxLastTransient != nil {
+		last := *schedulerOutboxLastTransient
+		snapshot.LastTransient = &last
+	}
+	return snapshot
+}
+
+func recordSchedulerOutboxPoisonEvent(event SchedulerOutboxEvent, err error) {
+	schedulerOutboxPoisonTotal.Add(1)
+	reason := classifySchedulerOutboxPoisonReason(event, err)
+	switch reason {
+	case "payload_decode":
+		schedulerOutboxPayloadDecodePoisonTotal.Add(1)
+	case "malformed_payload":
+		schedulerOutboxMalformedPayloadPoisonTotal.Add(1)
+	case "unknown_event":
+		schedulerOutboxUnknownEventPoisonTotal.Add(1)
+	}
+	schedulerOutboxRuntimeMu.Lock()
+	defer schedulerOutboxRuntimeMu.Unlock()
+	schedulerOutboxLastPoison = &SchedulerOutboxRuntimeEvent{
+		Timestamp:          time.Now(),
+		ID:                 event.ID,
+		EventType:          event.EventType,
+		Reason:             reason,
+		Error:              errorString(err),
+		PayloadDecodeError: event.PayloadDecodeError,
+	}
+}
+
+func recordSchedulerOutboxTransientEvent(event SchedulerOutboxEvent, err error) {
+	schedulerOutboxTransientTotal.Add(1)
+	reason := classifySchedulerOutboxTransientReason(err)
+	switch reason {
+	case "lock_contention":
+		schedulerOutboxLockContentionTransientTotal.Add(1)
+	case "db":
+		schedulerOutboxDBTransientTotal.Add(1)
+	case "cache":
+		schedulerOutboxCacheTransientTotal.Add(1)
+	default:
+		schedulerOutboxOtherTransientTotal.Add(1)
+	}
+	schedulerOutboxRuntimeMu.Lock()
+	defer schedulerOutboxRuntimeMu.Unlock()
+	schedulerOutboxLastTransient = &SchedulerOutboxRuntimeEvent{
+		Timestamp:          time.Now(),
+		ID:                 event.ID,
+		EventType:          event.EventType,
+		Reason:             reason,
+		Error:              errorString(err),
+		PayloadDecodeError: event.PayloadDecodeError,
+	}
+}
+
+func resetSchedulerOutboxRuntimeMetricsForTest() {
+	schedulerOutboxPoisonTotal.Store(0)
+	schedulerOutboxTransientTotal.Store(0)
+	schedulerOutboxPayloadDecodePoisonTotal.Store(0)
+	schedulerOutboxMalformedPayloadPoisonTotal.Store(0)
+	schedulerOutboxUnknownEventPoisonTotal.Store(0)
+	schedulerOutboxLockContentionTransientTotal.Store(0)
+	schedulerOutboxDBTransientTotal.Store(0)
+	schedulerOutboxCacheTransientTotal.Store(0)
+	schedulerOutboxOtherTransientTotal.Store(0)
+	schedulerOutboxCheckpointFallbackTotal.Store(0)
+	schedulerOutboxCheckpointReadFailureTotal.Store(0)
+	schedulerOutboxCheckpointWriteFailureTotal.Store(0)
+	schedulerOutboxLastCheckpointWatermark.Store(0)
+	schedulerOutboxRuntimeMu.Lock()
+	schedulerOutboxLastPoison = nil
+	schedulerOutboxLastTransient = nil
+	schedulerOutboxRuntimeMu.Unlock()
+}
+
+func classifySchedulerOutboxPoisonReason(event SchedulerOutboxEvent, err error) string {
+	if event.PayloadDecodeError != "" {
+		return "payload_decode"
+	}
+	if event.EventType == "" {
+		return "unknown_event"
+	}
+	if err != nil {
+		msg := strings.ToLower(err.Error())
+		switch {
+		case strings.Contains(msg, "unsupported outbox event"), strings.Contains(msg, "unknown outbox event"):
+			return "unknown_event"
+		case strings.Contains(msg, "malformed"), strings.Contains(msg, "missing"), strings.Contains(msg, "invalid payload"):
+			return "malformed_payload"
+		}
+	}
+	return "other_poison"
+}
+
+func classifySchedulerOutboxTransientReason(err error) string {
+	if err == nil {
+		return "other"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "lock contention"), strings.Contains(msg, "lock busy"):
+		return "lock_contention"
+	case strings.Contains(msg, "cache"):
+		return "cache"
+	case strings.Contains(msg, "db"), strings.Contains(msg, "database"), strings.Contains(msg, "query"):
+		return "db"
+	default:
+		return "other"
+	}
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
 
 const outboxEventTimeout = 2 * time.Minute
 
 type SchedulerSnapshotService struct {
-	cache         SchedulerCache
-	outboxRepo    SchedulerOutboxRepository
-	accountRepo   AccountRepository
-	groupRepo     GroupRepository
-	cfg           *config.Config
-	stopCh        chan struct{}
-	stopOnce      sync.Once
-	wg            sync.WaitGroup
-	fallbackLimit *fallbackLimiter
-	lagMu         sync.Mutex
-	lagFailures   int
+	cache              SchedulerCache
+	outboxRepo         SchedulerOutboxRepository
+	accountRepo        AccountRepository
+	groupRepo          GroupRepository
+	cfg                *config.Config
+	checkpointRepo     SchedulerOutboxCheckpointRepository
+	stopCh             chan struct{}
+	stopOnce           sync.Once
+	wg                 sync.WaitGroup
+	fallbackLimit      *fallbackLimiter
+	lagMu              sync.Mutex
+	lagFailures        int
+	outboxRetryMu      sync.Mutex
+	outboxRetryState   map[int64]schedulerOutboxRetryState
+	outboxEventHandler func(context.Context, SchedulerOutboxEvent) error
 }
 
 func NewSchedulerSnapshotService(
@@ -39,21 +276,26 @@ func NewSchedulerSnapshotService(
 	outboxRepo SchedulerOutboxRepository,
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
+	checkpointRepo SchedulerOutboxCheckpointRepository,
 	cfg *config.Config,
 ) *SchedulerSnapshotService {
 	maxQPS := 0
 	if cfg != nil {
 		maxQPS = cfg.Gateway.Scheduling.DbFallbackMaxQPS
 	}
-	return &SchedulerSnapshotService{
-		cache:         cache,
-		outboxRepo:    outboxRepo,
-		accountRepo:   accountRepo,
-		groupRepo:     groupRepo,
-		cfg:           cfg,
-		stopCh:        make(chan struct{}),
-		fallbackLimit: newFallbackLimiter(maxQPS),
+	service := &SchedulerSnapshotService{
+		cache:            cache,
+		outboxRepo:       outboxRepo,
+		accountRepo:      accountRepo,
+		groupRepo:        groupRepo,
+		checkpointRepo:   checkpointRepo,
+		cfg:              cfg,
+		stopCh:           make(chan struct{}),
+		fallbackLimit:    newFallbackLimiter(maxQPS, fallbackCooldownDuration),
+		outboxRetryState: make(map[int64]schedulerOutboxRetryState),
 	}
+	service.outboxEventHandler = service.handleOutboxEvent
+	return service
 }
 
 func (s *SchedulerSnapshotService) Start() {
@@ -231,7 +473,11 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 	watermark, err := s.cache.GetOutboxWatermark(ctx)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark read failed: %v", err)
-		return
+		if fallback, fallbackErr := s.loadCheckpointWatermark(ctx); fallbackErr == nil {
+			watermark = fallback
+		} else {
+			return
+		}
 	}
 
 	events, err := s.outboxRepo.ListAfter(ctx, watermark, 200)
@@ -244,21 +490,55 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 	}
 
 	watermarkForCheck := watermark
+	lastAdvanceID := watermark
+	handler := s.outboxEventHandler
+	if handler == nil {
+		handler = s.handleOutboxEvent
+	}
+	var blockedEvent *SchedulerOutboxEvent
 	for _, event := range events {
+		if event.PayloadDecodeError != "" {
+			decodeErr := fmt.Errorf("payload decode failed: %s", event.PayloadDecodeError)
+			s.reportPoisonOutboxEvent(event, markOutboxPoison(decodeErr))
+			lastAdvanceID = event.ID
+			continue
+		}
+		if s.shouldBackoffOutboxEvent(event.ID) {
+			blockedEvent = &event
+			break
+		}
 		eventCtx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
-		err := s.handleOutboxEvent(eventCtx, event)
+		err := handler(eventCtx, event)
 		cancel()
 		if err != nil {
-			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%d type=%s err=%v", event.ID, event.EventType, err)
-			return
+			if errors.Is(err, errOutboxPoisonEvent) {
+				s.reportPoisonOutboxEvent(event, err)
+				s.clearOutboxRetryState(event.ID)
+				lastAdvanceID = event.ID
+				continue
+			}
+			s.markOutboxRetryState(event.ID, classifySchedulerOutboxTransientReason(err))
+			s.reportTransientOutboxError(event, err)
+			blockedEvent = &event
+			break
+		}
+		s.clearOutboxRetryState(event.ID)
+		lastAdvanceID = event.ID
+	}
+
+	if lastAdvanceID > watermark {
+		if err := s.cache.SetOutboxWatermark(ctx, lastAdvanceID); err != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed: %v", err)
+		} else {
+			watermarkForCheck = lastAdvanceID
+			s.clearOutboxRetryStateUpTo(lastAdvanceID)
+			s.persistCheckpointWatermark(ctx, lastAdvanceID)
 		}
 	}
 
-	lastID := events[len(events)-1].ID
-	if err := s.cache.SetOutboxWatermark(ctx, lastID); err != nil {
-		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed: %v", err)
-	} else {
-		watermarkForCheck = lastID
+	if blockedEvent != nil {
+		s.checkOutboxLag(ctx, *blockedEvent, watermarkForCheck)
+		return
 	}
 
 	s.checkOutboxLag(ctx, events[0], watermarkForCheck)
@@ -271,25 +551,34 @@ func (s *SchedulerSnapshotService) handleOutboxEvent(ctx context.Context, event 
 	case SchedulerOutboxEventAccountBulkChanged:
 		return s.handleBulkAccountEvent(ctx, event.Payload)
 	case SchedulerOutboxEventAccountGroupsChanged:
+		if event.AccountID == nil || *event.AccountID <= 0 {
+			return markOutboxPoison(fmt.Errorf("malformed account event: missing account_id"))
+		}
 		return s.handleAccountEvent(ctx, event.AccountID, event.Payload)
 	case SchedulerOutboxEventAccountChanged:
+		if event.AccountID == nil || *event.AccountID <= 0 {
+			return markOutboxPoison(fmt.Errorf("malformed account event: missing account_id"))
+		}
 		return s.handleAccountEvent(ctx, event.AccountID, event.Payload)
 	case SchedulerOutboxEventGroupChanged:
+		if event.GroupID == nil || *event.GroupID <= 0 {
+			return markOutboxPoison(fmt.Errorf("malformed group event: missing group_id"))
+		}
 		return s.handleGroupEvent(ctx, event.GroupID)
 	case SchedulerOutboxEventFullRebuild:
 		return s.triggerFullRebuild("outbox")
 	default:
-		return nil
+		return markOutboxPoison(fmt.Errorf("unsupported outbox event type: %s", event.EventType))
 	}
 }
 
 func (s *SchedulerSnapshotService) handleLastUsedEvent(ctx context.Context, payload map[string]any) error {
 	if s.cache == nil || payload == nil {
-		return nil
+		return markOutboxPoison(errors.New("malformed last_used payload"))
 	}
 	raw, ok := payload["last_used"].(map[string]any)
 	if !ok || len(raw) == 0 {
-		return nil
+		return markOutboxPoison(errors.New("malformed last_used payload"))
 	}
 	updates := make(map[int64]time.Time, len(raw))
 	for key, value := range raw {
@@ -304,14 +593,14 @@ func (s *SchedulerSnapshotService) handleLastUsedEvent(ctx context.Context, payl
 		updates[id] = time.Unix(sec, 0)
 	}
 	if len(updates) == 0 {
-		return nil
+		return markOutboxPoison(errors.New("malformed last_used payload"))
 	}
 	return s.cache.UpdateLastUsed(ctx, updates)
 }
 
 func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, payload map[string]any) error {
 	if payload == nil {
-		return nil
+		return markOutboxPoison(errors.New("malformed bulk account payload"))
 	}
 	if s.accountRepo == nil {
 		return nil
@@ -319,7 +608,7 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 
 	rawIDs := parseInt64Slice(payload["account_ids"])
 	if len(rawIDs) == 0 {
-		return nil
+		return markOutboxPoison(errors.New("malformed bulk account payload"))
 	}
 
 	ids := make([]int64, 0, len(rawIDs))
@@ -335,7 +624,7 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 		ids = append(ids, id)
 	}
 	if len(ids) == 0 {
-		return nil
+		return markOutboxPoison(errors.New("malformed bulk account payload"))
 	}
 
 	preloadGroupIDs := parseInt64Slice(payload["group_ids"])
@@ -505,12 +794,12 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 	if s.cache == nil {
 		return ErrSchedulerCacheNotReady
 	}
-	ok, err := s.cache.TryLockBucket(ctx, bucket, 30*time.Second)
+	release, err := s.acquireBucketLock(ctx, bucket)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return nil
+	if release != nil {
+		defer release()
 	}
 
 	rebuildCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -519,14 +808,125 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 	accounts, err := s.loadAccountsFromDB(rebuildCtx, bucket, bucket.Mode == SchedulerModeMixed)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
-		return err
+		return wrapOutboxRetryable(fmt.Errorf("db load failed: %w", err))
 	}
 	if err := s.cache.SetSnapshot(rebuildCtx, bucket, accounts); err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild cache failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
-		return err
+		return wrapOutboxRetryable(fmt.Errorf("cache write failed: %w", err))
 	}
 	slog.Debug("[Scheduler] rebuild ok", "bucket", bucket.String(), "reason", reason, "size", len(accounts))
 	return nil
+}
+
+func (s *SchedulerSnapshotService) acquireBucketLock(ctx context.Context, bucket SchedulerBucket) (func(), error) {
+	if s.cache == nil {
+		return nil, ErrSchedulerCacheNotReady
+	}
+	if ownerCache, ok := s.cache.(SchedulerOwnedBucketLockCache); ok {
+		owner := newSchedulerBucketLockOwner()
+		acquired, err := ownerCache.TryLockBucketWithOwner(ctx, bucket, owner, schedulerBucketLockTTL)
+		if err != nil {
+			return nil, wrapOutboxRetryable(fmt.Errorf("cache lock failed: %w", err))
+		}
+		if !acquired {
+			return nil, wrapOutboxRetryable(errors.New("lock contention while rebuilding bucket"))
+		}
+		return func() {
+			releaseCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := ownerCache.ReleaseBucketLock(releaseCtx, bucket, owner); err != nil {
+				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] bucket lock release failed: bucket=%s err=%v", bucket.String(), err)
+			}
+		}, nil
+	}
+
+	acquired, err := s.cache.TryLockBucket(ctx, bucket, schedulerBucketLockTTL)
+	if err != nil {
+		return nil, wrapOutboxRetryable(fmt.Errorf("cache lock failed: %w", err))
+	}
+	if !acquired {
+		return nil, wrapOutboxRetryable(errors.New("lock contention while rebuilding bucket"))
+	}
+	return nil, nil
+}
+
+func newSchedulerBucketLockOwner() string {
+	seq := schedulerBucketLockOwnerSeq.Add(1)
+	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), seq)
+}
+
+func (s *SchedulerSnapshotService) shouldBackoffOutboxEvent(eventID int64) bool {
+	if s == nil || eventID <= 0 {
+		return false
+	}
+	s.outboxRetryMu.Lock()
+	defer s.outboxRetryMu.Unlock()
+	state, ok := s.outboxRetryState[eventID]
+	if !ok {
+		return false
+	}
+	if time.Now().Before(state.NextAttemptAt) {
+		return true
+	}
+	return false
+}
+
+func (s *SchedulerSnapshotService) markOutboxRetryState(eventID int64, reason string) {
+	if s == nil || eventID <= 0 {
+		return
+	}
+	s.outboxRetryMu.Lock()
+	defer s.outboxRetryMu.Unlock()
+	state := s.outboxRetryState[eventID]
+	if state.LastReason != reason {
+		state.Attempts = 0
+	}
+	state.Attempts++
+	state.LastReason = reason
+	state.NextAttemptAt = time.Now().Add(outboxRetryBackoff(reason, state.Attempts))
+	s.outboxRetryState[eventID] = state
+}
+
+func (s *SchedulerSnapshotService) clearOutboxRetryState(eventID int64) {
+	if s == nil || eventID <= 0 {
+		return
+	}
+	s.outboxRetryMu.Lock()
+	delete(s.outboxRetryState, eventID)
+	s.outboxRetryMu.Unlock()
+}
+
+func (s *SchedulerSnapshotService) clearOutboxRetryStateUpTo(eventID int64) {
+	if s == nil || eventID <= 0 {
+		return
+	}
+	s.outboxRetryMu.Lock()
+	for id := range s.outboxRetryState {
+		if id <= eventID {
+			delete(s.outboxRetryState, id)
+		}
+	}
+	s.outboxRetryMu.Unlock()
+}
+
+func outboxRetryBackoff(reason string, attempts int) time.Duration {
+	if attempts <= 0 {
+		attempts = 1
+	}
+	backoff := outboxRetryBaseBackoff
+	if reason == "lock_contention" {
+		backoff = outboxRetryLockContentionBackoff
+	}
+	for i := 1; i < attempts; i++ {
+		backoff *= 2
+		if backoff >= outboxRetryMaxBackoff {
+			return outboxRetryMaxBackoff
+		}
+	}
+	if backoff > outboxRetryMaxBackoff {
+		return outboxRetryMaxBackoff
+	}
+	return backoff
 }
 
 func (s *SchedulerSnapshotService) triggerFullRebuild(reason string) error {
@@ -596,6 +996,85 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, oldest Sc
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox backlog rebuild failed: %v", err)
 		}
 	}
+}
+
+func (s *SchedulerSnapshotService) reportPoisonOutboxEvent(event SchedulerOutboxEvent, err error) {
+	if err == nil {
+		return
+	}
+	recordSchedulerOutboxPoisonEvent(event, err)
+	logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox event skipped (poison): id=%d type=%s err=%v%s",
+		event.ID, event.EventType, err, outboxEventSnippet(event))
+}
+
+func (s *SchedulerSnapshotService) reportTransientOutboxError(event SchedulerOutboxEvent, err error) {
+	if err == nil {
+		return
+	}
+	recordSchedulerOutboxTransientEvent(event, err)
+	logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox event transient error: id=%d type=%s err=%v%s",
+		event.ID, event.EventType, err, outboxEventSnippet(event))
+}
+
+func outboxEventSnippet(event SchedulerOutboxEvent) string {
+	if len(event.Payload) > 0 {
+		return outboxPayloadSnippet(event.Payload)
+	}
+	if event.PayloadDecodeError == "" && len(event.PayloadRaw) == 0 {
+		return ""
+	}
+	snippet := ""
+	if len(event.PayloadRaw) > 0 {
+		snippet = string(event.PayloadRaw)
+		if len(snippet) > 256 {
+			snippet = snippet[:256] + "..."
+		}
+	}
+	if event.PayloadDecodeError == "" {
+		return " payload_raw=" + snippet
+	}
+	if snippet == "" {
+		return " payload_decode_error=" + event.PayloadDecodeError
+	}
+	return fmt.Sprintf(" payload_decode_error=%s payload_raw=%s", event.PayloadDecodeError, snippet)
+}
+
+func outboxPayloadSnippet(payload map[string]any) string {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Sprintf(" payload_snippet_error=%v", err)
+	}
+	snippet := string(raw)
+	if len(snippet) > 256 {
+		snippet = snippet[:256] + "..."
+	}
+	return " payload=" + snippet
+}
+
+func (s *SchedulerSnapshotService) loadCheckpointWatermark(ctx context.Context) (int64, error) {
+	if s == nil || s.checkpointRepo == nil {
+		return 0, fmt.Errorf("checkpoint repo unavailable")
+	}
+	watermark, err := s.checkpointRepo.GetCheckpointWatermark(ctx)
+	if err != nil {
+		schedulerOutboxCheckpointReadFailureTotal.Add(1)
+		return 0, err
+	}
+	schedulerOutboxCheckpointFallbackTotal.Add(1)
+	schedulerOutboxLastCheckpointWatermark.Store(watermark)
+	return watermark, nil
+}
+
+func (s *SchedulerSnapshotService) persistCheckpointWatermark(ctx context.Context, watermark int64) {
+	if s == nil || s.checkpointRepo == nil {
+		return
+	}
+	if err := s.checkpointRepo.SetCheckpointWatermark(ctx, watermark); err != nil {
+		schedulerOutboxCheckpointWriteFailureTotal.Add(1)
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] checkpoint watermark write failed: %v", err)
+		return
+	}
+	schedulerOutboxLastCheckpointWatermark.Store(watermark)
 }
 
 func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucket SchedulerBucket, useMixed bool) ([]Account, error) {
@@ -698,6 +1177,7 @@ func (s *SchedulerSnapshotService) guardFallback(ctx context.Context) error {
 		if s.fallbackLimit == nil || s.fallbackLimit.Allow() {
 			return nil
 		}
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] db fallback limited; cooldown=%s", fallbackCooldownDuration)
 		return ErrSchedulerFallbackLimited
 	}
 	return ErrSchedulerCacheNotReady
@@ -837,35 +1317,47 @@ func toInt64(value any) (int64, bool) {
 }
 
 type fallbackLimiter struct {
-	maxQPS int
-	mu     sync.Mutex
-	window time.Time
-	count  int
+	maxQPS        int
+	mu            sync.Mutex
+	window        time.Time
+	count         int
+	cooldown      time.Duration
+	cooldownUntil time.Time
 }
 
-func newFallbackLimiter(maxQPS int) *fallbackLimiter {
-	if maxQPS <= 0 {
+func newFallbackLimiter(maxQPS int, cooldown time.Duration) *fallbackLimiter {
+	if maxQPS <= 0 && cooldown <= 0 {
 		return nil
 	}
 	return &fallbackLimiter{
-		maxQPS: maxQPS,
-		window: time.Now(),
+		maxQPS:   maxQPS,
+		window:   time.Now(),
+		cooldown: cooldown,
 	}
 }
 
 func (l *fallbackLimiter) Allow() bool {
-	if l == nil || l.maxQPS <= 0 {
+	if l == nil || (l.maxQPS <= 0 && l.cooldown <= 0) {
 		return true
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	now := time.Now()
+	if l.cooldown > 0 && now.Before(l.cooldownUntil) {
+		return false
+	}
+	if l.maxQPS <= 0 {
+		return true
+	}
 	if now.Sub(l.window) >= time.Second {
 		l.window = now
 		l.count = 0
 	}
 	if l.count >= l.maxQPS {
+		if l.cooldown > 0 {
+			l.cooldownUntil = now.Add(l.cooldown)
+		}
 		return false
 	}
 	l.count++

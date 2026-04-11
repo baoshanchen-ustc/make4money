@@ -64,6 +64,11 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyRateLimite
 	require.NotNil(t, selection.Account)
 	require.Equal(t, int64(31002), selection.Account.ID)
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonClearedUnschedulable])
+	require.Equal(t, 1, cache.deletedSessions["openai:session_hash_rate_limited"])
 }
 
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_SkipsFreshlyRateLimitedSnapshotCandidate(t *testing.T) {
@@ -312,6 +317,10 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 	require.Equal(t, int64(21001), selection.WaitPlan.AccountID)
 	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
 	require.True(t, decision.StickySessionHit)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionWaitTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonWait])
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionSticky_ForceHTTP(t *testing.T) {
@@ -425,9 +434,74 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RequiredWSV2_SkipsStick
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 	require.False(t, decision.StickySessionHit)
 	require.Equal(t, 1, decision.CandidateCount)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonTransportMismatch])
+	require.Equal(t, 1, cache.deletedSessions["openai:session_hash_ws_only"])
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyModelMismatchFallsBackWithoutClearing(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(1014)
+	sticky := Account{
+		ID:          2401,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-4.1": "gpt-4.1",
+			},
+		},
+	}
+	backup := Account{
+		ID:          2402,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    5,
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{
+			"openai:session_hash_model_mismatch": sticky.ID,
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{sticky, backup}},
+		cache:              cache,
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_model_mismatch",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(2402), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(0), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonModelMismatch])
+	require.Empty(t, cache.deletedSessions)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_RequiredWSV2_NoAvailableAccount(t *testing.T) {
@@ -580,10 +654,12 @@ func TestOpenAIGatewayService_OpenAIAccountSchedulerMetrics(t *testing.T) {
 	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
 	require.GreaterOrEqual(t, snapshot.SelectTotal, int64(1))
 	require.GreaterOrEqual(t, snapshot.StickySessionHitTotal, int64(1))
+	require.GreaterOrEqual(t, snapshot.StickySessionLookupTotal, int64(1))
 	require.GreaterOrEqual(t, snapshot.AccountSwitchTotal, int64(1))
 	require.GreaterOrEqual(t, snapshot.SchedulerLatencyMsAvg, float64(0))
 	require.GreaterOrEqual(t, snapshot.StickyHitRatio, 0.0)
 	require.GreaterOrEqual(t, snapshot.RuntimeStatsAccountCount, 1)
+	require.NotNil(t, snapshot.StickySessionShadowReasonTotals)
 }
 
 func intPtrForTest(v int) *int {
@@ -886,6 +962,9 @@ func TestDefaultOpenAIAccountScheduler_ReportSwitchAndSnapshot(t *testing.T) {
 		LoadSkew:          0.5,
 		StickyPreviousHit: true,
 	})
+	scheduler.metrics.recordStickySessionLookup()
+	scheduler.metrics.recordStickySessionWait()
+	scheduler.metrics.recordStickySessionCleared(openAIStickySessionShadowReasonClearedUnschedulable)
 	scheduler.metrics.recordSelect(OpenAIAccountScheduleDecision{
 		Layer:            openAIAccountScheduleLayerSessionSticky,
 		LatencyMs:        6,
@@ -897,11 +976,17 @@ func TestDefaultOpenAIAccountScheduler_ReportSwitchAndSnapshot(t *testing.T) {
 	require.Equal(t, int64(2), snapshot.SelectTotal)
 	require.Equal(t, int64(1), snapshot.StickyPreviousHitTotal)
 	require.Equal(t, int64(1), snapshot.StickySessionHitTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionWaitTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonWait])
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonClearedUnschedulable])
 	require.Equal(t, int64(1), snapshot.LoadBalanceSelectTotal)
 	require.Equal(t, int64(1), snapshot.AccountSwitchTotal)
 	require.Greater(t, snapshot.SchedulerLatencyMsAvg, 0.0)
 	require.Greater(t, snapshot.StickyHitRatio, 0.0)
 	require.Greater(t, snapshot.LoadSkewAvg, 0.0)
+	require.NotNil(t, snapshot.StickySessionShadowReasonTotals)
 }
 
 func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {

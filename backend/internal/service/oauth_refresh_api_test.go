@@ -22,11 +22,17 @@ type refreshAPIAccountRepo struct {
 	updateErr              error
 	updateCalls            int
 	updateCredentialsCalls int
+	getByIDCalls           int
+	reReadAccount          *Account
 }
 
 func (r *refreshAPIAccountRepo) GetByID(_ context.Context, _ int64) (*Account, error) {
+	r.getByIDCalls++
 	if r.getByIDErr != nil {
 		return nil, r.getByIDErr
+	}
+	if r.getByIDCalls > 1 && r.reReadAccount != nil {
+		return r.reReadAccount, nil
 	}
 	return r.account, nil
 }
@@ -80,6 +86,8 @@ type refreshAPICacheStub struct {
 	lockResult   bool
 	lockErr      error
 	releaseCalls int
+	lastTTL      time.Duration
+	lastOwner    string
 }
 
 func (c *refreshAPICacheStub) GetAccessToken(context.Context, string) (string, error) {
@@ -92,12 +100,15 @@ func (c *refreshAPICacheStub) SetAccessToken(context.Context, string, string, ti
 
 func (c *refreshAPICacheStub) DeleteAccessToken(context.Context, string) error { return nil }
 
-func (c *refreshAPICacheStub) AcquireRefreshLock(context.Context, string, time.Duration) (bool, error) {
+func (c *refreshAPICacheStub) AcquireRefreshLock(_ context.Context, _ string, ttl time.Duration, owner string) (bool, error) {
+	c.lastTTL = ttl
+	c.lastOwner = owner
 	return c.lockResult, c.lockErr
 }
 
-func (c *refreshAPICacheStub) ReleaseRefreshLock(context.Context, string) error {
+func (c *refreshAPICacheStub) ReleaseRefreshLock(_ context.Context, _ string, owner string) error {
 	c.releaseCalls++
+	c.lastOwner = owner
 	return nil
 }
 
@@ -177,6 +188,8 @@ func TestRefreshIfNeeded_LockErrorDegrades(t *testing.T) {
 	}
 
 	api := NewOAuthRefreshAPI(repo, cache)
+	metrics := &OAuthRefreshAPIMetrics{}
+	api.SetMetrics(metrics)
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
 	require.NoError(t, err)
@@ -184,6 +197,98 @@ func TestRefreshIfNeeded_LockErrorDegrades(t *testing.T) {
 	require.Equal(t, 1, repo.updateCalls)   // DB updated
 	require.Equal(t, 0, cache.releaseCalls) // no lock to release
 	require.Equal(t, 1, executor.refreshCalls)
+	require.Equal(t, int64(1), metrics.LockDegradationCount.Load())
+}
+
+func TestRefreshIfNeeded_LocalLockWaitMetrics(t *testing.T) {
+	account := &Account{ID: 12, Platform: PlatformGemini, Type: AccountTypeOAuth}
+	repo := &refreshAPIAccountRepo{account: account}
+	cache := &refreshAPICacheStub{lockResult: true}
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		credentials:  map[string]any{"access_token": "wait-token"},
+	}
+
+	api := NewOAuthRefreshAPI(repo, cache)
+	metrics := &OAuthRefreshAPIMetrics{}
+	api.SetMetrics(metrics)
+
+	localMu := api.getLocalLock(executor.CacheKey(account))
+	localMu.Lock()
+
+	done := make(chan struct{})
+	var result *OAuthRefreshResult
+	var refreshErr error
+	go func() {
+		result, refreshErr = api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
+		close(done)
+	}()
+
+	// allow goroutine to block on the local lock
+	time.Sleep(5 * time.Millisecond)
+	localMu.Unlock()
+	// ensure goroutine completes
+	<-done
+
+	require.NoError(t, refreshErr)
+	require.True(t, result.Refreshed)
+	require.Equal(t, int64(1), metrics.LocalLockWaitCount.Load())
+	require.Greater(t, metrics.LocalLockWaitNanos.Load(), int64(0))
+}
+
+func TestRefreshIfNeeded_RaceRecoveryMetrics(t *testing.T) {
+	account := &Account{
+		ID:       13,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"refresh_token": "old-refresh",
+		},
+	}
+	repo := &refreshAPIAccountRepo{
+		account: account,
+		reReadAccount: &Account{
+			ID:       account.ID,
+			Platform: account.Platform,
+			Type:     account.Type,
+			Credentials: map[string]any{
+				"refresh_token": "new-refresh",
+			},
+		},
+	}
+	cache := &refreshAPICacheStub{lockResult: true}
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		err:          errors.New("invalid_grant: race detected"),
+	}
+
+	api := NewOAuthRefreshAPI(repo, cache)
+	metrics := &OAuthRefreshAPIMetrics{}
+	api.SetMetrics(metrics)
+
+	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Account)
+	require.Equal(t, int64(1), metrics.RaceRecoveryCount.Load())
+}
+
+func TestRefreshIfNeeded_LockTTLAtLeastRefreshWindow(t *testing.T) {
+	account := &Account{ID: 5, Platform: PlatformGemini, Type: AccountTypeOAuth}
+	repo := &refreshAPIAccountRepo{account: account}
+	cache := &refreshAPICacheStub{lockResult: true}
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		credentials:  map[string]any{"access_token": "ttl-token"},
+	}
+
+	api := NewOAuthRefreshAPI(repo, cache)
+	_, err := api.RefreshIfNeeded(context.Background(), account, executor, 10*time.Minute)
+
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, cache.lastTTL, 10*time.Minute)
+	require.NotEmpty(t, cache.lastOwner)
 }
 
 func TestRefreshIfNeeded_NoCacheNoLock(t *testing.T) {
@@ -586,8 +691,8 @@ func TestNewOAuthRefreshAPI_DefaultTTL(t *testing.T) {
 }
 
 func TestNewOAuthRefreshAPI_CustomTTL(t *testing.T) {
-	api := NewOAuthRefreshAPI(nil, nil, 90*time.Second)
-	require.Equal(t, 90*time.Second, api.lockTTL)
+	api := NewOAuthRefreshAPI(nil, nil, 3*time.Minute)
+	require.Equal(t, 3*time.Minute, api.lockTTL)
 }
 
 func TestNewOAuthRefreshAPI_ZeroTTLUsesDefault(t *testing.T) {
@@ -595,11 +700,18 @@ func TestNewOAuthRefreshAPI_ZeroTTLUsesDefault(t *testing.T) {
 	require.Equal(t, defaultRefreshLockTTL, api.lockTTL)
 }
 
+func TestNewOAuthRefreshAPI_MinTTLEnforced(t *testing.T) {
+	api := NewOAuthRefreshAPI(nil, nil, 30*time.Second)
+	require.Equal(t, minRefreshLockTTL, api.lockTTL)
+}
+
 // ========== isInvalidGrantError tests ==========
 
 func TestIsInvalidGrantError(t *testing.T) {
 	require.True(t, isInvalidGrantError(errors.New("invalid_grant: token revoked")))
 	require.True(t, isInvalidGrantError(errors.New("INVALID_GRANT")))
+	require.True(t, isInvalidGrantError(errors.New("refresh_token_reused")))
+	require.True(t, isInvalidGrantError(errors.New("401 invalid_request_error")))
 	require.False(t, isInvalidGrantError(errors.New("invalid_client")))
 	require.False(t, isInvalidGrantError(nil))
 }
