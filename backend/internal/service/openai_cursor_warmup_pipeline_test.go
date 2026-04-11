@@ -156,22 +156,24 @@ func TestCursorMixedShape_JSONRoundtrip(t *testing.T) {
 
 // TestCursorMixedShape_StripsUnsupportedFields mirrors the strip loop in
 // ForwardAsChatCompletions (isResponsesShape branch). Cursor cloud sends
-// prompt_cache_retention and safety_identifier as top-level Responses API
-// parameters, which Codex upstreams reject. The fix must remove them from
-// the raw body before it is forwarded, for BOTH OAuth and API Key accounts
-// (the previous fix in applyCodexOAuthTransform only covered OAuth).
+// prompt_cache_retention, safety_identifier and metadata as top-level
+// Responses API parameters, which Codex upstreams reject with
+// "Unsupported parameter: ...". The fix must remove them from the raw body
+// before it is forwarded, for BOTH OAuth and API Key accounts.
 func TestCursorMixedShape_StripsUnsupportedFields(t *testing.T) {
 	cursorBody := []byte(`{
 		"model": "gpt-5.4",
 		"stream": true,
 		"prompt_cache_retention": "24h",
 		"safety_identifier": "cursor-user-xyz",
+		"metadata": {"trace_id":"abc","caller":"cursor"},
 		"input": [{"role":"user","content":"hi"}]
 	}`)
 
-	// Sanity: the input body actually contains both fields.
+	// Sanity: the input body actually contains all three fields.
 	require.True(t, gjson.GetBytes(cursorBody, "prompt_cache_retention").Exists())
 	require.True(t, gjson.GetBytes(cursorBody, "safety_identifier").Exists())
+	require.True(t, gjson.GetBytes(cursorBody, "metadata").Exists())
 
 	// Run the exact same loop as the production code.
 	result := cursorBody
@@ -181,11 +183,11 @@ func TestCursorMixedShape_StripsUnsupportedFields(t *testing.T) {
 		}
 	}
 
-	// Both fields must be gone.
-	assert.False(t, gjson.GetBytes(result, "prompt_cache_retention").Exists(),
-		"prompt_cache_retention must be stripped")
-	assert.False(t, gjson.GetBytes(result, "safety_identifier").Exists(),
-		"safety_identifier must be stripped")
+	// All unsupported fields must be gone.
+	for _, field := range []string{"prompt_cache_retention", "safety_identifier", "metadata"} {
+		assert.False(t, gjson.GetBytes(result, field).Exists(),
+			"%s must be stripped", field)
+	}
 
 	// Everything else must survive intact.
 	assert.Equal(t, "gpt-5.4", gjson.GetBytes(result, "model").String())

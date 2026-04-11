@@ -29,6 +29,7 @@ import (
 var cursorResponsesUnsupportedFields = []string{
 	"prompt_cache_retention",
 	"safety_identifier",
+	"metadata",
 }
 
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it
@@ -158,6 +159,23 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
 		}
+	}
+
+	// Diagnostic: for Cursor's Responses-shape raw-body path, dump the first
+	// 2KB of the final upstream body at debug level so that unknown unsupported
+	// parameters can be identified without re-running tcpdump. Only fires for
+	// the Cursor path (isResponsesShape) and only at debug level, so there is
+	// no cost in production where level is info or higher.
+	if isResponsesShape {
+		preview := responsesBody
+		if len(preview) > 2048 {
+			preview = preview[:2048]
+		}
+		logger.L().Debug("openai chat_completions: cursor responses-shape upstream body preview",
+			zap.Int64("account_id", account.ID),
+			zap.Int("body_bytes", len(responsesBody)),
+			zap.String("body_preview", string(preview)),
+		)
 	}
 
 	// 5. Get access token
