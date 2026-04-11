@@ -305,20 +305,22 @@
                           }}
                         </span>
                       </td>
-                      <!-- 用户 / Key -->
+                      <!-- 用户 -->
                       <td class="px-4 py-2">
-                        <div class="flex flex-col gap-0.5">
-                          <span
-                            v-if="row.user_name"
-                            class="max-w-[120px] truncate text-[11px] font-medium text-gray-800 dark:text-gray-200"
-                            :title="row.user_name"
-                          >{{ row.user_name }}</span>
-                          <span v-else class="text-[11px] text-gray-400">—</span>
-                          <span
-                            v-if="row.api_key_label"
-                            class="max-w-[120px] truncate font-mono text-[10px] text-gray-500 dark:text-gray-400"
-                            :title="row.api_key_label"
-                          >{{ row.api_key_label }}</span>
+                        <div class="max-w-[120px] truncate text-[11px] font-medium text-gray-800 dark:text-gray-200" :title="row.user_name || ''">
+                          {{ row.user_name || '—' }}
+                        </div>
+                      </td>
+                      <!-- Key 名称 -->
+                      <td class="px-4 py-2">
+                        <div class="max-w-[100px] truncate text-[11px] font-medium text-gray-800 dark:text-gray-200" :title="row.api_key_name || ''">
+                          {{ row.api_key_name || '—' }}
+                        </div>
+                      </td>
+                      <!-- 密钥 -->
+                      <td class="px-4 py-2">
+                        <div class="max-w-[80px] truncate font-mono text-[10px] text-gray-500 dark:text-gray-400" :title="row.api_key_label || ''">
+                          {{ row.api_key_label || '—' }}
                         </div>
                       </td>
                       <!-- 分组 / 账号 -->
@@ -345,11 +347,23 @@
                         </span>
                       </td>
                       <td class="px-4 py-2">
-                        <div
-                          class="max-w-[160px] truncate font-mono text-[11px] text-gray-700 dark:text-gray-300"
-                          :title="row.model || ''"
-                        >
-                          {{ row.model || '—' }}
+                        <div class="flex flex-col gap-0.5">
+                          <div
+                            class="max-w-[160px] truncate font-mono text-[11px] text-gray-700 dark:text-gray-300"
+                            :title="row.model || ''"
+                          >
+                            {{ row.model || '—' }}
+                          </div>
+                          <div
+                            v-if="row.upstream_model && row.upstream_model !== row.model"
+                            class="flex items-center gap-0.5 max-w-[160px]"
+                          >
+                            <span class="text-[9px] text-amber-500 dark:text-amber-400">↓</span>
+                            <span
+                              class="truncate font-mono text-[10px] text-amber-600 dark:text-amber-400"
+                              :title="row.upstream_model"
+                            >{{ row.upstream_model }}</span>
+                          </div>
                         </div>
                       </td>
                       <td class="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
@@ -571,7 +585,9 @@ const filteredItems = computed(() => {
 const tableCols = computed(() => [
   t('admin.ops.requestDetails.table.time'),
   t('admin.ops.requestDetails.table.kind'),
-  t('admin.ops.requestDetails.table.userKey'),
+  t('admin.ops.requestDetails.table.user'),
+  t('admin.ops.requestDetails.table.keyName'),
+  t('admin.ops.requestDetails.table.keyMasked'),
   t('admin.ops.requestDetails.table.groupAccount'),
   t('admin.ops.requestDetails.table.platform'),
   t('admin.ops.requestDetails.table.model'),
