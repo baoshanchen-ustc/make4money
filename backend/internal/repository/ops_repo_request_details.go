@@ -153,6 +153,8 @@ WITH combined AS (
     COALESCE(a.name, '') AS account_name,
     COALESCE(ul.input_tokens, 0) AS input_tokens,
     COALESCE(ul.output_tokens, 0) AS output_tokens,
+    NULLIF(TRIM(ul.upstream_model), '') AS upstream_model,
+    ak.name AS api_key_name,
     ul.spans::TEXT AS spans_json
   FROM (
     -- De-duplicate: keep only the latest row per request_id within the time window.
@@ -198,6 +200,8 @@ WITH combined AS (
     COALESCE(a.name, '') AS account_name,
     0 AS input_tokens,
     0 AS output_tokens,
+    NULL::TEXT AS upstream_model,
+    NULL::TEXT AS api_key_name,
     o.spans::TEXT AS spans_json
   FROM ops_error_logs o
   LEFT JOIN groups g ON g.id = o.group_id
@@ -266,6 +270,8 @@ SELECT
     CASE WHEN duration_ms > %d THEN 'timeout' ELSE NULL END,
     CASE WHEN status_code >= 500 THEN 'error' ELSE NULL END
   ], NULL) AS anomaly_types,
+  upstream_model,
+  api_key_name,
   spans_json
 FROM combined
 %s
@@ -331,6 +337,8 @@ LIMIT $%d OFFSET $%d
 			accountNameStr sql.NullString
 			anomalyTypes   pq.StringArray
 			spansJSON      sql.NullString
+			upstreamModel  sql.NullString
+			apiKeyName     sql.NullString
 		)
 
 		if err := rows.Scan(
@@ -361,6 +369,8 @@ LIMIT $%d OFFSET $%d
 			&accountNameStr,
 			&anomalyTypes,
 			&spansJSON,
+			&upstreamModel,
+			&apiKeyName,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -416,6 +426,14 @@ LIMIT $%d OFFSET $%d
 		}
 		if len(anomalyTypes) > 0 {
 			item.AnomalyTypes = []string(anomalyTypes)
+		}
+		if upstreamModel.Valid && upstreamModel.String != "" {
+			s := upstreamModel.String
+			item.UpstreamModel = &s
+		}
+		if apiKeyName.Valid && apiKeyName.String != "" {
+			s := apiKeyName.String
+			item.APIKeyName = &s
 		}
 		if spansJSON.Valid && spansJSON.String != "" {
 			var spans []*service.OpsSpan
