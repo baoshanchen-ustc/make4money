@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -97,16 +99,37 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			status = resp.StatusCode
 			respHeaders = cloneHeader(resp.Header)
 		}
+		logOpenAIWSHandshakeHeaders(targetURL, status, respHeaders)
 		return nil, status, respHeaders, err
 	}
 	// coder/websocket 默认单消息读取上限为 32KB，Codex WS 事件（如 rate_limits/大 delta）
 	// 可能超过该阈值，需显式提高上限，避免本地 read_fail(message too big)。
 	conn.SetReadLimit(openAIWSMessageReadLimitBytes)
 	respHeaders := http.Header(nil)
+	status := 0
 	if resp != nil {
+		status = resp.StatusCode
 		respHeaders = cloneHeader(resp.Header)
 	}
+	logOpenAIWSHandshakeHeaders(targetURL, status, respHeaders)
 	return &coderOpenAIWSClientConn{conn: conn}, 0, respHeaders, nil
+}
+
+func logOpenAIWSHandshakeHeaders(targetURL string, status int, headers http.Header) {
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	log.Printf(
+		"[openai_ws_client] raw_handshake_response status=%d target=%s x_codex_turn_state=%q session_id=%q conversation_id=%q header_keys=%v",
+		status,
+		targetURL,
+		headers.Get("x-codex-turn-state"),
+		headers.Get("session_id"),
+		headers.Get("conversation_id"),
+		keys,
+	)
 }
 
 func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client, error) {

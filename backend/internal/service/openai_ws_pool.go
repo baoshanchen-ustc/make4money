@@ -559,6 +559,9 @@ type openAIWSConnPool struct {
 
 	metrics openAIWSPoolMetrics
 
+	connClosedHookMu sync.RWMutex
+	connClosedHook   func(connID string)
+
 	workerStopCh chan struct{}
 	workerWg     sync.WaitGroup
 	closeOnce    sync.Once
@@ -608,6 +611,44 @@ func (p *openAIWSConnPool) setClientDialerForTest(dialer openAIWSClientDialer) {
 	p.clientDialer = dialer
 }
 
+func (p *openAIWSConnPool) setConnClosedHook(hook func(connID string)) {
+	if p == nil || hook == nil {
+		return
+	}
+	p.connClosedHookMu.Lock()
+	p.connClosedHook = hook
+	p.connClosedHookMu.Unlock()
+}
+
+func (p *openAIWSConnPool) getConnClosedHook() func(connID string) {
+	if p == nil {
+		return nil
+	}
+	p.connClosedHookMu.RLock()
+	defer p.connClosedHookMu.RUnlock()
+	return p.connClosedHook
+}
+
+func (p *openAIWSConnPool) closeConn(conn *openAIWSConn) {
+	if conn == nil {
+		return
+	}
+	connID := stringsTrim(conn.id)
+	conn.close()
+	if hook := p.getConnClosedHook(); hook != nil && connID != "" {
+		hook(connID)
+	}
+}
+
+func (p *openAIWSConnPool) closeConns(conns []*openAIWSConn) {
+	if p == nil || len(conns) == 0 {
+		return
+	}
+	for _, conn := range conns {
+		p.closeConn(conn)
+	}
+}
+
 // Close 停止后台 worker 并关闭所有空闲连接，应在优雅关闭时调用。
 func (p *openAIWSConnPool) Close() {
 	if p == nil {
@@ -627,7 +668,7 @@ func (p *openAIWSConnPool) Close() {
 			ap.mu.Lock()
 			for _, conn := range ap.conns {
 				if conn != nil && !conn.isLeased() {
-					conn.close()
+					p.closeConn(conn)
 				}
 			}
 			ap.mu.Unlock()
@@ -767,7 +808,7 @@ func (p *openAIWSConnPool) runBackgroundCleanupSweep(now time.Time) {
 		return true
 	})
 	for _, result := range results {
-		closeOpenAIWSConns(result.evicted)
+		p.closeConns(result.evicted)
 	}
 }
 
@@ -810,21 +851,21 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 			if preferredConnID == "" {
 				p.recordConnPickDuration(time.Since(pickStartedAt))
 				ap.mu.Unlock()
-				closeOpenAIWSConns(evicted)
+				p.closeConns(evicted)
 				return nil, errOpenAIWSPreferredConnUnavailable
 			}
 			preferredConn, ok := ap.conns[preferredConnID]
 			if !ok || preferredConn == nil {
 				p.recordConnPickDuration(time.Since(pickStartedAt))
 				ap.mu.Unlock()
-				closeOpenAIWSConns(evicted)
+				p.closeConns(evicted)
 				return nil, errOpenAIWSPreferredConnUnavailable
 			}
 			if preferredConn.tryAcquire() {
 				connPick := time.Since(pickStartedAt)
 				p.recordConnPickDuration(connPick)
 				ap.mu.Unlock()
-				closeOpenAIWSConns(evicted)
+				p.closeConns(evicted)
 				if p.shouldHealthCheckConn(preferredConn) {
 					if err := preferredConn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 						preferredConn.close()
@@ -851,12 +892,12 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 			p.recordConnPickDuration(connPick)
 			if int(preferredConn.waiters.Load()) >= p.queueLimitPerConn() {
 				ap.mu.Unlock()
-				closeOpenAIWSConns(evicted)
+				p.closeConns(evicted)
 				return nil, errOpenAIWSConnQueueFull
 			}
 			preferredConn.waiters.Add(1)
 			ap.mu.Unlock()
-			closeOpenAIWSConns(evicted)
+			p.closeConns(evicted)
 			defer preferredConn.waiters.Add(-1)
 			waitStart := time.Now()
 			p.metrics.acquireQueueWaitTotal.Add(1)
@@ -899,7 +940,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 				connPick := time.Since(pickStartedAt)
 				p.recordConnPickDuration(connPick)
 				ap.mu.Unlock()
-				closeOpenAIWSConns(evicted)
+				p.closeConns(evicted)
 				if p.shouldHealthCheckConn(conn) {
 					if err := conn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 						conn.close()
@@ -922,7 +963,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 			connPick := time.Since(pickStartedAt)
 			p.recordConnPickDuration(connPick)
 			ap.mu.Unlock()
-			closeOpenAIWSConns(evicted)
+			p.closeConns(evicted)
 			if p.shouldHealthCheckConn(best) {
 				if err := best.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 					best.close()
@@ -946,7 +987,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 				connPick := time.Since(pickStartedAt)
 				p.recordConnPickDuration(connPick)
 				ap.mu.Unlock()
-				closeOpenAIWSConns(evicted)
+				p.closeConns(evicted)
 				if p.shouldHealthCheckConn(conn) {
 					if err := conn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 						conn.close()
@@ -978,7 +1019,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 		p.recordConnPickDuration(connPick)
 		ap.creating++
 		ap.mu.Unlock()
-		closeOpenAIWSConns(evicted)
+		p.closeConns(evicted)
 
 		conn, dialErr := p.dialConn(ctx, req)
 
@@ -1012,7 +1053,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 	if req.ForceNewConn {
 		p.recordConnPickDuration(time.Since(pickStartedAt))
 		ap.mu.Unlock()
-		closeOpenAIWSConns(evicted)
+		p.closeConns(evicted)
 		return nil, errOpenAIWSConnQueueFull
 	}
 
@@ -1021,17 +1062,17 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 	p.recordConnPickDuration(connPick)
 	if target == nil {
 		ap.mu.Unlock()
-		closeOpenAIWSConns(evicted)
+		p.closeConns(evicted)
 		return nil, errOpenAIWSConnClosed
 	}
 	if int(target.waiters.Load()) >= p.queueLimitPerConn() {
 		ap.mu.Unlock()
-		closeOpenAIWSConns(evicted)
+		p.closeConns(evicted)
 		return nil, errOpenAIWSConnQueueFull
 	}
 	target.waiters.Add(1)
 	ap.mu.Unlock()
-	closeOpenAIWSConns(evicted)
+	p.closeConns(evicted)
 	defer target.waiters.Add(-1)
 	waitStart := time.Now()
 	p.metrics.acquireQueueWaitTotal.Add(1)
@@ -1384,7 +1425,7 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 		ap, ok := p.getAccountPool(accountID)
 		if !ok || ap == nil {
 			if conn != nil {
-				conn.close()
+				p.closeConn(conn)
 			}
 			return
 		}
@@ -1400,7 +1441,7 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 		}
 		if len(ap.conns) >= p.effectiveMaxConnsByAccount(req.Account) {
 			ap.mu.Unlock()
-			conn.close()
+			p.closeConn(conn)
 			continue
 		}
 		ap.conns[conn.id] = conn
@@ -1428,7 +1469,7 @@ func (p *openAIWSConnPool) evictConn(accountID int64, connID string) {
 		ap.mu.Unlock()
 	}
 	if conn != nil {
-		conn.close()
+		p.closeConn(conn)
 	}
 }
 

@@ -75,6 +75,32 @@ func TestOpenAIWSStateStore_SessionConnTTL(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestOpenAIWSStateStore_DeleteConnBindings(t *testing.T) {
+	store := NewOpenAIWSStateStore(nil)
+	store.BindResponseConn("resp_a", "conn_dead", time.Minute)
+	store.BindResponseConn("resp_b", "conn_live", time.Minute)
+	store.BindSessionConn(9, "session_a", "conn_dead", time.Minute)
+	store.BindSessionConn(9, "session_b", "conn_live", time.Minute)
+
+	require.True(t, store.HasConnBindings("conn_dead"))
+	responseIDs, sessionKeys := store.DeleteConnBindings("conn_dead")
+	require.ElementsMatch(t, []string{"resp_a"}, responseIDs)
+	require.ElementsMatch(t, []string{"9:session_a"}, sessionKeys)
+	require.False(t, store.HasConnBindings("conn_dead"))
+
+	_, ok := store.GetResponseConn("resp_a")
+	require.False(t, ok)
+	_, ok = store.GetSessionConn(9, "session_a")
+	require.False(t, ok)
+
+	connID, ok := store.GetResponseConn("resp_b")
+	require.True(t, ok)
+	require.Equal(t, "conn_live", connID)
+	connID, ok = store.GetSessionConn(9, "session_b")
+	require.True(t, ok)
+	require.Equal(t, "conn_live", connID)
+}
+
 func TestOpenAIWSStateStore_GetResponseAccount_NoStaleAfterCacheMiss(t *testing.T) {
 	cache := &stubGatewayCache{sessionBindings: map[string]int64{}}
 	store := NewOpenAIWSStateStore(cache)

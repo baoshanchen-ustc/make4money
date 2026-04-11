@@ -53,6 +53,8 @@ type OpenAIWSStateStore interface {
 	BindResponseConn(responseID, connID string, ttl time.Duration)
 	GetResponseConn(responseID string) (string, bool)
 	DeleteResponseConn(responseID string)
+	DeleteConnBindings(connID string) (responseIDs []string, sessionKeys []string)
+	HasConnBindings(connID string) bool
 
 	BindSessionTurnState(groupID int64, sessionHash, turnState string, ttl time.Duration)
 	GetSessionTurnState(groupID int64, sessionHash string) (string, bool)
@@ -207,6 +209,78 @@ func (s *defaultOpenAIWSStateStore) DeleteResponseConn(responseID string) {
 	s.responseToConnMu.Lock()
 	delete(s.responseToConn, id)
 	s.responseToConnMu.Unlock()
+}
+
+func (s *defaultOpenAIWSStateStore) DeleteConnBindings(connID string) (responseIDs []string, sessionKeys []string) {
+	connID = strings.TrimSpace(connID)
+	if s == nil || connID == "" {
+		return nil, nil
+	}
+	s.maybeCleanup()
+	now := time.Now()
+
+	s.responseToConnMu.Lock()
+	for responseID, binding := range s.responseToConn {
+		if now.After(binding.expiresAt) || strings.TrimSpace(binding.connID) == "" {
+			delete(s.responseToConn, responseID)
+			continue
+		}
+		if strings.TrimSpace(binding.connID) != connID {
+			continue
+		}
+		delete(s.responseToConn, responseID)
+		responseIDs = append(responseIDs, responseID)
+	}
+	s.responseToConnMu.Unlock()
+
+	s.sessionToConnMu.Lock()
+	for sessionKey, binding := range s.sessionToConn {
+		if now.After(binding.expiresAt) || strings.TrimSpace(binding.connID) == "" {
+			delete(s.sessionToConn, sessionKey)
+			continue
+		}
+		if strings.TrimSpace(binding.connID) != connID {
+			continue
+		}
+		delete(s.sessionToConn, sessionKey)
+		sessionKeys = append(sessionKeys, sessionKey)
+	}
+	s.sessionToConnMu.Unlock()
+	return responseIDs, sessionKeys
+}
+
+func (s *defaultOpenAIWSStateStore) HasConnBindings(connID string) bool {
+	connID = strings.TrimSpace(connID)
+	if s == nil || connID == "" {
+		return false
+	}
+	s.maybeCleanup()
+	now := time.Now()
+
+	s.responseToConnMu.RLock()
+	for _, binding := range s.responseToConn {
+		if now.After(binding.expiresAt) || strings.TrimSpace(binding.connID) == "" {
+			continue
+		}
+		if strings.TrimSpace(binding.connID) == connID {
+			s.responseToConnMu.RUnlock()
+			return true
+		}
+	}
+	s.responseToConnMu.RUnlock()
+
+	s.sessionToConnMu.RLock()
+	for _, binding := range s.sessionToConn {
+		if now.After(binding.expiresAt) || strings.TrimSpace(binding.connID) == "" {
+			continue
+		}
+		if strings.TrimSpace(binding.connID) == connID {
+			s.sessionToConnMu.RUnlock()
+			return true
+		}
+	}
+	s.sessionToConnMu.RUnlock()
+	return false
 }
 
 func (s *defaultOpenAIWSStateStore) BindSessionTurnState(groupID int64, sessionHash, turnState string, ttl time.Duration) {

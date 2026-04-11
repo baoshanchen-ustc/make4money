@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"math"
 	"sort"
 	"strconv"
@@ -584,26 +585,56 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	filtered := make([]*Account, 0, len(accounts))
 	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
+	excludedCount := 0
+	unschedulableCount := 0
+	nonOpenAICount := 0
+	privacyRejectedCount := 0
+	modelRejectedCount := 0
+	transportRejectedCount := 0
 	for i := range accounts {
 		account := &accounts[i]
 		if req.ExcludedIDs != nil {
 			if _, excluded := req.ExcludedIDs[account.ID]; excluded {
+				excludedCount++
 				continue
 			}
 		}
-		if !account.IsSchedulable() || !account.IsOpenAI() {
+		if !account.IsSchedulable() {
+			unschedulableCount++
+			continue
+		}
+		if !account.IsOpenAI() {
+			nonOpenAICount++
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
 		if schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet() {
+			privacyRejectedCount++
 			_ = s.service.accountRepo.SetError(ctx, account.ID,
 				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 			continue
 		}
 		if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+			modelRejectedCount++
 			continue
 		}
 		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+			transportRejectedCount++
+			if req.RequiredTransport == OpenAIUpstreamTransportResponsesWebsocketV2 {
+				wsDecision := s.service.getOpenAIWSProtocolResolver().Resolve(account)
+				slog.Info("openai_ws_scheduler_transport_rejected_account",
+					"group_id", derefGroupID(req.GroupID),
+					"requested_model", req.RequestedModel,
+					"account_id", account.ID,
+					"account_name", account.Name,
+					"account_type", account.Type,
+					"resolved_transport", string(wsDecision.Transport),
+					"transport_reason", wsDecision.Reason,
+					"responses_ws_v2_enabled", account.IsOpenAIResponsesWebSocketV2Enabled(),
+					"resolved_ws_v2_mode", account.ResolveOpenAIResponsesWebSocketV2Mode(OpenAIWSIngressModeCtxPool),
+					"openai_ws_force_http", account.IsOpenAIWSForceHTTPEnabled(),
+				)
+			}
 			continue
 		}
 		filtered = append(filtered, account)
@@ -611,6 +642,21 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			ID:             account.ID,
 			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
+	}
+	if req.RequiredTransport == OpenAIUpstreamTransportResponsesWebsocketV2 || len(filtered) == 0 {
+		slog.Info("openai_ws_scheduler_filter_summary",
+			"group_id", derefGroupID(req.GroupID),
+			"requested_model", req.RequestedModel,
+			"required_transport", string(req.RequiredTransport),
+			"input_count", len(accounts),
+			"excluded_count", excludedCount,
+			"unschedulable_count", unschedulableCount,
+			"non_openai_count", nonOpenAICount,
+			"privacy_rejected_count", privacyRejectedCount,
+			"model_rejected_count", modelRejectedCount,
+			"transport_rejected_count", transportRejectedCount,
+			"filtered_count", len(filtered),
+		)
 	}
 	if len(filtered) == 0 {
 		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
@@ -703,14 +749,29 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	rankedCandidates := selectTopKOpenAICandidates(candidates, topK)
 	selectionOrder := buildOpenAIWeightedSelectionOrder(rankedCandidates, req)
 
+	freshRejectedCount := 0
+	freshTransportRejectedCount := 0
+	recheckRejectedCount := 0
+	recheckTransportRejectedCount := 0
+	acquireBusyCount := 0
 	for i := 0; i < len(selectionOrder); i++ {
 		candidate := selectionOrder[i]
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil {
+			freshRejectedCount++
+			continue
+		}
+		if !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+			freshTransportRejectedCount++
 			continue
 		}
 		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil {
+			recheckRejectedCount++
+			continue
+		}
+		if !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+			recheckTransportRejectedCount++
 			continue
 		}
 		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
@@ -727,13 +788,21 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				ReleaseFunc: result.ReleaseFunc,
 			}, len(candidates), topK, loadSkew, nil
 		}
+		acquireBusyCount++
 	}
 
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
+	waitPlanFreshRejectedCount := 0
+	waitPlanTransportRejectedCount := 0
 	for _, candidate := range selectionOrder {
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil {
+			waitPlanFreshRejectedCount++
+			continue
+		}
+		if !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+			waitPlanTransportRejectedCount++
 			continue
 		}
 		return &AccountSelectionResult{
@@ -746,6 +815,21 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			},
 		}, len(candidates), topK, loadSkew, nil
 	}
+
+	slog.Warn("openai_ws_scheduler_no_available_account",
+		"group_id", derefGroupID(req.GroupID),
+		"requested_model", req.RequestedModel,
+		"required_transport", string(req.RequiredTransport),
+		"candidate_count", len(candidates),
+		"top_k", topK,
+		"fresh_rejected_count", freshRejectedCount,
+		"fresh_transport_rejected_count", freshTransportRejectedCount,
+		"recheck_rejected_count", recheckRejectedCount,
+		"recheck_transport_rejected_count", recheckTransportRejectedCount,
+		"acquire_busy_count", acquireBusyCount,
+		"waitplan_fresh_rejected_count", waitPlanFreshRejectedCount,
+		"waitplan_transport_rejected_count", waitPlanTransportRejectedCount,
+	)
 
 	return nil, len(candidates), topK, loadSkew, ErrNoAvailableAccounts
 }

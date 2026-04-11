@@ -842,6 +842,33 @@ func TestOpenAIWSConnPool_QueueLimitPerConn_DefaultAndConfigured(t *testing.T) {
 	require.Equal(t, 9, pool.queueLimitPerConn())
 }
 
+func TestOpenAIWSConnPool_CloseConnHookCleansBindings(t *testing.T) {
+	cfg := &config.Config{}
+	pool := newOpenAIWSConnPool(cfg)
+	store := NewOpenAIWSStateStore(nil)
+	pool.setConnClosedHook(func(connID string) {
+		store.DeleteConnBindings(connID)
+	})
+
+	accountID := int64(401)
+	conn := newOpenAIWSConn("conn_cleanup_hook", accountID, &openAIWSFakeConn{}, nil)
+	ap := pool.getOrCreateAccountPool(accountID)
+	ap.mu.Lock()
+	ap.conns[conn.id] = conn
+	ap.mu.Unlock()
+
+	store.BindResponseConn("resp_cleanup_hook", conn.id, time.Minute)
+	store.BindSessionConn(9, "session_cleanup_hook", conn.id, time.Minute)
+	require.True(t, store.HasConnBindings(conn.id))
+
+	pool.evictConn(accountID, conn.id)
+	require.False(t, store.HasConnBindings(conn.id), "连接关闭后应同步清理 stale conn bindings")
+	_, ok := store.GetResponseConn("resp_cleanup_hook")
+	require.False(t, ok)
+	_, ok = store.GetSessionConn(9, "session_cleanup_hook")
+	require.False(t, ok)
+}
+
 func TestOpenAIWSConnPool_Close(t *testing.T) {
 	cfg := &config.Config{}
 	pool := newOpenAIWSConnPool(cfg)

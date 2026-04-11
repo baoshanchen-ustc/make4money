@@ -2098,6 +2098,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 		_, hasPreviousResponseID := wsReqBody["previous_response_id"]
+		explicitPreviousResponseID := hasPreviousResponseID && strings.TrimSpace(openAIWSPayloadString(wsReqBody, "previous_response_id")) != ""
 		logOpenAIWSModeDebug(
 			"forward_start account_id=%d account_type=%s model=%s stream=%v has_previous_response_id=%v",
 			account.ID,
@@ -2114,6 +2115,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		wsPrevResponseRecoveryTried := false
 		wsInvalidEncryptedContentRecoveryTried := false
 		recoverPrevResponseNotFound := func(attempt int) bool {
+			if explicitPreviousResponseID {
+				return false
+			}
 			if wsPrevResponseRecoveryTried {
 				return false
 			}
