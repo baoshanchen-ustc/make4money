@@ -33,20 +33,33 @@ jobs:
             crpi-5mbh0qm9ti5c2olw.cn-wulanchabu.personal.cr.aliyuncs.com \
             -u "${{ secrets.ACR_USER }}" --password-stdin
 
-      - name: Compute image tags
-        id: tags
+      - name: Compute version and tags
+        id: meta
         run: |
           REGISTRY=crpi-5mbh0qm9ti5c2olw.cn-wulanchabu.personal.cr.aliyuncs.com
           IMAGE=$REGISTRY/shuanbaoai/sub2api
+
+          # Short SHA for compact display (e.g. 6aa146b).
+          SHORT_SHA=${GITHUB_SHA::7}
+
+          # Base version from backend/cmd/server/VERSION (e.g. 0.1.110),
+          # appended with the fork identifier and short SHA so the UI shows
+          # something like v0.1.110-shuanbao.6aa146b instead of the full 40-char sha.
+          BASE_VERSION=$(tr -d '\r\n ' < backend/cmd/server/VERSION)
+          FULL_VERSION="${BASE_VERSION}-shuanbao.${SHORT_SHA}"
+          echo "version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
+
           {
             echo "${IMAGE}:latest"
-            echo "${IMAGE}:${{ github.sha }}"
+            echo "${IMAGE}:${SHORT_SHA}"
+            echo "${IMAGE}:${FULL_VERSION}"
             if [ -n "${{ github.event.inputs.tag_suffix }}" ]; then
               echo "${IMAGE}:${{ github.event.inputs.tag_suffix }}"
             fi
           } | tee /tmp/tags.txt
+
           {
-            echo 'list<<EOF'
+            echo 'tags<<EOF'
             cat /tmp/tags.txt
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
@@ -58,16 +71,17 @@ jobs:
           file: ./Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ steps.tags.outputs.list }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VERSION=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
             COMMIT=${{ github.sha }}
 
       - name: Summary
         run: |
           echo "### Pushed images" >> "$GITHUB_STEP_SUMMARY"
+          echo "version: \`${{ steps.meta.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat /tmp/tags.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
