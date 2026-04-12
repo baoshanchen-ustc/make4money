@@ -3475,6 +3475,11 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
 	}
+	// Copilot 账号的 model_mapping 仅用于转发时的名称重写（由 rewriteCopilotUpstreamModel 处理），
+	// 不应在账号选择阶段充当白名单过滤器。Copilot 账号支持所有模型，始终可调度。
+	if account.Platform == PlatformCopilot {
+		return true
+	}
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
 		requestedModel = claude.NormalizeModelID(requestedModel)
