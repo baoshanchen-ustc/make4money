@@ -367,7 +367,7 @@ func (h *CopilotGatewayHandler) ChatCompletions(c *gin.Context) {
 			routingLatencyMs := getContextLatencyMsPtr(c, service.OpsRoutingLatencyMsKey)
 			upstreamLatencyMsVal := getContextLatencyMsPtr(c, service.OpsUpstreamLatencyMsKey)
 			responseLatencyMsVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
-			capturedInitiator := service.CopilotInitiatorFromBody(body)
+			capturedInitiator := result.Initiator
 			// Capture request-scoped values before entering goroutine (gin.Context not safe across goroutines).
 			capturedReqBody := body
 			capturedUpstreamReqBody, capturedUpstreamRespBody := service.GetOpsUpstreamBodies(c)
@@ -812,7 +812,7 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 			routingLatencyMsResp := getContextLatencyMsPtr(c, service.OpsRoutingLatencyMsKey)
 			upstreamLatencyMsRespVal := getContextLatencyMsPtr(c, service.OpsUpstreamLatencyMsKey)
 			responseLatencyMsRespVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
-			capturedInitiatorResp := service.CopilotInitiatorFromBody(body)
+			capturedInitiatorResp := result.Initiator
 			// Capture request-scoped values before entering goroutine (gin.Context not safe across goroutines).
 			capturedReqBody := body
 			capturedUpstreamReqBodyResp, capturedUpstreamRespBodyResp := service.GetOpsUpstreamBodies(c)
@@ -1240,7 +1240,7 @@ func (h *CopilotGatewayHandler) Messages(c *gin.Context) {
 			routingLatencyMsMsg := getContextLatencyMsPtr(c, service.OpsRoutingLatencyMsKey)
 			upstreamLatencyMsMsgVal := getContextLatencyMsPtr(c, service.OpsUpstreamLatencyMsKey)
 			responseLatencyMsMsgVal := getContextLatencyMsPtr(c, service.OpsResponseLatencyMsKey)
-			capturedInitiatorMsg := service.CopilotInitiatorFromBody(body)
+			capturedInitiatorMsg := result.Initiator
 			// Capture request-scoped values before entering goroutine (gin.Context not safe across goroutines).
 			capturedReqBodyMsg := body
 			capturedUpstreamReqBodyMsg, capturedUpstreamRespBodyMsg := service.GetOpsUpstreamBodies(c)

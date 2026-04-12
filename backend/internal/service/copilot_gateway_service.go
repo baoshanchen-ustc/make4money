@@ -131,6 +131,10 @@ type CopilotForwardResult struct {
 	Duration        time.Duration // 请求总耗时
 	FirstTokenMs    *int          // 首token时间（流式请求，毫秒）
 	ReasoningEffort *string       // 推理强度（Responses API 请求，如 "low"/"medium"/"high"）
+	// Initiator is the actual X-Initiator value sent to the Copilot upstream.
+	// Populated by all forward functions so the handler can record it in analytics
+	// without re-computing (and potentially diverging from) the upstream value.
+	Initiator string
 }
 
 // CopilotUsage tracks token usage from a Copilot API response.
@@ -365,16 +369,28 @@ func (s *CopilotGatewayService) forwardChatCompletionsDirect(
 
 	// Handle error responses
 	if resp.StatusCode != http.StatusOK {
-		return s.handleErrorResponse(c, resp, account)
+		result, err := s.handleErrorResponse(c, resp, account)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
 
 	// Handle streaming response
 	if isStream {
-		return s.handleStreamingResponse(c, resp, model, upstreamSent, startTime, clientWantsUsageChunk)
+		result, err := s.handleStreamingResponse(c, resp, model, upstreamSent, startTime, clientWantsUsageChunk)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
 
 	// Handle non-streaming response
-	return s.handleNonStreamingResponse(c, resp, model, upstreamSent, startTime)
+	result, err := s.handleNonStreamingResponse(c, resp, model, upstreamSent, startTime)
+	if result != nil {
+		result.Initiator = initiator
+	}
+	return result, err
 }
 
 // forwardChatCompletionsViaResponses handles Chat Completions requests that
@@ -536,13 +552,25 @@ func (s *CopilotGatewayService) forwardChatCompletionsViaResponses(
 			// Not the unsupported-model error — restore body so handleErrorResponse can read it.
 			resp.Body = io.NopCloser(bytes.NewReader(errBody))
 		}
-		return s.handleErrorResponse(c, resp, account)
+		result, err := s.handleErrorResponse(c, resp, account)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
 
 	if clientWantsStream {
-		return s.handleChatViaResponsesStreamingResponse(c, resp, model, upstreamModel, clientWantsUsageChunk, startTime)
+		result, err := s.handleChatViaResponsesStreamingResponse(c, resp, model, upstreamModel, clientWantsUsageChunk, startTime)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
-	return s.handleChatViaResponsesNonStreamingResponse(c, resp, model, upstreamModel, startTime)
+	result, err := s.handleChatViaResponsesNonStreamingResponse(c, resp, model, upstreamModel, startTime)
+	if result != nil {
+		result.Initiator = initiator
+	}
+	return result, err
 }
 
 // forwardChatCompletionsViaMessages handles Chat Completions requests that
@@ -688,9 +716,17 @@ func (s *CopilotGatewayService) forwardChatCompletionsViaMessages(
 	// The upstream response is an Anthropic SSE stream.
 	// Translate it to OpenAI Chat Completions format.
 	if clientWantsStream {
-		return s.handleChatViaMessagesStreamingResponse(c, resp, model, upstreamModel, startTime)
+		result, err := s.handleChatViaMessagesStreamingResponse(c, resp, model, upstreamModel, startTime)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
-	return s.handleChatViaMessagesNonStreamingResponse(c, resp, model, upstreamModel, startTime)
+	result, err := s.handleChatViaMessagesNonStreamingResponse(c, resp, model, upstreamModel, startTime)
+	if result != nil {
+		result.Initiator = initiator
+	}
+	return result, err
 }
 func (s *CopilotGatewayService) handleChatViaResponsesStreamingResponse(
 	c *gin.Context,
@@ -1959,7 +1995,11 @@ func (s *CopilotGatewayService) ForwardResponses(
 		"latency_ms", time.Since(startTime).Milliseconds())
 
 	if resp.StatusCode != http.StatusOK {
-		return s.handleErrorResponse(c, resp, account)
+		result, err := s.handleErrorResponse(c, resp, account)
+		if result != nil {
+			result.Initiator = initiatorResp
+		}
+		return result, err
 	}
 
 	var result *CopilotForwardResult
@@ -1976,6 +2016,7 @@ func (s *CopilotGatewayService) ForwardResponses(
 	}
 	// Attach reasoning_effort extracted from request body.
 	result.ReasoningEffort = reasoningEffort
+	result.Initiator = initiatorResp
 	return result, nil
 }
 
@@ -2118,6 +2159,7 @@ func (s *CopilotGatewayService) ForwardMessages(
 	// to Responses API format and forward via that endpoint.
 	// /responses is only available on the canonical CopilotAPIBase (not plan subdomains).
 	if useResponses {
+		// forwardMessagesViaResponses computes and fills result.Initiator internally.
 		return s.forwardMessagesViaResponses(ctx, c, account, token, anthropicBody, openAIBody, upstreamSent, model, startTime, clientWantsStream)
 	}
 
@@ -2210,16 +2252,28 @@ func (s *CopilotGatewayService) ForwardMessages(
 				"x_request_id", resp.Header.Get("x-request-id"),
 				"openai_body_snip", truncateString(string(openAIBody), 2048))
 		}
-		return s.handleErrorResponse(c, resp, account)
+		result, err := s.handleErrorResponse(c, resp, account)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
 
 	if clientWantsStream {
 		// Client wants SSE → stream Anthropic events directly.
-		return s.handleMessagesStreamingResponse(c, resp, model, upstreamSent, startTime)
+		result, err := s.handleMessagesStreamingResponse(c, resp, model, upstreamSent, startTime)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
 	// Client wants non-streaming Anthropic JSON, but upstream is streaming.
 	// Reassemble the SSE chunks into a single OpenAI response, then translate.
-	return s.handleMessagesStreamToNonStreamingResponse(c, resp, model, upstreamSent, startTime)
+	result, err := s.handleMessagesStreamToNonStreamingResponse(c, resp, model, upstreamSent, startTime)
+	if result != nil {
+		result.Initiator = initiator
+	}
+	return result, err
 }
 
 // forwardMessagesViaResponses forwards a Claude Code /v1/messages request to the
@@ -2341,13 +2395,25 @@ func (s *CopilotGatewayService) forwardMessagesViaResponses(
 				"x_request_id", resp.Header.Get("x-request-id"),
 				"body_snip", truncateString(string(responsesBody), 2048))
 		}
-		return s.handleErrorResponse(c, resp, account)
+		result, err := s.handleErrorResponse(c, resp, account)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
 
 	if clientWantsStream {
-		return s.handleMessagesResponsesStreamingResponse(c, resp, clientModel, upstreamModel, startTime)
+		result, err := s.handleMessagesResponsesStreamingResponse(c, resp, clientModel, upstreamModel, startTime)
+		if result != nil {
+			result.Initiator = initiator
+		}
+		return result, err
 	}
-	return s.handleMessagesResponsesStreamToNonStreamingResponse(c, resp, clientModel, upstreamModel, startTime)
+	result, err := s.handleMessagesResponsesStreamToNonStreamingResponse(c, resp, clientModel, upstreamModel, startTime)
+	if result != nil {
+		result.Initiator = initiator
+	}
+	return result, err
 }
 
 // handleMessagesResponsesStreamingResponse translates a streaming Responses API response
