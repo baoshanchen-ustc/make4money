@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1931,5 +1932,557 @@ func TestStaticSupportedEndpoints(t *testing.T) {
 				t.Errorf("staticSupportedEndpoints(%q): hasResponses=%v, want %v (got %v)", tc.modelID, hasResponses, tc.wantResponses, eps)
 			}
 		})
+	}
+}
+
+// ── Session Cache End-to-End Tests ───────────────────────────────────────────
+
+// TestCopilotSessionCache_ChatCompletions verifies that ForwardChatCompletions
+// correctly applies session-level quota saving:
+//   - First request in a session → X-Initiator: user (Premium)
+//   - Second request in the same session → X-Initiator: agent (free)
+//   - Same raw session key from a different account → still X-Initiator: user
+func TestCopilotSessionCache_ChatCompletions(t *testing.T) {
+	var mu sync.Mutex
+	var capturedInitiators []string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		capturedInitiators = append(capturedInitiators, r.Header.Get("X-Initiator"))
+		mu.Unlock()
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n")
+		fmt.Fprint(w, "data: {\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("tok-session-chat")
+	provider.tokens[1] = &tok
+	provider.tokens[2] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	// A valid legacy metadata.user_id with an embedded session UUID.
+	const sessionUser = "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_12345678-1234-1234-1234-123456789abc"
+
+	// first-turn body: no assistant/tool messages → would normally be "user"
+	firstBody := []byte(`{"model":"gpt-4o","stream":false,"messages":[{"role":"user","content":"hello"}],"user":"` + sessionUser + `"}`)
+
+	makeCtx := func(accountID int64) (*gin.Context, *Account) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/chat/completions", nil)
+		account := &Account{
+			ID:          accountID,
+			Platform:    PlatformCopilot,
+			Type:        AccountTypeAPIKey,
+			Credentials: map[string]any{"github_token": "ghp_test", "base_url": srv.URL},
+		}
+		return c, account
+	}
+
+	gin.SetMode(gin.TestMode)
+
+	c1, acc1 := makeCtx(1)
+	result1, err := svc.ForwardChatCompletions(context.Background(), c1, acc1, firstBody)
+	if err != nil {
+		t.Fatalf("first request: ForwardChatCompletions: %v", err)
+	}
+
+	c2, acc2 := makeCtx(1)
+	result2, err := svc.ForwardChatCompletions(context.Background(), c2, acc2, firstBody)
+	if err != nil {
+		t.Fatalf("second request: ForwardChatCompletions: %v", err)
+	}
+
+	c3, acc3 := makeCtx(2)
+	result3, err := svc.ForwardChatCompletions(context.Background(), c3, acc3, firstBody)
+	if err != nil {
+		t.Fatalf("third request (account 2): ForwardChatCompletions: %v", err)
+	}
+
+	mu.Lock()
+	got := capturedInitiators
+	mu.Unlock()
+
+	if len(got) != 3 {
+		t.Fatalf("expected 3 upstream requests, got %d", len(got))
+	}
+	if got[0] != "user" {
+		t.Errorf("request 1 (account1 first): X-Initiator = %q, want %q", got[0], "user")
+	}
+	if got[1] != "agent" {
+		t.Errorf("request 2 (account1 second, same session): X-Initiator = %q, want %q", got[1], "agent")
+	}
+	if got[2] != "user" {
+		t.Errorf("request 3 (account2 same key, isolated): X-Initiator = %q, want %q", got[2], "user")
+	}
+
+	for i, res := range []*CopilotForwardResult{result1, result2, result3} {
+		if res != nil && res.Initiator != got[i] {
+			t.Errorf("result%d.Initiator = %q, want %q (must match upstream)", i+1, res.Initiator, got[i])
+		}
+	}
+}
+
+// TestCopilotSessionCache_ResponsesEndpoint verifies that ForwardResponses
+// correctly applies session-level quota saving via the Responses API path.
+func TestCopilotSessionCache_ResponsesEndpoint(t *testing.T) {
+	var mu sync.Mutex
+	var capturedInitiators []string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		capturedInitiators = append(capturedInitiators, r.Header.Get("X-Initiator"))
+		mu.Unlock()
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"model\":\"gpt-4o\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}],\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("tok-session-responses")
+	provider.tokens[1] = &tok
+	provider.tokens[2] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	const sessionUser = "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	firstBody := []byte(`{"model":"gpt-4o","input":"hello","user":"` + sessionUser + `"}`)
+
+	makeCtx := func(accountID int64, sessionHeader string) (*gin.Context, *Account) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/responses", nil)
+		if sessionHeader != "" {
+			c.Request.Header.Set("X-Session-ID", sessionHeader)
+		}
+		account := &Account{
+			ID:          accountID,
+			Platform:    PlatformCopilot,
+			Type:        AccountTypeAPIKey,
+			Credentials: map[string]any{"github_token": "ghp_test"},
+		}
+		return c, account
+	}
+
+	gin.SetMode(gin.TestMode)
+
+	c1, acc1 := makeCtx(1, "")
+	result1, err := svc.ForwardResponses(context.Background(), c1, acc1, firstBody)
+	if err != nil {
+		t.Fatalf("request 1: ForwardResponses: %v", err)
+	}
+
+	c2, acc2 := makeCtx(1, "")
+	result2, err := svc.ForwardResponses(context.Background(), c2, acc2, firstBody)
+	if err != nil {
+		t.Fatalf("request 2: ForwardResponses: %v", err)
+	}
+
+	c3, acc3 := makeCtx(2, "")
+	result3, err := svc.ForwardResponses(context.Background(), c3, acc3, firstBody)
+	if err != nil {
+		t.Fatalf("request 3 (account 2): ForwardResponses: %v", err)
+	}
+
+	firstBodyNoUser := []byte(`{"model":"gpt-4o","input":"hello"}`)
+	c4, acc4 := makeCtx(1, "xsession-codex-42")
+	result4, err := svc.ForwardResponses(context.Background(), c4, acc4, firstBodyNoUser)
+	if err != nil {
+		t.Fatalf("request 4 (X-Session-ID first): ForwardResponses: %v", err)
+	}
+
+	c5, acc5 := makeCtx(1, "xsession-codex-42")
+	result5, err := svc.ForwardResponses(context.Background(), c5, acc5, firstBodyNoUser)
+	if err != nil {
+		t.Fatalf("request 5 (X-Session-ID second): ForwardResponses: %v", err)
+	}
+
+	mu.Lock()
+	got := capturedInitiators
+	mu.Unlock()
+
+	wants := []string{"user", "agent", "user", "user", "agent"}
+	if len(got) != len(wants) {
+		t.Fatalf("expected %d upstream requests, got %d", len(wants), len(got))
+	}
+	for i, w := range wants {
+		if got[i] != w {
+			t.Errorf("request %d: X-Initiator = %q, want %q", i+1, got[i], w)
+		}
+	}
+	for i, res := range []*CopilotForwardResult{result1, result2, result3, result4, result5} {
+		if res != nil && res.Initiator != got[i] {
+			t.Errorf("result%d.Initiator = %q, want %q", i+1, res.Initiator, got[i])
+		}
+	}
+}
+
+// TestCopilotSessionCache_MessagesEndpoint verifies that ForwardMessages
+// correctly applies session-level quota saving on the Anthropic protocol path.
+func TestCopilotSessionCache_MessagesEndpoint(t *testing.T) {
+	var mu sync.Mutex
+	var capturedInitiators []string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"data":[{"id":"claude-sonnet-4-5","supported_endpoints":["/chat/completions"]}]}`)
+			return
+		}
+		mu.Lock()
+		capturedInitiators = append(capturedInitiators, r.Header.Get("X-Initiator"))
+		mu.Unlock()
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n")
+		fmt.Fprint(w, "data: {\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":3}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("tok-session-messages")
+	provider.tokens[1] = &tok
+	provider.tokens[2] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	const sessionUserID = "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_99999999-8888-7777-6666-555555555555"
+	firstBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"metadata":{"user_id":"` + sessionUserID + `"}}`)
+
+	makeCtx := func(accountID int64) (*gin.Context, *Account) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/messages", nil)
+		c.Request.Header.Set("Accept", "text/event-stream")
+		account := &Account{
+			ID:          accountID,
+			Platform:    PlatformCopilot,
+			Type:        AccountTypeAPIKey,
+			Credentials: map[string]any{"github_token": "ghp_test"},
+		}
+		return c, account
+	}
+
+	gin.SetMode(gin.TestMode)
+
+	c1, acc1 := makeCtx(1)
+	result1, err := svc.ForwardMessages(context.Background(), c1, acc1, firstBody)
+	if err != nil {
+		t.Fatalf("request 1: ForwardMessages: %v", err)
+	}
+
+	c2, acc2 := makeCtx(1)
+	result2, err := svc.ForwardMessages(context.Background(), c2, acc2, firstBody)
+	if err != nil {
+		t.Fatalf("request 2: ForwardMessages: %v", err)
+	}
+
+	c3, acc3 := makeCtx(2)
+	result3, err := svc.ForwardMessages(context.Background(), c3, acc3, firstBody)
+	if err != nil {
+		t.Fatalf("request 3 (account 2): ForwardMessages: %v", err)
+	}
+
+	mu.Lock()
+	got := capturedInitiators
+	mu.Unlock()
+
+	wants := []string{"user", "agent", "user"}
+	if len(got) != len(wants) {
+		t.Fatalf("expected %d upstream requests, got %d", len(wants), len(got))
+	}
+	for i, w := range wants {
+		if got[i] != w {
+			t.Errorf("request %d: X-Initiator = %q, want %q", i+1, got[i], w)
+		}
+	}
+	for i, res := range []*CopilotForwardResult{result1, result2, result3} {
+		if res != nil && res.Initiator != got[i] {
+			t.Errorf("result%d.Initiator = %q, want %q", i+1, res.Initiator, got[i])
+		}
+	}
+}
+
+// TestCopilotSessionCache_ViaResponsesBranch verifies session-cache wiring
+// inside forwardChatCompletionsViaResponses.
+func TestCopilotSessionCache_ViaResponsesBranch(t *testing.T) {
+	var mu sync.Mutex
+	var capturedInitiators []string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"data":[{"id":"gpt-4o","supported_endpoints":["/responses"]}]}`)
+			return
+		}
+		mu.Lock()
+		capturedInitiators = append(capturedInitiators, r.Header.Get("X-Initiator"))
+		mu.Unlock()
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"model\":\"gpt-4o\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"summary\"}]}],\"usage\":{\"input_tokens\":20,\"output_tokens\":5}}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("tok-via-responses-branch")
+	provider.tokens[1] = &tok
+	provider.tokens[2] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	const sessionUser = "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_11111111-2222-3333-4444-555555555555"
+	fileBody := []byte(`{"model":"gpt-4o","stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"summarize"},{"type":"file","file":{"filename":"doc.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}}]}],"user":"` + sessionUser + `"}`)
+
+	makeCtx := func(accountID int64) (*gin.Context, *Account) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/chat/completions", nil)
+		account := &Account{
+			ID:          accountID,
+			Platform:    PlatformCopilot,
+			Type:        AccountTypeAPIKey,
+			Credentials: map[string]any{"github_token": "ghp_test"},
+		}
+		return c, account
+	}
+
+	gin.SetMode(gin.TestMode)
+
+	c1, acc1 := makeCtx(1)
+	result1, err := svc.ForwardChatCompletions(context.Background(), c1, acc1, fileBody)
+	if err != nil {
+		t.Fatalf("request 1: ForwardChatCompletions (viaResponses): %v", err)
+	}
+
+	c2, acc2 := makeCtx(1)
+	result2, err := svc.ForwardChatCompletions(context.Background(), c2, acc2, fileBody)
+	if err != nil {
+		t.Fatalf("request 2: ForwardChatCompletions (viaResponses): %v", err)
+	}
+
+	c3, acc3 := makeCtx(2)
+	result3, err := svc.ForwardChatCompletions(context.Background(), c3, acc3, fileBody)
+	if err != nil {
+		t.Fatalf("request 3 (account 2): ForwardChatCompletions (viaResponses): %v", err)
+	}
+
+	mu.Lock()
+	got := capturedInitiators
+	mu.Unlock()
+
+	wants := []string{"user", "agent", "user"}
+	if len(got) != len(wants) {
+		t.Fatalf("expected %d upstream requests, got %d (paths hit: check /models vs /responses)", len(wants), len(got))
+	}
+	for i, w := range wants {
+		if got[i] != w {
+			t.Errorf("request %d (viaResponses branch): X-Initiator = %q, want %q", i+1, got[i], w)
+		}
+	}
+	for i, res := range []*CopilotForwardResult{result1, result2, result3} {
+		if res != nil && res.Initiator != got[i] {
+			t.Errorf("result%d.Initiator = %q, want %q", i+1, res.Initiator, got[i])
+		}
+	}
+}
+
+// TestCopilotSessionCache_ViaMessagesBranch verifies session-cache wiring inside
+// forwardChatCompletionsViaMessages (file attachment → Anthropic /v1/messages bridge).
+func TestCopilotSessionCache_ViaMessagesBranch(t *testing.T) {
+	var mu sync.Mutex
+	var capturedInitiators []string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"data":[{"id":"claude-sonnet-4-5","supported_endpoints":["/v1/messages"]}]}`)
+			return
+		}
+		mu.Lock()
+		capturedInitiators = append(capturedInitiators, r.Header.Get("X-Initiator"))
+		mu.Unlock()
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-5\",\"stop_reason\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\n")
+		fmt.Fprint(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")
+		fmt.Fprint(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n")
+		fmt.Fprint(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("tok-via-messages-branch")
+	provider.tokens[1] = &tok
+	provider.tokens[2] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	const sessionUser = "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_aaaabbbb-cccc-dddd-eeee-ffff11112222"
+	fileBody := []byte(`{"model":"claude-sonnet-4-5","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"summarize"},{"type":"file","file":{"filename":"doc.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}}]}],"user":"` + sessionUser + `"}`)
+
+	makeCtx := func(accountID int64) (*gin.Context, *Account) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/chat/completions", nil)
+		account := &Account{
+			ID:          accountID,
+			Platform:    PlatformCopilot,
+			Type:        AccountTypeAPIKey,
+			Credentials: map[string]any{"github_token": "ghp_test"},
+		}
+		return c, account
+	}
+
+	gin.SetMode(gin.TestMode)
+
+	c1, acc1 := makeCtx(1)
+	result1, err := svc.ForwardChatCompletions(context.Background(), c1, acc1, fileBody)
+	if err != nil {
+		t.Fatalf("request 1: ForwardChatCompletions (viaMessages): %v", err)
+	}
+
+	c2, acc2 := makeCtx(1)
+	result2, err := svc.ForwardChatCompletions(context.Background(), c2, acc2, fileBody)
+	if err != nil {
+		t.Fatalf("request 2: ForwardChatCompletions (viaMessages): %v", err)
+	}
+
+	c3, acc3 := makeCtx(2)
+	result3, err := svc.ForwardChatCompletions(context.Background(), c3, acc3, fileBody)
+	if err != nil {
+		t.Fatalf("request 3 (account 2): ForwardChatCompletions (viaMessages): %v", err)
+	}
+
+	mu.Lock()
+	got := capturedInitiators
+	mu.Unlock()
+
+	wants := []string{"user", "agent", "user"}
+	if len(got) != len(wants) {
+		t.Fatalf("expected %d upstream requests, got %d", len(wants), len(got))
+	}
+	for i, w := range wants {
+		if got[i] != w {
+			t.Errorf("request %d (viaMessages branch): X-Initiator = %q, want %q", i+1, got[i], w)
+		}
+	}
+	for i, res := range []*CopilotForwardResult{result1, result2, result3} {
+		if res != nil && res.Initiator != got[i] {
+			t.Errorf("result%d.Initiator = %q, want %q", i+1, res.Initiator, got[i])
+		}
+	}
+}
+
+// TestCopilotSessionCache_MessagesViaResponsesBranch verifies session-cache
+// wiring inside forwardMessagesViaResponses (Anthropic /v1/messages → Responses API bridge).
+func TestCopilotSessionCache_MessagesViaResponsesBranch(t *testing.T) {
+	var mu sync.Mutex
+	var capturedInitiators []string
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"data":[{"id":"claude-sonnet-4-5","supported_endpoints":["/responses"]}]}`)
+			return
+		}
+		mu.Lock()
+		capturedInitiators = append(capturedInitiators, r.Header.Get("X-Initiator"))
+		mu.Unlock()
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"model\":\"claude-sonnet-4-5\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}],\"usage\":{\"input_tokens\":10,\"output_tokens\":3}}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewCopilotTokenProvider()
+	tok := newCopilotTestToken("tok-messages-via-responses-branch")
+	provider.tokens[1] = &tok
+	provider.tokens[2] = &tok
+
+	svc := NewCopilotGatewayService(provider)
+	svc.httpClient = newRedirectingHTTPClient(srv)
+
+	const sessionUserID = "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_ccccdddd-eeee-ffff-0000-111122223333"
+	firstBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"metadata":{"user_id":"` + sessionUserID + `"}}`)
+
+	makeCtx := func(accountID int64) (*gin.Context, *Account) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/copilot/v1/messages", nil)
+		c.Request.Header.Set("Accept", "text/event-stream")
+		account := &Account{
+			ID:          accountID,
+			Platform:    PlatformCopilot,
+			Type:        AccountTypeAPIKey,
+			Credentials: map[string]any{"github_token": "ghp_test"},
+		}
+		return c, account
+	}
+
+	gin.SetMode(gin.TestMode)
+
+	c1, acc1 := makeCtx(1)
+	result1, err := svc.ForwardMessages(context.Background(), c1, acc1, firstBody)
+	if err != nil {
+		t.Fatalf("request 1: ForwardMessages (viaResponses branch): %v", err)
+	}
+
+	c2, acc2 := makeCtx(1)
+	result2, err := svc.ForwardMessages(context.Background(), c2, acc2, firstBody)
+	if err != nil {
+		t.Fatalf("request 2: ForwardMessages (viaResponses branch): %v", err)
+	}
+
+	c3, acc3 := makeCtx(2)
+	result3, err := svc.ForwardMessages(context.Background(), c3, acc3, firstBody)
+	if err != nil {
+		t.Fatalf("request 3 (account 2): ForwardMessages (viaResponses branch): %v", err)
+	}
+
+	mu.Lock()
+	got := capturedInitiators
+	mu.Unlock()
+
+	wants := []string{"user", "agent", "user"}
+	if len(got) != len(wants) {
+		t.Fatalf("expected %d upstream requests, got %d", len(wants), len(got))
+	}
+	for i, w := range wants {
+		if got[i] != w {
+			t.Errorf("request %d (messagesViaResponses branch): X-Initiator = %q, want %q", i+1, got[i], w)
+		}
+	}
+	for i, res := range []*CopilotForwardResult{result1, result2, result3} {
+		if res != nil && res.Initiator != got[i] {
+			t.Errorf("result%d.Initiator = %q, want %q", i+1, res.Initiator, got[i])
+		}
 	}
 }
