@@ -649,16 +649,6 @@ const {
   initialParams: { platform: defaultPlatform, type: '', status: '', group: '', search: '' }
 })
 
-// 同组件路由切换同步：/admin/accounts ↔ /admin/copilot/accounts 复用同一实例时，
-// 监听 route.meta.defaultPlatform 变化，重置 platform 筛选并重新加载。
-watch(
-  () => route.meta.defaultPlatform as string | undefined,
-  (newDefault) => {
-    params.platform = typeof newDefault === 'string' ? newDefault : ''
-    baseReload()
-  }
-)
-
 const {
   selectedIds: selIds,
   allVisibleSelected,
@@ -711,6 +701,17 @@ const reload = async () => {
   await baseReload()
   await Promise.all([refreshTodayStatsBatch(), refreshCopilotQuotaBatch()])
 }
+
+// 同组件路由切换同步：/admin/accounts ↔ /admin/copilot/accounts 复用同一实例时，
+// 监听 route.meta.defaultPlatform 变化，重置 platform 筛选并完整刷新（含统计列）。
+// 注意：必须放在 reload() 定义之后，watch 的 callback 才能引用到 reload。
+watch(
+  () => route.meta.defaultPlatform as string | undefined,
+  (newDefault) => {
+    params.platform = typeof newDefault === 'string' ? newDefault : ''
+    reload()
+  }
+)
 
 const debouncedReload = () => {
   hasPendingListSync.value = false
