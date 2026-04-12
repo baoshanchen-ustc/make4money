@@ -21,6 +21,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// copilotPlatformConfigQuerier 是 handler 包内部使用的窄接口，
+// 只需 GetByPlanType 一个方法，便于在测试中 stub。
+type copilotPlatformConfigQuerier interface {
+	GetByPlanType(ctx context.Context, planType string) (*service.CopilotPlatformConfigEntry, error)
+}
+
 // CopilotGatewayHandler handles GitHub Copilot API gateway requests.
 //
 // It exposes OpenAI-compatible endpoints (/copilot/v1/chat/completions, /copilot/v1/models)
@@ -73,6 +79,9 @@ type CopilotGatewayHandler struct {
 	// modelCache stores per-group model list cache entries keyed by groupID.
 	// groupID 0 is used when apiKey.GroupID is nil.
 	modelCache map[int64]*copilotModelCacheEntry
+
+	// platformConfigSvc 用于 checkCopilotBodySize 的平台配置 fallback。
+	platformConfigSvc copilotPlatformConfigQuerier
 }
 
 // NewCopilotGatewayHandler creates a new CopilotGatewayHandler.
@@ -108,6 +117,11 @@ func NewCopilotGatewayHandler(
 		defaultMaxBodyBytes:   defaultMaxBodyBytes,
 		modelCache:            make(map[int64]*copilotModelCacheEntry),
 	}
+}
+
+// SetPlatformConfigService 注入平台配置服务，供 checkCopilotBodySize 使用。
+func (h *CopilotGatewayHandler) SetPlatformConfigService(svc copilotPlatformConfigQuerier) {
+	h.platformConfigSvc = svc
 }
 
 // ChatCompletions handles Copilot /v1/chat/completions endpoint (OpenAI-compatible).
@@ -885,7 +899,8 @@ func (h *CopilotGatewayHandler) Responses(c *gin.Context) {
 func (h *CopilotGatewayHandler) checkCopilotBodySize(c *gin.Context, body []byte, account *service.Account, anthropicFmt bool) bool {
 	limit := account.GetMaxBodyBytes()
 	if limit <= 0 {
-		limit = h.defaultMaxBodyBytes
+		// 层 2：查平台配置 max_body_kb
+		limit = h.platformBodyLimit(c.Request.Context(), account)
 	}
 	if len(body) <= limit {
 		return false
@@ -901,6 +916,20 @@ func (h *CopilotGatewayHandler) checkCopilotBodySize(c *gin.Context, body []byte
 		h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", msg)
 	}
 	return true
+}
+
+// platformBodyLimit 从平台配置获取 max_body_kb（字节），失败时回退到系统默认。
+func (h *CopilotGatewayHandler) platformBodyLimit(ctx context.Context, account *service.Account) int {
+	if h.platformConfigSvc != nil && account != nil {
+		planType := account.GetCredential("plan_type")
+		if planType != "" {
+			cfg, err := h.platformConfigSvc.GetByPlanType(ctx, planType)
+			if err == nil && cfg != nil && cfg.MaxBodyKB != nil && *cfg.MaxBodyKB > 0 {
+				return *cfg.MaxBodyKB * 1024
+			}
+		}
+	}
+	return h.defaultMaxBodyBytes
 }
 
 // errorResponse returns OpenAI API format error response.

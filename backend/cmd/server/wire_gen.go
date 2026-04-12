@@ -243,6 +243,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	soraClientHandler := handler.NewSoraClientHandler(soraGenerationService, soraQuotaService, soraS3Storage, soraGatewayService, gatewayService, soraMediaStorage, apiKeyService)
 	soraGatewayHandler := handler.NewSoraGatewayHandler(gatewayService, soraGatewayService, concurrencyService, billingCacheService, usageRecordWorkerPool, apiKeyService, configConfig, anomalyService)
 	copilotGatewayHandler := handler.NewCopilotGatewayHandler(gatewayService, copilotGatewayService, concurrencyService, billingCacheService, apiKeyService, configConfig, anomalyService)
+	copilotGatewayHandler.SetPlatformConfigService(copilotPlatformConfigService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	totpHandler := handler.NewTotpHandler(totpService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
