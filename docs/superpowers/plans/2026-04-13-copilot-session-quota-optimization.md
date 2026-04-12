@@ -1217,7 +1217,7 @@ func TestCopilotSessionCache_ViaMessagesBranch(t *testing.T) {
     svc := NewCopilotGatewayService(provider)
     svc.httpClient = newRedirectingHTTPClient(srv)
 
-    const sessionUser = "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_aaaabbbb-cccc-dddd-eeee-ffffgggggggg"
+    const sessionUser = "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_aaaabbbb-cccc-dddd-eeee-ffff11112222"
 
     // File body targeting claude-sonnet-4-5 (supports /v1/messages, not /responses).
     fileBody := []byte(`{"model":"claude-sonnet-4-5","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"summarize"},{"type":"file","file":{"filename":"doc.pdf","file_data":"data:application/pdf;base64,JVBERi0x"}}]}],"user":"` + sessionUser + `"}`)
