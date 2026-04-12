@@ -43,6 +43,10 @@ type CopilotGatewayService struct {
 
 	// platformConfigSvc 用于读取账号级平台配置（继承等逻辑）。
 	platformConfigSvc *CopilotPlatformConfigService
+
+	// sessionCache tracks per-session Premium quota: first request pays user quota,
+	// subsequent requests in the same session use free agent quota.
+	sessionCache *copilotSessionCache
 }
 
 // copilotModelEndpointsCacheEntry holds a per-account cache of model→supported_endpoints.
@@ -87,14 +91,29 @@ func NewCopilotGatewayService(
 		MaxIdleConnsPerHost: 50,
 		IdleConnTimeout:     90 * time.Second,
 	}
-	return &CopilotGatewayService{
+	svc := &CopilotGatewayService{
 		tokenProvider: tokenProvider,
 		httpClient: &http.Client{
 			Timeout:   5 * time.Minute, // long timeout for streaming
 			Transport: transport,
 		},
 		modelEndpointsCache: make(map[int64]*copilotModelEndpointsCacheEntry),
+		sessionCache:        newCopilotSessionCache(2 * time.Hour),
 	}
+
+	// Start background eviction: runs every 10 minutes to prevent unbounded
+	// memory growth from expired session entries.
+	// The goroutine leaks only when the process exits — acceptable for a
+	// long-lived service singleton.
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			svc.sessionCache.evictExpired()
+		}
+	}()
+
+	return svc
 }
 
 // SetPlatformConfigService 注入平台配置服务（供继承逻辑使用）。
