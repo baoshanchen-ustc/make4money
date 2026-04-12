@@ -553,6 +553,20 @@ func (_u *GroupUpdate) SetNillableDefaultMappedModel(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetProxyBucketLoadBalanceEnabled sets the "proxy_bucket_load_balance_enabled" field.
+func (_u *GroupUpdate) SetProxyBucketLoadBalanceEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetProxyBucketLoadBalanceEnabled(v)
+	return _u
+}
+
+// SetNillableProxyBucketLoadBalanceEnabled sets the "proxy_bucket_load_balance_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableProxyBucketLoadBalanceEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetProxyBucketLoadBalanceEnabled(*v)
+	}
+	return _u
+}
+
 // SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
 func (_u *GroupUpdate) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *GroupUpdate {
 	_u.mutation.SetMessagesDispatchModelConfig(v)
@@ -1026,6 +1040,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.DefaultMappedModel(); ok {
 		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ProxyBucketLoadBalanceEnabled(); ok {
+		_spec.SetField(group.FieldProxyBucketLoadBalanceEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
@@ -1861,6 +1878,20 @@ func (_u *GroupUpdateOne) SetNillableDefaultMappedModel(v *string) *GroupUpdateO
 	return _u
 }
 
+// SetProxyBucketLoadBalanceEnabled sets the "proxy_bucket_load_balance_enabled" field.
+func (_u *GroupUpdateOne) SetProxyBucketLoadBalanceEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetProxyBucketLoadBalanceEnabled(v)
+	return _u
+}
+
+// SetNillableProxyBucketLoadBalanceEnabled sets the "proxy_bucket_load_balance_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableProxyBucketLoadBalanceEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetProxyBucketLoadBalanceEnabled(*v)
+	}
+	return _u
+}
+
 // SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
 func (_u *GroupUpdateOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *GroupUpdateOne {
 	_u.mutation.SetMessagesDispatchModelConfig(v)
@@ -2364,6 +2395,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.DefaultMappedModel(); ok {
 		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ProxyBucketLoadBalanceEnabled(); ok {
+		_spec.SetField(group.FieldProxyBucketLoadBalanceEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)

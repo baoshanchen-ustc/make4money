@@ -221,8 +221,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
-	sortBy := c.DefaultQuery("sort_by", "name")
-	sortOrder := c.DefaultQuery("sort_order", "asc")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {

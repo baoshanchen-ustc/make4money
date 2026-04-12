@@ -3464,7 +3464,6 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 const closeCreateModal = () => {
   showCreateModal.value = false;
   createModelRoutingRules.value.forEach((rule) => {
-  createModelRoutingRules.value.forEach((rule) => {
     accountSearchRunner.clearKey(getCreateRuleSearchKey(rule));
   });
   clearAllAccountSearchState();
