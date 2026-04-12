@@ -156,3 +156,4 @@ backend/logs/*
 .aidesigner/*
 !.aidesigner/.gitkeep
 .worktrees/
+.mcp.json
