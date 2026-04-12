@@ -297,6 +297,22 @@ func (s *CopilotGatewayService) forwardChatCompletionsDirect(
 	// Determine X-Initiator: "agent" for multi-turn conversations (has assistant/tool messages),
 	// "user" for the first turn. Matches TypeScript copilot-api reference logic.
 	initiator := copilotInitiator(body)
+	// Session-level quota optimization: if this request belongs to a known
+	// session (scoped to this account), override to "agent" regardless of
+	// message history.
+	// Priority: X-Session-ID header > metadata.user_id in body.user field.
+	// Cache key is namespaced by account.ID to prevent cross-tenant pollution.
+	if rawSK := sessionKeyFromHeader(c); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	} else if rawSK := extractSessionKeyFromOpenAIBody(body); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	}
 
 	// Build upstream request
 	upstreamURL := baseURL + "/chat/completions"
@@ -453,6 +469,18 @@ func (s *CopilotGatewayService) forwardChatCompletionsViaResponses(
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	initiator := copilotInitiator(body)
+	// Session-level quota optimization: override to "agent" if session already seen.
+	if rawSK := sessionKeyFromHeader(c); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	} else if rawSK := extractSessionKeyFromOpenAIBody(body); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	}
 	for k, vals := range copilot.CopilotHeaders(initiator, false) {
 		for _, v := range vals {
 			req.Header.Set(k, v)
@@ -593,6 +621,18 @@ func (s *CopilotGatewayService) forwardChatCompletionsViaMessages(
 	baseURL := copilot.CopilotAPIBase
 
 	initiator := copilotInitiator(body)
+	// Session-level quota optimization: override to "agent" if session already seen.
+	if rawSK := sessionKeyFromHeader(c); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	} else if rawSK := extractSessionKeyFromOpenAIBody(body); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/messages", bytes.NewReader(anthropicBody))
 	if err != nil {
 		return nil, fmt.Errorf("copilot chat via messages: build request: %w", err)
@@ -1864,7 +1904,23 @@ func (s *CopilotGatewayService) ForwardResponses(
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	for k, vals := range copilot.CopilotHeaders(copilotInitiatorFromResponsesBody(body), false) {
+	initiatorResp := copilotInitiatorFromResponsesBody(body)
+	// Session-level quota optimization for Responses path (Codex CLI).
+	// previous_response_id already causes copilotInitiatorFromResponsesBody to return
+	// "agent" for chained responses. Session cache further handles concurrent sub-tasks
+	// within the same session.
+	if rawSK := sessionKeyFromHeader(c); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiatorResp = "agent"
+		}
+	} else if rawSK := extractSessionKeyFromOpenAIBody(body); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiatorResp = "agent"
+		}
+	}
+	for k, vals := range copilot.CopilotHeaders(initiatorResp, false) {
 		for _, v := range vals {
 			req.Header.Set(k, v)
 		}
@@ -2079,6 +2135,19 @@ func (s *CopilotGatewayService) ForwardMessages(
 	// or tool turns (multi-turn / sub-agent call), "user" for the first turn.
 	// This mirrors the TypeScript copilot-api reference implementation.
 	initiator := copilotInitiator(openAIBody)
+	// Session-level quota optimization for Anthropic Messages path.
+	// Priority: X-Session-ID header > metadata.user_id in anthropicBody.
+	if rawSK := sessionKeyFromHeader(c); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	} else if rawSK := extractSessionKeyFromAnthropicBody(anthropicBody); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	}
 
 	// Detect whether the original Anthropic request contains any image blocks.
 	// Copilot requires the Copilot-Vision-Request: true header to enable vision
@@ -2216,6 +2285,18 @@ func (s *CopilotGatewayService) forwardMessagesViaResponses(
 	// Use the translated OpenAI body to determine X-Initiator (agent vs user),
 	// matching the same multi-turn detection logic as the /chat/completions path.
 	initiator := copilotInitiator(openAIBody)
+	// Session-level quota optimization for Anthropic→Responses bridge.
+	if rawSK := sessionKeyFromHeader(c); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	} else if rawSK := extractSessionKeyFromAnthropicBody(anthropicBody); rawSK != "" {
+		sk := fmt.Sprintf("%d:%s", account.ID, rawSK)
+		if s.sessionCache.markAndCheckSeen(sk) {
+			initiator = "agent"
+		}
+	}
 	for k, vals := range copilot.CopilotHeaders(initiator, containsImageBlock(anthropicBody)) {
 		for _, v := range vals {
 			req.Header.Set(k, v)
