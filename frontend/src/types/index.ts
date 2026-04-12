@@ -121,6 +121,7 @@ export interface PublicSettings {
   version: string
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean
+  balance_low_notify_threshold: number
 }
 
 export interface AuthResponse {
