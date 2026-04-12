@@ -231,6 +231,25 @@ const perplexityModels = [
   'llama-3-sonar-small-32k-chat', 'llama-3-sonar-large-32k-chat'
 ]
 
+// GitHub Copilot 平台支持的模型
+const copilotModels: string[] = [
+  'gpt-4o',
+  'gpt-4o-mini',
+  'gpt-4.1',
+  'gpt-4.1-mini',
+  'gpt-4.1-nano',
+  'o4-mini',
+  'o3-mini',
+  'claude-sonnet-4',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-6',
+  'claude-opus-4-5',
+  'claude-opus-4-6',
+  'claude-haiku-4-5',
+  'claude-3.5-sonnet',
+  'gemini-2.0-flash-001',
+]
+
 // 所有模型（去重）
 const allModelsList: string[] = [
   ...openaiModels,
@@ -402,6 +421,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels
     case 'perplexity': return perplexityModels
+    case 'copilot': return copilotModels
     default: return claudeModels
   }
 }
