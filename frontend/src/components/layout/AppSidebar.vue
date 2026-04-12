@@ -637,8 +637,10 @@ const adminNavItems = computed((): NavItem[] => {
           { path: '/admin/ops/request-inspect', label: t('nav.opsRequestInspect'), icon: InspectIcon }
         ]
       : []),
+    { path: '/admin/copilot/platform', label: t('nav.copilotPlatformConfig'), icon: CogIcon },
+    { path: '/admin/copilot/accounts', label: t('nav.copilotAccountList'), icon: GlobeIcon },
+    { path: '/admin/copilot/cost', label: t('nav.copilotAccounts'), icon: CreditCardIcon },
     { path: '/admin/copilot/users', label: t('nav.copilotUsers'), icon: UsersIcon },
-    { path: '/admin/copilot/accounts', label: t('nav.copilotAccounts'), icon: CreditCardIcon },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/user-view', label: t('nav.userView'), icon: UserViewIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
