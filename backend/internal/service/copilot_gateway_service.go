@@ -40,6 +40,9 @@ type CopilotGatewayService struct {
 	modelEndpointsCacheMu sync.RWMutex
 	// modelEndpointsCache maps accountID → per-model supported_endpoints, cached from /models.
 	modelEndpointsCache map[int64]*copilotModelEndpointsCacheEntry
+
+	// platformConfigSvc 用于读取账号级平台配置（继承等逻辑）。
+	platformConfigSvc *CopilotPlatformConfigService
 }
 
 // copilotModelEndpointsCacheEntry holds a per-account cache of model→supported_endpoints.
@@ -92,6 +95,11 @@ func NewCopilotGatewayService(
 		},
 		modelEndpointsCache: make(map[int64]*copilotModelEndpointsCacheEntry),
 	}
+}
+
+// SetPlatformConfigService 注入平台配置服务（供继承逻辑使用）。
+func (s *CopilotGatewayService) SetPlatformConfigService(svc *CopilotPlatformConfigService) {
+	s.platformConfigSvc = svc
 }
 
 // CopilotForwardResult holds the result of a Copilot API request.
