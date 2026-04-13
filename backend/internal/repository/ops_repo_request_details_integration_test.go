@@ -19,13 +19,19 @@ import (
 // field-mapping correctness for both the success (usage_logs) and error
 // (ops_error_logs) CTE branches.
 //
-// Each test is isolated via a per-test ent transaction that rolls back on
-// cleanup, so no data leaks between tests.
+// Data written via global integrationDB (required so the CTE query can see it)
+// is cleaned up in TearDownTest to avoid polluting other suites' entity-count
+// assertions (e.g. TestUsageLogRepoSuite/TestDashboardStats_*).
 type OpsRequestDetailsIntegrationSuite struct {
 	suite.Suite
 	ctx     context.Context
 	opsRepo *opsRepository
 	logRepo *usageLogRepository
+
+	// Track entities created in each test for cleanup in TearDownTest.
+	createdUserIDs    []int
+	createdAPIKeyIDs  []int
+	createdAccountIDs []int
 }
 
 func (s *OpsRequestDetailsIntegrationSuite) SetupTest() {
@@ -35,6 +41,28 @@ func (s *OpsRequestDetailsIntegrationSuite) SetupTest() {
 	// request IDs and time windows per test to avoid cross-test interference.
 	s.opsRepo = &opsRepository{db: integrationDB}
 	s.logRepo = newUsageLogRepositoryWithSQL(integrationEntClient, integrationDB)
+
+	// Reset per-test tracking slices.
+	s.createdUserIDs = nil
+	s.createdAPIKeyIDs = nil
+	s.createdAccountIDs = nil
+}
+
+// TearDownTest deletes all entities created during the test so that global
+// entity counts (users, api_keys, accounts) do not leak into other suites.
+func (s *OpsRequestDetailsIntegrationSuite) TearDownTest() {
+	ctx := context.Background()
+	client := testEntClient(s.T())
+
+	for _, id := range s.createdUserIDs {
+		_ = client.User.DeleteOneID(id).Exec(ctx)
+	}
+	for _, id := range s.createdAPIKeyIDs {
+		_ = client.APIKey.DeleteOneID(id).Exec(ctx)
+	}
+	for _, id := range s.createdAccountIDs {
+		_ = client.Account.DeleteOneID(id).Exec(ctx)
+	}
 }
 
 func TestOpsRequestDetailsIntegrationSuite(t *testing.T) {
@@ -50,6 +78,33 @@ func ptr[T any](v T) *T { return &v }
 // constraint collisions when tests run in the same DB instance.
 func uniqueEmail(tag string) string {
 	return fmt.Sprintf("ops-rd-%s-%s@example.com", tag, uuid.NewString()[:8])
+}
+
+// createTrackedUser creates a user via global DB and registers it for cleanup.
+func (s *OpsRequestDetailsIntegrationSuite) createTrackedUser(u *service.User) *service.User {
+	s.T().Helper()
+	client := testEntClient(s.T())
+	created := mustCreateUser(s.T(), client, u)
+	s.createdUserIDs = append(s.createdUserIDs, created.ID)
+	return created
+}
+
+// createTrackedAPIKey creates an API key via global DB and registers it for cleanup.
+func (s *OpsRequestDetailsIntegrationSuite) createTrackedAPIKey(k *service.APIKey) *service.APIKey {
+	s.T().Helper()
+	client := testEntClient(s.T())
+	created := mustCreateApiKey(s.T(), client, k)
+	s.createdAPIKeyIDs = append(s.createdAPIKeyIDs, created.ID)
+	return created
+}
+
+// createTrackedAccount creates an account via global DB and registers it for cleanup.
+func (s *OpsRequestDetailsIntegrationSuite) createTrackedAccount(a *service.Account) *service.Account {
+	s.T().Helper()
+	client := testEntClient(s.T())
+	created := mustCreateAccount(s.T(), client, a)
+	s.createdAccountIDs = append(s.createdAccountIDs, created.ID)
+	return created
 }
 
 // insertUsageLog inserts a single usage_log row directly through the
@@ -106,15 +161,13 @@ func (s *OpsRequestDetailsIntegrationSuite) listInWindow(at time.Time) ([]*servi
 // caused spansJSON to receive the upstream_model string, causing Spans to be
 // silently dropped.
 func (s *OpsRequestDetailsIntegrationSuite) TestSuccessBranch_UpstreamModelAndAPIKeyName() {
-	client := testEntClient(s.T())
-
-	user := mustCreateUser(s.T(), client, &service.User{Email: uniqueEmail("succ-user")})
-	apiKey := mustCreateApiKey(s.T(), client, &service.APIKey{
+	user := s.createTrackedUser(&service.User{Email: uniqueEmail("succ-user")})
+	apiKey := s.createTrackedAPIKey(&service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-succ-" + uuid.NewString()[:8],
 		Name:   "my-mapped-key",
 	})
-	account := mustCreateAccount(s.T(), client, &service.Account{Name: "acc-succ-" + uuid.NewString()[:8]})
+	account := s.createTrackedAccount(&service.Account{Name: "acc-succ-" + uuid.NewString()[:8]})
 
 	// Spans: a minimal span payload to verify correct deserialization.
 	spans := []*service.OpsSpan{
@@ -171,15 +224,13 @@ func (s *OpsRequestDetailsIntegrationSuite) TestSuccessBranch_UpstreamModelAndAP
 // mapping was applied (usage_logs.upstream_model IS NULL), UpstreamModel is
 // nil in the result struct.
 func (s *OpsRequestDetailsIntegrationSuite) TestSuccessBranch_NoMapping_UpstreamModelNil() {
-	client := testEntClient(s.T())
-
-	user := mustCreateUser(s.T(), client, &service.User{Email: uniqueEmail("succ-nomapping")})
-	apiKey := mustCreateApiKey(s.T(), client, &service.APIKey{
+	user := s.createTrackedUser(&service.User{Email: uniqueEmail("succ-nomapping")})
+	apiKey := s.createTrackedAPIKey(&service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-nm-" + uuid.NewString()[:8],
 		Name:   "no-mapping-key",
 	})
-	account := mustCreateAccount(s.T(), client, &service.Account{Name: "acc-nm-" + uuid.NewString()[:8]})
+	account := s.createTrackedAccount(&service.Account{Name: "acc-nm-" + uuid.NewString()[:8]})
 
 	now := time.Now().UTC()
 	log := s.insertUsageLog(&service.UsageLog{
@@ -217,10 +268,8 @@ func (s *OpsRequestDetailsIntegrationSuite) TestSuccessBranch_NoMapping_Upstream
 // previously hardcoded NULL::TEXT for api_key_name even though the api_keys
 // table was already JOINed.
 func (s *OpsRequestDetailsIntegrationSuite) TestErrorBranch_APIKeyName() {
-	client := testEntClient(s.T())
-
-	user := mustCreateUser(s.T(), client, &service.User{Email: uniqueEmail("err-user")})
-	apiKey := mustCreateApiKey(s.T(), client, &service.APIKey{
+	user := s.createTrackedUser(&service.User{Email: uniqueEmail("err-user")})
+	apiKey := s.createTrackedAPIKey(&service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-err-" + uuid.NewString()[:8],
 		Name:   "error-key-name",
@@ -266,10 +315,8 @@ func (s *OpsRequestDetailsIntegrationSuite) TestErrorBranch_APIKeyName() {
 // NOT populate UpstreamModel (it is always NULL in ops_error_logs), so
 // UpstreamModel remains nil.
 func (s *OpsRequestDetailsIntegrationSuite) TestErrorBranch_UpstreamModelAlwaysNil() {
-	client := testEntClient(s.T())
-
-	user := mustCreateUser(s.T(), client, &service.User{Email: uniqueEmail("err-noup")})
-	apiKey := mustCreateApiKey(s.T(), client, &service.APIKey{
+	user := s.createTrackedUser(&service.User{Email: uniqueEmail("err-noup")})
+	apiKey := s.createTrackedAPIKey(&service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-err-noup-" + uuid.NewString()[:8],
 		Name:   "err-noup-key",
@@ -309,15 +356,13 @@ func (s *OpsRequestDetailsIntegrationSuite) TestErrorBranch_UpstreamModelAlwaysN
 // TestSuccessBranch_SpansNilWhenAbsent verifies that when usage_logs.spans IS
 // NULL, the result row has Spans == nil (not an empty slice or garbage).
 func (s *OpsRequestDetailsIntegrationSuite) TestSuccessBranch_SpansNilWhenAbsent() {
-	client := testEntClient(s.T())
-
-	user := mustCreateUser(s.T(), client, &service.User{Email: uniqueEmail("succ-nospans")})
-	apiKey := mustCreateApiKey(s.T(), client, &service.APIKey{
+	user := s.createTrackedUser(&service.User{Email: uniqueEmail("succ-nospans")})
+	apiKey := s.createTrackedAPIKey(&service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-nospans-" + uuid.NewString()[:8],
 		Name:   "nospans-key",
 	})
-	account := mustCreateAccount(s.T(), client, &service.Account{Name: "acc-nospans-" + uuid.NewString()[:8]})
+	account := s.createTrackedAccount(&service.Account{Name: "acc-nospans-" + uuid.NewString()[:8]})
 
 	now := time.Now().UTC()
 	log := s.insertUsageLog(&service.UsageLog{
