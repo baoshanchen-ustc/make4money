@@ -111,20 +111,20 @@ func writePromGaugePtr[T ~float64 | ~int64](b *strings.Builder, name string, val
 }
 
 func writePromMetric(b *strings.Builder, name, metricType string, value float64, help string) {
-	b.WriteString("# HELP ")
-	b.WriteString(name)
-	b.WriteByte(' ')
-	b.WriteString(help)
-	b.WriteByte('\n')
-	b.WriteString("# TYPE ")
-	b.WriteString(name)
-	b.WriteByte(' ')
-	b.WriteString(metricType)
-	b.WriteByte('\n')
-	b.WriteString(name)
-	b.WriteByte(' ')
-	b.WriteString(strconv.FormatFloat(value, 'f', -1, 64))
-	b.WriteByte('\n')
+	_, _ = b.WriteString("# HELP ")
+	_, _ = b.WriteString(name)
+	_ = b.WriteByte(' ')
+	_, _ = b.WriteString(help)
+	_ = b.WriteByte('\n')
+	_, _ = b.WriteString("# TYPE ")
+	_, _ = b.WriteString(name)
+	_ = b.WriteByte(' ')
+	_, _ = b.WriteString(metricType)
+	_ = b.WriteByte('\n')
+	_, _ = b.WriteString(name)
+	_ = b.WriteByte(' ')
+	_, _ = b.WriteString(strconv.FormatFloat(value, 'f', -1, 64))
+	_ = b.WriteByte('\n')
 }
 
 func boolProm(value bool) float64 {

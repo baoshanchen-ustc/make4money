@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/runtimeprobe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -286,7 +286,7 @@ func TestBuildControlPlaneDriftPayload_ExposesSignals(t *testing.T) {
 			DriftTrendStatus: "degrading",
 			DriftTrendDetail: "backlog=3 lag=7s",
 		},
-		repository.RedisPoolSnapshot{
+		runtimeprobe.RedisPoolSnapshot{
 			Timeouts: 1,
 			Stalls:   2,
 		},
@@ -324,9 +324,9 @@ func TestBuildControlPlaneDriftPayload_ExposesSignals(t *testing.T) {
 func TestBuildResourcePressureSummaryPayload_PromotesCritical(t *testing.T) {
 	summary := buildResourcePressureSummaryPayload(
 		&service.OpsResourceBudgetSummary{},
-		repository.DBPoolSnapshot{},
-		repository.RedisPoolSnapshot{Timeouts: 1},
-		repository.HTTPUpstreamRuntimeSnapshot{},
+		runtimeprobe.DBPoolSnapshot{},
+		runtimeprobe.RedisPoolSnapshot{Timeouts: 1},
+		runtimeprobe.HTTPUpstreamRuntimeSnapshot{},
 	)
 	require.NotNil(t, summary)
 	require.Equal(t, "critical", summary["severity"])

@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/runtimeprobe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -201,7 +201,7 @@ func (h *DashboardHandler) GetRealtimeMetrics(c *gin.Context) {
 	windowHit, windowMiss, windowBatchSQL, windowFallback, windowErr := service.GatewayWindowCostPrefetchStats()
 	rateHit, rateMiss, rateLoad, rateSingleflightShared, rateFallback := service.GatewayUserGroupRateCacheStats()
 	modelsHit, modelsMiss, modelsStore := service.GatewayModelsListCacheStats()
-	stickyCompareDelete := repository.SnapshotStickySessionCompareDeleteMetrics()
+	stickyCompareDelete := runtimeprobe.SnapshotStickySessionCompareDeleteMetrics()
 	stickyCompat := service.SnapshotOpenAICompatibilityFallbackMetrics()
 	stickyCleanup := service.SnapshotStickySessionCleanupMetrics()
 	stickyConsistency := service.SnapshotStickyConsistencyMetrics()
@@ -246,9 +246,9 @@ func (h *DashboardHandler) GetRealtimeMetrics(c *gin.Context) {
 		"requests_per_minute":      requestsPerMinute,
 		"average_response_time":    averageResponseTime,
 		"error_rate":               0.0,
-		"db_pool":                  repository.SnapshotDefaultDBPoolStats(),
-		"redis_pool":               repository.SnapshotDefaultRedisPoolStats(),
-		"http_upstream":            repository.SnapshotDefaultHTTPUpstreamRuntime(),
+		"db_pool":                  runtimeprobe.SnapshotDefaultDBPoolStats(),
+		"redis_pool":               runtimeprobe.SnapshotDefaultRedisPoolStats(),
+		"http_upstream":            runtimeprobe.SnapshotDefaultHTTPUpstreamRuntime(),
 		"usage_log_not_persisted":  usageLogNotPersistedPayload(),
 		"billing_compensation":     billingCompensationPayload(),
 		"scheduler_outbox":         service.SnapshotSchedulerOutboxRuntimeMetrics(),
@@ -400,9 +400,9 @@ func (h *DashboardHandler) buildOpsRuntimeSummaryPayload(cleanupStats service.Cl
 	if usageIntegrity := service.UsageIntegritySummary(); usageIntegrity != nil {
 		payload["usage_integrity"] = usageIntegrity
 	}
-	dbPool := repository.SnapshotDefaultDBPoolStats()
-	redisPool := repository.SnapshotDefaultRedisPoolStats()
-	httpUpstream := repository.SnapshotDefaultHTTPUpstreamRuntime()
+	dbPool := runtimeprobe.SnapshotDefaultDBPoolStats()
+	redisPool := runtimeprobe.SnapshotDefaultRedisPoolStats()
+	httpUpstream := runtimeprobe.SnapshotDefaultHTTPUpstreamRuntime()
 	stickyConsistency := service.SnapshotStickyConsistencyMetrics()
 	schedulerOutbox := service.SnapshotSchedulerOutboxRuntimeMetrics()
 	payload["shared_resource_runtime"] = gin.H{
@@ -492,16 +492,16 @@ func buildFailureSplitPlan(primary string) string {
 
 func buildResourcePressureSummaryPayload(
 	budget *service.OpsResourceBudgetSummary,
-	db repository.DBPoolSnapshot,
-	redis repository.RedisPoolSnapshot,
-	httpUpstream repository.HTTPUpstreamRuntimeSnapshot,
+	db runtimeprobe.DBPoolSnapshot,
+	redis runtimeprobe.RedisPoolSnapshot,
+	httpUpstream runtimeprobe.HTTPUpstreamRuntimeSnapshot,
 ) gin.H {
 	if budget == nil {
 		return nil
 	}
 	dbState, dbNote := evaluateDBPressure(db)
-	redisState, redisNote := repository.EvaluateRedisPressure(redis)
-	httpState, httpNote := repository.EvaluateHTTPUpstreamPressure(httpUpstream)
+	redisState, redisNote := runtimeprobe.EvaluateRedisPressure(redis)
+	httpState, httpNote := runtimeprobe.EvaluateHTTPUpstreamPressure(httpUpstream)
 	overall := highestPressureSeverity(dbState, redisState, httpState)
 	summary := gin.H{
 		"severity": overall,
@@ -583,7 +583,7 @@ func buildStickyConsistencyPayload(snapshot *service.StickyConsistencyMetricsSna
 	return payload
 }
 
-func evaluateDBPressure(db repository.DBPoolSnapshot) (string, string) {
+func evaluateDBPressure(db runtimeprobe.DBPoolSnapshot) (string, string) {
 	state := "normal"
 	note := "DB connections within safety"
 	if db.WaitCount > 0 {
@@ -608,7 +608,7 @@ func evaluateDBPressure(db repository.DBPoolSnapshot) (string, string) {
 func buildControlPlaneDriftPayload(
 	sticky service.StickyConsistencyMetricsSnapshot,
 	scheduler service.SchedulerOutboxRuntimeMetrics,
-	redis repository.RedisPoolSnapshot,
+	redis runtimeprobe.RedisPoolSnapshot,
 ) gin.H {
 	signals := make([]string, 0, 4)
 	activeDomains := make([]string, 0, 3)
@@ -676,7 +676,7 @@ func buildControlPlaneDriftPayload(
 func deriveControlPlaneDriftSeverity(
 	sticky service.StickyConsistencyMetricsSnapshot,
 	scheduler service.SchedulerOutboxRuntimeMetrics,
-	redis repository.RedisPoolSnapshot,
+	redis runtimeprobe.RedisPoolSnapshot,
 ) string {
 	hasSticky := sticky.GhostInvalidations > 0
 	hasScheduler := scheduler.WatermarkDrift != 0 || scheduler.BacklogRows > 0 || scheduler.LagSeconds > 0 || scheduler.CheckpointFallbackStreak > 0 || scheduler.BlockedEvent != nil
@@ -766,7 +766,7 @@ func buildSchedulerDriftAttribution(scheduler service.SchedulerOutboxRuntimeMetr
 	return payload
 }
 
-func buildRedisPressureAttribution(redis repository.RedisPoolSnapshot) gin.H {
+func buildRedisPressureAttribution(redis runtimeprobe.RedisPoolSnapshot) gin.H {
 	if redis.Timeouts == 0 && redis.Stalls == 0 {
 		return gin.H{
 			"state": "clear",
@@ -804,7 +804,7 @@ func dominantReasonTotal(reasonTotals map[string]int64) (string, int64) {
 func deriveControlPlaneDriftLikelyRootCause(
 	sticky service.StickyConsistencyMetricsSnapshot,
 	scheduler service.SchedulerOutboxRuntimeMetrics,
-	redis repository.RedisPoolSnapshot,
+	redis runtimeprobe.RedisPoolSnapshot,
 ) string {
 	hasSticky := sticky.GhostInvalidations > 0
 	hasScheduler := scheduler.WatermarkDrift != 0 || scheduler.BacklogRows > 0 || scheduler.LagSeconds > 0 || scheduler.CheckpointFallbackStreak > 0
@@ -828,9 +828,9 @@ func deriveControlPlaneDriftLikelyRootCause(
 }
 
 func buildSharedResourceJointPressurePayload(
-	dbPool repository.DBPoolSnapshot,
-	redisPool repository.RedisPoolSnapshot,
-	httpUpstream repository.HTTPUpstreamRuntimeSnapshot,
+	dbPool runtimeprobe.DBPoolSnapshot,
+	redisPool runtimeprobe.RedisPoolSnapshot,
+	httpUpstream runtimeprobe.HTTPUpstreamRuntimeSnapshot,
 ) []gin.H {
 	signals := make([]gin.H, 0, 3)
 	if dbPool.WaitCount > 0 && redisPool.Stalls > 0 {

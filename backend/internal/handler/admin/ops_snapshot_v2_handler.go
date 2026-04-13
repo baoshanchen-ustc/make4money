@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/repository"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/runtimeprobe"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
@@ -156,7 +156,7 @@ func (h *OpsHandler) GetDashboardSnapshotV2(c *gin.Context) {
 	schedulerCheckpoint := buildSchedulerCheckpointPayload()
 	stickyMetrics := service.SnapshotStickyConsistencyMetrics()
 	schedulerMetrics := service.SnapshotSchedulerOutboxRuntimeMetrics()
-	redisMetrics := repository.SnapshotDefaultRedisPoolStats()
+	redisMetrics := runtimeprobe.SnapshotDefaultRedisPoolStats()
 	controlPlaneDrift := buildControlPlaneDriftPayload(
 		stickyMetrics,
 		schedulerMetrics,
