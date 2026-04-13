@@ -6,6 +6,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 type refundProviderStub struct {
@@ -32,6 +33,85 @@ func (s refundProviderStub) VerifyNotification(context.Context, string, map[stri
 
 func (s refundProviderStub) Refund(context.Context, payment.RefundRequest) (*payment.RefundResponse, error) {
 	return nil, nil
+}
+
+type refundUserRepoStub struct {
+	user *User
+}
+
+func (s *refundUserRepoStub) Create(context.Context, *User) error {
+	panic("unexpected Create call")
+}
+
+func (s *refundUserRepoStub) GetByID(context.Context, int64) (*User, error) {
+	if s.user == nil {
+		return nil, ErrUserNotFound
+	}
+	return s.user, nil
+}
+
+func (s *refundUserRepoStub) GetByEmail(context.Context, string) (*User, error) {
+	panic("unexpected GetByEmail call")
+}
+
+func (s *refundUserRepoStub) GetFirstAdmin(context.Context) (*User, error) {
+	panic("unexpected GetFirstAdmin call")
+}
+
+func (s *refundUserRepoStub) Update(context.Context, *User) error {
+	panic("unexpected Update call")
+}
+
+func (s *refundUserRepoStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
+
+func (s *refundUserRepoStub) List(context.Context, pagination.PaginationParams) ([]User, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (s *refundUserRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, UserListFilters) ([]User, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+
+func (s *refundUserRepoStub) UpdateBalance(context.Context, int64, float64) error {
+	panic("unexpected UpdateBalance call")
+}
+
+func (s *refundUserRepoStub) DeductBalance(context.Context, int64, float64) error {
+	panic("unexpected DeductBalance call")
+}
+
+func (s *refundUserRepoStub) UpdateConcurrency(context.Context, int64, int) error {
+	panic("unexpected UpdateConcurrency call")
+}
+
+func (s *refundUserRepoStub) ExistsByEmail(context.Context, string) (bool, error) {
+	panic("unexpected ExistsByEmail call")
+}
+
+func (s *refundUserRepoStub) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
+	panic("unexpected RemoveGroupFromAllowedGroups call")
+}
+
+func (s *refundUserRepoStub) AddGroupToAllowedGroups(context.Context, int64, int64) error {
+	panic("unexpected AddGroupToAllowedGroups call")
+}
+
+func (s *refundUserRepoStub) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	panic("unexpected RemoveGroupFromUserAllowedGroups call")
+}
+
+func (s *refundUserRepoStub) UpdateTotpSecret(context.Context, int64, *string) error {
+	panic("unexpected UpdateTotpSecret call")
+}
+
+func (s *refundUserRepoStub) EnableTotp(context.Context, int64) error {
+	panic("unexpected EnableTotp call")
+}
+
+func (s *refundUserRepoStub) DisableTotp(context.Context, int64) error {
+	panic("unexpected DisableTotp call")
 }
 
 func TestResolveRefundTradeNo(t *testing.T) {
@@ -82,7 +162,7 @@ func TestPrepDeductAllowsPartialBalanceDeductionWithoutForce(t *testing.T) {
 	t.Parallel()
 
 	svc := &PaymentService{
-		userRepo: &userRepoStub{
+		userRepo: &refundUserRepoStub{
 			user: &User{ID: 1, Balance: 12},
 		},
 	}
