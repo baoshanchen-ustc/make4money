@@ -39,12 +39,3 @@ func SnapshotShadowPermanentFailureStats() ShadowPermanentFailureStats {
 	}
 	return result
 }
-
-func resetShadowPermanentFailureStatsForTest() {
-	shadowPermanentFailureTotal.Store(0)
-	shadowPermanentFailureMu.Lock()
-	for k := range shadowPermanentFailureByReason {
-		delete(shadowPermanentFailureByReason, k)
-	}
-	shadowPermanentFailureMu.Unlock()
-}

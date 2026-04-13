@@ -468,11 +468,6 @@ func getNonRetryableRefreshReason(err error) (string, bool) {
 	return "", false
 }
 
-func isNonRetryableRefreshError(err error) bool {
-	_, ok := getNonRetryableRefreshReason(err)
-	return ok
-}
-
 func (s *TokenRefreshService) markTokenRefreshFailure(ctx context.Context, accountID int64, reason string) {
 	if s == nil || s.accountRepo == nil || reason == "" {
 		return

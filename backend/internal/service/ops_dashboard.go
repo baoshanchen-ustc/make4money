@@ -1259,36 +1259,6 @@ func summarizeStorageGovernanceRuntime() *OpsStorageGovernanceRuntimeInfo {
 	return out
 }
 
-func summarizeErrorFamilySummary() *OpsErrorFamilySummary {
-	summary, sampledAt := snapshotLatestErrorFamilySummary()
-	if summary == nil || summary.TotalErrors <= 0 {
-		return nil
-	}
-	out := &OpsErrorFamilySummary{
-		WindowMinutes: summary.WindowMinutes,
-		TotalErrors:   summary.TotalErrors,
-	}
-	if sampledAt != nil {
-		out.SampledAt = sampledAt
-	}
-	if len(summary.Families) == 0 {
-		return out
-	}
-	out.Families = make([]*OpsErrorFamilyEntry, 0, len(summary.Families))
-	for _, family := range summary.Families {
-		out.Families = append(out.Families, &OpsErrorFamilyEntry{
-			Phase:           strings.TrimSpace(family.Phase),
-			Type:            strings.TrimSpace(family.Type),
-			Owner:           strings.TrimSpace(family.Owner),
-			StatusCode:      family.StatusCode,
-			InboundEndpoint: strings.TrimSpace(family.InboundEndpoint),
-			Count:           family.Count,
-			SharePercent:    family.SharePercent,
-		})
-	}
-	return out
-}
-
 func usageLogRowsEstimated(summary *OpsUsageLogsGovernanceSummary) int64 {
 	if summary == nil {
 		return 0

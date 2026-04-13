@@ -1382,11 +1382,6 @@ func newSchedulerBucketLockOwner() string {
 	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), seq)
 }
 
-func (s *SchedulerSnapshotService) shouldBackoffOutboxEvent(eventID int64) bool {
-	_, blocked := s.peekOutboxRetryState(eventID)
-	return blocked
-}
-
 func (s *SchedulerSnapshotService) peekOutboxRetryState(eventID int64) (schedulerOutboxRetryState, bool) {
 	if s == nil || eventID <= 0 {
 		return schedulerOutboxRetryState{}, false

@@ -666,8 +666,8 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isNonRetryableRefreshError(tt.err)
-			require.Equal(t, tt.expected, result)
+			_, ok := getNonRetryableRefreshReason(tt.err)
+			require.Equal(t, tt.expected, ok)
 		})
 	}
 }
@@ -693,6 +693,15 @@ func TestShadowPermanentFailureStats(t *testing.T) {
 	require.Len(t, stats.ByReason, 2)
 	require.Equal(t, int64(2), stats.ByReason["token_revoked"])
 	require.Equal(t, int64(1), stats.ByReason["refresh_token_reused"])
+}
+
+func resetShadowPermanentFailureStatsForTest() {
+	shadowPermanentFailureTotal.Store(0)
+	shadowPermanentFailureMu.Lock()
+	for k := range shadowPermanentFailureByReason {
+		delete(shadowPermanentFailureByReason, k)
+	}
+	shadowPermanentFailureMu.Unlock()
 }
 
 // ========== Path A (refreshAPI) 测试用例 ==========
