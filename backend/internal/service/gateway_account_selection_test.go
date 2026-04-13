@@ -189,18 +189,57 @@ func TestSelectByLRU_EarliestTimeWins(t *testing.T) {
 	require.Equal(t, int64(3), result.account.ID)
 }
 
-func TestSelectByLRU_TiePreferOAuth(t *testing.T) {
-	now := time.Now()
-	// 账号 1/2 LastUsedAt 相同，且同为最小值。
-	accounts := []accountWithLoad{
-		makeAccWithLoad(1, 1, 10, testTimePtr(now), AccountTypeAPIKey),
-		makeAccWithLoad(2, 1, 10, testTimePtr(now), AccountTypeOAuth),
-		makeAccWithLoad(3, 1, 10, testTimePtr(now.Add(1*time.Hour)), AccountTypeAPIKey),
-	}
-	for i := 0; i < 50; i++ {
-		result := selectByLRU(accounts, true)
-		require.NotNil(t, result)
-		require.Equal(t, AccountTypeOAuth, result.account.Type)
-		require.Equal(t, int64(2), result.account.ID)
-	}
+func TestIsProxyBucketScoreBetter_PrefersMoreAvailableAccountsOnEqualHealth(t *testing.T) {
+	left := proxyBucketScore{proxyID: 101, minLoadRate: 0, minWaiting: 0, minPriority: 1, availableCount: 3}
+	right := proxyBucketScore{proxyID: 202, minLoadRate: 0, minWaiting: 0, minPriority: 1, availableCount: 1}
+
+	require.True(t, isProxyBucketScoreBetter(left, right))
+	require.False(t, isProxyBucketScoreBetter(right, left))
 }
+
+func TestChooseBestProxyBucket_PrefersMoreAvailableAccountsOnEqualHealth(t *testing.T) {
+	proxy101 := int64(101)
+	proxy202 := int64(202)
+	candidates := []proxyBucketLoadCandidate{
+		{account: &Account{ID: 1, Priority: 1, ProxyID: &proxy101}, loadInfo: &AccountLoadInfo{AccountID: 1, LoadRate: 0, WaitingCount: 0}},
+		{account: &Account{ID: 2, Priority: 1, ProxyID: &proxy202}, loadInfo: &AccountLoadInfo{AccountID: 2, LoadRate: 0, WaitingCount: 0}},
+		{account: &Account{ID: 3, Priority: 1, ProxyID: &proxy202}, loadInfo: &AccountLoadInfo{AccountID: 3, LoadRate: 0, WaitingCount: 0}},
+	}
+
+	selectedProxyID, ok := chooseBestProxyBucket(candidates, "session-capacity")
+	require.True(t, ok)
+	require.Equal(t, proxy202, selectedProxyID)
+}
+
+func TestChooseBestProxyBucket_UsesSpreadKeyForEqualBuckets(t *testing.T) {
+	proxy101 := int64(101)
+	proxy202 := int64(202)
+	candidates := []proxyBucketLoadCandidate{
+		{account: &Account{ID: 1, Priority: 1, ProxyID: &proxy101}, loadInfo: &AccountLoadInfo{AccountID: 1, LoadRate: 0, WaitingCount: 0}},
+		{account: &Account{ID: 2, Priority: 1, ProxyID: &proxy202}, loadInfo: &AccountLoadInfo{AccountID: 2, LoadRate: 0, WaitingCount: 0}},
+	}
+
+	selectedA, ok := chooseBestProxyBucket(candidates, "session-a")
+	require.True(t, ok)
+	selectedB, ok := chooseBestProxyBucket(candidates, "session-b")
+	require.True(t, ok)
+	require.Contains(t, []int64{proxy101, proxy202}, selectedA)
+	require.Contains(t, []int64{proxy101, proxy202}, selectedB)
+	require.NotEqual(t, selectedA, selectedB)
+}
+
+func TestChooseBestProxyBucket_StillPrefersLowerLoadOverCapacity(t *testing.T) {
+	proxy101 := int64(101)
+	proxy202 := int64(202)
+	candidates := []proxyBucketLoadCandidate{
+		{account: &Account{ID: 1, Priority: 1, ProxyID: &proxy101}, loadInfo: &AccountLoadInfo{AccountID: 1, LoadRate: 0, WaitingCount: 0}},
+		{account: &Account{ID: 2, Priority: 1, ProxyID: &proxy202}, loadInfo: &AccountLoadInfo{AccountID: 2, LoadRate: 20, WaitingCount: 0}},
+		{account: &Account{ID: 3, Priority: 1, ProxyID: &proxy202}, loadInfo: &AccountLoadInfo{AccountID: 3, LoadRate: 20, WaitingCount: 0}},
+		{account: &Account{ID: 4, Priority: 1, ProxyID: &proxy202}, loadInfo: &AccountLoadInfo{AccountID: 4, LoadRate: 20, WaitingCount: 0}},
+	}
+
+	selectedProxyID, ok := chooseBestProxyBucket(candidates, "session-low-load")
+	require.True(t, ok)
+	require.Equal(t, proxy101, selectedProxyID)
+}
+

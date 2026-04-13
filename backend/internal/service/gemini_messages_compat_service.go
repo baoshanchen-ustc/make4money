@@ -52,6 +52,7 @@ type GeminiMessagesCompatService struct {
 	rateLimitService          *RateLimitService
 	httpUpstream              HTTPUpstream
 	antigravityGatewayService *AntigravityGatewayService
+	concurrencyService        *ConcurrencyService
 	cfg                       *config.Config
 	responseHeaderFilter      *responseheaders.CompiledHeaderFilter
 }
@@ -65,6 +66,7 @@ func NewGeminiMessagesCompatService(
 	rateLimitService *RateLimitService,
 	httpUpstream HTTPUpstream,
 	antigravityGatewayService *AntigravityGatewayService,
+	concurrencyService *ConcurrencyService,
 	cfg *config.Config,
 ) *GeminiMessagesCompatService {
 	return &GeminiMessagesCompatService{
@@ -76,14 +78,56 @@ func NewGeminiMessagesCompatService(
 		rateLimitService:          rateLimitService,
 		httpUpstream:              httpUpstream,
 		antigravityGatewayService: antigravityGatewayService,
+		concurrencyService:        concurrencyService,
 		cfg:                       cfg,
 		responseHeaderFilter:      compileResponseHeaderFilter(cfg),
 	}
 }
 
-// GetTokenProvider returns the token provider for OAuth accounts
-func (s *GeminiMessagesCompatService) GetTokenProvider() *GeminiTokenProvider {
-	return s.tokenProvider
+func (s *GeminiMessagesCompatService) selectProxyBucketForGroup(ctx context.Context, group *Group, accounts []Account, spreadKey string) []Account {
+	if !shouldApplyProxyBucketLoadBalance(group) || len(accounts) == 0 {
+		return accounts
+	}
+
+	loadMap := map[int64]*AccountLoadInfo{}
+	if s != nil && s.concurrencyService != nil {
+		accountLoads := make([]AccountWithConcurrency, 0, len(accounts))
+		for _, acc := range accounts {
+			accountLoads = append(accountLoads, AccountWithConcurrency{
+				ID:             acc.ID,
+				MaxConcurrency: acc.EffectiveLoadFactor(),
+			})
+		}
+		if batchLoad, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads); err == nil {
+			loadMap = batchLoad
+		}
+	}
+
+	return selectProxyBucketAccounts(group, accounts, loadMap, spreadKey)
+}
+
+func (s *GeminiMessagesCompatService) selectProxyBucketForCurrentGroup(ctx context.Context, groupID *int64, accounts []Account, spreadKey string) []Account {
+	if len(accounts) == 0 {
+		return accounts
+	}
+
+	group := currentGroupFromContext(ctx)
+	if groupID != nil {
+		if group == nil || group.ID != *groupID {
+			if s == nil || s.groupRepo == nil {
+				return accounts
+			}
+			resolvedGroup, err := s.groupRepo.GetByIDLite(ctx, *groupID)
+			if err != nil {
+				return accounts
+			}
+			group = resolvedGroup
+		}
+	} else if group == nil {
+		return accounts
+	}
+
+	return s.selectProxyBucketForGroup(ctx, group, accounts, spreadKey)
 }
 
 func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context, groupID *int64, sessionHash string, requestedModel string) (*Account, error) {
@@ -93,9 +137,12 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 1. 确定目标平台和调度模式
 	// Determine target platform and scheduling mode
-	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
+	platform, useMixedScheduling, hasForcePlatform, group, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
 	if err != nil {
 		return nil, err
+	}
+	if group != nil {
+		ctx = context.WithValue(ctx, ctxkey.Group, group)
 	}
 
 	cacheKey := "gemini:" + sessionHash
@@ -120,7 +167,11 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		}
 	}
 
-	// 4. 按优先级 + LRU 选择最佳账号
+	// 4. 在 sticky miss 后先做 proxy bucket 缩圈，再按原有优先级 + LRU 逻辑选账号
+	// Apply proxy-bucket narrowing after sticky miss, before legacy account-level selection.
+	accounts = s.selectProxyBucketForGroup(ctx, group, accounts, sessionHash)
+
+	// 5. 按优先级 + LRU 选择最佳账号
 	// Select best account by priority + LRU
 	selected := s.selectBestGeminiAccount(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling)
 
@@ -131,7 +182,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		return nil, errors.New("no available Gemini accounts")
 	}
 
-	// 5. 设置粘性会话绑定
+	// 6. 设置粘性会话绑定
 	// Set sticky session binding
 	if sessionHash != "" {
 		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, geminiStickySessionTTL)
@@ -145,30 +196,29 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 //
 // resolvePlatformAndSchedulingMode resolves target platform and scheduling mode.
 // Returns: platform name, whether to use mixed scheduling, whether force platform, error.
-func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, err error) {
+func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, group *Group, err error) {
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
-		return forcePlatform, false, true, nil
+		return forcePlatform, false, true, nil, nil
 	}
 
 	if groupID != nil {
 		// 根据分组 platform 决定查询哪种账号
-		var group *Group
 		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
 			group = ctxGroup
 		} else {
 			group, err = s.groupRepo.GetByIDLite(ctx, *groupID)
 			if err != nil {
-				return "", false, false, fmt.Errorf("get group failed: %w", err)
+				return "", false, false, nil, fmt.Errorf("get group failed: %w", err)
 			}
 		}
 		// gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
-		return group.Platform, group.Platform == PlatformGemini, false, nil
+		return group.Platform, group.Platform == PlatformGemini, false, group, nil
 	}
 
 	// 无分组时只使用原生 gemini 平台
-	return PlatformGemini, true, false, nil
+	return PlatformGemini, true, false, nil, nil
 }
 
 // tryStickySessionHit 尝试从粘性会话获取账号。
@@ -495,6 +545,8 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 	if len(accounts) == 0 {
 		return nil, errors.New("no available Gemini accounts")
 	}
+
+	accounts = s.selectProxyBucketForCurrentGroup(ctx, groupID, accounts, "gemini-ai-studio-endpoints")
 
 	rank := func(a *Account) int {
 		if a == nil {

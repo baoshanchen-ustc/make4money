@@ -86,6 +86,33 @@ func (s *APIKeyRepoSuite) TestGetByKey_NotFound() {
 	s.Require().Error(err, "expected error for non-existent key")
 }
 
+func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesProxyBucketLoadBalanceEnabled() {
+	user := s.mustCreateUser("getbykey-auth-proxy-bucket@test.com")
+	group, err := s.client.Group.Create().
+		SetName("g-auth-proxy-bucket").
+		SetPlatform(service.PlatformOpenAI).
+		SetStatus(service.StatusActive).
+		SetSubscriptionType(service.SubscriptionTypeStandard).
+		SetRateMultiplier(1).
+		SetProxyBucketLoadBalanceEnabled(true).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	key := &service.APIKey{
+		UserID:  user.ID,
+		Key:     "sk-getbykey-auth-proxy-bucket",
+		Name:    "Proxy Bucket Key",
+		GroupID: &group.ID,
+		Status:  service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, key))
+
+	got, err := s.repo.GetByKeyForAuth(s.ctx, key.Key)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.Group)
+	s.Require().True(got.Group.ProxyBucketLoadBalanceEnabled)
+}
+
 func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesMessagesDispatchModelConfig() {
 	user := s.mustCreateUser("getbykey-auth-dispatch@test.com")
 	group, err := s.client.Group.Create().

@@ -214,15 +214,13 @@ func (s *stubAdminService) BatchSetGroupRateMultipliers(_ context.Context, _ int
 	return nil
 }
 
-func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
+func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, proxyID *int64) ([]service.Account, int64, error) {
 	s.lastListAccounts.platform = platform
 	s.lastListAccounts.accountType = accountType
 	s.lastListAccounts.status = status
 	s.lastListAccounts.search = search
 	s.lastListAccounts.groupID = groupID
 	s.lastListAccounts.privacyMode = privacyMode
-	s.lastListAccounts.sortBy = sortBy
-	s.lastListAccounts.sortOrder = sortOrder
 	s.lastListAccounts.calls++
 	return s.accounts, int64(len(s.accounts)), nil
 }

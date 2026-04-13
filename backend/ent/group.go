@@ -77,6 +77,8 @@ type Group struct {
 	RequirePrivacySet bool `json:"require_privacy_set,omitempty"`
 	// 默认映射模型 ID，当账号级映射找不到时使用此值
 	DefaultMappedModel string `json:"default_mapped_model,omitempty"`
+	// 是否启用基于 proxy_id 分桶的负载均衡调度
+	ProxyBucketLoadBalanceEnabled bool `json:"proxy_bucket_load_balance_enabled,omitempty"`
 	// OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -187,7 +189,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProxyBucketLoadBalanceEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
@@ -406,6 +408,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DefaultMappedModel = value.String
 			}
+		case group.FieldProxyBucketLoadBalanceEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field proxy_bucket_load_balance_enabled", values[i])
+			} else if value.Valid {
+				_m.ProxyBucketLoadBalanceEnabled = value.Bool
+			}
 		case group.FieldMessagesDispatchModelConfig:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field messages_dispatch_model_config", values[i])
@@ -596,6 +604,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("default_mapped_model=")
 	builder.WriteString(_m.DefaultMappedModel)
+	builder.WriteString(", ")
+	builder.WriteString("proxy_bucket_load_balance_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ProxyBucketLoadBalanceEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("messages_dispatch_model_config=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MessagesDispatchModelConfig))

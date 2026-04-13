@@ -79,7 +79,7 @@ func (m *mockAccountRepoForGemini) Delete(ctx context.Context, id int64) error  
 func (m *mockAccountRepoForGemini) List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (m *mockAccountRepoForGemini) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
+func (m *mockAccountRepoForGemini) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, proxyID *int64) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 func (m *mockAccountRepoForGemini) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
@@ -289,6 +289,205 @@ func (m *mockGatewayCacheForGemini) DeleteSessionAccountID(ctx context.Context, 
 }
 
 // TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform 测试 Gemini 单平台选择
+func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_ProxyBucketLoadBalance(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(7)
+	proxy101 := int64(101)
+	proxy202 := int64(202)
+
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformGemini, Priority: 3, Status: StatusActive, Schedulable: true, ProxyID: &proxy101, Concurrency: 10},
+			{ID: 2, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true, ProxyID: &proxy202, Concurrency: 10},
+			{ID: 3, Platform: PlatformGemini, Priority: 0, Status: StatusActive, Schedulable: true, Concurrency: 10},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	cache := &mockGatewayCacheForGemini{}
+	group := &Group{ID: groupID, Platform: PlatformGemini, ProxyBucketLoadBalanceEnabled: true, Hydrated: true}
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+
+	loadCache := &mockConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, CurrentConcurrency: 8, LoadRate: 80},
+			2: {AccountID: 2, CurrentConcurrency: 1, LoadRate: 10},
+			3: {AccountID: 3, CurrentConcurrency: 0, LoadRate: 0},
+		},
+	}
+
+	svc := &GeminiMessagesCompatService{
+		accountRepo:        repo,
+		groupRepo:          &mockGroupRepoForGemini{groups: map[int64]*Group{groupID: group}},
+		cache:              cache,
+		concurrencyService: NewConcurrencyService(loadCache),
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "gemini-2.5-flash", nil)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.Equal(t, int64(2), acc.ID)
+}
+
+func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_ProxyBucketFallsBackWithoutProxyAccounts(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(8)
+	group := &Group{ID: groupID, Platform: PlatformGemini, ProxyBucketLoadBalanceEnabled: true, Hydrated: true}
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformGemini, Priority: 2, Status: StatusActive, Schedulable: true},
+			{ID: 2, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	svc := &GeminiMessagesCompatService{
+		accountRepo: repo,
+		groupRepo:   &mockGroupRepoForGemini{groups: map[int64]*Group{groupID: group}},
+		cache:       &mockGatewayCacheForGemini{},
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "gemini-2.5-flash", nil)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.Equal(t, int64(2), acc.ID)
+}
+
+func TestGeminiMessagesCompatService_SelectAccountForAIStudioEndpoints_ProxyBucketLoadBalance(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(9)
+	proxy101 := int64(101)
+	proxy202 := int64(202)
+	group := &Group{ID: groupID, Platform: PlatformGemini, ProxyBucketLoadBalanceEnabled: true, Hydrated: true}
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true, Type: AccountTypeAPIKey, ProxyID: &proxy101, Concurrency: 10, Credentials: map[string]any{"api_key": "key-1"}},
+			{ID: 2, Platform: PlatformGemini, Priority: 5, Status: StatusActive, Schedulable: true, Type: AccountTypeAPIKey, ProxyID: &proxy202, Concurrency: 10, Credentials: map[string]any{"api_key": "key-2"}},
+			{ID: 3, Platform: PlatformGemini, Priority: 0, Status: StatusActive, Schedulable: true, Type: AccountTypeAPIKey, Concurrency: 10, Credentials: map[string]any{"api_key": "key-3"}},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	loadCache := &mockConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, CurrentConcurrency: 7, LoadRate: 70},
+			2: {AccountID: 2, CurrentConcurrency: 1, LoadRate: 10},
+			3: {AccountID: 3, CurrentConcurrency: 0, LoadRate: 0},
+		},
+	}
+
+	svc := &GeminiMessagesCompatService{
+		accountRepo:        repo,
+		groupRepo:          &mockGroupRepoForGemini{groups: map[int64]*Group{groupID: group}},
+		cache:              &mockGatewayCacheForGemini{},
+		concurrencyService: NewConcurrencyService(loadCache),
+	}
+
+	acc, err := svc.SelectAccountForAIStudioEndpoints(ctx, &groupID)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.Equal(t, int64(2), acc.ID)
+}
+
+func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_ProxyBucketPrefersLargerEqualBucket(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10)
+	proxy101 := int64(101)
+	proxy202 := int64(202)
+
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{ID: 11, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true, ProxyID: &proxy101, Concurrency: 10},
+			{ID: 12, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true, ProxyID: &proxy202, Concurrency: 10},
+			{ID: 13, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true, ProxyID: &proxy202, Concurrency: 10},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	cache := &mockGatewayCacheForGemini{}
+	group := &Group{ID: groupID, Platform: PlatformGemini, ProxyBucketLoadBalanceEnabled: true, Hydrated: true}
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+
+	loadCache := &mockConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			11: {AccountID: 11, CurrentConcurrency: 0, LoadRate: 0},
+			12: {AccountID: 12, CurrentConcurrency: 0, LoadRate: 0},
+			13: {AccountID: 13, CurrentConcurrency: 0, LoadRate: 0},
+		},
+	}
+
+	svc := &GeminiMessagesCompatService{
+		accountRepo:        repo,
+		groupRepo:          &mockGroupRepoForGemini{groups: map[int64]*Group{groupID: group}},
+		cache:              cache,
+		concurrencyService: NewConcurrencyService(loadCache),
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "capacity-spread", "gemini-2.5-flash", nil)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.Contains(t, []int64{12, 13}, acc.ID)
+}
+
+func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_ProxyBucketEqualBucketsSpreadBySession(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(11)
+	proxy101 := int64(101)
+	proxy202 := int64(202)
+
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{ID: 21, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true, ProxyID: &proxy101, Concurrency: 10},
+			{ID: 22, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true, ProxyID: &proxy202, Concurrency: 10},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	group := &Group{ID: groupID, Platform: PlatformGemini, ProxyBucketLoadBalanceEnabled: true, Hydrated: true}
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+
+	loadCache := &mockConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			21: {AccountID: 21, CurrentConcurrency: 0, LoadRate: 0},
+			22: {AccountID: 22, CurrentConcurrency: 0, LoadRate: 0},
+		},
+	}
+
+	svc := &GeminiMessagesCompatService{
+		accountRepo:        repo,
+		groupRepo:          &mockGroupRepoForGemini{groups: map[int64]*Group{groupID: group}},
+		cache:              &mockGatewayCacheForGemini{},
+		concurrencyService: NewConcurrencyService(loadCache),
+	}
+
+	accA, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "session-a", "gemini-2.5-flash", nil)
+	require.NoError(t, err)
+	accB, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "session-b", "gemini-2.5-flash", nil)
+	require.NoError(t, err)
+	require.NotNil(t, accA)
+	require.NotNil(t, accB)
+	require.NotEqual(t, accA.ID, accB.ID)
+}
+
 func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform(t *testing.T) {
 	ctx := context.Background()
 
@@ -389,7 +588,7 @@ func TestGeminiMessagesCompatService_GroupResolution_UsesLiteFetch(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, acc)
 	require.Equal(t, 0, groupRepo.getByIDCalls)
-	require.Equal(t, 1, groupRepo.getByIDLiteCalls)
+	require.Equal(t, 2, groupRepo.getByIDLiteCalls)
 }
 
 // TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_AntigravityGroup 测试 antigravity 分组

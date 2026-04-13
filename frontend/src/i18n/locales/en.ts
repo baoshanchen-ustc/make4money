@@ -1669,6 +1669,11 @@ export default {
         title: 'OpenAI Messages Dispatch',
         allowDispatch: 'Allow /v1/messages dispatch',
         allowDispatchHint: 'When enabled, API keys in this OpenAI group can dispatch requests through /v1/messages endpoint',
+        proxyBucket: 'Enable proxy bucket routing',
+        proxyBucketHint: 'When enabled, relevant scheduling paths will prefer lower-load proxy_id buckets after sticky-session misses; if no proxy-backed candidates exist, routing falls back to the original logic',
+        defaultModel: 'Default mapped model',
+        defaultModelPlaceholder: 'e.g., gpt-4.1',
+        defaultModelHint: 'When account has no model mapping configured, all request models will be mapped to this model',
         familyMappingTitle: 'Family Default Mapping',
         familyMappingHint: 'Requests that match the Opus, Sonnet, or Haiku families will prefer the target model configured here.',
         opusModel: 'Opus Target Model',
@@ -2032,6 +2037,8 @@ export default {
       allTypes: 'All Types',
       allStatus: 'All Status',
       allGroups: 'All Groups',
+      allProxies: 'All Proxies',
+      searchProxyPlaceholder: 'Search proxy name / host / ID...',
       ungroupedGroup: 'Ungrouped',
       oauthType: 'OAuth',
       setupToken: 'Setup Token',
@@ -2322,6 +2329,12 @@ export default {
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
+      requestOverrides: 'Request parameter overrides',
+      requestOverridesDesc:
+        'Optional JSON object. These values are written into requests for this OpenAI account and override client-provided values.',
+      requestOverridesPlaceholder: '{\n  "service_tier": "priority"\n}',
+      requestOverridesInvalid: 'OpenAI request overrides must be valid JSON and the top level must be an object.',
+      requestOverridesModelNotAllowed: 'OpenAI request overrides cannot set the top-level "model" field.',
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:

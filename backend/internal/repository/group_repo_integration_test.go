@@ -113,6 +113,39 @@ func (s *GroupRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", got.Name)
 }
 
+func (s *GroupRepoSuite) TestProxyBucketLoadBalanceEnabled_PersistsAcrossCreateAndUpdate() {
+	group := &service.Group{
+		Name:                          "proxy-bucket-group",
+		Platform:                      service.PlatformOpenAI,
+		RateMultiplier:                1.0,
+		IsExclusive:                   false,
+		Status:                        service.StatusActive,
+		SubscriptionType:              service.SubscriptionTypeStandard,
+		ProxyBucketLoadBalanceEnabled: true,
+	}
+
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	gotLite, err := s.repo.GetByIDLite(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().True(gotLite.ProxyBucketLoadBalanceEnabled)
+
+	gotFull, err := s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().True(gotFull.ProxyBucketLoadBalanceEnabled)
+
+	group.ProxyBucketLoadBalanceEnabled = false
+	s.Require().NoError(s.repo.Update(s.ctx, group))
+
+	gotLite, err = s.repo.GetByIDLite(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().False(gotLite.ProxyBucketLoadBalanceEnabled)
+
+	gotFull, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().False(gotFull.ProxyBucketLoadBalanceEnabled)
+}
+
 func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {
 	group := &service.Group{
 		Name:                  "openai-dispatch",

@@ -74,6 +74,8 @@ const (
 	FieldRequirePrivacySet = "require_privacy_set"
 	// FieldDefaultMappedModel holds the string denoting the default_mapped_model field in the database.
 	FieldDefaultMappedModel = "default_mapped_model"
+	// FieldProxyBucketLoadBalanceEnabled holds the string denoting the proxy_bucket_load_balance_enabled field in the database.
+	FieldProxyBucketLoadBalanceEnabled = "proxy_bucket_load_balance_enabled"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
@@ -180,6 +182,7 @@ var Columns = []string{
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
+	FieldProxyBucketLoadBalanceEnabled,
 	FieldMessagesDispatchModelConfig,
 }
 
@@ -256,6 +259,8 @@ var (
 	DefaultDefaultMappedModel string
 	// DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
 	DefaultMappedModelValidator func(string) error
+	// DefaultProxyBucketLoadBalanceEnabled holds the default value on creation for the "proxy_bucket_load_balance_enabled" field.
+	DefaultProxyBucketLoadBalanceEnabled bool
 	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 )
@@ -401,6 +406,11 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByProxyBucketLoadBalanceEnabled orders the results by the proxy_bucket_load_balance_enabled field.
+func ByProxyBucketLoadBalanceEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProxyBucketLoadBalanceEnabled, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

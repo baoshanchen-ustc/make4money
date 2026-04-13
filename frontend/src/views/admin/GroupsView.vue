@@ -888,6 +888,28 @@
           </div>
         </div>
 
+        <div class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4">
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-600 dark:text-gray-400">{{ t('admin.groups.openaiMessages.proxyBucket') }}</label>
+            <button
+              type="button"
+              @click="createForm.proxy_bucket_load_balance_enabled = !createForm.proxy_bucket_load_balance_enabled"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                createForm.proxy_bucket_load_balance_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  createForm.proxy_bucket_load_balance_enabled ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.groups.openaiMessages.proxyBucketHint') }}</p>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -2006,6 +2028,28 @@
           </div>
         </div>
 
+        <div class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4">
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-600 dark:text-gray-400">{{ t('admin.groups.openaiMessages.proxyBucket') }}</label>
+            <button
+              type="button"
+              @click="editForm.proxy_bucket_load_balance_enabled = !editForm.proxy_bucket_load_balance_enabled"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="
+                editForm.proxy_bucket_load_balance_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              "
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="
+                  editForm.proxy_bucket_load_balance_enabled ? 'translate-x-6' : 'translate-x-1'
+                "
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.groups.openaiMessages.proxyBucketHint') }}</p>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -2973,6 +3017,8 @@ const createForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
+  default_mapped_model: 'gpt-5.4',
+  proxy_bucket_load_balance_enabled: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
@@ -3253,6 +3299,8 @@ const editForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
+  default_mapped_model: '',
+  proxy_bucket_load_balance_enabled: false,
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: editMessagesDispatchDefaults.haiku_mapped_model,
@@ -3435,6 +3483,8 @@ const closeCreateModal = () => {
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
   resetMessagesDispatchFormState(createForm);
+  createForm.default_mapped_model = 'gpt-5.4';
+  createForm.proxy_bucket_load_balance_enabled = false;
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
@@ -3544,6 +3594,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.allow_messages_dispatch =
     group.allow_messages_dispatch ||
     messagesDispatchFormState.allow_messages_dispatch;
+  editForm.default_mapped_model = group.default_mapped_model || "";
+  editForm.proxy_bucket_load_balance_enabled =
+    group.proxy_bucket_load_balance_enabled || false;
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
   editForm.haiku_mapped_model = messagesDispatchFormState.haiku_mapped_model;

@@ -92,7 +92,7 @@ func (m *mockAccountRepoForPlatform) Delete(ctx context.Context, id int64) error
 func (m *mockAccountRepoForPlatform) List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (m *mockAccountRepoForPlatform) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
+func (m *mockAccountRepoForPlatform) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, proxyID *int64) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 func (m *mockAccountRepoForPlatform) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
@@ -2269,31 +2269,103 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		require.Equal(t, int64(2), updatedID, "粘性会话应绑定到新账号")
 	})
 
-	t.Run("无可用账号-返回错误", func(t *testing.T) {
+	t.Run("proxy bucket优先选择低负载代理桶", func(t *testing.T) {
+		groupID := int64(2)
+		proxy101 := int64(101)
+		proxy202 := int64(202)
+		testCtx := context.WithValue(ctx, ctxkey.Group, &Group{
+			ID:                            groupID,
+			Platform:                      PlatformAnthropic,
+			Status:                        StatusActive,
+			Hydrated:                      true,
+			ProxyBucketLoadBalanceEnabled: true,
+		})
+
 		repo := &mockAccountRepoForPlatform{
-			accounts:     []Account{},
+			accounts: []Account{
+				{ID: 11, Platform: PlatformAnthropic, Priority: 5, Status: StatusActive, Schedulable: true, Concurrency: 5, ProxyID: &proxy101},
+				{ID: 12, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, ProxyID: &proxy202},
+				{ID: 13, Platform: PlatformAnthropic, Priority: 0, Status: StatusActive, Schedulable: true, Concurrency: 5},
+			},
 			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
 		}
 
 		cache := &mockGatewayCacheForPlatform{}
-
 		cfg := testConfig()
-		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+		concurrencyCache := &mockConcurrencyCache{
+			loadMap: map[int64]*AccountLoadInfo{
+				11: {AccountID: 11, LoadRate: 80},
+				12: {AccountID: 12, LoadRate: 10},
+				13: {AccountID: 13, LoadRate: 0},
+			},
+		}
 
 		svc := &GatewayService{
 			accountRepo:        repo,
 			cache:              cache,
 			cfg:                cfg,
-			concurrencyService: nil,
+			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
-		require.Error(t, err)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNoAvailableAccounts)
+		result, err := svc.SelectAccountWithLoadAwareness(testCtx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(12), result.Account.ID)
+		require.Equal(t, 1, concurrencyCache.loadBatchCalls)
 	})
 
-	t.Run("过滤不可调度账号-限流账号被跳过", func(t *testing.T) {
+	t.Run("proxy bucket无代理账号时回退原逻辑", func(t *testing.T) {
+		groupID := int64(3)
+		testCtx := context.WithValue(ctx, ctxkey.Group, &Group{
+			ID:                            groupID,
+			Platform:                      PlatformAnthropic,
+			Status:                        StatusActive,
+			Hydrated:                      true,
+			ProxyBucketLoadBalanceEnabled: true,
+		})
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 21, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 5},
+				{ID: 22, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cache := &mockGatewayCacheForPlatform{}
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+		concurrencyCache := &mockConcurrencyCache{
+			loadMap: map[int64]*AccountLoadInfo{
+				21: {AccountID: 21, LoadRate: 5},
+				22: {AccountID: 22, LoadRate: 30},
+			},
+		}
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(concurrencyCache),
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(testCtx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(22), result.Account.ID)
+		require.Equal(t, 1, concurrencyCache.loadBatchCalls)
+	})
+
+	t.Run("无可用账号-返回错误", func(t *testing.T) {
 		now := time.Now()
 		resetAt := now.Add(10 * time.Minute)
 

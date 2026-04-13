@@ -221,8 +221,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
-	sortBy := c.DefaultQuery("sort_by", "name")
-	sortOrder := c.DefaultQuery("sort_order", "asc")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {
@@ -248,7 +246,17 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	var proxyID *int64
+	if proxyIDStr := strings.TrimSpace(c.Query("proxy_id")); proxyIDStr != "" {
+		parsedProxyID, parseErr := strconv.ParseInt(proxyIDStr, 10, 64)
+		if parseErr != nil || parsedProxyID <= 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("INVALID_PROXY_FILTER", "invalid proxy filter"))
+			return
+		}
+		proxyID = &parsedProxyID
+	}
+
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, proxyID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -370,7 +378,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		result[i] = item
 	}
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, groupID, privacyMode, proxyID, lite)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -388,6 +396,9 @@ func buildAccountsListETag(
 	total int64,
 	page, pageSize int,
 	platform, accountType, status, search string,
+	groupID int64,
+	privacyMode string,
+	proxyID *int64,
 	lite bool,
 ) string {
 	payload := struct {
@@ -398,6 +409,9 @@ func buildAccountsListETag(
 		AccountType string                   `json:"type"`
 		Status      string                   `json:"status"`
 		Search      string                   `json:"search"`
+		GroupID     int64                    `json:"group_id"`
+		PrivacyMode string                   `json:"privacy_mode"`
+		ProxyID     *int64                   `json:"proxy_id"`
 		Lite        bool                     `json:"lite"`
 		Items       []AccountWithConcurrency `json:"items"`
 	}{
@@ -408,6 +422,9 @@ func buildAccountsListETag(
 		AccountType: accountType,
 		Status:      status,
 		Search:      search,
+		GroupID:     groupID,
+		PrivacyMode: privacyMode,
+		ProxyID:     proxyID,
 		Lite:        lite,
 		Items:       items,
 	}
@@ -2031,7 +2048,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", nil)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

@@ -93,7 +93,8 @@ type Group struct {
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request"`
 
 	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
-	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
+	AllowMessagesDispatch         bool `json:"allow_messages_dispatch"`
+	ProxyBucketLoadBalanceEnabled bool `json:"proxy_bucket_load_balance_enabled"`
 
 	// 账号过滤控制（仅 OpenAI/Antigravity 平台有效）
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
@@ -116,8 +117,9 @@ type AdminGroup struct {
 	MCPXMLInject bool `json:"mcp_xml_inject"`
 
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
-	DefaultMappedModel          string                                   `json:"default_mapped_model"`
-	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	DefaultMappedModel            string                                   `json:"default_mapped_model"`
+	ProxyBucketLoadBalanceEnabled bool                                     `json:"proxy_bucket_load_balance_enabled"`
+	MessagesDispatchModelConfig   domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes    []string       `json:"supported_model_scopes"`

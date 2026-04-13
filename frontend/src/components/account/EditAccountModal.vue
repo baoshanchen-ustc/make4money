@@ -1209,6 +1209,21 @@
         </div>
       </div>
 
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.requestOverrides') }}</label>
+        <textarea
+          v-model="openAIRequestOverridesText"
+          rows="8"
+          class="input font-mono text-xs"
+          :placeholder="OPENAI_REQUEST_OVERRIDES_PLACEHOLDER"
+          spellcheck="false"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.requestOverridesDesc') }}</p>
+      </div>
+
       <div>
         <div class="flex items-center justify-between">
           <div>
@@ -1764,6 +1779,12 @@ import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
+  OPENAI_REQUEST_OVERRIDES_EXTRA_KEY,
+  OPENAI_REQUEST_OVERRIDES_PLACEHOLDER,
+  parseOpenAIRequestOverrides,
+  stringifyOpenAIRequestOverrides
+} from '@/utils/openaiRequestOverrides'
+import {
   // OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
@@ -1897,6 +1918,7 @@ const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
+const openAIRequestOverridesText = ref('')
 const anthropicPassthroughEnabled = ref(false)
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
@@ -1934,6 +1956,28 @@ const openAIWSModeConcurrencyHintKey = computed(() =>
 const isOpenAIModelRestrictionDisabled = computed(() =>
   props.account?.platform === 'openai' && openaiPassthroughEnabled.value
 )
+
+const applyOpenAIRequestOverridesExtra = (extra: Record<string, unknown>): boolean => {
+  const { value, error } = parseOpenAIRequestOverrides(openAIRequestOverridesText.value)
+  if (error) {
+    appStore.showError(
+      t(
+        error === 'model_not_allowed'
+          ? 'admin.accounts.requestOverridesModelNotAllowed'
+          : 'admin.accounts.requestOverridesInvalid'
+      )
+    )
+    return false
+  }
+
+  if (value && Object.keys(value).length > 0) {
+    extra[OPENAI_REQUEST_OVERRIDES_EXTRA_KEY] = value
+  } else {
+    delete extra[OPENAI_REQUEST_OVERRIDES_EXTRA_KEY]
+  }
+
+  return true
+}
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
@@ -2066,6 +2110,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
+  openAIRequestOverridesText.value = ''
   anthropicPassthroughEnabled.value = false
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
@@ -2084,6 +2129,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     if (newAccount.type === 'oauth') {
       codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
     }
+    openAIRequestOverridesText.value = stringifyOpenAIRequestOverrides(extra?.[OPENAI_REQUEST_OVERRIDES_EXTRA_KEY])
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
     anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
@@ -3079,6 +3125,10 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.codex_cli_only
         }
+      }
+
+      if (!applyOpenAIRequestOverridesExtra(newExtra)) {
+        return
       }
 
       updatePayload.extra = newExtra

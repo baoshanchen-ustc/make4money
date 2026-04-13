@@ -64,9 +64,10 @@ type APIKeyAuthGroupSnapshot struct {
 	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
 
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
-	AllowMessagesDispatch       bool                              `json:"allow_messages_dispatch"`
-	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
-	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
+	AllowMessagesDispatch         bool                              `json:"allow_messages_dispatch"`
+	DefaultMappedModel            string                            `json:"default_mapped_model,omitempty"`
+	ProxyBucketLoadBalanceEnabled bool                              `json:"proxy_bucket_load_balance_enabled"`
+	MessagesDispatchModelConfig   OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

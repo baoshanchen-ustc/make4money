@@ -190,6 +190,11 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// ProxyBucketLoadBalanceEnabled applies equality check predicate on the "proxy_bucket_load_balance_enabled" field. It's identical to ProxyBucketLoadBalanceEnabledEQ.
+func ProxyBucketLoadBalanceEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldProxyBucketLoadBalanceEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1318,6 +1323,16 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// ProxyBucketLoadBalanceEnabledEQ applies the EQ predicate on the "proxy_bucket_load_balance_enabled" field.
+func ProxyBucketLoadBalanceEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldProxyBucketLoadBalanceEnabled, v))
+}
+
+// ProxyBucketLoadBalanceEnabledNEQ applies the NEQ predicate on the "proxy_bucket_load_balance_enabled" field.
+func ProxyBucketLoadBalanceEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldProxyBucketLoadBalanceEnabled, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

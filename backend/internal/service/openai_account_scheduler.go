@@ -212,6 +212,14 @@ type defaultOpenAIAccountScheduler struct {
 	stats   *openAIAccountRuntimeStats
 }
 
+func (s *defaultOpenAIAccountScheduler) proxyBucketGroup(ctx context.Context, groupID *int64) *Group {
+	group := currentGroupFromContext(ctx)
+	if groupID == nil || group == nil || group.ID != *groupID {
+		return nil
+	}
+	return group
+}
+
 func newDefaultOpenAIAccountScheduler(service *OpenAIGatewayService, stats *openAIAccountRuntimeStats) OpenAIAccountScheduler {
 	if stats == nil {
 		stats = newOpenAIAccountRuntimeStats()
@@ -623,6 +631,31 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 	}
 
+	proxyGroup := s.proxyBucketGroup(ctx, req.GroupID)
+	proxyCandidates := make([]proxyBucketLoadCandidate, 0, len(filtered))
+	for _, account := range filtered {
+		proxyCandidates = append(proxyCandidates, proxyBucketLoadCandidate{
+			account:  account,
+			loadInfo: loadMap[account.ID],
+		})
+		if loadMap[account.ID] == nil {
+			loadMap[account.ID] = &AccountLoadInfo{AccountID: account.ID}
+		}
+	}
+	selectedProxyCandidates := selectProxyBucketCandidates(proxyGroup, proxyCandidates, req.SessionHash)
+	if len(selectedProxyCandidates) == 0 {
+		return nil, 0, 0, 0, ErrNoAvailableAccounts
+	}
+	filtered = filtered[:0]
+	for _, candidate := range selectedProxyCandidates {
+		if candidate.account != nil {
+			filtered = append(filtered, candidate.account)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, 0, 0, 0, ErrNoAvailableAccounts
+	}
+
 	minPriority, maxPriority := filtered[0].Priority, filtered[0].Priority
 	maxWaiting := 1
 	loadRateSum := 0.0
@@ -730,7 +763,6 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	}
 
 	cfg := s.service.schedulingConfig()
-	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	for _, candidate := range selectionOrder {
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {

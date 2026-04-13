@@ -1755,6 +1755,11 @@ export default {
         title: 'OpenAI Messages 调度配置',
         allowDispatch: '允许 /v1/messages 调度',
         allowDispatchHint: '启用后，此 OpenAI 分组的 API Key 可以通过 /v1/messages 端点调度请求',
+        proxyBucket: '启用 Proxy 分桶调度',
+        proxyBucketHint: '启用后，相关调度路径会在粘性会话未命中后优先按 proxy_id 分桶，优先使用低负载代理桶；若没有可参与分桶的代理账号则自动回退到原逻辑',
+        defaultModel: '默认映射模型',
+        defaultModelPlaceholder: '例如: gpt-4.1',
+        defaultModelHint: '当账号未配置模型映射时，所有请求模型将映射到此模型',
         familyMappingTitle: '系列默认映射',
         familyMappingHint: '当请求命中 Opus、Sonnet、Haiku 系列时，会优先使用这里配置的目标模型。',
         opusModel: 'Opus 映射模型',
@@ -2113,6 +2118,8 @@ export default {
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',
+      allProxies: '全部代理',
+      searchProxyPlaceholder: '搜索代理名称 / Host / ID...',
       ungroupedGroup: '未分配分组',
       oauthType: 'OAuth',
       // Schedulable toggle
@@ -2469,6 +2476,11 @@ export default {
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
+      requestOverrides: '请求参数覆盖',
+      requestOverridesDesc: '可选 JSON 对象。配置后会写入该 OpenAI 账号的请求体，并覆盖客户端传入的同名参数。',
+      requestOverridesPlaceholder: '{\n  "service_tier": "priority"\n}',
+      requestOverridesInvalid: 'OpenAI 请求参数覆盖必须是合法 JSON，且顶层必须是对象。',
+      requestOverridesModelNotAllowed: 'OpenAI 请求参数覆盖不允许设置顶层 "model" 字段。',
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
         apiKeyPassthroughDesc:

@@ -64,6 +64,9 @@ type openAIAccountTestRepo struct {
 	updatedExtra  map[string]any
 	rateLimitedID int64
 	rateLimitedAt *time.Time
+	setErrorID    int64
+	setErrorMsg   string
+	setErrorCalls int
 }
 
 func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -74,6 +77,13 @@ func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates 
 func (r *openAIAccountTestRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	r.rateLimitedID = id
 	r.rateLimitedAt = &resetAt
+	return nil
+}
+
+func (r *openAIAccountTestRepo) SetError(_ context.Context, id int64, errorMsg string) error {
+	r.setErrorID = id
+	r.setErrorMsg = errorMsg
+	r.setErrorCalls++
 	return nil
 }
 
@@ -144,4 +154,53 @@ func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimit(t *testing.T) 
 	if account.RateLimitResetAt != nil && repo.rateLimitedAt != nil {
 		require.WithinDuration(t, *repo.rateLimitedAt, *account.RateLimitResetAt, time.Second)
 	}
+}
+
+func TestAccountTestService_OpenAI401AccountDeactivatedMarksSpecificPermanentError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusUnauthorized, `{"error":{"code":"account_deactivated","message":"Your OpenAI account has been deactivated","type":"invalid_request_error"},"status":401}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+	account := &Account{
+		ID:          87,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")
+	require.Error(t, err)
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, int64(87), repo.setErrorID)
+	require.Contains(t, repo.setErrorMsg, "Account deactivated (401)")
+	require.Contains(t, repo.setErrorMsg, "Your OpenAI account has been deactivated")
+}
+
+func TestAccountTestService_OpenAI401UnauthorizedDetailMarksSpecificPermanentError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusUnauthorized, `{"detail":"Unauthorized"}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+	account := &Account{
+		ID:          86,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")
+	require.Error(t, err)
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, int64(86), repo.setErrorID)
+	require.Equal(t, "Unauthorized (401): account authentication failed permanently", repo.setErrorMsg)
 }

@@ -70,6 +70,19 @@ type accountWithLoad struct {
 	loadInfo *AccountLoadInfo
 }
 
+type proxyBucketLoadCandidate struct {
+	account  *Account
+	loadInfo *AccountLoadInfo
+}
+
+type proxyBucketScore struct {
+	proxyID        int64
+	minLoadRate    int
+	minWaiting     int
+	minPriority    int
+	availableCount int
+}
+
 var ForceCacheBillingContextKey = forceCacheBillingKeyType{}
 
 var (
@@ -90,6 +103,14 @@ var (
 	modelsListCacheStoreTotal atomic.Int64
 )
 
+func currentGroupFromContext(ctx context.Context) *Group {
+	group, _ := ctx.Value(ctxkey.Group).(*Group)
+	if !IsGroupContextValid(group) {
+		return nil
+	}
+	return group
+}
+
 func GatewayWindowCostPrefetchStats() (cacheHit, cacheMiss, batchSQL, fallback, errCount int64) {
 	return windowCostPrefetchCacheHitTotal.Load(),
 		windowCostPrefetchCacheMissTotal.Load(),
@@ -108,6 +129,188 @@ func GatewayUserGroupRateCacheStats() (cacheHit, cacheMiss, load, singleflightSh
 
 func GatewayModelsListCacheStats() (cacheHit, cacheMiss, store int64) {
 	return modelsListCacheHitTotal.Load(), modelsListCacheMissTotal.Load(), modelsListCacheStoreTotal.Load()
+}
+
+func shouldApplyProxyBucketLoadBalance(group *Group) bool {
+	return group != nil && group.ProxyBucketLoadBalanceEnabled
+}
+
+func chooseBestProxyBucket(candidates []proxyBucketLoadCandidate, spreadKey string) (int64, bool) {
+	if len(candidates) == 0 {
+		return 0, false
+	}
+
+	scores := make(map[int64]proxyBucketScore, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.account == nil || candidate.account.ProxyID == nil {
+			continue
+		}
+		proxyID := *candidate.account.ProxyID
+		loadInfo := candidate.loadInfo
+		if loadInfo == nil {
+			loadInfo = &AccountLoadInfo{AccountID: candidate.account.ID}
+		}
+		score := proxyBucketScore{
+			proxyID:        proxyID,
+			minLoadRate:    loadInfo.LoadRate,
+			minWaiting:     loadInfo.WaitingCount,
+			minPriority:    candidate.account.Priority,
+			availableCount: 1,
+		}
+		if existing, ok := scores[proxyID]; ok {
+			score.availableCount = existing.availableCount + 1
+			if isProxyBucketScoreBetter(score, existing) {
+				scores[proxyID] = score
+			} else {
+				existing.availableCount = score.availableCount
+				scores[proxyID] = existing
+			}
+			continue
+		}
+		scores[proxyID] = score
+	}
+	if len(scores) == 0 {
+		return 0, false
+	}
+
+	bestScores := make([]proxyBucketScore, 0, len(scores))
+	for _, score := range scores {
+		if len(bestScores) == 0 {
+			bestScores = append(bestScores, score)
+			continue
+		}
+		bestScore := bestScores[0]
+		if isProxyBucketScoreBetter(score, bestScore) {
+			bestScores = bestScores[:0]
+			bestScores = append(bestScores, score)
+			continue
+		}
+		if isProxyBucketScoreEqual(score, bestScore) {
+			bestScores = append(bestScores, score)
+		}
+	}
+	if len(bestScores) == 0 {
+		return 0, false
+	}
+	if len(bestScores) == 1 {
+		return bestScores[0].proxyID, true
+	}
+
+	proxyIDs := make([]int64, 0, len(bestScores))
+	for _, score := range bestScores {
+		proxyIDs = append(proxyIDs, score.proxyID)
+	}
+	return chooseProxyBucketTieWinner(proxyIDs, spreadKey)
+}
+
+func isProxyBucketScoreBetter(left, right proxyBucketScore) bool {
+	if left.minLoadRate != right.minLoadRate {
+		return left.minLoadRate < right.minLoadRate
+	}
+	if left.minWaiting != right.minWaiting {
+		return left.minWaiting < right.minWaiting
+	}
+	if left.minPriority != right.minPriority {
+		return left.minPriority < right.minPriority
+	}
+	if left.availableCount != right.availableCount {
+		return left.availableCount > right.availableCount
+	}
+	return false
+}
+
+func isProxyBucketScoreEqual(left, right proxyBucketScore) bool {
+	return left.minLoadRate == right.minLoadRate &&
+		left.minWaiting == right.minWaiting &&
+		left.minPriority == right.minPriority &&
+		left.availableCount == right.availableCount
+}
+
+func chooseProxyBucketTieWinner(proxyIDs []int64, spreadKey string) (int64, bool) {
+	if len(proxyIDs) == 0 {
+		return 0, false
+	}
+	if len(proxyIDs) == 1 {
+		return proxyIDs[0], true
+	}
+
+	sorted := append([]int64(nil), proxyIDs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+
+	if spreadKey != "" {
+		idx := int(xxhash.Sum64String(spreadKey) % uint64(len(sorted)))
+		return sorted[idx], true
+	}
+	return sorted[mathrand.Intn(len(sorted))], true
+}
+
+func filterCandidatesByProxyBucket(candidates []proxyBucketLoadCandidate, proxyID int64) []proxyBucketLoadCandidate {
+	filtered := make([]proxyBucketLoadCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.account == nil || candidate.account.ProxyID == nil {
+			continue
+		}
+		if *candidate.account.ProxyID == proxyID {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
+}
+
+func selectProxyBucketCandidates(group *Group, candidates []proxyBucketLoadCandidate, spreadKey string) []proxyBucketLoadCandidate {
+	if !shouldApplyProxyBucketLoadBalance(group) || len(candidates) == 0 {
+		return candidates
+	}
+
+	proxyCandidates := make([]proxyBucketLoadCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.account != nil && candidate.account.ProxyID != nil {
+			proxyCandidates = append(proxyCandidates, candidate)
+		}
+	}
+	if len(proxyCandidates) == 0 {
+		return candidates
+	}
+
+	selectedProxyID, ok := chooseBestProxyBucket(proxyCandidates, spreadKey)
+	if !ok {
+		return candidates
+	}
+	selected := filterCandidatesByProxyBucket(proxyCandidates, selectedProxyID)
+	if len(selected) == 0 {
+		return candidates
+	}
+	return selected
+}
+
+func selectProxyBucketAccounts(group *Group, accounts []Account, loadMap map[int64]*AccountLoadInfo, spreadKey string) []Account {
+	if !shouldApplyProxyBucketLoadBalance(group) || len(accounts) == 0 {
+		return accounts
+	}
+
+	candidates := make([]proxyBucketLoadCandidate, 0, len(accounts))
+	for i := range accounts {
+		acc := &accounts[i]
+		candidates = append(candidates, proxyBucketLoadCandidate{
+			account:  acc,
+			loadInfo: loadMap[acc.ID],
+		})
+	}
+	selected := selectProxyBucketCandidates(group, candidates, spreadKey)
+	if len(selected) == len(candidates) {
+		return accounts
+	}
+
+	filtered := make([]Account, 0, len(selected))
+	for _, candidate := range selected {
+		if candidate.account != nil {
+			filtered = append(filtered, *candidate.account)
+		}
+	}
+	if len(filtered) == 0 {
+		return accounts
+	}
+	return filtered
 }
 
 func openAIStreamEventIsTerminal(data string) bool {
@@ -1156,6 +1359,29 @@ func (s *GatewayService) SelectAccount(ctx context.Context, groupID *int64, sess
 }
 
 // SelectAccountForModel 选择支持指定模型的账号（粘性会话+优先级+模型映射）
+func (s *GatewayService) selectProxyBucketForCurrentGroup(ctx context.Context, accounts []Account, spreadKey string) []Account {
+	group := currentGroupFromContext(ctx)
+	if !shouldApplyProxyBucketLoadBalance(group) || len(accounts) == 0 {
+		return accounts
+	}
+
+	loadMap := map[int64]*AccountLoadInfo{}
+	if s != nil && s.concurrencyService != nil {
+		accountLoads := make([]AccountWithConcurrency, 0, len(accounts))
+		for _, acc := range accounts {
+			accountLoads = append(accountLoads, AccountWithConcurrency{
+				ID:             acc.ID,
+				MaxConcurrency: acc.EffectiveLoadFactor(),
+			})
+		}
+		if batchLoad, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads); err == nil {
+			loadMap = batchLoad
+		}
+	}
+
+	return selectProxyBucketAccounts(group, accounts, loadMap, spreadKey)
+}
+
 func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int64, sessionHash string, requestedModel string) (*Account, error) {
 	return s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, nil)
 }
@@ -1696,6 +1922,29 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+	if err == nil {
+		proxyCandidates := make([]proxyBucketLoadCandidate, 0, len(candidates))
+		for _, acc := range candidates {
+			proxyCandidates = append(proxyCandidates, proxyBucketLoadCandidate{
+				account:  acc,
+				loadInfo: loadMap[acc.ID],
+			})
+		}
+		selectedCandidates := selectProxyBucketCandidates(group, proxyCandidates, sessionHash)
+		if len(selectedCandidates) == 0 {
+			return nil, ErrNoAvailableAccounts
+		}
+		candidates = candidates[:0]
+		for _, candidate := range selectedCandidates {
+			if candidate.account != nil {
+				candidates = append(candidates, candidate.account)
+			}
+		}
+		if len(candidates) == 0 {
+			return nil, ErrNoAvailableAccounts
+		}
+	}
+
 	if err != nil {
 		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
 			return nil, legacyErr
@@ -2763,9 +3012,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		}
 		accountsLoaded = true
 
-		// 提前预取窗口费用+RPM 计数，确保 routing 段内的调度检查调用能命中缓存
-		ctx = s.withWindowCostPrefetch(ctx, accounts)
-		ctx = s.withRPMPrefetch(ctx, accounts)
+		accounts = s.selectProxyBucketForCurrentGroup(ctx, accounts, sessionHash)
 
 		routingSet := make(map[int64]struct{}, len(routingAccountIDs))
 		for _, id := range routingAccountIDs {
@@ -2883,11 +3130,13 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	// 批量预取窗口费用+RPM 计数，避免逐个账号查询（N+1）
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
+	accounts = s.selectProxyBucketForCurrentGroup(ctx, accounts, sessionHash)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持）
 	// needsUpstreamCheck 仅在主选择循环中使用；粘性会话命中时跳过此检查，
 	// 因为粘性会话优先保持连接一致性，且 upstream 计费基准极少使用。
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	accounts = s.selectProxyBucketForCurrentGroup(ctx, accounts, sessionHash)
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
@@ -2970,6 +3219,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, nativePlatform string) (*Account, error) {
 	preferOAuth := nativePlatform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, nativePlatform)
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 
 	// require_privacy_set: 获取分组信息
 	var schedGroup *Group
@@ -3019,9 +3269,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		}
 		accountsLoaded = true
 
-		// 提前预取窗口费用+RPM 计数，确保 routing 段内的调度检查调用能命中缓存
-		ctx = s.withWindowCostPrefetch(ctx, accounts)
-		ctx = s.withRPMPrefetch(ctx, accounts)
+		accounts = s.selectProxyBucketForCurrentGroup(ctx, accounts, sessionHash)
 
 		routingSet := make(map[int64]struct{}, len(routingAccountIDs))
 		for _, id := range routingAccountIDs {
@@ -3143,8 +3391,6 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
-	// needsUpstreamCheck 仅在主选择循环中使用；粘性会话命中时跳过此检查。
-	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
