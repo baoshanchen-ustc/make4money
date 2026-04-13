@@ -315,15 +315,15 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			continue
 		}
 
-		// Accumulate delta content for fallback when terminal output is empty
-		// or carries message blocks with missing text.
-		acc.ProcessEvent(&event)
+	// Accumulate delta content for fallback when terminal output is empty
+	// or carries message blocks with missing text.
+	acc.ProcessEvent(&event)
 
-		// Terminal events carry the complete ResponsesResponse with output + usage.
-		if (event.Type == "response.completed" || event.Type == "response.done" ||
-			event.Type == "response.incomplete" || event.Type == "response.failed" ||
-			event.Type == "response.cancelled" || event.Type == "response.canceled") &&
-			event.Response != nil {
+	// Terminal events carry the complete ResponsesResponse with output + usage.
+	if (event.Type == "response.completed" || event.Type == "response.done" ||
+		event.Type == "response.incomplete" || event.Type == "response.failed" ||
+		event.Type == "response.cancelled" || event.Type == "response.canceled") &&
+		event.Response != nil {
 			finalResponse = event.Response
 			if event.Response.Usage != nil {
 				usage = OpenAIUsage{
@@ -351,6 +351,8 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
 	}
 
+	// When the terminal event has an empty output array, reconstruct from
+	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
 	anthropicResp := apicompat.ResponsesToAnthropicWithToolNameMap(finalResponse, originalModel, toolNameMap)
 
