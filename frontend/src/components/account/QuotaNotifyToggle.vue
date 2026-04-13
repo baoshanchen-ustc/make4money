@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { QUOTA_THRESHOLD_TYPE_FIXED, QUOTA_THRESHOLD_TYPE_PERCENTAGE } from '@/constants/account'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -16,7 +17,7 @@ const emit = defineEmits<{
 }>()
 
 function toggleType(current: string | null) {
-  emit('update:thresholdType', current === 'percentage' ? 'fixed' : 'percentage')
+  emit('update:thresholdType', current === QUOTA_THRESHOLD_TYPE_PERCENTAGE ? QUOTA_THRESHOLD_TYPE_FIXED : QUOTA_THRESHOLD_TYPE_PERCENTAGE)
 }
 </script>
 
@@ -42,7 +43,7 @@ function toggleType(current: string | null) {
       <button
         type="button"
         class="px-1.5 py-0.5 text-xs font-medium rounded border transition-colors"
-        :class="(!thresholdType || thresholdType === 'fixed') ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/30 dark:text-primary-400 dark:border-primary-700' : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:border-dark-500'"
+        :class="(!thresholdType || thresholdType === QUOTA_THRESHOLD_TYPE_FIXED) ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/30 dark:text-primary-400 dark:border-primary-700' : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:border-dark-500'"
         @click="toggleType(thresholdType)"
       >
         $
@@ -50,7 +51,7 @@ function toggleType(current: string | null) {
       <button
         type="button"
         class="px-1.5 py-0.5 text-xs font-medium rounded border transition-colors"
-        :class="thresholdType === 'percentage' ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/30 dark:text-primary-400 dark:border-primary-700' : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:border-dark-500'"
+        :class="thresholdType === QUOTA_THRESHOLD_TYPE_PERCENTAGE ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/30 dark:text-primary-400 dark:border-primary-700' : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:border-dark-500'"
         @click="toggleType(thresholdType)"
       >
         %
@@ -61,13 +62,13 @@ function toggleType(current: string | null) {
           @input="emit('update:threshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
           type="number"
           min="0"
-          :max="thresholdType === 'percentage' ? 100 : undefined"
-          :step="thresholdType === 'percentage' ? 1 : 0.01"
+          :max="thresholdType === QUOTA_THRESHOLD_TYPE_PERCENTAGE ? 100 : undefined"
+          :step="thresholdType === QUOTA_THRESHOLD_TYPE_PERCENTAGE ? 1 : 0.01"
           class="input py-1 text-sm w-full pr-7"
-          :placeholder="thresholdType === 'percentage' ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
+          :placeholder="thresholdType === QUOTA_THRESHOLD_TYPE_PERCENTAGE ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
         />
         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-          {{ thresholdType === 'percentage' ? '%' : '$' }}
+          {{ thresholdType === QUOTA_THRESHOLD_TYPE_PERCENTAGE ? '%' : '$' }}
         </span>
       </div>
     </template>
