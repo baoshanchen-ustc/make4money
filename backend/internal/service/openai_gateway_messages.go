@@ -315,15 +315,14 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			continue
 		}
 
-	// Accumulate delta content for fallback when terminal output is empty
-	// or carries message blocks with missing text.
-	acc.ProcessEvent(&event)
+		// Accumulate delta content for fallback when terminal output is empty.
+		acc.ProcessEvent(&event)
 
-	// Terminal events carry the complete ResponsesResponse with output + usage.
-	if (event.Type == "response.completed" || event.Type == "response.done" ||
-		event.Type == "response.incomplete" || event.Type == "response.failed" ||
-		event.Type == "response.cancelled" || event.Type == "response.canceled") &&
-		event.Response != nil {
+		// Terminal events carry the complete ResponsesResponse with output + usage.
+		if (event.Type == "response.completed" || event.Type == "response.done" ||
+			event.Type == "response.incomplete" || event.Type == "response.failed" ||
+			event.Type == "response.cancelled" || event.Type == "response.canceled") &&
+			event.Response != nil {
 			finalResponse = event.Response
 			if event.Response.Usage != nil {
 				usage = OpenAIUsage{
