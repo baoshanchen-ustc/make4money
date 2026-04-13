@@ -212,7 +212,7 @@ func (s *PaymentService) revalidateSelectedInstance(ctx context.Context, tx *dbe
 	if err != nil {
 		return fmt.Errorf("lock selected payment instance: %w", err)
 	}
-	if !inst.Enabled || !(payment.InstanceSupportsType(inst.SupportedTypes, paymentType) || inst.ProviderKey == payment.GetBasePaymentType(paymentType)) {
+	if !inst.Enabled || (!payment.InstanceSupportsType(inst.SupportedTypes, paymentType) && inst.ProviderKey != payment.GetBasePaymentType(paymentType)) {
 		return infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "selected payment instance is no longer available")
 	}
 	usage, err := tx.PaymentOrder.Query().

@@ -460,13 +460,6 @@ func buildPaymentUpdateMap(req UpdatePaymentConfigRequest) map[string]string {
 	return updates
 }
 
-func formatBoolOrEmpty(v *bool) string {
-	if v == nil {
-		return ""
-	}
-	return strconv.FormatBool(*v)
-}
-
 func formatOptionalPositiveFloat(v float64) string {
 	if v <= 0 {
 		return ""
@@ -493,13 +486,6 @@ func formatPositiveInt(v *int) string {
 		return ""
 	}
 	return strconv.Itoa(*v)
-}
-
-func derefStr(v *string) string {
-	if v == nil {
-		return ""
-	}
-	return *v
 }
 
 func nonEmptyOrDefault(v, fallback string) string {
