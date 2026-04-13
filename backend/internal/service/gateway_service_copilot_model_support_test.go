@@ -78,7 +78,7 @@ func TestGatewayServiceIsModelSupportedByAccount_CopilotWhitelistFilters(t *test
 func TestGatewayServiceIsModelSupportedByAccount_CopilotEmptyWhitelistAllowsAll(t *testing.T) {
 	svc := &GatewayService{}
 	account := &Account{
-		Platform: PlatformCopilot,
+		Platform:    PlatformCopilot,
 		Credentials: map[string]any{
 			// model_whitelist 未设置
 		},

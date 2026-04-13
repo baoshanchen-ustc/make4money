@@ -183,15 +183,15 @@ func (s *OpsRequestDetailsIntegrationSuite) TestSuccessBranch_NoMapping_Upstream
 
 	now := time.Now().UTC()
 	log := s.insertUsageLog(&service.UsageLog{
-		UserID:       user.ID,
-		APIKeyID:     apiKey.ID,
-		AccountID:    account.ID,
-		RequestID:    uuid.NewString(),
-		Model:        "claude-opus-4",
+		UserID:        user.ID,
+		APIKeyID:      apiKey.ID,
+		AccountID:     account.ID,
+		RequestID:     uuid.NewString(),
+		Model:         "claude-opus-4",
 		UpstreamModel: nil, // no mapping
-		InputTokens:  10,
-		OutputTokens: 5,
-		CreatedAt:    now,
+		InputTokens:   10,
+		OutputTokens:  5,
+		CreatedAt:     now,
 	})
 
 	rows, _ := s.listInWindow(log.CreatedAt)
