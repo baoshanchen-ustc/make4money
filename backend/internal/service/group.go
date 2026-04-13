@@ -57,8 +57,10 @@ type Group struct {
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
 	RequirePrivacySet           bool // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
 	DefaultMappedModel          string
-	ProxyBucketLoadBalanceEnabled bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
+
+	// Proxy bucket 调度配置（独立于 messages dispatch）
+	ProxyBucketLoadBalanceEnabled bool
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
