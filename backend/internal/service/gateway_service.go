@@ -8602,6 +8602,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 				ImageOutputTokens:   result.Usage.ImageOutputTokens,
 			},
 			1, // requestCount
+			cost.TotalCost,
 		)
 	}
 
