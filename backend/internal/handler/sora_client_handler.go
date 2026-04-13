@@ -157,12 +157,16 @@ func (h *SoraClientHandler) Generate(c *gin.Context) {
 		return
 	}
 
+	// 在启动 goroutine 之前捕获状态快照，避免后台任务修改 gen.Status 产生竞态。
+	genID := gen.ID
+	genStatus := gen.Status
+
 	// 启动后台异步生成 goroutine
-	go h.processGeneration(gen.ID, userID, groupID, req.Model, req.Prompt, req.MediaType, req.ImageInput, req.VideoCount)
+	go h.processGeneration(genID, userID, groupID, req.Model, req.Prompt, req.MediaType, req.ImageInput, req.VideoCount)
 
 	response.Success(c, gin.H{
-		"generation_id": gen.ID,
-		"status":        gen.Status,
+		"generation_id": genID,
+		"status":        genStatus,
 	})
 }
 
