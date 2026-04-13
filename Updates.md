@@ -1,5 +1,29 @@
 # 更新记录
 
+## 2026-04-13（0.1.142）
+
+- 版本号：`0.1.141` → `0.1.142`。
+- **新功能：Copilot 平台配置（Platform Config）**
+  - 新增 `copilot_platform_configs` 数据库表及 Ent Schema，支持全局 Copilot 平台级参数管理。
+  - 新增后端三层继承逻辑：`max_output_tokens`、`max_body_kb`、`model_whitelist` 均遵循「账号级 → 平台配置级 → 默认」优先级。
+  - 新增 `CopilotPlatformConfigService`、`CopilotPlatformConfigHandler`（含 GET/PUT 接口）及完整测试覆盖。
+  - 前端新增 **平台配置页**（`/admin/copilot/platform`），支持全局参数可视化编辑；侧边栏 Copilot 分组重组，新增「平台配置」和「账户列表」入口；Copilot 路由结构重组（`platform/accounts/cost`）。
+  - `model_whitelist` 新增 Copilot 模型集，账户编辑弹窗同步支持 `model_whitelist` 字段。
+  - 平台级 `model_mapping` fallback：支持在平台配置中配置上游模型映射，账号级映射不存在时自动回退至平台配置。
+- **新功能：Copilot Session 级别配额优化**
+  - 新增 `sessionCache`（TTL 60 秒），在 `ChatCompletions`、`Responses`、`Messages` 全部六个分支调用点接入，通过复用 session 降低 Premium 配额消耗。
+  - `CopilotForwardResult` 携带实际 `Initiator`，统一 handler analytics 口径。
+  - 新增六个端到端测试，覆盖 session cache 的全部六个分支调用点。
+- **新功能：请求排查（OpsRequestDetail）增强**
+  - 列表新增「用户」「Key 名称」「密钥」三列，模型列展示上游模型映射。
+  - 详情面板：有模型映射时高亮显示上游模型。
+  - 后端 CTE 补充 `upstream_model` 和 `api_key_name` 列，修复 Scan 列顺序错位及 error 分支 `api_key_name` 空值问题。
+  - 新增完整集成测试，覆盖成功/错误分支的列映射正确性（含 Spans 序列化回归测试）。
+- **新功能：分销系统基础架构**
+  - 新增数据库架构与领域类型定义：邀请码、邀请关系、注册奖励、消费返佣事件等结构体，为后续分销服务逻辑奠定基础。
+- **修复 CI**：修复集成测试数据污染问题——`OpsRequestDetails` 测试套件未清理 `usage_logs` / `ops_error_logs`，导致 `DashboardStats` 测试断言失败；同步修复 `[]int` → `[]int64` 类型不匹配编译错误及 golangci-lint `gofmt` 格式问题。
+- **修复**：AccountsView 路由切换 `watch` 改调 `reload()`，确保统计列同步更新；Copilot 账户编辑 `max_output_tokens` 默认改为 0（不限制）；Copilot 白名单 dash/dot 格式兼容与 `text-embedding-ada-002b` 补全。
+
 ## 2026-04-07（0.1.135）
 
 - 版本号：`0.1.134` → `0.1.135`。
