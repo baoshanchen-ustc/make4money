@@ -108,6 +108,7 @@ export interface PublicSettings {
   purchase_subscription_url: string
   table_default_page_size: number
   table_page_size_options: number[]
+  payment_enabled: boolean
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
@@ -1632,3 +1633,6 @@ export interface UpdateScheduledTestPlanRequest {
   max_results?: number
   auto_recover?: boolean
 }
+
+// Payment types
+export type { SubscriptionPlan, PaymentOrder, CheckoutInfoResponse } from './payment'
