@@ -281,6 +281,50 @@ func TestHTTPUpstreamSuite(t *testing.T) {
 	suite.Run(t, new(HTTPUpstreamSuite))
 }
 
+func (s *HTTPUpstreamSuite) TestEvaluateHTTPPoolWarnings() {
+	settings := poolSettings{
+		maxIdleConns:        2048,
+		maxIdleConnsPerHost: 1024,
+		maxConnsPerHost:     2048,
+	}
+	warnings := evaluateHTTPPoolWarnings(settings)
+	require.NotEmpty(s.T(), warnings)
+}
+
+func (s *HTTPUpstreamSuite) TestEvaluateHTTPClientCacheWarnings() {
+	warnings := evaluateHTTPClientCacheWarnings(10000)
+	require.NotEmpty(s.T(), warnings)
+}
+
+func (s *HTTPUpstreamSuite) TestSnapshotRuntime() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ConnectionPoolIsolation: config.ConnectionPoolIsolationAccountProxy,
+		MaxUpstreamClients:      4,
+		ClientIdleTTLSeconds:    300,
+	}
+	svc := s.newService()
+	entry1 := mustGetOrCreateClient(s.T(), svc, "http://proxy-a:8080", 1, 1)
+	_ = mustGetOrCreateClient(s.T(), svc, "http://proxy-b:8080", 2, 1)
+	atomic.StoreInt64(&entry1.inFlight, 2)
+
+	snapshot := svc.SnapshotRuntime()
+	require.Equal(s.T(), 2, snapshot.CachedClients)
+	require.Equal(s.T(), 1, snapshot.ActiveClients)
+	require.Equal(s.T(), 1, snapshot.IdleClients)
+	require.Equal(s.T(), int64(2), snapshot.TotalInFlight)
+	require.Equal(s.T(), 4, snapshot.MaxUpstreamClients)
+	require.NotNil(s.T(), snapshot.CacheUsagePercent)
+	require.Equal(s.T(), 50.0, *snapshot.CacheUsagePercent)
+	require.NotNil(s.T(), snapshot.ActiveClientRatio)
+	require.Equal(s.T(), 50.0, *snapshot.ActiveClientRatio)
+	require.NotNil(s.T(), snapshot.ClientHeadroomPercent)
+	require.Equal(s.T(), 50.0, *snapshot.ClientHeadroomPercent)
+	require.NotNil(s.T(), snapshot.ActiveClientLoadPercent)
+	require.Equal(s.T(), 25.0, *snapshot.ActiveClientLoadPercent)
+	require.Equal(s.T(), config.ConnectionPoolIsolationAccountProxy, snapshot.IsolationMode)
+	require.Equal(s.T(), 300, snapshot.ClientIdleTTL)
+}
+
 // mustGetOrCreateClient 测试辅助函数，调用 getOrCreateClient 并断言无错误
 func mustGetOrCreateClient(t *testing.T, svc *httpUpstreamService, proxyURL string, accountID int64, concurrency int) *upstreamClientEntry {
 	t.Helper()

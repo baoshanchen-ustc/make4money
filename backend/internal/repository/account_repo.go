@@ -697,14 +697,6 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 	if err != nil {
 		return err
 	}
-	lastUsedPayload := make(map[string]int64, len(updates))
-	for id, ts := range updates {
-		lastUsedPayload[strconv.FormatInt(id, 10)] = ts.Unix()
-	}
-	payload := map[string]any{"last_used": lastUsedPayload}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountLastUsed, nil, nil, payload); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue batch last used failed: err=%v", err)
-	}
 	return nil
 }
 

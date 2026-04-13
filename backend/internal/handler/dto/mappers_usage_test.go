@@ -111,11 +111,13 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	t.Parallel()
 
 	upstreamModel := "claude-sonnet-4-20250514"
+	provider := service.PlatformAnthropic
 	log := &service.UsageLog{
 		RequestID:      "req_4",
 		Model:          upstreamModel,
 		RequestedModel: "claude-sonnet-4",
 		UpstreamModel:  &upstreamModel,
+		Provider:       &provider,
 	}
 
 	userDTO := UsageLogFromService(log)
@@ -131,6 +133,7 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	adminJSON, err := json.Marshal(adminDTO)
 	require.NoError(t, err)
 	require.Contains(t, string(adminJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
+	require.Contains(t, string(adminJSON), `"provider":"anthropic"`)
 }
 
 func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *testing.T) {

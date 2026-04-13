@@ -445,6 +445,32 @@ func TestUsageRecordWorkerPool_StatsAndStop_NilBranches(t *testing.T) {
 	require.NotPanics(t, func() { emptyPool.Stop() })
 }
 
+func TestUsageRecordWorkerPool_TimeoutsAndPanicsCounters(t *testing.T) {
+	pool := &UsageRecordWorkerPool{taskTimeout: 5 * time.Millisecond}
+
+	require.NotPanics(t, func() {
+		pool.execute(func(ctx context.Context) {
+			time.Sleep(20 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+			default:
+			}
+		})
+	})
+	require.Eventually(t, func() bool {
+		return pool.Stats().TaskTimeouts >= 1
+	}, time.Second, 10*time.Millisecond)
+
+	require.NotPanics(t, func() {
+		pool.execute(func(ctx context.Context) {
+			panic("boom")
+		})
+	})
+	require.Eventually(t, func() bool {
+		return pool.Stats().TaskPanics >= 1
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestUsageRecordWorkerPool_Execute_PanicAndTimeout(t *testing.T) {
 	pool := &UsageRecordWorkerPool{taskTimeout: 30 * time.Millisecond}
 

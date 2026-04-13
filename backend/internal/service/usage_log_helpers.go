@@ -33,3 +33,10 @@ func optionalInt64Ptr(v int64) *int64 {
 	}
 	return &v
 }
+
+func usageLogProviderFromAccount(account *Account) *string {
+	if account == nil {
+		return nil
+	}
+	return optionalTrimmedStringPtr(account.Platform)
+}

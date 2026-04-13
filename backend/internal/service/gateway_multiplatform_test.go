@@ -202,6 +202,7 @@ var _ AccountRepository = (*mockAccountRepoForPlatform)(nil)
 type mockGatewayCacheForPlatform struct {
 	sessionBindings map[string]int64
 	deletedSessions map[string]int
+	refreshedTTL    map[string]int
 }
 
 func (m *mockGatewayCacheForPlatform) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
@@ -220,6 +221,10 @@ func (m *mockGatewayCacheForPlatform) SetSessionAccountID(ctx context.Context, g
 }
 
 func (m *mockGatewayCacheForPlatform) RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error {
+	if m.refreshedTTL == nil {
+		m.refreshedTTL = make(map[string]int)
+	}
+	m.refreshedTTL[sessionHash]++
 	return nil
 }
 
@@ -232,6 +237,13 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	}
 	m.deletedSessions[sessionHash]++
 	delete(m.sessionBindings, sessionHash)
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) DeleteSessionAccountIDIfMatch(ctx context.Context, groupID int64, sessionHash string, expectedAccountID int64) error {
+	if current, ok := m.sessionBindings[sessionHash]; ok && current == expectedAccountID {
+		return m.DeleteSessionAccountID(ctx, groupID, sessionHash)
+	}
 	return nil
 }
 
@@ -2191,6 +2203,45 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		require.Equal(t, 0, concurrencyCache.loadBatchCalls, "粘性命中应在负载批量查询前返回")
 	})
 
+	t.Run("粘性等待计划-续期TTL避免排队期间过期", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cache := &mockGatewayCacheForPlatform{
+			sessionBindings: map[string]int64{"sticky": 1},
+		}
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		concurrencyCache := &mockConcurrencyCache{
+			acquireResults: map[int64]bool{1: false},
+			waitCounts:     map[int64]int{1: 0},
+		}
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(concurrencyCache),
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "", int64(0))
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.WaitPlan)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(1), result.Account.ID)
+		require.Equal(t, 1, cache.refreshedTTL["sticky"], "粘性等待计划应刷新会话 TTL")
+	})
+
 	t.Run("粘性账号不在候选集-回退负载感知选择", func(t *testing.T) {
 		repo := &mockAccountRepoForPlatform{
 			accounts: []Account{
@@ -2396,6 +2447,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		require.NotNil(t, result.WaitPlan)
 		require.Equal(t, int64(1), result.Account.ID)
 		require.Equal(t, 0, concurrencyCache.loadBatchCalls)
+		require.Equal(t, 1, cache.refreshedTTL["sticky"])
 	})
 
 	t.Run("负载批量查询失败-降级旧顺序选择", func(t *testing.T) {
@@ -2490,6 +2542,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
 		require.Equal(t, int64(1), result.Account.ID)
+		require.Equal(t, 1, cache.refreshedTTL[sessionHash])
 	})
 
 	t.Run("模型路由-粘性账号命中", func(t *testing.T) {

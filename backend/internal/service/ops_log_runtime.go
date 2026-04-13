@@ -251,6 +251,12 @@ func (s *OpsService) auditRuntimeLogConfigChange(operatorID int64, oldCfg *OpsRu
 		zap.String("old", string(oldRaw)),
 		zap.String("new", string(newRaw)),
 	).Info("runtime log config changed")
+	logger.WriteSinkEvent("info", "audit.log_config_change", "runtime log config changed", map[string]any{
+		"action":      strings.TrimSpace(action),
+		"operator_id": operatorID,
+		"old":         string(oldRaw),
+		"new":         string(newRaw),
+	})
 }
 
 func (s *OpsService) auditRuntimeLogConfigFailure(operatorID int64, oldCfg *OpsRuntimeLogConfig, newCfg *OpsRuntimeLogConfig, reason string) {
@@ -264,4 +270,11 @@ func (s *OpsService) auditRuntimeLogConfigFailure(operatorID int64, oldCfg *OpsR
 		zap.String("old", string(oldRaw)),
 		zap.String("new", string(newRaw)),
 	).Warn("runtime log config change failed")
+	logger.WriteSinkEvent("warn", "audit.log_config_change", "runtime log config change failed", map[string]any{
+		"action":      "failed",
+		"operator_id": operatorID,
+		"reason":      strings.TrimSpace(reason),
+		"old":         string(oldRaw),
+		"new":         string(newRaw),
+	})
 }

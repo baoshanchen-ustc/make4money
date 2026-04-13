@@ -94,7 +94,12 @@ func (s *OpsSystemLogSink) WriteLogEvent(event *logger.LogEvent) {
 	}
 }
 
+const slowRequestLatencyMsThreshold = 1000
+
 func (s *OpsSystemLogSink) shouldIndex(event *logger.LogEvent) bool {
+	if event == nil {
+		return false
+	}
 	level := strings.ToLower(strings.TrimSpace(event.Level))
 	switch level {
 	case "warn", "warning", "error", "fatal", "panic", "dpanic":
@@ -108,13 +113,61 @@ func (s *OpsSystemLogSink) shouldIndex(event *logger.LogEvent) bool {
 			component = fc
 		}
 	}
-	if strings.Contains(component, "http.access") {
-		return true
-	}
 	if strings.Contains(component, "audit") {
 		return true
 	}
+	if strings.Contains(component, "http.access") {
+		return shouldIndexHTTPAccess(event)
+	}
 	return false
+}
+
+func shouldIndexHTTPAccess(event *logger.LogEvent) bool {
+	if event == nil {
+		return false
+	}
+	if hasErrorsField(event.Fields) {
+		return true
+	}
+	status, ok := statusCodeFromFields(event.Fields)
+	if !ok || status < 200 || status >= 300 {
+		return true
+	}
+	latency, ok := latencyMsFromFields(event.Fields)
+	if ok && latency >= slowRequestLatencyMsThreshold {
+		return true
+	}
+	return false
+}
+
+func hasErrorsField(fields map[string]any) bool {
+	if fields == nil {
+		return false
+	}
+	if errStr := strings.TrimSpace(asString(fields["errors"])); errStr != "" {
+		return true
+	}
+	return false
+}
+
+func statusCodeFromFields(fields map[string]any) (int, bool) {
+	if fields == nil {
+		return 0, false
+	}
+	if ptr := asInt64Ptr(fields["status_code"]); ptr != nil {
+		return int(*ptr), true
+	}
+	return 0, false
+}
+
+func latencyMsFromFields(fields map[string]any) (int64, bool) {
+	if fields == nil {
+		return 0, false
+	}
+	if ptr := asInt64Ptr(fields["latency_ms"]); ptr != nil {
+		return *ptr, true
+	}
+	return 0, false
 }
 
 func (s *OpsSystemLogSink) run() {

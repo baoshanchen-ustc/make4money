@@ -201,7 +201,28 @@ func TestLogger_HealthPathSkipped(t *testing.T) {
 	}
 }
 
-func TestLogger_AccessLogDroppedWhenLevelWarn(t *testing.T) {
+func TestLogger_MetricsPathSkipped(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sink := initMiddlewareTestLogger(t)
+
+	r := gin.New()
+	r.Use(Logger())
+	r.GET("/metrics", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+	if len(sink.list()) != 0 {
+		t.Fatalf("metrics endpoint should not write access log")
+	}
+}
+
+func TestLogger_AccessLogStillIndexedWhenLevelWarn(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sink := initMiddlewareTestLoggerWithLevel(t, "warn")
 
@@ -220,9 +241,13 @@ func TestLogger_AccessLogDroppedWhenLevelWarn(t *testing.T) {
 	}
 
 	events := sink.list()
+	found := false
 	for _, event := range events {
 		if event != nil && event.Message == "http request completed" {
-			t.Fatalf("access log should not be indexed when level=warn: %+v", event)
+			found = true
 		}
+	}
+	if !found {
+		t.Fatalf("expected access log to be indexed when level=warn")
 	}
 }

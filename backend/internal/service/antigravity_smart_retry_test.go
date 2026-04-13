@@ -30,6 +30,11 @@ func (c *stubSmartRetryCache) DeleteSessionAccountID(_ context.Context, groupID 
 	return nil
 }
 
+func (c *stubSmartRetryCache) DeleteSessionAccountIDIfMatch(_ context.Context, groupID int64, sessionHash string, _ int64) error {
+	c.deleteCalls = append(c.deleteCalls, deleteSessionCall{groupID: groupID, sessionHash: sessionHash})
+	return nil
+}
+
 // mockSmartRetryUpstream 用于 handleSmartRetry 测试的 mock upstream
 type mockSmartRetryUpstream struct {
 	responses      []*http.Response

@@ -26,6 +26,13 @@ const (
 	defaultSchedulerSnapshotWriteChunkSize = 256
 )
 
+var releaseSchedulerBucketLockScript = redis.NewScript(`
+	if redis.call("GET", KEYS[1]) == ARGV[1] then
+		return redis.call("DEL", KEYS[1])
+	end
+	return 0
+`)
+
 type schedulerCache struct {
 	rdb            *redis.Client
 	mgetChunkSize  int
@@ -78,9 +85,8 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		return nil, false, err
 	}
 	if len(ids) == 0 {
-		// 空快照视为缓存未命中，触发数据库回退查询
-		// 这解决了新分组创建后立即绑定账号时的竞态条件问题
-		return nil, false, nil
+		// 空快照也应该视作有效缓存命中，避免频繁回退到数据库
+		return make([]*service.Account, 0), true, nil
 	}
 
 	keys := make([]string, 0, len(ids))
@@ -232,6 +238,20 @@ func (c *schedulerCache) TryLockBucket(ctx context.Context, bucket service.Sched
 	return c.rdb.SetNX(ctx, key, time.Now().UnixNano(), ttl).Result()
 }
 
+func (c *schedulerCache) TryLockBucketWithOwner(ctx context.Context, bucket service.SchedulerBucket, owner string, ttl time.Duration) (bool, error) {
+	key := schedulerBucketKey(schedulerLockPrefix, bucket)
+	return c.rdb.SetNX(ctx, key, owner, ttl).Result()
+}
+
+func (c *schedulerCache) ReleaseBucketLock(ctx context.Context, bucket service.SchedulerBucket, owner string) error {
+	key := schedulerBucketKey(schedulerLockPrefix, bucket)
+	_, err := releaseSchedulerBucketLockScript.Run(ctx, c.rdb, []string{key}, owner).Result()
+	if err == redis.Nil {
+		return nil
+	}
+	return err
+}
+
 func (c *schedulerCache) ListBuckets(ctx context.Context) ([]service.SchedulerBucket, error) {
 	raw, err := c.rdb.SMembers(ctx, schedulerBucketSetKey).Result()
 	if err != nil {
@@ -246,6 +266,92 @@ func (c *schedulerCache) ListBuckets(ctx context.Context) ([]service.SchedulerBu
 		out = append(out, bucket)
 	}
 	return out, nil
+}
+
+func (c *schedulerCache) ReplaceBuckets(ctx context.Context, buckets []service.SchedulerBucket) error {
+	desiredRaw := make([]string, 0, len(buckets))
+	desiredSet := make(map[string]struct{}, len(buckets))
+	for _, bucket := range buckets {
+		key := bucket.String()
+		if key == "" {
+			continue
+		}
+		if _, exists := desiredSet[key]; exists {
+			continue
+		}
+		desiredSet[key] = struct{}{}
+		desiredRaw = append(desiredRaw, key)
+	}
+
+	currentRaw, err := c.rdb.SMembers(ctx, schedulerBucketSetKey).Result()
+	if err != nil {
+		return err
+	}
+
+	staleBuckets := make([]service.SchedulerBucket, 0, len(currentRaw))
+	staleRaw := make([]string, 0, len(currentRaw))
+	activeKeys := make([]string, 0, len(currentRaw))
+	for _, raw := range currentRaw {
+		if _, keep := desiredSet[raw]; keep {
+			continue
+		}
+		staleRaw = append(staleRaw, raw)
+		bucket, ok := service.ParseSchedulerBucket(raw)
+		if !ok {
+			continue
+		}
+		staleBuckets = append(staleBuckets, bucket)
+		activeKeys = append(activeKeys, schedulerBucketKey(schedulerActivePrefix, bucket))
+	}
+
+	activeVersions := make([]any, 0, len(activeKeys))
+	if len(activeKeys) > 0 {
+		activeVersions, err = c.mgetChunked(ctx, activeKeys)
+		if err != nil {
+			return err
+		}
+	}
+
+	pipe := c.rdb.Pipeline()
+	if len(staleRaw) > 0 {
+		members := make([]any, 0, len(staleRaw))
+		for _, raw := range staleRaw {
+			members = append(members, raw)
+		}
+		pipe.SRem(ctx, schedulerBucketSetKey, members...)
+	}
+	if len(desiredRaw) > 0 {
+		members := make([]any, 0, len(desiredRaw))
+		for _, raw := range desiredRaw {
+			members = append(members, raw)
+		}
+		pipe.SAdd(ctx, schedulerBucketSetKey, members...)
+	} else {
+		pipe.Del(ctx, schedulerBucketSetKey)
+	}
+	for idx, bucket := range staleBuckets {
+		keys := []string{
+			schedulerBucketKey(schedulerReadyPrefix, bucket),
+			schedulerBucketKey(schedulerActivePrefix, bucket),
+			schedulerBucketKey(schedulerVersionPrefix, bucket),
+			schedulerBucketKey(schedulerLockPrefix, bucket),
+		}
+		if idx < len(activeVersions) {
+			switch raw := activeVersions[idx].(type) {
+			case string:
+				if raw != "" {
+					keys = append(keys, schedulerSnapshotKey(bucket, raw))
+				}
+			case []byte:
+				if len(raw) > 0 {
+					keys = append(keys, schedulerSnapshotKey(bucket, string(raw)))
+				}
+			}
+		}
+		pipe.Del(ctx, keys...)
+	}
+	_, err = pipe.Exec(ctx)
+	return err
 }
 
 func (c *schedulerCache) GetOutboxWatermark(ctx context.Context) (int64, error) {
@@ -426,6 +532,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"window_cost_sticky_reserve",
 		"max_sessions",
 		"session_idle_timeout_minutes",
+		"privacy_mode",
+		"model_rate_limits",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {

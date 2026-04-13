@@ -193,6 +193,10 @@ func (c *openAIWSStateStoreTimeoutProbeCache) DeleteSessionAccountID(ctx context
 	return nil
 }
 
+func (c *openAIWSStateStoreTimeoutProbeCache) DeleteSessionAccountIDIfMatch(ctx context.Context, groupID int64, sessionHash string, expectedAccountID int64) error {
+	return c.DeleteSessionAccountID(ctx, groupID, sessionHash)
+}
+
 func TestOpenAIWSStateStore_RedisOpsUseShortTimeout(t *testing.T) {
 	probe := &openAIWSStateStoreTimeoutProbeCache{}
 	store := NewOpenAIWSStateStore(probe)

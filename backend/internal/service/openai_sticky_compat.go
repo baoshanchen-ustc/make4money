@@ -199,8 +199,8 @@ func (s *OpenAIGatewayService) refreshStickySessionTTL(ctx context.Context, grou
 	return err
 }
 
-func (s *OpenAIGatewayService) deleteStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string) error {
-	if s == nil || s.cache == nil {
+func (s *OpenAIGatewayService) deleteStickySessionAccountIDIfMatch(ctx context.Context, groupID *int64, sessionHash string, expectedAccountID int64, reason string) error {
+	if s == nil || s.cache == nil || expectedAccountID <= 0 {
 		return nil
 	}
 	primaryKey := s.openAISessionCacheKey(sessionHash)
@@ -208,14 +208,19 @@ func (s *OpenAIGatewayService) deleteStickySessionAccountID(ctx context.Context,
 		return nil
 	}
 
-	err := s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), primaryKey)
+	recordStickySessionCleanupReason(reason)
+	if currentAccountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), primaryKey); err == nil && currentAccountID > 0 && currentAccountID != expectedAccountID {
+		recordStickySessionCompareDeleteMissReason(reason)
+	}
+
+	err := s.cache.DeleteSessionAccountIDIfMatch(ctx, derefGroupID(groupID), primaryKey, expectedAccountID)
 	if !s.openAISessionHashReadOldFallbackEnabled() && !s.openAISessionHashDualWriteOldEnabled() {
 		return err
 	}
 
 	legacyKey := s.openAILegacySessionCacheKey(ctx, sessionHash)
 	if legacyKey != "" {
-		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), legacyKey)
+		_ = s.cache.DeleteSessionAccountIDIfMatch(ctx, derefGroupID(groupID), legacyKey, expectedAccountID)
 	}
 	return err
 }

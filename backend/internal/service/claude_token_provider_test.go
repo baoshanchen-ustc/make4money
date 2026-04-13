@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -28,6 +29,8 @@ type claudeTokenCacheStub struct {
 	lockCalled       int32
 	unlockCalled     int32
 	simulateLockRace bool
+	lastTTL          time.Duration
+	lastOwner        string
 }
 
 func newClaudeTokenCacheStub() *claudeTokenCacheStub {
@@ -68,18 +71,20 @@ func (s *claudeTokenCacheStub) DeleteAccessToken(ctx context.Context, cacheKey s
 	return nil
 }
 
-func (s *claudeTokenCacheStub) AcquireRefreshLock(ctx context.Context, cacheKey string, ttl time.Duration) (bool, error) {
+func (s *claudeTokenCacheStub) AcquireRefreshLock(ctx context.Context, cacheKey string, ttl time.Duration, owner string) (bool, error) {
 	atomic.AddInt32(&s.lockCalled, 1)
 	if s.lockErr != nil {
 		return false, s.lockErr
 	}
+	s.lastTTL = ttl
+	s.lastOwner = owner
 	if s.simulateLockRace {
 		return false, nil
 	}
 	return s.lockAcquired, nil
 }
 
-func (s *claudeTokenCacheStub) ReleaseRefreshLock(ctx context.Context, cacheKey string) error {
+func (s *claudeTokenCacheStub) ReleaseRefreshLock(ctx context.Context, cacheKey string, owner string) error {
 	atomic.AddInt32(&s.unlockCalled, 1)
 	return s.releaseLockErr
 }
@@ -154,9 +159,10 @@ func (p *testClaudeTokenProvider) GetAccessToken(ctx context.Context, account *A
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= claudeTokenRefreshSkew
 	refreshFailed := false
 	if needsRefresh && p.tokenCache != nil {
-		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
+		lockOwner := fmt.Sprintf("claude_test:%d:%d", account.ID, time.Now().UnixNano())
+		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second, lockOwner)
 		if err == nil && locked {
-			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey) }()
+			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey, lockOwner) }()
 
 			// Check cache again after acquiring lock
 			if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && token != "" {

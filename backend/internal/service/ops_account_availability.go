@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -50,6 +51,26 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 			continue
 		}
 
+		displayGroupID := int64(0)
+		displayGroupName := ""
+		groupsForStats := make([]*Group, 0, len(acc.Groups))
+		if groupIDFilter != nil && *groupIDFilter > 0 {
+			for _, grp := range acc.Groups {
+				if grp != nil && grp.ID == *groupIDFilter {
+					groupsForStats = append(groupsForStats, grp)
+					displayGroupID = grp.ID
+					displayGroupName = grp.Name
+					break
+				}
+			}
+		} else {
+			groupsForStats = acc.Groups
+			if len(acc.Groups) > 0 && acc.Groups[0] != nil {
+				displayGroupID = acc.Groups[0].ID
+				displayGroupName = acc.Groups[0].Name
+			}
+		}
+
 		isTempUnsched := false
 		if acc.TempUnschedulableUntil != nil && now.Before(*acc.TempUnschedulableUntil) {
 			isTempUnsched = true
@@ -58,6 +79,13 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 		isRateLimited := acc.RateLimitResetAt != nil && now.Before(*acc.RateLimitResetAt)
 		isOverloaded := acc.OverloadUntil != nil && now.Before(*acc.OverloadUntil)
 		hasError := acc.Status == StatusError
+		tokenRefreshFailureClass := strings.TrimSpace(acc.GetExtraString("token_refresh_failure_class"))
+		hasPermanentRefreshFailure := tokenRefreshFailureClass == "permanent"
+		authReason, authClass, authSource, authState, authChangedAt, authRecovery := effectiveAccountAuthFailure(&acc)
+		hasAuthFailure := authReason != "" || authClass != "" || authSource != "" || authState != ""
+		authDispatchSuppressed := accountAuthDispatchSuppressed(authState, authClass)
+		authBackgroundRecovery := accountAuthBackgroundRecoveryEligible(&acc, authState, authClass, authRecovery)
+		authManualReviewRequired := accountAuthManualInterventionRequired(authState, authClass, authRecovery)
 
 		// Normalize exclusive status flags so the UI doesn't show conflicting badges.
 		if hasError {
@@ -84,9 +112,21 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 			if hasError {
 				p.ErrorCount++
 			}
+			if hasPermanentRefreshFailure {
+				p.TokenRefreshFailureCount++
+			}
+			if hasAuthFailure {
+				p.AuthFailureCount++
+			}
+			if authClass == accountAuthClassPermanent {
+				p.PermanentAuthFailureCount++
+			}
+			if authClass == accountAuthClassTemporary {
+				p.TemporaryAuthFailureCount++
+			}
 		}
 
-		for _, grp := range acc.Groups {
+		for _, grp := range groupsForStats {
 			if grp == nil || grp.ID <= 0 {
 				continue
 			}
@@ -108,13 +148,18 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 			if hasError {
 				g.ErrorCount++
 			}
-		}
-
-		displayGroupID := int64(0)
-		displayGroupName := ""
-		if len(acc.Groups) > 0 && acc.Groups[0] != nil {
-			displayGroupID = acc.Groups[0].ID
-			displayGroupName = acc.Groups[0].Name
+			if hasPermanentRefreshFailure {
+				g.TokenRefreshFailureCount++
+			}
+			if hasAuthFailure {
+				g.AuthFailureCount++
+			}
+			if authClass == accountAuthClassPermanent {
+				g.PermanentAuthFailureCount++
+			}
+			if authClass == accountAuthClassTemporary {
+				g.TemporaryAuthFailureCount++
+			}
 		}
 
 		item := &AccountAvailability{
@@ -130,7 +175,19 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 			IsOverloaded:  isOverloaded,
 			HasError:      hasError,
 
-			ErrorMessage: acc.ErrorMessage,
+			ErrorMessage:              acc.ErrorMessage,
+			TokenRefreshFailureReason: strings.TrimSpace(acc.GetExtraString("token_refresh_failure_reason")),
+			TokenRefreshFailureClass:  strings.TrimSpace(acc.GetExtraString("token_refresh_failure_class")),
+			TokenRefreshFailedAt:      strings.TrimSpace(acc.GetExtraString("token_refresh_failed_at")),
+			AuthFailureReason:         authReason,
+			AuthFailureClass:          authClass,
+			AuthFailureSource:         authSource,
+			AuthState:                 authState,
+			AuthStateChangedAt:        authChangedAt,
+			AuthRecoveryAction:        authRecovery,
+			AuthDispatchSuppressed:    authDispatchSuppressed,
+			AuthBackgroundRecovery:    authBackgroundRecovery,
+			AuthManualReviewRequired:  authManualReviewRequired,
 		}
 
 		if isRateLimited && acc.RateLimitResetAt != nil {
@@ -191,4 +248,128 @@ func (s *OpsService) GetAccountAvailability(ctx context.Context, platformFilter 
 		Accounts:    accountStats,
 		CollectedAt: collectedAt,
 	}, nil
+}
+
+func SummarizeTokenRefreshFailures(accounts map[int64]*AccountAvailability) *TokenRefreshFailureRealtimeSummary {
+	if len(accounts) == 0 {
+		return nil
+	}
+	summary := &TokenRefreshFailureRealtimeSummary{
+		ByReason: make(map[string]int64),
+		ByClass:  make(map[string]int64),
+	}
+	for accountID, acc := range accounts {
+		if acc == nil {
+			continue
+		}
+		reason := strings.TrimSpace(acc.TokenRefreshFailureReason)
+		class := strings.TrimSpace(acc.TokenRefreshFailureClass)
+		if reason == "" && class == "" {
+			continue
+		}
+		summary.TotalAccounts++
+		summary.AffectedAccountIDs = append(summary.AffectedAccountIDs, accountID)
+		if reason != "" {
+			summary.ByReason[reason]++
+		}
+		if class != "" {
+			summary.ByClass[class]++
+			if class == "permanent" {
+				summary.PermanentCount++
+			}
+		}
+	}
+	if summary.TotalAccounts == 0 {
+		return nil
+	}
+	if len(summary.AffectedAccountIDs) > 20 {
+		summary.AffectedAccountIDs = summary.AffectedAccountIDs[:20]
+	}
+	if len(summary.ByReason) == 0 {
+		summary.ByReason = nil
+	}
+	if len(summary.ByClass) == 0 {
+		summary.ByClass = nil
+	}
+	return summary
+}
+
+func SummarizeAccountAuthFailures(accounts map[int64]*AccountAvailability) *AccountAuthFailureRealtimeSummary {
+	if len(accounts) == 0 {
+		return nil
+	}
+	summary := &AccountAuthFailureRealtimeSummary{
+		ByReason:               make(map[string]int64),
+		ByClass:                make(map[string]int64),
+		BySource:               make(map[string]int64),
+		ByState:                make(map[string]int64),
+		RecoveryActionExamples: make(map[string]int64),
+	}
+	for accountID, acc := range accounts {
+		if acc == nil {
+			continue
+		}
+		reason := strings.TrimSpace(acc.AuthFailureReason)
+		class := strings.TrimSpace(acc.AuthFailureClass)
+		source := strings.TrimSpace(acc.AuthFailureSource)
+		state := strings.TrimSpace(acc.AuthState)
+		recovery := strings.TrimSpace(acc.AuthRecoveryAction)
+		if reason == "" && class == "" && source == "" && state == "" {
+			continue
+		}
+		summary.TotalAccounts++
+		summary.AffectedAccountIDs = append(summary.AffectedAccountIDs, accountID)
+		if reason != "" {
+			summary.ByReason[reason]++
+		}
+		if class != "" {
+			summary.ByClass[class]++
+			switch class {
+			case accountAuthClassPermanent:
+				summary.PermanentCount++
+			case accountAuthClassTemporary:
+				summary.TemporaryCount++
+			}
+		}
+		if source != "" {
+			summary.BySource[source]++
+		}
+		if state != "" {
+			summary.ByState[state]++
+		}
+		if acc.AuthDispatchSuppressed {
+			summary.DispatchSuppressed++
+		}
+		if acc.AuthBackgroundRecovery {
+			summary.BackgroundRecovery++
+		}
+		if acc.AuthManualReviewRequired {
+			summary.ManualReviewRequired++
+		}
+		if recovery != "" {
+			summary.RecoveryActionExamples[recovery]++
+		}
+	}
+	if summary.TotalAccounts == 0 {
+		return nil
+	}
+	if len(summary.AffectedAccountIDs) > 20 {
+		summary.AffectedAccountIDs = summary.AffectedAccountIDs[:20]
+	}
+	if len(summary.ByReason) == 0 {
+		summary.ByReason = nil
+	}
+	if len(summary.ByClass) == 0 {
+		summary.ByClass = nil
+	}
+	if len(summary.BySource) == 0 {
+		summary.BySource = nil
+	}
+	if len(summary.ByState) == 0 {
+		summary.ByState = nil
+	}
+	if len(summary.RecoveryActionExamples) == 0 {
+		summary.RecoveryActionExamples = nil
+	}
+	return summary
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -121,9 +122,10 @@ func (p *AntigravityTokenProvider) GetAccessToken(ctx context.Context, account *
 		}
 	} else if needsRefresh && p.tokenCache != nil {
 		// Backward-compatible test path when refreshAPI is not injected.
-		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
+		lockOwner := fmt.Sprintf("antigravity:%d:%d", account.ID, time.Now().UnixNano())
+		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, defaultRefreshLockTTL, lockOwner)
 		if err == nil && locked {
-			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey) }()
+			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey, lockOwner) }()
 		}
 	}
 

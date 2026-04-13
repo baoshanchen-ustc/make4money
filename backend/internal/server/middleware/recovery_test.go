@@ -4,12 +4,15 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -107,4 +110,43 @@ func TestRecovery(t *testing.T) {
 			require.Equal(t, tt.wantBody, got)
 		})
 	}
+}
+
+func TestRecovery_LogsStructuredPanic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sink := &testSink{}
+	logger.SetSink(sink)
+	t.Cleanup(func() {
+		logger.SetSink(nil)
+	})
+
+	r := gin.New()
+	r.Use(Recovery())
+	r.GET("/panic", func(c *gin.Context) {
+		ctx := context.WithValue(c.Request.Context(), ctxkey.RequestID, "req-123")
+		ctx = context.WithValue(ctx, ctxkey.ClientRequestID, "client-xyz")
+		c.Request = c.Request.WithContext(ctx)
+		panic("boom")
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	require.Len(t, sink.events, 1)
+	event := sink.events[0]
+	require.Equal(t, "panic recovered", event.Message)
+	require.Equal(t, "middleware.recovery", event.Component)
+	require.Equal(t, "req-123", event.Fields["request_id"])
+	require.Equal(t, "client-xyz", event.Fields["client_request_id"])
+}
+
+type testSink struct {
+	events []*logger.LogEvent
+}
+
+func (t *testSink) WriteLogEvent(event *logger.LogEvent) {
+	t.events = append(t.events, event)
 }

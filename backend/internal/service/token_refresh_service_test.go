@@ -22,6 +22,10 @@ type tokenRefreshAccountRepo struct {
 	setTempUnschedCalls    int
 	lastAccount            *Account
 	updateErr              error
+	activeAccounts         []Account
+	listActiveErr          error
+	updateExtraCalls       int
+	lastExtraUpdates       []map[string]any
 }
 
 func (r *tokenRefreshAccountRepo) Update(ctx context.Context, account *Account) error {
@@ -62,6 +66,27 @@ func (r *tokenRefreshAccountRepo) ClearTempUnschedulable(ctx context.Context, id
 func (r *tokenRefreshAccountRepo) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	r.setTempUnschedCalls++
 	return nil
+}
+
+func (r *tokenRefreshAccountRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	r.updateExtraCalls++
+	if len(updates) > 0 {
+		cloned := make(map[string]any, len(updates))
+		for k, v := range updates {
+			cloned[k] = v
+		}
+		r.lastExtraUpdates = append(r.lastExtraUpdates, cloned)
+	}
+	return nil
+}
+
+func (r *tokenRefreshAccountRepo) ListActive(ctx context.Context) ([]Account, error) {
+	if r.listActiveErr != nil {
+		return nil, r.listActiveErr
+	}
+	accounts := make([]Account, len(r.activeAccounts))
+	copy(accounts, r.activeAccounts)
+	return accounts, nil
 }
 
 type tokenCacheInvalidatorStub struct {
@@ -496,6 +521,71 @@ func TestTokenRefreshService_RefreshWithRetry_NonRetryableErrorAllPlatforms(t *t
 	}
 }
 
+func TestTokenRefreshService_MarksTokenFailureExtras(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	invalidator := &tokenCacheInvalidatorStub{}
+	cfg := &config.Config{
+		TokenRefresh: config.TokenRefreshConfig{
+			MaxRetries:          1,
+			RetryBackoffSeconds: 0,
+		},
+	}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	account := &Account{
+		ID:       20,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	}
+	refresher := &tokenRefresherStub{
+		err: errors.New("token revoked"),
+	}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+	require.Error(t, err)
+	require.Equal(t, 2, repo.updateExtraCalls)
+	require.Len(t, repo.lastExtraUpdates, 2)
+	require.Equal(t, "token_revoked", repo.lastExtraUpdates[0]["token_refresh_failure_reason"])
+	require.Equal(t, "permanent", repo.lastExtraUpdates[0]["token_refresh_failure_class"])
+	require.NotEmpty(t, repo.lastExtraUpdates[0]["token_refresh_failed_at"])
+	require.Equal(t, "token_revoked", repo.lastExtraUpdates[1][accountAuthFailureReasonKey])
+	require.Equal(t, accountAuthClassPermanent, repo.lastExtraUpdates[1][accountAuthFailureClassKey])
+	require.Equal(t, accountAuthSourceTokenRefresh, repo.lastExtraUpdates[1][accountAuthFailureSourceKey])
+	require.Equal(t, accountAuthStateReauthorizeRequired, repo.lastExtraUpdates[1][accountAuthStateKey])
+}
+
+func TestTokenRefreshService_ClearsTokenFailureExtrasOnSuccess(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	cfg := &config.Config{
+		TokenRefresh: config.TokenRefreshConfig{
+			MaxRetries:          1,
+			RetryBackoffSeconds: 0,
+		},
+	}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	account := &Account{
+		ID:       21,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	}
+	refresher := &tokenRefresherStub{
+		credentials: map[string]any{
+			"access_token": "token",
+		},
+	}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+	require.NoError(t, err)
+	require.Equal(t, 2, repo.updateExtraCalls)
+	require.Len(t, repo.lastExtraUpdates, 2)
+	require.Nil(t, repo.lastExtraUpdates[0]["token_refresh_failure_reason"])
+	require.Nil(t, repo.lastExtraUpdates[0]["token_refresh_failure_class"])
+	require.Nil(t, repo.lastExtraUpdates[0]["token_refresh_failed_at"])
+	require.Nil(t, repo.lastExtraUpdates[1][accountAuthFailureReasonKey])
+	require.Nil(t, repo.lastExtraUpdates[1][accountAuthFailureClassKey])
+	require.Nil(t, repo.lastExtraUpdates[1][accountAuthFailureSourceKey])
+	require.Nil(t, repo.lastExtraUpdates[1][accountAuthStateKey])
+}
+
 func TestTokenRefreshService_RefreshWithRetry_NoRefreshTokenDoesNotTempUnschedule(t *testing.T) {
 	repo := &tokenRefreshAccountRepo{}
 	cfg := &config.Config{
@@ -521,6 +611,37 @@ func TestTokenRefreshService_RefreshWithRetry_NoRefreshTokenDoesNotTempUnschedul
 	require.Equal(t, 1, repo.setErrorCalls, "missing refresh token should be treated as a non-retryable credential state")
 }
 
+func TestTokenRefreshService_ListActiveAccountsSkipsOnlyPermanentTempUnschedulable(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	now := time.Now()
+	repo.activeAccounts = []Account{
+		{ID: 1, TempUnschedulableUntil: nil},
+		{ID: 2, Type: AccountTypeAPIKey, TempUnschedulableUntil: ptrTime(now.Add(10 * time.Minute))},
+		{
+			ID:                     3,
+			Type:                   AccountTypeOAuth,
+			TempUnschedulableUntil: ptrTime(now.Add(10 * time.Minute)),
+		},
+		{
+			ID:                     4,
+			Type:                   AccountTypeOAuth,
+			TempUnschedulableUntil: ptrTime(now.Add(10 * time.Minute)),
+			Extra: map[string]any{
+				accountAuthFailureClassKey: accountAuthClassPermanent,
+			},
+		},
+	}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, &config.Config{
+		TokenRefresh: config.TokenRefreshConfig{MaxRetries: 1},
+	}, nil)
+
+	accounts, err := service.listActiveAccounts(context.Background())
+	require.NoError(t, err)
+	require.Len(t, accounts, 2)
+	require.Equal(t, int64(1), accounts[0].ID)
+	require.Equal(t, int64(3), accounts[1].ID)
+}
+
 // TestIsNonRetryableRefreshError 测试不可重试错误判断
 func TestIsNonRetryableRefreshError(t *testing.T) {
 	tests := []struct {
@@ -537,14 +658,50 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 		{name: "no_refresh_token", err: errors.New("no refresh token available"), expected: true},
 		{name: "invalid_grant_with_desc", err: errors.New("Error: invalid_grant - token revoked"), expected: true},
 		{name: "case_insensitive", err: errors.New("INVALID_GRANT"), expected: true},
+		{name: "refresh_token_reused", err: errors.New("refresh_token_reused"), expected: true},
+		{name: "refresh_token_has_been_reused", err: errors.New("refresh token has been reused"), expected: true},
+		{name: "token_revoked", err: errors.New("token revoked"), expected: true},
+		{name: "invalid_bearer_token", err: errors.New("invalid bearer token"), expected: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isNonRetryableRefreshError(tt.err)
-			require.Equal(t, tt.expected, result)
+			_, ok := getNonRetryableRefreshReason(tt.err)
+			require.Equal(t, tt.expected, ok)
 		})
 	}
+}
+
+func TestGetNonRetryableRefreshReason(t *testing.T) {
+	reason, ok := getNonRetryableRefreshReason(errors.New("token revoked while refreshing"))
+	require.True(t, ok)
+	require.Equal(t, "token_revoked", reason)
+	reason, ok = getNonRetryableRefreshReason(errors.New("missing_project_id in credentials"))
+	require.True(t, ok)
+	require.Equal(t, "missing_project_id", reason)
+	_, ok = getNonRetryableRefreshReason(errors.New("temporary network timeout"))
+	require.False(t, ok)
+}
+
+func TestShadowPermanentFailureStats(t *testing.T) {
+	resetShadowPermanentFailureStatsForTest()
+	recordShadowPermanentFailure(11, "token_revoked")
+	recordShadowPermanentFailure(12, "refresh_token_reused")
+	recordShadowPermanentFailure(11, "token_revoked")
+	stats := SnapshotShadowPermanentFailureStats()
+	require.Equal(t, int64(3), stats.Total)
+	require.Len(t, stats.ByReason, 2)
+	require.Equal(t, int64(2), stats.ByReason["token_revoked"])
+	require.Equal(t, int64(1), stats.ByReason["refresh_token_reused"])
+}
+
+func resetShadowPermanentFailureStatsForTest() {
+	shadowPermanentFailureTotal.Store(0)
+	shadowPermanentFailureMu.Lock()
+	for k := range shadowPermanentFailureByReason {
+		delete(shadowPermanentFailureByReason, k)
+	}
+	shadowPermanentFailureMu.Unlock()
 }
 
 // ========== Path A (refreshAPI) 测试用例 ==========
@@ -568,11 +725,11 @@ func (m *mockTokenCacheForRefreshAPI) DeleteAccessToken(_ context.Context, _ str
 	return nil
 }
 
-func (m *mockTokenCacheForRefreshAPI) AcquireRefreshLock(_ context.Context, _ string, _ time.Duration) (bool, error) {
+func (m *mockTokenCacheForRefreshAPI) AcquireRefreshLock(_ context.Context, _ string, _ time.Duration, _ string) (bool, error) {
 	return m.lockResult, m.lockErr
 }
 
-func (m *mockTokenCacheForRefreshAPI) ReleaseRefreshLock(_ context.Context, _ string) error {
+func (m *mockTokenCacheForRefreshAPI) ReleaseRefreshLock(_ context.Context, _ string, _ string) error {
 	m.releaseCalls++
 	return nil
 }

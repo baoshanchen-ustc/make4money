@@ -18,10 +18,13 @@ type usageRepoStub struct {
 	UsageLogRepository
 	stats      *usagestats.DashboardStats
 	rangeStats *usagestats.DashboardStats
+	groupUsage []usagestats.GroupUsageSummary
 	err        error
 	rangeErr   error
+	groupErr   error
 	calls      int32
 	rangeCalls int32
+	groupCalls int32
 	rangeStart time.Time
 	rangeEnd   time.Time
 	onCall     chan struct{}
@@ -52,6 +55,19 @@ func (s *usageRepoStub) GetDashboardStatsWithRange(ctx context.Context, start, e
 		return s.rangeStats, nil
 	}
 	return s.stats, nil
+}
+
+func (s *usageRepoStub) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
+	atomic.AddInt32(&s.groupCalls, 1)
+	if s.groupErr != nil {
+		return nil, s.groupErr
+	}
+	if s.groupUsage == nil {
+		return []usagestats.GroupUsageSummary{}, nil
+	}
+	out := make([]usagestats.GroupUsageSummary, len(s.groupUsage))
+	copy(out, s.groupUsage)
+	return out, nil
 }
 
 type dashboardCacheStub struct {
@@ -392,4 +408,43 @@ func TestDashboardService_AggDisabled_UsesUsageLogsFallback(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&repo.rangeCalls))
 	require.False(t, repo.rangeEnd.IsZero())
 	require.Equal(t, truncateToDayUTC(repo.rangeEnd.AddDate(0, 0, -7)), repo.rangeStart)
+}
+
+func TestDashboardService_GroupUsageSummaryCached(t *testing.T) {
+	repo := &usageRepoStub{
+		groupUsage: []usagestats.GroupUsageSummary{
+			{GroupID: 1, TotalCost: 12.5, TodayCost: 1.5},
+		},
+	}
+	svc := NewDashboardService(repo, nil, nil, &config.Config{})
+	todayStart := time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)
+
+	first, err := svc.GetGroupUsageSummary(context.Background(), todayStart)
+	require.NoError(t, err)
+	second, err := svc.GetGroupUsageSummary(context.Background(), todayStart)
+	require.NoError(t, err)
+
+	require.Equal(t, int32(1), atomic.LoadInt32(&repo.groupCalls))
+	require.Equal(t, first, second)
+
+	first[0].TotalCost = 999
+	third, err := svc.GetGroupUsageSummary(context.Background(), todayStart)
+	require.NoError(t, err)
+	require.Equal(t, 12.5, third[0].TotalCost)
+}
+
+func TestDashboardService_GroupUsageSummaryDifferentDayMissesCache(t *testing.T) {
+	repo := &usageRepoStub{
+		groupUsage: []usagestats.GroupUsageSummary{
+			{GroupID: 1, TotalCost: 12.5, TodayCost: 1.5},
+		},
+	}
+	svc := NewDashboardService(repo, nil, nil, &config.Config{})
+
+	_, err := svc.GetGroupUsageSummary(context.Background(), time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	_, err = svc.GetGroupUsageSummary(context.Background(), time.Date(2026, 4, 13, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	require.Equal(t, int32(2), atomic.LoadInt32(&repo.groupCalls))
 }

@@ -109,6 +109,7 @@ var ProviderSet = wire.NewSet(
 	NewGeminiTokenCache,
 	ProvideSchedulerCache,
 	NewSchedulerOutboxRepository,
+	NewSchedulerOutboxCheckpointRepository,
 	NewProxyLatencyCache,
 	NewTotpCache,
 	NewRefreshTokenCache,

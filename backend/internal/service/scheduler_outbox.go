@@ -11,7 +11,11 @@ type SchedulerOutboxEvent struct {
 	AccountID *int64
 	GroupID   *int64
 	Payload   map[string]any
-	CreatedAt time.Time
+	// PayloadDecodeError indicates the JSON decode failure for this row.
+	PayloadDecodeError string
+	// PayloadRaw preserves the original bytes when decoding fails.
+	PayloadRaw []byte
+	CreatedAt  time.Time
 }
 
 // SchedulerOutboxRepository 提供调度 outbox 的读取接口。

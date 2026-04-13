@@ -160,8 +160,8 @@ func ProvideTimingWheelService() (*TimingWheelService, error) {
 }
 
 // ProvideDeferredService creates and starts DeferredService
-func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService) *DeferredService {
-	svc := NewDeferredService(accountRepo, timingWheel, 10*time.Second)
+func ProvideDeferredService(accountRepo AccountRepository, schedulerCache SchedulerCache, timingWheel *TimingWheelService) *DeferredService {
+	svc := NewDeferredService(accountRepo, schedulerCache, timingWheel, 10*time.Second)
 	svc.Start()
 	return svc
 }
@@ -193,9 +193,10 @@ func ProvideSchedulerSnapshotService(
 	outboxRepo SchedulerOutboxRepository,
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
+	checkpointRepo SchedulerOutboxCheckpointRepository,
 	cfg *config.Config,
 ) *SchedulerSnapshotService {
-	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, cfg)
+	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, checkpointRepo, cfg)
 	svc.Start()
 	return svc
 }

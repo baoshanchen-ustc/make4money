@@ -45,6 +45,23 @@ func (s *openAISnapshotCacheStub) GetAccount(ctx context.Context, accountID int6
 	return &cloned, nil
 }
 
+func (s *openAISnapshotCacheStub) SetSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error {
+	if len(accounts) == 0 {
+		s.snapshotAccounts = nil
+		return nil
+	}
+	s.snapshotAccounts = make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		cloned := account
+		s.snapshotAccounts = append(s.snapshotAccounts, &cloned)
+		if s.accountsByID == nil {
+			s.accountsByID = map[int64]*Account{}
+		}
+		s.accountsByID[cloned.ID] = &cloned
+	}
+	return nil
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyRateLimitedAccountFallsBackToFreshCandidate(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10101)
@@ -64,6 +81,11 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyRateLimite
 	require.NotNil(t, selection.Account)
 	require.Equal(t, int64(31002), selection.Account.ID)
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonClearedUnschedulable])
+	require.Equal(t, 1, cache.deletedSessions["openai:session_hash_rate_limited"])
 }
 
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_SkipsFreshlyRateLimitedSnapshotCandidate(t *testing.T) {
@@ -279,7 +301,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 			21002: true,  // 若回退负载均衡会命中该账号（本测试要求不能切换）
 		},
 		waitCounts: map[int64]int{
-			21001: 999,
+			21001: 1,
 		},
 		loadMap: map[int64]*AccountLoadInfo{
 			21001: {AccountID: 21001, LoadRate: 90, WaitingCount: 9},
@@ -312,6 +334,94 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 	require.Equal(t, int64(21001), selection.WaitPlan.AccountID)
 	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
 	require.True(t, decision.StickySessionHit)
+	require.Equal(t, 1, cache.refreshedTTL["openai:session_hash_sticky_busy"])
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionWaitTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionWaitConflictTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionAccountFetchTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionDBRecheckTotal)
+	require.Equal(t, 1.0, snapshot.StickyWaitConflictRatio)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonWait])
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyFallsBackWhenWaitQueueFull(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10101)
+	accounts := []Account{
+		{
+			ID:          22001,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+		},
+		{
+			ID:          22002,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+		},
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{
+			"openai:session_hash_sticky_overfull": 22001,
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 2
+	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 45 * time.Second
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+
+	concurrencyCache := stubConcurrencyCache{
+		acquireResults: map[int64]bool{
+			22001: false,
+			22002: true,
+		},
+		waitCounts: map[int64]int{
+			22001: 999,
+		},
+		loadMap: map[int64]*AccountLoadInfo{
+			22001: {AccountID: 22001, LoadRate: 90, WaitingCount: 9},
+			22002: {AccountID: 22002, LoadRate: 1, WaitingCount: 0},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: accounts},
+		cache:              cache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_sticky_overfull",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(22002), selection.Account.ID)
+	require.True(t, selection.Acquired)
+	require.Nil(t, selection.WaitPlan)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.False(t, decision.StickySessionHit)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(0), snapshot.StickySessionWaitTotal)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionSticky_ForceHTTP(t *testing.T) {
@@ -425,9 +535,157 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RequiredWSV2_SkipsStick
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 	require.False(t, decision.StickySessionHit)
 	require.Equal(t, 1, decision.CandidateCount)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonTransportMismatch])
+	require.Equal(t, 1, cache.deletedSessions["openai:session_hash_ws_only"])
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyModelMismatchFallsBackWithoutClearing(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(1014)
+	sticky := Account{
+		ID:          2401,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-4.1": "gpt-4.1",
+			},
+		},
+	}
+	backup := Account{
+		ID:          2402,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    5,
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{
+			"openai:session_hash_model_mismatch": sticky.ID,
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{sticky, backup}},
+		cache:              cache,
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_model_mismatch",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(2402), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionStaleTotal)
+	require.Equal(t, 1.0, snapshot.StickyStaleRatio)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonModelMismatch])
+	require.Equal(t, 1, cache.deletedSessions["openai:session_hash_model_mismatch"])
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyPrivacyRequiredFallsBackAndClears(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(1015)
+	sticky := &Account{
+		ID:          2501,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"privacy_mode": "",
+		},
+	}
+	backup := &Account{
+		ID:          2502,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    5,
+		Extra: map[string]any{
+			"privacy_mode": PrivacyModeTrainingOff,
+		},
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{
+			"openai:session_hash_privacy_required": sticky.ID,
+		},
+	}
+	snapshotCache := &openAISnapshotCacheStub{
+		snapshotAccounts: []*Account{sticky, backup},
+		accountsByID: map[int64]*Account{
+			sticky.ID: sticky,
+			backup.ID: backup,
+		},
+	}
+	snapshotService := &SchedulerSnapshotService{
+		cache: snapshotCache,
+		groupRepo: &mockGroupRepoForGateway{groups: map[int64]*Group{
+			groupID: &Group{
+				ID:                groupID,
+				RequirePrivacySet: true,
+				Platform:          PlatformOpenAI,
+				Status:            StatusActive,
+				Hydrated:          true,
+			},
+		}},
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{*sticky, *backup}},
+		cache:              cache,
+		cfg:                &config.Config{},
+		schedulerSnapshot:  snapshotService,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_privacy_required",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(2502), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionStaleTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonPrivacyRequired])
+	require.Equal(t, 1, cache.deletedSessions["openai:session_hash_privacy_required"])
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_RequiredWSV2_NoAvailableAccount(t *testing.T) {
@@ -580,10 +838,12 @@ func TestOpenAIGatewayService_OpenAIAccountSchedulerMetrics(t *testing.T) {
 	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
 	require.GreaterOrEqual(t, snapshot.SelectTotal, int64(1))
 	require.GreaterOrEqual(t, snapshot.StickySessionHitTotal, int64(1))
+	require.GreaterOrEqual(t, snapshot.StickySessionLookupTotal, int64(1))
 	require.GreaterOrEqual(t, snapshot.AccountSwitchTotal, int64(1))
 	require.GreaterOrEqual(t, snapshot.SchedulerLatencyMsAvg, float64(0))
 	require.GreaterOrEqual(t, snapshot.StickyHitRatio, 0.0)
 	require.GreaterOrEqual(t, snapshot.RuntimeStatsAccountCount, 1)
+	require.NotNil(t, snapshot.StickySessionShadowReasonTotals)
 }
 
 func intPtrForTest(v int) *int {
@@ -886,6 +1146,9 @@ func TestDefaultOpenAIAccountScheduler_ReportSwitchAndSnapshot(t *testing.T) {
 		LoadSkew:          0.5,
 		StickyPreviousHit: true,
 	})
+	scheduler.metrics.recordStickySessionLookup()
+	scheduler.metrics.recordStickySessionWait()
+	scheduler.metrics.recordStickySessionCleared(openAIStickySessionShadowReasonClearedUnschedulable)
 	scheduler.metrics.recordSelect(OpenAIAccountScheduleDecision{
 		Layer:            openAIAccountScheduleLayerSessionSticky,
 		LatencyMs:        6,
@@ -897,11 +1160,17 @@ func TestDefaultOpenAIAccountScheduler_ReportSwitchAndSnapshot(t *testing.T) {
 	require.Equal(t, int64(2), snapshot.SelectTotal)
 	require.Equal(t, int64(1), snapshot.StickyPreviousHitTotal)
 	require.Equal(t, int64(1), snapshot.StickySessionHitTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionLookupTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionWaitTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionClearedTotal)
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonWait])
+	require.Equal(t, int64(1), snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonClearedUnschedulable])
 	require.Equal(t, int64(1), snapshot.LoadBalanceSelectTotal)
 	require.Equal(t, int64(1), snapshot.AccountSwitchTotal)
 	require.Greater(t, snapshot.SchedulerLatencyMsAvg, 0.0)
 	require.Greater(t, snapshot.StickyHitRatio, 0.0)
 	require.Greater(t, snapshot.LoadSkewAvg, 0.0)
+	require.NotNil(t, snapshot.StickySessionShadowReasonTotals)
 }
 
 func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
@@ -961,6 +1230,26 @@ func TestDefaultOpenAIAccountScheduler_IsAccountTransportCompatible_Branches(t *
 		},
 	}
 	require.True(t, scheduler.isAccountTransportCompatible(account, OpenAIUpstreamTransportResponsesWebsocketV2))
+}
+
+func TestStickyConsistencyTrendSummary(t *testing.T) {
+	resetStickyConsistencyTracker()
+	TrackStickyConsistencyHit()
+	TrackStickyConsistencyGhost(openAIStickySessionShadowReasonModelMismatch)
+	first := SnapshotStickyConsistencyMetrics()
+	require.Nil(t, first.PrimaryReasonTrends)
+	require.Equal(t, "increasing", first.ActivityTrend)
+
+	TrackStickyConsistencyHit()
+	TrackStickyConsistencyGhost(openAIStickySessionShadowReasonModelMismatch)
+	second := SnapshotStickyConsistencyMetrics()
+	require.NotNil(t, second.PrimaryReasonTrends)
+	require.GreaterOrEqual(t, len(second.PrimaryReasonTrends), 1)
+	require.Equal(t, "rising", second.PrimaryReasonTrends[0].Direction)
+	require.Equal(t, "increasing", second.ActivityTrend)
+
+	third := SnapshotStickyConsistencyMetrics()
+	require.Equal(t, second, third)
 }
 
 func int64PtrForTest(v int64) *int64 {

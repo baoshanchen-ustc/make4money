@@ -234,6 +234,7 @@ type UsageLogFilters struct {
 	AccountID   int64
 	GroupID     int64
 	Model       string
+	Provider    string
 	RequestType *int16
 	Stream      *bool
 	BillingType *int8

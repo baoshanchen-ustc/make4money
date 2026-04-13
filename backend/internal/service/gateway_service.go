@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -60,6 +61,63 @@ const (
 	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
 )
 
+const usageLogNotPersistedAlertHistorySize = 64
+
+// UsageLogNotPersistedAlert captures billing-succeeded usage log failures for downstream tooling.
+type UsageLogNotPersistedAlert struct {
+	Timestamp time.Time
+	LogKey    string
+	RequestID string
+	UserID    int64
+	AccountID int64
+	Error     string
+}
+
+type UsageLogNotPersistedMetricsSnapshot struct {
+	Total          int64                       `json:"total"`
+	Recent1mTotal  int64                       `json:"recent_1m_total"`
+	Recent5mTotal  int64                       `json:"recent_5m_total"`
+	Recent15mTotal int64                       `json:"recent_15m_total"`
+	Last           *UsageLogNotPersistedAlert  `json:"last,omitempty"`
+	Recent         []UsageLogNotPersistedAlert `json:"recent"`
+}
+
+// BillingCompensationCandidate marks a usage log that failed after billing succeeded.
+type BillingCompensationCandidate struct {
+	Timestamp             time.Time `json:"timestamp"`
+	LogKey                string    `json:"log_key"`
+	RequestID             string    `json:"request_id"`
+	UserID                int64     `json:"user_id"`
+	APIKeyID              int64     `json:"api_key_id"`
+	AccountID             int64     `json:"account_id"`
+	GroupID               *int64    `json:"group_id,omitempty"`
+	SubscriptionID        *int64    `json:"subscription_id,omitempty"`
+	Model                 string    `json:"model"`
+	RequestedModel        string    `json:"requested_model,omitempty"`
+	UpstreamModel         *string   `json:"upstream_model,omitempty"`
+	InputTokens           int       `json:"input_tokens"`
+	OutputTokens          int       `json:"output_tokens"`
+	CacheCreationTokens   int       `json:"cache_creation_tokens"`
+	CacheReadTokens       int       `json:"cache_read_tokens"`
+	ImageOutputTokens     int       `json:"image_output_tokens"`
+	TotalCost             float64   `json:"total_cost"`
+	ActualCost            float64   `json:"actual_cost"`
+	RateMultiplier        float64   `json:"rate_multiplier"`
+	AccountRateMultiplier *float64  `json:"account_rate_multiplier,omitempty"`
+	BillingType           int8      `json:"billing_type"`
+	RequestType           int16     `json:"request_type"`
+	Error                 string    `json:"error"`
+}
+
+type BillingCompensationSnapshot struct {
+	Total          int64                          `json:"total"`
+	Recent1mTotal  int64                          `json:"recent_1m_total"`
+	Recent5mTotal  int64                          `json:"recent_5m_total"`
+	Recent15mTotal int64                          `json:"recent_15m_total"`
+	Last           *BillingCompensationCandidate  `json:"last,omitempty"`
+	Recent         []BillingCompensationCandidate `json:"recent"`
+}
+
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{}
@@ -71,6 +129,8 @@ type accountWithLoad struct {
 }
 
 var ForceCacheBillingContextKey = forceCacheBillingKeyType{}
+
+const billingCompensationHistorySize = 64
 
 var (
 	windowCostPrefetchCacheHitTotal  atomic.Int64
@@ -85,10 +145,57 @@ var (
 	userGroupRateCacheSFSharedTotal atomic.Int64
 	userGroupRateCacheFallbackTotal atomic.Int64
 
-	modelsListCacheHitTotal   atomic.Int64
-	modelsListCacheMissTotal  atomic.Int64
-	modelsListCacheStoreTotal atomic.Int64
+	modelsListCacheHitTotal       atomic.Int64
+	modelsListCacheMissTotal      atomic.Int64
+	modelsListCacheStoreTotal     atomic.Int64
+	usageLogNotPersistedAlerts    atomic.Int64
+	usageLogNotPersistedEventsMu  sync.Mutex
+	usageLogNotPersistedEvents    []UsageLogNotPersistedAlert
+	billingCompensationTotal      atomic.Int64
+	billingCompensationMu         sync.Mutex
+	billingCompensationCandidates []BillingCompensationCandidate
+
+	stickySessionCleanupTotal             atomic.Int64
+	stickySessionCompareDeleteMissTotal   atomic.Int64
+	stickyCleanupClearedUnschedulable     atomic.Int64
+	stickyCleanupAccountMissing           atomic.Int64
+	stickyCleanupDBRuntimeRecheck         atomic.Int64
+	stickyCleanupTransportMismatch        atomic.Int64
+	stickyCleanupBindingInvalidated       atomic.Int64
+	stickyCleanupChannelRestricted        atomic.Int64
+	stickyCleanupPrivacyRequired          atomic.Int64
+	stickyCompareMissClearedUnschedulable atomic.Int64
+	stickyCompareMissAccountMissing       atomic.Int64
+	stickyCompareMissDBRuntimeRecheck     atomic.Int64
+	stickyCompareMissTransportMismatch    atomic.Int64
+	stickyCompareMissBindingInvalidated   atomic.Int64
+	stickyCompareMissChannelRestricted    atomic.Int64
+	stickyCompareMissPrivacyRequired      atomic.Int64
 )
+
+const (
+	stickyCleanupReasonClearedUnschedulable = "cleared_unschedulable"
+	stickyCleanupReasonAccountMissing       = "account_missing"
+	stickyCleanupReasonDBRuntimeRecheck     = "db_runtime_recheck"
+	stickyCleanupReasonTransportMismatch    = "transport_mismatch"
+	stickyCleanupReasonBindingInvalidated   = "binding_invalidated"
+	stickyCleanupReasonChannelRestricted    = "channel_restricted"
+	stickyCleanupReasonPrivacyRequired      = "privacy_required"
+
+	stickyBindingInvalidationReasonPlatformMismatch  = "platform_mismatch"
+	stickyBindingInvalidationReasonGroupMismatch     = "group_mismatch"
+	stickyBindingInvalidationReasonModelMismatch     = "model_mismatch"
+	stickyBindingInvalidationReasonTransportMismatch = "transport_mismatch"
+	stickyBindingInvalidationReasonChannelRestricted = "channel_restricted"
+	stickyBindingInvalidationReasonPrivacyRequired   = "privacy_required"
+)
+
+type StickySessionCleanupMetricsSnapshot struct {
+	CleanupTotal                  int64            `json:"cleanup_total"`
+	CompareDeleteMissTotal        int64            `json:"compare_delete_miss_total"`
+	CleanupReasonTotals           map[string]int64 `json:"cleanup_reason_totals,omitempty"`
+	CompareDeleteMissReasonTotals map[string]int64 `json:"compare_delete_miss_reason_totals,omitempty"`
+}
 
 func GatewayWindowCostPrefetchStats() (cacheHit, cacheMiss, batchSQL, fallback, errCount int64) {
 	return windowCostPrefetchCacheHitTotal.Load(),
@@ -108,6 +215,108 @@ func GatewayUserGroupRateCacheStats() (cacheHit, cacheMiss, load, singleflightSh
 
 func GatewayModelsListCacheStats() (cacheHit, cacheMiss, store int64) {
 	return modelsListCacheHitTotal.Load(), modelsListCacheMissTotal.Load(), modelsListCacheStoreTotal.Load()
+}
+
+func SnapshotStickySessionCleanupMetrics() StickySessionCleanupMetricsSnapshot {
+	cleanupReasons := map[string]int64{
+		stickyCleanupReasonClearedUnschedulable: stickyCleanupClearedUnschedulable.Load(),
+		stickyCleanupReasonAccountMissing:       stickyCleanupAccountMissing.Load(),
+		stickyCleanupReasonDBRuntimeRecheck:     stickyCleanupDBRuntimeRecheck.Load(),
+		stickyCleanupReasonTransportMismatch:    stickyCleanupTransportMismatch.Load(),
+		stickyCleanupReasonBindingInvalidated:   stickyCleanupBindingInvalidated.Load(),
+		stickyCleanupReasonChannelRestricted:    stickyCleanupChannelRestricted.Load(),
+		stickyCleanupReasonPrivacyRequired:      stickyCleanupPrivacyRequired.Load(),
+	}
+	compareMissReasons := map[string]int64{
+		stickyCleanupReasonClearedUnschedulable: stickyCompareMissClearedUnschedulable.Load(),
+		stickyCleanupReasonAccountMissing:       stickyCompareMissAccountMissing.Load(),
+		stickyCleanupReasonDBRuntimeRecheck:     stickyCompareMissDBRuntimeRecheck.Load(),
+		stickyCleanupReasonTransportMismatch:    stickyCompareMissTransportMismatch.Load(),
+		stickyCleanupReasonBindingInvalidated:   stickyCompareMissBindingInvalidated.Load(),
+		stickyCleanupReasonChannelRestricted:    stickyCompareMissChannelRestricted.Load(),
+		stickyCleanupReasonPrivacyRequired:      stickyCompareMissPrivacyRequired.Load(),
+	}
+	return StickySessionCleanupMetricsSnapshot{
+		CleanupTotal:                  stickySessionCleanupTotal.Load(),
+		CompareDeleteMissTotal:        stickySessionCompareDeleteMissTotal.Load(),
+		CleanupReasonTotals:           compactStickyReasonTotals(cleanupReasons),
+		CompareDeleteMissReasonTotals: compactStickyReasonTotals(compareMissReasons),
+	}
+}
+
+func compactStickyReasonTotals(src map[string]int64) map[string]int64 {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]int64)
+	for reason, total := range src {
+		if total > 0 {
+			out[reason] = total
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func recordStickySessionCleanupReason(reason string) {
+	stickySessionCleanupTotal.Add(1)
+	switch strings.TrimSpace(reason) {
+	case stickyCleanupReasonClearedUnschedulable:
+		stickyCleanupClearedUnschedulable.Add(1)
+	case stickyCleanupReasonAccountMissing:
+		stickyCleanupAccountMissing.Add(1)
+	case stickyCleanupReasonDBRuntimeRecheck:
+		stickyCleanupDBRuntimeRecheck.Add(1)
+	case stickyCleanupReasonTransportMismatch:
+		stickyCleanupTransportMismatch.Add(1)
+	case stickyCleanupReasonBindingInvalidated:
+		stickyCleanupBindingInvalidated.Add(1)
+	case stickyCleanupReasonChannelRestricted:
+		stickyCleanupChannelRestricted.Add(1)
+	case stickyCleanupReasonPrivacyRequired:
+		stickyCleanupPrivacyRequired.Add(1)
+	}
+}
+
+func recordStickySessionCompareDeleteMissReason(reason string) {
+	stickySessionCompareDeleteMissTotal.Add(1)
+	switch strings.TrimSpace(reason) {
+	case stickyCleanupReasonClearedUnschedulable:
+		stickyCompareMissClearedUnschedulable.Add(1)
+	case stickyCleanupReasonAccountMissing:
+		stickyCompareMissAccountMissing.Add(1)
+	case stickyCleanupReasonDBRuntimeRecheck:
+		stickyCompareMissDBRuntimeRecheck.Add(1)
+	case stickyCleanupReasonTransportMismatch:
+		stickyCompareMissTransportMismatch.Add(1)
+	case stickyCleanupReasonBindingInvalidated:
+		stickyCompareMissBindingInvalidated.Add(1)
+	case stickyCleanupReasonChannelRestricted:
+		stickyCompareMissChannelRestricted.Add(1)
+	case stickyCleanupReasonPrivacyRequired:
+		stickyCompareMissPrivacyRequired.Add(1)
+	}
+}
+
+func resetStickySessionCleanupMetricsForTest() {
+	stickySessionCleanupTotal.Store(0)
+	stickySessionCompareDeleteMissTotal.Store(0)
+	stickyCleanupClearedUnschedulable.Store(0)
+	stickyCleanupAccountMissing.Store(0)
+	stickyCleanupDBRuntimeRecheck.Store(0)
+	stickyCleanupTransportMismatch.Store(0)
+	stickyCleanupBindingInvalidated.Store(0)
+	stickyCleanupChannelRestricted.Store(0)
+	stickyCleanupPrivacyRequired.Store(0)
+	stickyCompareMissClearedUnschedulable.Store(0)
+	stickyCompareMissAccountMissing.Store(0)
+	stickyCompareMissDBRuntimeRecheck.Store(0)
+	stickyCompareMissTransportMismatch.Store(0)
+	stickyCompareMissBindingInvalidated.Store(0)
+	stickyCompareMissChannelRestricted.Store(0)
+	stickyCompareMissPrivacyRequired.Store(0)
 }
 
 func openAIStreamEventIsTerminal(data string) bool {
@@ -147,6 +356,30 @@ func cloneStringSlice(src []string) []string {
 	dst := make([]string, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func cloneStringPointer(src *string) *string {
+	if src == nil {
+		return nil
+	}
+	dst := strings.TrimSpace(*src)
+	return &dst
+}
+
+func cloneInt64Pointer(src *int64) *int64 {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
+}
+
+func cloneFloat64Pointer(src *float64) *float64 {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
 }
 
 // IsForceCacheBilling 检查是否启用强制缓存计费
@@ -391,6 +624,11 @@ type GatewayCache interface {
 	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
+	// DeleteSessionAccountIDIfMatch 仅在当前绑定值与 expectedAccountID 匹配时删除粘性会话绑定，
+	// 避免并发重绑场景下误删新的 session -> account 关系。
+	// Delete sticky session binding only when the current value matches expectedAccountID,
+	// preventing stale cleanups from removing a newer rebinding under concurrency.
+	DeleteSessionAccountIDIfMatch(ctx context.Context, groupID int64, sessionHash string, expectedAccountID int64) error
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
@@ -459,6 +697,68 @@ func shouldClearStickySession(account *Account, requestedModel string) bool {
 		return true
 	}
 	return false
+}
+
+// shouldInvalidateStickySessionBinding returns true when an existing sticky
+// session binding can no longer satisfy the current request semantics and
+// should be evicted instead of retried on every request.
+type stickySessionInvalidationContext struct {
+	RequestedModel    string
+	RequiredPlatform  string
+	InGroup           bool
+	TransportMismatch bool
+	PrivacyRequired   bool
+	ChannelRestricted bool
+}
+
+func classifyStickySessionInvalidationReasonWithContext(account *Account, cfg stickySessionInvalidationContext) string {
+	if account == nil {
+		return ""
+	}
+	if cfg.RequiredPlatform != "" && account.Platform != cfg.RequiredPlatform {
+		return stickyBindingInvalidationReasonPlatformMismatch
+	}
+	if !cfg.InGroup {
+		return stickyBindingInvalidationReasonGroupMismatch
+	}
+	if cfg.RequestedModel != "" && !account.IsModelSupported(cfg.RequestedModel) {
+		return stickyBindingInvalidationReasonModelMismatch
+	}
+	if cfg.TransportMismatch {
+		return stickyBindingInvalidationReasonTransportMismatch
+	}
+	if cfg.PrivacyRequired {
+		return stickyBindingInvalidationReasonPrivacyRequired
+	}
+	if cfg.ChannelRestricted {
+		return stickyBindingInvalidationReasonChannelRestricted
+	}
+	return ""
+}
+
+func classifyStickySessionInvalidationReason(account *Account, requestedModel, requiredPlatform string, inGroup bool) string {
+	return classifyStickySessionInvalidationReasonWithContext(account, stickySessionInvalidationContext{
+		RequestedModel:   requestedModel,
+		RequiredPlatform: requiredPlatform,
+		InGroup:          inGroup,
+	})
+}
+
+func shouldInvalidateStickySessionBinding(account *Account, requestedModel, requiredPlatform string, inGroup bool) bool {
+	return classifyStickySessionInvalidationReason(account, requestedModel, requiredPlatform, inGroup) != ""
+}
+
+func stickyCleanupReasonForInvalidation(reason string) string {
+	switch strings.TrimSpace(reason) {
+	case stickyBindingInvalidationReasonTransportMismatch:
+		return stickyCleanupReasonTransportMismatch
+	case stickyBindingInvalidationReasonChannelRestricted:
+		return stickyCleanupReasonChannelRestricted
+	case stickyBindingInvalidationReasonPrivacyRequired:
+		return stickyCleanupReasonPrivacyRequired
+	default:
+		return stickyCleanupReasonBindingInvalidated
+	}
 }
 
 type AccountWaitPlan struct {
@@ -730,6 +1030,17 @@ func (s *GatewayService) GetCachedSessionAccountID(ctx context.Context, groupID 
 		return 0, err
 	}
 	return accountID, nil
+}
+
+func (s *GatewayService) deleteStickySessionAccountIDIfMatch(ctx context.Context, groupID *int64, sessionHash string, expectedAccountID int64, reason string) error {
+	if sessionHash == "" || expectedAccountID <= 0 || s.cache == nil {
+		return nil
+	}
+	recordStickySessionCleanupReason(reason)
+	if currentAccountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); err == nil && currentAccountID > 0 && currentAccountID != expectedAccountID {
+		recordStickySessionCompareDeleteMissReason(reason)
+	}
+	return s.cache.DeleteSessionAccountIDIfMatch(ctx, derefGroupID(groupID), sessionHash, expectedAccountID)
 }
 
 // FindGeminiSession 查找 Gemini 会话（基于内容摘要链的 Fallback 匹配）
@@ -1293,6 +1604,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
 				if waitingCount < cfg.StickySessionMaxWaiting {
+					if sessionHash != "" && s.cache != nil {
+						_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+					}
 					return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 						AccountID:      account.ID,
 						MaxConcurrency: account.Concurrency,
@@ -1465,6 +1779,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 										stickyCacheMissReason = "session_limit"
 										// 会话限制已满，继续到负载感知选择
 									} else {
+										if sessionHash != "" && s.cache != nil {
+											_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+										}
 										return &AccountSelectionResult{
 											Account: stickyAccount,
 											WaitPlan: &AccountWaitPlan{
@@ -1497,7 +1814,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 								stickyCacheMissReason, stickyAccountID, shortSessionHash(sessionHash), currentRPM, baseRPM)
 						}
 					} else {
-						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+						_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, stickyAccountID, stickyCleanupReasonAccountMissing)
 						logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=account_cleared account_id=%d session=%s current_rpm=0 base_rpm=0",
 							stickyAccountID, shortSessionHash(sessionHash))
 					}
@@ -1601,9 +1918,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				// Check if the account needs sticky session cleanup
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
-					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+					_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonClearedUnschedulable)
 				}
-				if !clearSticky && s.isAccountInGroup(account, groupID) &&
+				if !clearSticky && isStickySessionAccountInGroup(account, groupID) &&
 					s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 					(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) &&
 					s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) &&
@@ -1633,6 +1950,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							// 会话限制已满，继续到 Layer 2
 							// Session limit full, continue to Layer 2
 						} else {
+							if s.cache != nil {
+								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+							}
 							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 								AccountID:      accountID,
 								MaxConcurrency: account.Concurrency,
@@ -1760,6 +2080,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		// 会话数量限制检查（等待计划也需要占用会话配额）
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 			continue // 会话限制已满，尝试下一个账号
+		}
+		if sessionHash != "" && stickyAccountID > 0 && acc.ID == stickyAccountID && s.cache != nil {
+			_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
 		}
 		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
 			AccountID:      acc.ID,
@@ -2080,11 +2403,40 @@ func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool
 		return false
 	}
 	if groupID == nil {
-		// 无分组的 API Key 只能使用未分组的账号
-		return len(account.AccountGroups) == 0
+		return len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0
 	}
 	for _, ag := range account.AccountGroups {
 		if ag.GroupID == *groupID {
+			return true
+		}
+	}
+	for _, id := range account.GroupIDs {
+		if id == *groupID {
+			return true
+		}
+	}
+	return false
+}
+
+func isStickySessionAccountInGroup(account *Account, groupID *int64) bool {
+	if account == nil {
+		return false
+	}
+	if groupID == nil {
+		// 无分组的 API Key 只能使用未分组的账号
+		return len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0
+	}
+	if len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0 {
+		// 部分热路径只加载了账号快照，没有绑定分组详情；这时不要把 unknown 误判成 group mismatch。
+		return true
+	}
+	for _, ag := range account.AccountGroups {
+		if ag.GroupID == *groupID {
+			return true
+		}
+	}
+	for _, id := range account.GroupIDs {
+		if id == *groupID {
 			return true
 		}
 	}
@@ -2738,9 +3090,14 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					if err == nil {
 						clearSticky := shouldClearStickySession(account, requestedModel)
 						if clearSticky {
-							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+							_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonClearedUnschedulable)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						inGroup := s.isAccountInGroup(account, groupID)
+						if !clearSticky && shouldInvalidateStickySessionBinding(account, requestedModel, platform, inGroup) {
+							_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonBindingInvalidated)
+							clearSticky = true
+						}
+						if !clearSticky && inGroup && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -2857,7 +3214,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				if err == nil {
 					clearSticky := shouldClearStickySession(account, requestedModel)
 					if clearSticky {
-						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+						_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonClearedUnschedulable)
 					}
 					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
@@ -2996,7 +3353,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					if err == nil {
 						clearSticky := shouldClearStickySession(account, requestedModel)
 						if clearSticky {
-							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+							_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonClearedUnschedulable)
 						}
 						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
@@ -3117,7 +3474,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				if err == nil {
 					clearSticky := shouldClearStickySession(account, requestedModel)
 					if clearSticky {
-						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+						_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonClearedUnschedulable)
 					}
 					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
@@ -3496,13 +3853,22 @@ const (
 )
 
 func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode int) bool {
+	if account == nil {
+		return false
+	}
+
 	// OAuth/Setup Token 账号：仅 403 重试
 	if account.IsOAuth() {
 		return statusCode == 403
 	}
 
-	// API Key 账号：未配置的错误码重试
-	return !account.ShouldHandleErrorCode(statusCode)
+	// 自定义错误码未命中时，仅对真正的瞬时上游故障做同账号重试，
+	// 避免 404/422 这类确定性错误被无意义放大成长尾请求。
+	if account.IsCustomErrorCodesEnabled() && !account.ShouldHandleErrorCode(statusCode) {
+		return isGatewayTransientRetryStatus(statusCode)
+	}
+
+	return false
 }
 
 // shouldFailoverUpstreamError determines whether an upstream error should trigger account failover.
@@ -3513,6 +3879,58 @@ func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	default:
 		return statusCode >= 500
 	}
+}
+
+func isGatewayTransientRetryStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusTooManyRequests,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+		529:
+		return true
+	default:
+		return false
+	}
+}
+
+func retryBackoffDelayForResponse(resp *http.Response, attempt int) time.Duration {
+	delay := retryBackoffDelay(attempt)
+	if resp == nil {
+		return delay
+	}
+	retryAfter := parseRetryAfterHeader(resp.Header.Get("Retry-After"), time.Now())
+	if retryAfter <= 0 {
+		return delay
+	}
+	if retryAfter > retryMaxDelay {
+		return retryMaxDelay
+	}
+	return retryAfter
+}
+
+func parseRetryAfterHeader(raw string, now time.Time) time.Duration {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(raw); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if retryAt, err := http.ParseTime(raw); err == nil {
+		if now.IsZero() {
+			now = time.Now()
+		}
+		if !retryAt.After(now) {
+			return 0
+		}
+		return retryAt.Sub(now)
+	}
+	return 0
 }
 
 func retryBackoffDelay(attempt int) time.Duration {
@@ -4298,7 +4716,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					break
 				}
 
-				delay := retryBackoffDelay(attempt)
+				delay := retryBackoffDelayForResponse(resp, attempt)
 				remaining := maxRetryElapsed - elapsed
 				if delay > remaining {
 					delay = remaining
@@ -4612,7 +5030,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 					break
 				}
 
-				delay := retryBackoffDelay(attempt)
+				delay := retryBackoffDelayForResponse(resp, attempt)
 				remaining := maxRetryElapsed - elapsed
 				if delay > remaining {
 					delay = remaining
@@ -5329,7 +5747,7 @@ func (s *GatewayService) executeBedrockUpstream(
 					break
 				}
 
-				delay := retryBackoffDelay(attempt)
+				delay := retryBackoffDelayForResponse(resp, attempt)
 				remaining := maxRetryElapsed - elapsed
 				if delay > remaining {
 					delay = remaining
@@ -7561,8 +7979,18 @@ func (s *GatewayService) billingDeps() *billingDeps {
 }
 
 func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
+	_ = tryWriteUsageLogBestEffort(ctx, repo, usageLog, logKey)
+}
+
+func writeBilledUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
+	if err := tryWriteUsageLogBestEffort(ctx, repo, usageLog, logKey); err != nil {
+		recordBillingCompensationCandidate(logKey, usageLog, err)
+	}
+}
+
+func tryWriteUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) error {
 	if repo == nil || usageLog == nil {
-		return
+		return nil
 	}
 	usageCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
@@ -7570,19 +7998,239 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	if writer, ok := repo.(usageLogBestEffortWriter); ok {
 		if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
 			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
-			if IsUsageLogCreateDropped(err) {
-				return
-			}
 			if _, syncErr := repo.Create(usageCtx, usageLog); syncErr != nil {
 				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
+				logUsageLogNotPersisted(logKey, usageLog, syncErr)
+				return syncErr
 			}
 		}
-		return
+		return nil
 	}
 
 	if _, err := repo.Create(usageCtx, usageLog); err != nil {
 		logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
+		logUsageLogNotPersisted(logKey, usageLog, err)
+		return err
 	}
+	return nil
+}
+
+func logUsageLogNotPersisted(logKey string, usageLog *UsageLog, err error) {
+	if usageLog == nil || err == nil {
+		return
+	}
+	alert := UsageLogNotPersistedAlert{
+		Timestamp: time.Now(),
+		LogKey:    logKey,
+		RequestID: strings.TrimSpace(usageLog.RequestID),
+		UserID:    usageLog.UserID,
+		AccountID: usageLog.AccountID,
+		Error:     err.Error(),
+	}
+	usageLogNotPersistedAlerts.Add(1)
+	recordUsageLogNotPersistedAlert(alert)
+	logger.LegacyPrintf("service.usage", "[UsageLog] %s request_id=%s user_id=%d account_id=%d err=%v",
+		strings.TrimSpace(logKey), strings.TrimSpace(usageLog.RequestID), usageLog.UserID, usageLog.AccountID, err)
+	logger.WriteSinkEvent("warn", OpsRuntimeUsageLogComponent, "usage log not persisted", map[string]any{
+		"log_key":         alert.LogKey,
+		"request_id":      alert.RequestID,
+		"user_id":         alert.UserID,
+		"account_id":      alert.AccountID,
+		"api_key_id":      usageLog.APIKeyID,
+		"group_id":        usageLog.GroupID,
+		"subscription_id": usageLog.SubscriptionID,
+		"model":           strings.TrimSpace(usageLog.Model),
+		"requested_model": strings.TrimSpace(usageLog.RequestedModel),
+		"upstream_model":  usageLog.UpstreamModel,
+		"provider":        usageLog.Provider,
+		"billing_type":    usageLog.BillingType,
+		"request_type":    usageLog.RequestType,
+		"total_cost":      usageLog.TotalCost,
+		"actual_cost":     usageLog.ActualCost,
+		"error":           alert.Error,
+	})
+}
+
+func UsageLogNotPersistedAlertTotal() int64 {
+	return usageLogNotPersistedAlerts.Load()
+}
+
+func SnapshotUsageLogNotPersistedMetrics() UsageLogNotPersistedMetricsSnapshot {
+	history := UsageLogNotPersistedAlertsHistory()
+	now := time.Now()
+	var recent1m int64
+	var recent5m int64
+	var recent15m int64
+	for _, item := range history {
+		if item.Timestamp.IsZero() {
+			continue
+		}
+		age := now.Sub(item.Timestamp)
+		if age <= time.Minute {
+			recent1m++
+		}
+		if age <= 5*time.Minute {
+			recent5m++
+		}
+		if age <= 15*time.Minute {
+			recent15m++
+		}
+	}
+	snapshot := UsageLogNotPersistedMetricsSnapshot{
+		Total:          usageLogNotPersistedAlerts.Load(),
+		Recent1mTotal:  recent1m,
+		Recent5mTotal:  recent5m,
+		Recent15mTotal: recent15m,
+		Recent:         history,
+	}
+	if n := len(history); n > 0 {
+		last := history[n-1]
+		snapshot.Last = &last
+	}
+	return snapshot
+}
+
+func resetUsageLogNotPersistedAlertsForTest() {
+	usageLogNotPersistedAlerts.Store(0)
+	usageLogNotPersistedEventsMu.Lock()
+	usageLogNotPersistedEvents = usageLogNotPersistedEvents[:0]
+	usageLogNotPersistedEventsMu.Unlock()
+}
+
+func recordUsageLogNotPersistedAlert(alert UsageLogNotPersistedAlert) {
+	usageLogNotPersistedEventsMu.Lock()
+	if len(usageLogNotPersistedEvents) >= usageLogNotPersistedAlertHistorySize {
+		copy(usageLogNotPersistedEvents, usageLogNotPersistedEvents[1:])
+		usageLogNotPersistedEvents[len(usageLogNotPersistedEvents)-1] = alert
+	} else {
+		usageLogNotPersistedEvents = append(usageLogNotPersistedEvents, alert)
+	}
+	usageLogNotPersistedEventsMu.Unlock()
+}
+
+func UsageLogNotPersistedAlertsHistory() []UsageLogNotPersistedAlert {
+	usageLogNotPersistedEventsMu.Lock()
+	defer usageLogNotPersistedEventsMu.Unlock()
+	history := make([]UsageLogNotPersistedAlert, len(usageLogNotPersistedEvents))
+	copy(history, usageLogNotPersistedEvents)
+	return history
+}
+
+func recordBillingCompensationCandidate(logKey string, usageLog *UsageLog, err error) {
+	if usageLog == nil || err == nil {
+		return
+	}
+	candidate := BillingCompensationCandidate{
+		Timestamp:             time.Now(),
+		LogKey:                strings.TrimSpace(logKey),
+		RequestID:             strings.TrimSpace(usageLog.RequestID),
+		UserID:                usageLog.UserID,
+		APIKeyID:              usageLog.APIKeyID,
+		AccountID:             usageLog.AccountID,
+		GroupID:               cloneInt64Pointer(usageLog.GroupID),
+		SubscriptionID:        cloneInt64Pointer(usageLog.SubscriptionID),
+		Model:                 strings.TrimSpace(usageLog.Model),
+		RequestedModel:        strings.TrimSpace(usageLog.RequestedModel),
+		UpstreamModel:         cloneStringPointer(usageLog.UpstreamModel),
+		InputTokens:           usageLog.InputTokens,
+		OutputTokens:          usageLog.OutputTokens,
+		CacheCreationTokens:   usageLog.CacheCreationTokens,
+		CacheReadTokens:       usageLog.CacheReadTokens,
+		ImageOutputTokens:     usageLog.ImageOutputTokens,
+		TotalCost:             usageLog.TotalCost,
+		ActualCost:            usageLog.ActualCost,
+		RateMultiplier:        usageLog.RateMultiplier,
+		AccountRateMultiplier: cloneFloat64Pointer(usageLog.AccountRateMultiplier),
+		BillingType:           usageLog.BillingType,
+		RequestType:           int16(usageLog.RequestType),
+		Error:                 err.Error(),
+	}
+	billingCompensationTotal.Add(1)
+	billingCompensationMu.Lock()
+	if len(billingCompensationCandidates) >= billingCompensationHistorySize {
+		copy(billingCompensationCandidates, billingCompensationCandidates[1:])
+		billingCompensationCandidates[len(billingCompensationCandidates)-1] = candidate
+	} else {
+		billingCompensationCandidates = append(billingCompensationCandidates, candidate)
+	}
+	billingCompensationMu.Unlock()
+	logger.LegacyPrintf("service.usage", "[BillingCompensation] %s request_id=%s user_id=%d account_id=%d billing_type=%d err=%v",
+		strings.TrimSpace(logKey), strings.TrimSpace(usageLog.RequestID), usageLog.UserID, usageLog.AccountID, usageLog.BillingType, err)
+	logger.WriteSinkEvent("warn", OpsRuntimeBillingCompensationComponent, "billing compensation candidate", map[string]any{
+		"log_key":                 candidate.LogKey,
+		"request_id":              candidate.RequestID,
+		"user_id":                 candidate.UserID,
+		"api_key_id":              candidate.APIKeyID,
+		"account_id":              candidate.AccountID,
+		"group_id":                candidate.GroupID,
+		"subscription_id":         candidate.SubscriptionID,
+		"model":                   candidate.Model,
+		"requested_model":         candidate.RequestedModel,
+		"upstream_model":          candidate.UpstreamModel,
+		"input_tokens":            candidate.InputTokens,
+		"output_tokens":           candidate.OutputTokens,
+		"cache_creation_tokens":   candidate.CacheCreationTokens,
+		"cache_read_tokens":       candidate.CacheReadTokens,
+		"image_output_tokens":     candidate.ImageOutputTokens,
+		"total_cost":              candidate.TotalCost,
+		"actual_cost":             candidate.ActualCost,
+		"rate_multiplier":         candidate.RateMultiplier,
+		"account_rate_multiplier": candidate.AccountRateMultiplier,
+		"billing_type":            candidate.BillingType,
+		"request_type":            candidate.RequestType,
+		"error":                   candidate.Error,
+	})
+}
+
+func BillingCompensationCandidatesHistory() []BillingCompensationCandidate {
+	billingCompensationMu.Lock()
+	defer billingCompensationMu.Unlock()
+	history := make([]BillingCompensationCandidate, len(billingCompensationCandidates))
+	copy(history, billingCompensationCandidates)
+	return history
+}
+
+func SnapshotBillingCompensationCandidates() BillingCompensationSnapshot {
+	history := BillingCompensationCandidatesHistory()
+	now := time.Now()
+	var recent1m int64
+	var recent5m int64
+	var recent15m int64
+	for _, item := range history {
+		if item.Timestamp.IsZero() {
+			continue
+		}
+		age := now.Sub(item.Timestamp)
+		if age <= time.Minute {
+			recent1m++
+		}
+		if age <= 5*time.Minute {
+			recent5m++
+		}
+		if age <= 15*time.Minute {
+			recent15m++
+		}
+	}
+
+	snapshot := BillingCompensationSnapshot{
+		Total:          billingCompensationTotal.Load(),
+		Recent1mTotal:  recent1m,
+		Recent5mTotal:  recent5m,
+		Recent15mTotal: recent15m,
+		Recent:         history,
+	}
+	if n := len(snapshot.Recent); n > 0 {
+		last := snapshot.Recent[n-1]
+		snapshot.Last = &last
+	}
+	return snapshot
+}
+
+func resetBillingCompensationCandidatesForTest() {
+	billingCompensationTotal.Store(0)
+	billingCompensationMu.Lock()
+	billingCompensationCandidates = billingCompensationCandidates[:0]
+	billingCompensationMu.Unlock()
 }
 
 // recordUsageOpts 内部选项，参数化 RecordUsage 与 RecordUsageWithLongContext 的差异点。
@@ -7769,7 +8417,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if billingErr != nil {
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	writeBilledUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
 	return nil
 }
@@ -7927,6 +8575,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		Model:                 result.Model,
 		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		Provider:              usageLogProviderFromAccount(account),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),

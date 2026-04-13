@@ -334,6 +334,12 @@ type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
+	// ConnectTimeoutSeconds: 建立上游 TCP 连接的超时时间（秒）
+	ConnectTimeoutSeconds int `mapstructure:"connect_timeout_seconds"`
+	// TLSHandshakeTimeoutSeconds: 上游 TLS 握手超时时间（秒）
+	TLSHandshakeTimeoutSeconds int `mapstructure:"tls_handshake_timeout_seconds"`
+	// ExpectContinueTimeoutSeconds: 等待 100-continue 的超时时间（秒）
+	ExpectContinueTimeoutSeconds int `mapstructure:"expect_continue_timeout_seconds"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
@@ -681,6 +687,8 @@ type GatewaySchedulingConfig struct {
 	OutboxLagRebuildFailures int `mapstructure:"outbox_lag_rebuild_failures"`
 	// Outbox 积压触发重建阈值（行数）
 	OutboxBacklogRebuildRows int `mapstructure:"outbox_backlog_rebuild_rows"`
+	// Outbox 触发全量重建的冷却窗口（秒），避免 lag/backlog 异常时连续重建
+	OutboxRebuildCooldownSeconds int `mapstructure:"outbox_rebuild_cooldown_seconds"`
 
 	// 全量重建周期配置
 	// 全量重建周期（秒），0 表示禁用
@@ -700,6 +708,16 @@ type DatabaseConfig struct {
 	Password string `mapstructure:"password"`
 	DBName   string `mapstructure:"dbname"`
 	SSLMode  string `mapstructure:"sslmode"`
+	// ConnectTimeoutSeconds: 建连超时，防止连接阶段长时间挂起
+	ConnectTimeoutSeconds int `mapstructure:"connect_timeout_seconds"`
+	// StatementTimeoutMs: 会话级 SQL 超时，0 表示不限制
+	StatementTimeoutMs int `mapstructure:"statement_timeout_ms"`
+	// LockTimeoutMs: 锁等待超时，0 表示不限制
+	LockTimeoutMs int `mapstructure:"lock_timeout_ms"`
+	// IdleInTransactionSessionTimeoutMs: 事务内空闲超时，0 表示不限制
+	IdleInTransactionSessionTimeoutMs int `mapstructure:"idle_in_transaction_session_timeout_ms"`
+	// ApplicationName: PostgreSQL application_name，便于排障与监控
+	ApplicationName string `mapstructure:"application_name"`
 	// 连接池配置（性能优化：可配置化连接池参数）
 	// MaxOpenConns: 最大打开连接数，控制数据库连接上限，防止资源耗尽
 	MaxOpenConns int `mapstructure:"max_open_conns"`
@@ -712,17 +730,9 @@ type DatabaseConfig struct {
 }
 
 func (d *DatabaseConfig) DSN() string {
+	parts := d.dsnParts("")
 	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
-	if d.Password == "" {
-		return fmt.Sprintf(
-			"host=%s port=%d user=%s dbname=%s sslmode=%s",
-			d.Host, d.Port, d.User, d.DBName, d.SSLMode,
-		)
-	}
-	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode,
-	)
+	return strings.Join(parts, " ")
 }
 
 // DSNWithTimezone returns DSN with timezone setting
@@ -730,17 +740,42 @@ func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 	if tz == "" {
 		tz = "Asia/Shanghai"
 	}
-	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
-	if d.Password == "" {
-		return fmt.Sprintf(
-			"host=%s port=%d user=%s dbname=%s sslmode=%s TimeZone=%s",
-			d.Host, d.Port, d.User, d.DBName, d.SSLMode, tz,
-		)
+	return strings.Join(d.dsnParts(tz), " ")
+}
+
+func (d *DatabaseConfig) dsnParts(tz string) []string {
+	parts := []string{
+		fmt.Sprintf("host=%s", d.Host),
+		fmt.Sprintf("port=%d", d.Port),
+		fmt.Sprintf("user=%s", d.User),
 	}
-	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s TimeZone=%s",
-		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode, tz,
+	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
+	if d.Password != "" {
+		parts = append(parts, fmt.Sprintf("password=%s", d.Password))
+	}
+	parts = append(parts,
+		fmt.Sprintf("dbname=%s", d.DBName),
+		fmt.Sprintf("sslmode=%s", d.SSLMode),
 	)
+	if tz != "" {
+		parts = append(parts, fmt.Sprintf("TimeZone=%s", tz))
+	}
+	if d.ConnectTimeoutSeconds > 0 {
+		parts = append(parts, fmt.Sprintf("connect_timeout=%d", d.ConnectTimeoutSeconds))
+	}
+	if d.StatementTimeoutMs > 0 {
+		parts = append(parts, fmt.Sprintf("statement_timeout=%d", d.StatementTimeoutMs))
+	}
+	if d.LockTimeoutMs > 0 {
+		parts = append(parts, fmt.Sprintf("lock_timeout=%d", d.LockTimeoutMs))
+	}
+	if d.IdleInTransactionSessionTimeoutMs > 0 {
+		parts = append(parts, fmt.Sprintf("idle_in_transaction_session_timeout=%d", d.IdleInTransactionSessionTimeoutMs))
+	}
+	if strings.TrimSpace(d.ApplicationName) != "" {
+		parts = append(parts, fmt.Sprintf("application_name=%s", strings.TrimSpace(d.ApplicationName)))
+	}
+	return parts
 }
 
 // RedisConfig Redis 连接配置
@@ -799,6 +834,13 @@ type OpsCleanupConfig struct {
 	ErrorLogRetentionDays      int `mapstructure:"error_log_retention_days"`
 	MinuteMetricsRetentionDays int `mapstructure:"minute_metrics_retention_days"`
 	HourlyMetricsRetentionDays int `mapstructure:"hourly_metrics_retention_days"`
+	// Max rows safety guard (0 disables row-count governance).
+	SystemLogMaxRows int64 `mapstructure:"system_log_max_rows"`
+	ErrorLogMaxRows  int64 `mapstructure:"error_log_max_rows"`
+	// When true, the max rows guard emits stats/optional deletion; defaults to false.
+	MaxRowsEnabled bool `mapstructure:"max_rows_enabled"`
+	// When true, any max rows guard runs operate in dry run (metric only) mode.
+	MaxRowsDryRun bool `mapstructure:"max_rows_dry_run"`
 }
 
 type OpsAggregationConfig struct {
@@ -909,10 +951,11 @@ type DashboardAggregationConfig struct {
 
 // DashboardAggregationRetentionConfig 预聚合保留窗口
 type DashboardAggregationRetentionConfig struct {
-	UsageLogsDays         int `mapstructure:"usage_logs_days"`
-	UsageBillingDedupDays int `mapstructure:"usage_billing_dedup_days"`
-	HourlyDays            int `mapstructure:"hourly_days"`
-	DailyDays             int `mapstructure:"daily_days"`
+	UsageLogsDays         int   `mapstructure:"usage_logs_days"`
+	UsageLogsMaxRows      int64 `mapstructure:"usage_logs_max_rows"`
+	UsageBillingDedupDays int   `mapstructure:"usage_billing_dedup_days"`
+	HourlyDays            int   `mapstructure:"hourly_days"`
+	DailyDays             int   `mapstructure:"daily_days"`
 }
 
 // UsageCleanupConfig 使用记录清理任务配置
@@ -1233,6 +1276,11 @@ func setDefaults() {
 	viper.SetDefault("database.password", "postgres")
 	viper.SetDefault("database.dbname", "sub2api")
 	viper.SetDefault("database.sslmode", "prefer")
+	viper.SetDefault("database.connect_timeout_seconds", 5)
+	viper.SetDefault("database.statement_timeout_ms", 0)
+	viper.SetDefault("database.lock_timeout_ms", 0)
+	viper.SetDefault("database.idle_in_transaction_session_timeout_ms", 0)
+	viper.SetDefault("database.application_name", "sub2api")
 	viper.SetDefault("database.max_open_conns", 256)
 	viper.SetDefault("database.max_idle_conns", 128)
 	viper.SetDefault("database.conn_max_lifetime_minutes", 30)
@@ -1409,6 +1457,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", int64(8*1024*1024))
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
+	viper.SetDefault("gateway.connect_timeout_seconds", 10)
+	viper.SetDefault("gateway.tls_handshake_timeout_seconds", 10)
+	viper.SetDefault("gateway.expect_continue_timeout_seconds", 1)
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
@@ -1439,6 +1490,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_seconds", 10)
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
 	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
+	viper.SetDefault("gateway.scheduling.outbox_rebuild_cooldown_seconds", 30)
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
 	viper.SetDefault("gateway.usage_record.worker_count", 128)
 	viper.SetDefault("gateway.usage_record.queue_size", 16384)
@@ -1769,6 +1821,18 @@ func (c *Config) Validate() error {
 	if c.Database.ConnMaxIdleTimeMinutes < 0 {
 		return fmt.Errorf("database.conn_max_idle_time_minutes must be non-negative")
 	}
+	if c.Database.ConnectTimeoutSeconds < 0 {
+		return fmt.Errorf("database.connect_timeout_seconds must be non-negative")
+	}
+	if c.Database.StatementTimeoutMs < 0 {
+		return fmt.Errorf("database.statement_timeout_ms must be non-negative")
+	}
+	if c.Database.LockTimeoutMs < 0 {
+		return fmt.Errorf("database.lock_timeout_ms must be non-negative")
+	}
+	if c.Database.IdleInTransactionSessionTimeoutMs < 0 {
+		return fmt.Errorf("database.idle_in_transaction_session_timeout_ms must be non-negative")
+	}
 	if c.Redis.DialTimeoutSeconds <= 0 {
 		return fmt.Errorf("redis.dial_timeout_seconds must be positive")
 	}
@@ -1929,6 +1993,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ProxyProbeResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.proxy_probe_response_read_max_bytes must be positive")
+	}
+	if c.Gateway.ConnectTimeoutSeconds <= 0 {
+		return fmt.Errorf("gateway.connect_timeout_seconds must be positive")
+	}
+	if c.Gateway.TLSHandshakeTimeoutSeconds <= 0 {
+		return fmt.Errorf("gateway.tls_handshake_timeout_seconds must be positive")
+	}
+	if c.Gateway.ExpectContinueTimeoutSeconds <= 0 {
+		return fmt.Errorf("gateway.expect_continue_timeout_seconds must be positive")
 	}
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {
@@ -2202,6 +2275,9 @@ func (c *Config) Validate() error {
 	if c.Gateway.Scheduling.OutboxBacklogRebuildRows < 0 {
 		return fmt.Errorf("gateway.scheduling.outbox_backlog_rebuild_rows must be non-negative")
 	}
+	if c.Gateway.Scheduling.OutboxRebuildCooldownSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_rebuild_cooldown_seconds must be non-negative")
+	}
 	if c.Gateway.Scheduling.FullRebuildIntervalSeconds < 0 {
 		return fmt.Errorf("gateway.scheduling.full_rebuild_interval_seconds must be non-negative")
 	}
@@ -2222,8 +2298,17 @@ func (c *Config) Validate() error {
 	if c.Ops.Cleanup.HourlyMetricsRetentionDays < 0 {
 		return fmt.Errorf("ops.cleanup.hourly_metrics_retention_days must be non-negative")
 	}
+	if c.Ops.Cleanup.SystemLogMaxRows < 0 {
+		return fmt.Errorf("ops.cleanup.system_log_max_rows must be non-negative")
+	}
+	if c.Ops.Cleanup.ErrorLogMaxRows < 0 {
+		return fmt.Errorf("ops.cleanup.error_log_max_rows must be non-negative")
+	}
 	if c.Ops.Cleanup.Enabled && strings.TrimSpace(c.Ops.Cleanup.Schedule) == "" {
 		return fmt.Errorf("ops.cleanup.schedule is required when ops.cleanup.enabled=true")
+	}
+	if c.DashboardAgg.Retention.UsageLogsMaxRows < 0 {
+		return fmt.Errorf("dashboard_aggregation.retention.usage_logs_max_rows must be non-negative")
 	}
 	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
 		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")

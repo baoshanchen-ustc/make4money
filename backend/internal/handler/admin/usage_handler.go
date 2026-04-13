@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	adminService   service.AdminService
 	cleanupService *service.UsageCleanupService
+	statsCache     *snapshotCache
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -39,6 +41,7 @@ func NewUsageHandler(
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+		statsCache:     newSnapshotCache(15 * time.Second),
 	}
 }
 
@@ -110,6 +113,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 	}
 
 	model := c.Query("model")
+	provider := strings.ToLower(strings.TrimSpace(c.Query("provider")))
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
 
 	var requestType *int16
@@ -142,27 +146,13 @@ func (h *UsageHandler) List(c *gin.Context) {
 		billingType = &bt
 	}
 
-	// Parse date range
-	var startTime, endTime *time.Time
-	userTZ := c.Query("timezone") // Get user's timezone from request
-	if startDateStr := c.Query("start_date"); startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
-		if err != nil {
-			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
-			return
-		}
-		startTime = &t
-	}
-
-	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
-		if err != nil {
-			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
-			return
-		}
-		// Use half-open range [start, end), move to next calendar day start (DST-safe).
-		t = t.AddDate(0, 0, 1)
-		endTime = &t
+	// Parse date range. To avoid accidental full-table scans on admin usage list,
+	// default to the recent 7 days when the caller does not provide any range.
+	userTZ := c.Query("timezone")
+	startTime, endTime, err := parseAdminUsageListRange(c, userTZ)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
 	}
 
 	params := pagination.PaginationParams{
@@ -177,6 +167,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       model,
+		Provider:    provider,
 		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
@@ -241,6 +232,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	}
 
 	model := c.Query("model")
+	provider := strings.ToLower(strings.TrimSpace(c.Query("provider")))
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
 
 	var requestType *int16
@@ -278,10 +270,12 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	now := timezone.NowInUserLocation(userTZ)
 	var startTime, endTime time.Time
 
-	startDateStr := c.Query("start_date")
-	endDateStr := c.Query("end_date")
+	startDateStr := strings.TrimSpace(c.Query("start_date"))
+	endDateStr := strings.TrimSpace(c.Query("end_date"))
+	explicitRange := startDateStr != "" && endDateStr != ""
+	period := ""
 
-	if startDateStr != "" && endDateStr != "" {
+	if explicitRange {
 		var err error
 		startTime, err = timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
 		if err != nil {
@@ -296,7 +290,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		// 与 SQL 条件 created_at < end 对齐，使用次日 00:00 作为上边界（DST-safe）。
 		endTime = endTime.AddDate(0, 0, 1)
 	} else {
-		period := c.DefaultQuery("period", "today")
+		period = normalizeUsageStatsPeriod(c.Query("period"))
 		switch period {
 		case "today":
 			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
@@ -317,6 +311,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       model,
+		Provider:    provider,
 		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
@@ -325,13 +320,46 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		EndTime:     &endTime,
 	}
 
-	stats, err := h.usageService.GetStatsWithFilters(c.Request.Context(), filters)
+	cacheKey := buildUsageStatsCacheKey(filters, period, userTZ, explicitRange, now)
+	stats, _, err := h.getUsageStatsCached(c.Request.Context(), filters, cacheKey)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
 	response.Success(c, stats)
+}
+
+func parseAdminUsageListRange(c *gin.Context, userTZ string) (*time.Time, *time.Time, error) {
+	startDateStr := strings.TrimSpace(c.Query("start_date"))
+	endDateStr := strings.TrimSpace(c.Query("end_date"))
+
+	var startTime, endTime *time.Time
+	if startDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid start_date format, use YYYY-MM-DD")
+		}
+		startTime = &t
+	}
+
+	if endDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid end_date format, use YYYY-MM-DD")
+		}
+		t = t.AddDate(0, 0, 1)
+		endTime = &t
+	}
+
+	if startTime == nil && endTime == nil {
+		now := timezone.NowInUserLocation(userTZ)
+		defaultStart := timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
+		startTime = &defaultStart
+		endTime = &now
+	}
+
+	return startTime, endTime, nil
 }
 
 // SearchUsers handles searching users by email keyword

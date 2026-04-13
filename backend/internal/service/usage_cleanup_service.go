@@ -22,6 +22,24 @@ const (
 	usageCleanupWorkerName = "usage_cleanup_worker"
 )
 
+var (
+	usageCleanupLastTaskID          atomic.Int64
+	usageCleanupDeletedRows         atomic.Int64
+	usageCleanupStartedTotal        atomic.Int64
+	usageCleanupSucceededTotal      atomic.Int64
+	usageCleanupFailedTotal         atomic.Int64
+	usageCleanupCanceledTotal       atomic.Int64
+	usageCleanupLastStartedAtUnix   atomic.Int64
+	usageCleanupLastSucceededAtUnix atomic.Int64
+	usageCleanupLastFailedAtUnix    atomic.Int64
+	usageCleanupLastCanceledAtUnix  atomic.Int64
+	usageCleanupLastDurationMs      atomic.Int64
+
+	usageCleanupStateMu    sync.Mutex
+	usageCleanupLastStatus string
+	usageCleanupLastError  string
+)
+
 // UsageCleanupService 负责创建与执行使用记录清理任务
 type UsageCleanupService struct {
 	repo        UsageCleanupRepository
@@ -194,6 +212,7 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 	batchSize := s.batchSize()
 	deletedTotal := task.DeletedRows
 	start := time.Now()
+	recordUsageCleanupTaskStarted(start)
 	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] task started: task=%d batch_size=%d deleted_rows=%d %s", task.ID, batchSize, deletedTotal, describeUsageCleanupFilters(task.Filters))
 	var batchNum int
 
@@ -208,6 +227,7 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 			return
 		}
 		if canceled {
+			recordUsageCleanupTaskCanceled(time.Now(), time.Since(start))
 			logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] task canceled: task=%d deleted_rows=%d duration=%s", task.ID, deletedTotal, time.Since(start))
 			return
 		}
@@ -244,6 +264,7 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 	if err := s.repo.MarkTaskSucceeded(updateCtx, task.ID, deletedTotal); err != nil {
 		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] update task succeeded failed: task=%d err=%v", task.ID, err)
 	} else {
+		recordUsageCleanupTaskSucceeded(task.ID, deletedTotal, time.Now(), time.Since(start))
 		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] task succeeded: task=%d deleted_rows=%d duration=%s", task.ID, deletedTotal, time.Since(start))
 	}
 
@@ -254,6 +275,50 @@ func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanu
 			logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] trigger dashboard recompute: task=%d start=%s end=%s", task.ID, task.Filters.StartTime.UTC().Format(time.RFC3339), task.Filters.EndTime.UTC().Format(time.RFC3339))
 		}
 	}
+	recordUsageCleanupStats(task.ID, deletedTotal)
+}
+
+func recordUsageCleanupStats(taskID, deletedTotal int64) {
+	usageCleanupLastTaskID.Store(taskID)
+	usageCleanupDeletedRows.Store(deletedTotal)
+}
+
+func SnapshotUsageCleanupStats() UsageCleanupStats {
+	usageCleanupStateMu.Lock()
+	lastStatus := usageCleanupLastStatus
+	lastError := usageCleanupLastError
+	usageCleanupStateMu.Unlock()
+	return UsageCleanupStats{
+		LastTaskID:      usageCleanupLastTaskID.Load(),
+		LastDeletedRows: usageCleanupDeletedRows.Load(),
+		StartedTotal:    usageCleanupStartedTotal.Load(),
+		SucceededTotal:  usageCleanupSucceededTotal.Load(),
+		FailedTotal:     usageCleanupFailedTotal.Load(),
+		CanceledTotal:   usageCleanupCanceledTotal.Load(),
+		LastStartedAt:   unixSecondsPtr(usageCleanupLastStartedAtUnix.Load()),
+		LastSucceededAt: unixSecondsPtr(usageCleanupLastSucceededAtUnix.Load()),
+		LastFailedAt:    unixSecondsPtr(usageCleanupLastFailedAtUnix.Load()),
+		LastCanceledAt:  unixSecondsPtr(usageCleanupLastCanceledAtUnix.Load()),
+		LastDurationMs:  positiveInt64Ptr(usageCleanupLastDurationMs.Load()),
+		LastStatus:      lastStatus,
+		LastError:       lastError,
+	}
+}
+
+type UsageCleanupStats struct {
+	LastTaskID      int64      `json:"last_task_id"`
+	LastDeletedRows int64      `json:"last_deleted_rows"`
+	StartedTotal    int64      `json:"started_total"`
+	SucceededTotal  int64      `json:"succeeded_total"`
+	FailedTotal     int64      `json:"failed_total"`
+	CanceledTotal   int64      `json:"canceled_total"`
+	LastStartedAt   *time.Time `json:"last_started_at,omitempty"`
+	LastSucceededAt *time.Time `json:"last_succeeded_at,omitempty"`
+	LastFailedAt    *time.Time `json:"last_failed_at,omitempty"`
+	LastCanceledAt  *time.Time `json:"last_canceled_at,omitempty"`
+	LastDurationMs  *int64     `json:"last_duration_ms,omitempty"`
+	LastStatus      string     `json:"last_status,omitempty"`
+	LastError       string     `json:"last_error,omitempty"`
 }
 
 func (s *UsageCleanupService) markTaskFailed(taskID int64, deletedRows int64, err error) {
@@ -261,6 +326,7 @@ func (s *UsageCleanupService) markTaskFailed(taskID int64, deletedRows int64, er
 	if len(msg) > 500 {
 		msg = msg[:500]
 	}
+	recordUsageCleanupTaskFailed(time.Now(), msg)
 	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] task failed: task=%d deleted_rows=%d err=%s", taskID, deletedRows, msg)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -345,6 +411,82 @@ func (s *UsageCleanupService) CancelTask(ctx context.Context, taskID int64, canc
 	}
 	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] cancel_task done: task=%d operator=%d", taskID, canceledBy)
 	return nil
+}
+
+func recordUsageCleanupTaskStarted(at time.Time) {
+	usageCleanupStartedTotal.Add(1)
+	if !at.IsZero() {
+		usageCleanupLastStartedAtUnix.Store(at.UTC().Unix())
+	}
+	setUsageCleanupRuntimeState("running", "")
+}
+
+func recordUsageCleanupTaskSucceeded(taskID, deletedTotal int64, finishedAt time.Time, duration time.Duration) {
+	recordUsageCleanupStats(taskID, deletedTotal)
+	usageCleanupSucceededTotal.Add(1)
+	if !finishedAt.IsZero() {
+		usageCleanupLastSucceededAtUnix.Store(finishedAt.UTC().Unix())
+	}
+	if duration > 0 {
+		usageCleanupLastDurationMs.Store(duration.Milliseconds())
+	}
+	setUsageCleanupRuntimeState("succeeded", "")
+}
+
+func recordUsageCleanupTaskFailed(failedAt time.Time, msg string) {
+	usageCleanupFailedTotal.Add(1)
+	if !failedAt.IsZero() {
+		usageCleanupLastFailedAtUnix.Store(failedAt.UTC().Unix())
+	}
+	setUsageCleanupRuntimeState("failed", msg)
+}
+
+func recordUsageCleanupTaskCanceled(canceledAt time.Time, duration time.Duration) {
+	usageCleanupCanceledTotal.Add(1)
+	if !canceledAt.IsZero() {
+		usageCleanupLastCanceledAtUnix.Store(canceledAt.UTC().Unix())
+	}
+	if duration > 0 {
+		usageCleanupLastDurationMs.Store(duration.Milliseconds())
+	}
+	setUsageCleanupRuntimeState("canceled", "")
+}
+
+func setUsageCleanupRuntimeState(status, lastErr string) {
+	usageCleanupStateMu.Lock()
+	defer usageCleanupStateMu.Unlock()
+	usageCleanupLastStatus = strings.TrimSpace(status)
+	usageCleanupLastError = strings.TrimSpace(lastErr)
+}
+
+func unixSecondsPtr(v int64) *time.Time {
+	if v <= 0 {
+		return nil
+	}
+	tm := time.Unix(v, 0).UTC()
+	return &tm
+}
+
+func positiveInt64Ptr(v int64) *int64 {
+	if v <= 0 {
+		return nil
+	}
+	return &v
+}
+
+func resetUsageCleanupStatsForTest() {
+	usageCleanupLastTaskID.Store(0)
+	usageCleanupDeletedRows.Store(0)
+	usageCleanupStartedTotal.Store(0)
+	usageCleanupSucceededTotal.Store(0)
+	usageCleanupFailedTotal.Store(0)
+	usageCleanupCanceledTotal.Store(0)
+	usageCleanupLastStartedAtUnix.Store(0)
+	usageCleanupLastSucceededAtUnix.Store(0)
+	usageCleanupLastFailedAtUnix.Store(0)
+	usageCleanupLastCanceledAtUnix.Store(0)
+	usageCleanupLastDurationMs.Store(0)
+	setUsageCleanupRuntimeState("", "")
 }
 
 func sanitizeUsageCleanupFilters(filters *UsageCleanupFilters) {

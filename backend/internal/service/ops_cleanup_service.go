@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -51,6 +52,16 @@ type OpsCleanupService struct {
 
 	warnNoRedisOnce sync.Once
 }
+
+var (
+	cleanupSystemLogRowCount atomic.Int64
+	cleanupErrorLogRowCount  atomic.Int64
+	cleanupMaxRowsTriggered  atomic.Int64
+	cleanupSystemLogLimit    atomic.Int64
+	cleanupErrorLogLimit     atomic.Int64
+	cleanupMaxRowsEnabled    atomic.Bool
+	cleanupMaxRowsDryRun     atomic.Bool
+)
 
 func NewOpsCleanupService(
 	opsRepo OpsRepository,
@@ -184,9 +195,16 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 		return out, nil
 	}
 
+	cleanupMaxRowsTriggered.Store(0)
+	s.updateMaxRowsConfig()
+
 	batchSize := 5000
 
 	now := time.Now().UTC()
+
+	// Keep row-cap visibility current even when time-based retention is disabled.
+	s.recordMaxRowsSnapshot(ctx, "ops_error_logs", s.cfg.Ops.Cleanup.ErrorLogMaxRows)
+	s.recordMaxRowsSnapshot(ctx, "ops_system_logs", s.cfg.Ops.Cleanup.SystemLogMaxRows)
 
 	// Error-like tables: error logs / retry attempts / alert events.
 	if days := s.cfg.Ops.Cleanup.ErrorLogRetentionDays; days > 0 {
@@ -267,21 +285,7 @@ func deleteOldRowsByID(
 		batchSize = 5000
 	}
 
-	where := fmt.Sprintf("%s < $1", timeColumn)
-	if castCutoffToDate {
-		where = fmt.Sprintf("%s < $1::date", timeColumn)
-	}
-
-	q := fmt.Sprintf(`
-WITH batch AS (
-  SELECT id FROM %s
-  WHERE %s
-  ORDER BY id
-  LIMIT $2
-)
-DELETE FROM %s
-WHERE id IN (SELECT id FROM batch)
-`, table, where, table)
+	q := buildDeleteOldRowsByIDQuery(table, timeColumn, castCutoffToDate)
 
 	var total int64
 	for {
@@ -303,6 +307,24 @@ WHERE id IN (SELECT id FROM batch)
 		}
 	}
 	return total, nil
+}
+
+func buildDeleteOldRowsByIDQuery(table string, timeColumn string, castCutoffToDate bool) string {
+	where := fmt.Sprintf("%s < $1", timeColumn)
+	if castCutoffToDate {
+		where = fmt.Sprintf("%s < $1::date", timeColumn)
+	}
+	return fmt.Sprintf(`
+WITH batch AS (
+  SELECT ctid FROM %s
+  WHERE %s
+  ORDER BY %s ASC, id ASC
+  LIMIT $2
+)
+DELETE FROM %s AS t
+USING batch
+WHERE t.ctid = batch.ctid
+`, table, where, timeColumn, table)
 }
 
 func (s *OpsCleanupService) tryAcquireLeaderLock(ctx context.Context) (func(), bool) {
@@ -380,4 +402,93 @@ func (s *OpsCleanupService) recordHeartbeatError(runAt time.Time, duration time.
 		LastError:      &msg,
 		LastDurationMs: &durMs,
 	})
+}
+
+func (s *OpsCleanupService) updateMaxRowsConfig() {
+	if s == nil || s.cfg == nil {
+		return
+	}
+	cleanupMaxRowsEnabled.Store(s.cfg.Ops.Cleanup.MaxRowsEnabled)
+	cleanupMaxRowsDryRun.Store(s.cfg.Ops.Cleanup.MaxRowsDryRun)
+	cleanupSystemLogLimit.Store(s.cfg.Ops.Cleanup.SystemLogMaxRows)
+	cleanupErrorLogLimit.Store(s.cfg.Ops.Cleanup.ErrorLogMaxRows)
+}
+
+func (s *OpsCleanupService) recordMaxRowsSnapshot(ctx context.Context, table string, limit int64) {
+	if s == nil || s.db == nil || limit <= 0 {
+		return
+	}
+	count, err := estimateTableRows(ctx, s.db, table)
+	if err != nil {
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] estimate rows failed for %s: %v", table, err)
+		return
+	}
+	switch table {
+	case "ops_system_logs":
+		cleanupSystemLogRowCount.Store(count)
+	case "ops_error_logs":
+		cleanupErrorLogRowCount.Store(count)
+	}
+	if cleanupMaxRowsEnabled.Load() && count > limit {
+		cleanupMaxRowsTriggered.Add(1)
+		if cleanupMaxRowsDryRun.Load() {
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] max rows dry-run triggered for %s (count=%d limit=%d)", table, count, limit)
+		} else {
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] max rows enforced for %s (count=%d limit=%d)", table, count, limit)
+		}
+	}
+}
+
+func estimateTableRows(ctx context.Context, db *sql.DB, table string) (int64, error) {
+	if db == nil || table == "" {
+		return 0, fmt.Errorf("invalid table")
+	}
+	switch table {
+	case "ops_system_logs", "ops_error_logs":
+	default:
+		return 0, fmt.Errorf("unsupported table %q", table)
+	}
+	var count int64
+	const query = `
+SELECT COALESCE(st.n_live_tup::bigint, c.reltuples::bigint, 0)
+FROM pg_class c
+LEFT JOIN pg_stat_user_tables st ON st.relid = c.oid
+WHERE c.relname = $1
+LIMIT 1`
+	if err := db.QueryRowContext(ctx, query, table).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func SnapshotCleanupStats() CleanupStats {
+	return CleanupStats{
+		SystemLogRows:  cleanupSystemLogRowCount.Load(),
+		ErrorLogRows:   cleanupErrorLogRowCount.Load(),
+		SystemLogLimit: cleanupSystemLogLimit.Load(),
+		ErrorLogLimit:  cleanupErrorLogLimit.Load(),
+		MaxRowsEnabled: cleanupMaxRowsEnabled.Load(),
+		MaxRowsDryRun:  cleanupMaxRowsDryRun.Load(),
+		MaxRowsHit:     cleanupMaxRowsTriggered.Load() > 0,
+	}
+}
+
+type CleanupStats struct {
+	SystemLogRows  int64
+	ErrorLogRows   int64
+	SystemLogLimit int64
+	ErrorLogLimit  int64
+	MaxRowsEnabled bool
+	MaxRowsDryRun  bool
+	MaxRowsHit     bool
+}
+
+func resetCleanupStatsForTest() {
+	cleanupSystemLogRowCount.Store(0)
+	cleanupErrorLogRowCount.Store(0)
+	cleanupMaxRowsTriggered.Store(0)
+	cleanupSystemLogLimit.Store(0)
+	cleanupErrorLogLimit.Store(0)
+	cleanupMaxRowsEnabled.Store(false)
+	cleanupMaxRowsDryRun.Store(false)
 }

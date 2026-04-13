@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -201,15 +203,20 @@ func (r *opsRepository) ListErrorLogs(ctx context.Context, filter *service.OpsEr
 	}
 
 	where, args := buildOpsErrorLogsWhere(filter)
-	countSQL := "SELECT COUNT(*) FROM ops_error_logs e " + where
-
 	var total int
-	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
-		return nil, err
+	if filter.ExactTotal {
+		countSQL := "SELECT COUNT(*) FROM ops_error_logs e " + where
+		if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+			return nil, err
+		}
 	}
 
 	offset := (page - 1) * pageSize
-	argsWithLimit := append(args, pageSize, offset)
+	limit := pageSize
+	if !filter.ExactTotal {
+		limit = pageSize + 1
+	}
+	argsWithLimit := append(args, limit, offset)
 	selectSQL := `
 SELECT
   e.id,
@@ -363,6 +370,15 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if !filter.ExactTotal {
+		hasMore := len(out) > pageSize
+		if hasMore {
+			out = out[:pageSize]
+			total = offset + pageSize + 1
+		} else {
+			total = offset + len(out)
+		}
 	}
 
 	return &service.OpsErrorLogList{
@@ -1138,14 +1154,20 @@ func (r *opsRepository) ListSystemLogs(ctx context.Context, filter *service.OpsS
 	}
 
 	where, args, _ := buildOpsSystemLogsWhere(filter)
-	countSQL := "SELECT COUNT(*) FROM ops_system_logs l " + where
 	var total int
-	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
-		return nil, err
+	if filter.ExactTotal {
+		countSQL := "SELECT COUNT(*) FROM ops_system_logs l " + where
+		if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+			return nil, err
+		}
 	}
 
 	offset := (page - 1) * pageSize
-	argsWithLimit := append(args, pageSize, offset)
+	limit := pageSize
+	if !filter.ExactTotal {
+		limit = pageSize + 1
+	}
+	argsWithLimit := append(args, limit, offset)
 	query := `
 SELECT
   l.id,
@@ -1212,6 +1234,15 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if !filter.ExactTotal {
+		hasMore := len(logs) > pageSize
+		if hasMore {
+			logs = logs[:pageSize]
+			total = offset + pageSize + 1
+		} else {
+			total = offset + len(logs)
+		}
 	}
 
 	return &service.OpsSystemLogList{
@@ -1412,6 +1443,11 @@ func buildOpsSystemLogsWhere(filter *service.OpsSystemLogFilter) (string, []any,
 			clauses = append(clauses, "COALESCE(l.request_id,'') = $"+itoa(len(args)))
 			hasConstraint = true
 		}
+		if v := strings.TrimSpace(filter.ResolvedRequestID); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "COALESCE(l.request_id, l.extra->>'request_id', l.extra->'last'->>'request_id', '') = $"+itoa(len(args)))
+			hasConstraint = true
+		}
 		if v := strings.TrimSpace(filter.ClientRequestID); v != "" {
 			args = append(args, v)
 			clauses = append(clauses, "COALESCE(l.client_request_id,'') = $"+itoa(len(args)))
@@ -1439,14 +1475,57 @@ func buildOpsSystemLogsWhere(filter *service.OpsSystemLogFilter) (string, []any,
 		}
 		if v := strings.TrimSpace(filter.Query); v != "" {
 			like := "%" + v + "%"
-			args = append(args, like)
-			n := itoa(len(args))
-			clauses = append(clauses, "(l.message ILIKE $"+n+" OR COALESCE(l.request_id,'') ILIKE $"+n+" OR COALESCE(l.client_request_id,'') ILIKE $"+n+" OR COALESCE(l.extra::text,'') ILIKE $"+n+")")
+			if looksLikeOpsCorrelationKey(v) {
+				args = append(args, v)
+				exactN := itoa(len(args))
+				args = append(args, like)
+				likeN := itoa(len(args))
+				clauses = append(clauses, "(COALESCE(l.request_id,'') = $"+exactN+" OR COALESCE(l.client_request_id,'') = $"+exactN+" OR COALESCE(l.extra->>'request_id', l.extra->'last'->>'request_id', '') = $"+exactN+" OR l.message ILIKE $"+likeN+" OR COALESCE(l.extra::text,'') ILIKE $"+likeN+")")
+			} else {
+				args = append(args, like)
+				n := itoa(len(args))
+				clauses = append(clauses, "(l.message ILIKE $"+n+" OR COALESCE(l.request_id,'') ILIKE $"+n+" OR COALESCE(l.client_request_id,'') ILIKE $"+n+" OR COALESCE(l.extra::text,'') ILIKE $"+n+")")
+			}
+			hasConstraint = true
+		}
+		if filter.ExtraAPIKeyID != nil && *filter.ExtraAPIKeyID > 0 {
+			args = append(args, strconv.FormatInt(*filter.ExtraAPIKeyID, 10))
+			clauses = append(clauses, "COALESCE(l.extra->>'api_key_id', l.extra->'last'->>'api_key_id', '') = $"+itoa(len(args)))
+			hasConstraint = true
+		}
+		if filter.ExtraGroupID != nil && *filter.ExtraGroupID > 0 {
+			args = append(args, strconv.FormatInt(*filter.ExtraGroupID, 10))
+			clauses = append(clauses, "COALESCE(l.extra->>'group_id', l.extra->'last'->>'group_id', '') = $"+itoa(len(args)))
 			hasConstraint = true
 		}
 	}
 
 	return "WHERE " + strings.Join(clauses, " AND "), args, hasConstraint
+}
+
+func looksLikeOpsCorrelationKey(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < 8 || len(raw) > 128 {
+		return false
+	}
+	if strings.ContainsAny(raw, " \t\r\n%*") {
+		return false
+	}
+	hasSeparator := false
+	hasAlphaNum := false
+	for _, r := range raw {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			hasAlphaNum = true
+			continue
+		}
+		switch r {
+		case '-', '_', ':':
+			hasSeparator = true
+		default:
+			return false
+		}
+	}
+	return hasSeparator && hasAlphaNum
 }
 
 func buildOpsSystemLogsCleanupWhere(filter *service.OpsSystemLogCleanupFilter) (string, []any, bool) {

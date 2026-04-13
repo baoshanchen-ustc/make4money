@@ -970,6 +970,23 @@ func hashSensitiveValueForLog(raw string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
+type openAIInstructionsRequiredDebugMeta struct {
+	InboundEndpoint       string
+	InboundEndpointSuffix string
+	UpstreamEndpoint      string
+	UpstreamHost          string
+	UpstreamPath          string
+	UpstreamRequestID     string
+	RequestType           string
+	RequestedModel        string
+	UpstreamModel         string
+	InstructionsState     string
+	InstructionsPresent   bool
+	InstructionsEmpty     bool
+	Passthrough           bool
+	Compact               bool
+}
+
 func logOpenAIInstructionsRequiredDebug(
 	ctx context.Context,
 	c *gin.Context,
@@ -978,6 +995,7 @@ func logOpenAIInstructionsRequiredDebug(
 	upstreamMsg string,
 	requestBody []byte,
 	upstreamBody []byte,
+	meta *openAIInstructionsRequiredDebugMeta,
 ) {
 	msg := strings.TrimSpace(upstreamMsg)
 	if !isOpenAIInstructionsRequiredError(upstreamStatusCode, msg, upstreamBody) {
@@ -1011,8 +1029,173 @@ func logOpenAIInstructionsRequiredDebug(
 		zap.Bool("codex_official_client_match", openai.IsCodexOfficialClientByHeaders(userAgent, originator)),
 	}
 	fields = appendCodexCLIOnlyRejectedRequestFields(fields, c, requestBody)
+	fields = appendOpenAIInstructionsRequiredDebugMetaFields(fields, meta, upstreamBody)
 
 	logger.FromContext(ctx).With(fields...).Warn("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查")
+}
+
+func appendOpenAIInstructionsRequiredDebugMetaFields(fields []zap.Field, meta *openAIInstructionsRequiredDebugMeta, upstreamBody []byte) []zap.Field {
+	if meta != nil {
+		if value := strings.TrimSpace(meta.InboundEndpoint); value != "" {
+			fields = append(fields, zap.String("inbound_endpoint", value))
+		}
+		if value := strings.TrimSpace(meta.InboundEndpointSuffix); value != "" {
+			fields = append(fields, zap.String("inbound_endpoint_suffix", value))
+		}
+		if value := strings.TrimSpace(meta.UpstreamEndpoint); value != "" {
+			fields = append(fields, zap.String("upstream_endpoint", value))
+		}
+		if value := strings.TrimSpace(meta.UpstreamHost); value != "" {
+			fields = append(fields, zap.String("upstream_host", value))
+		}
+		if value := strings.TrimSpace(meta.UpstreamPath); value != "" {
+			fields = append(fields, zap.String("upstream_path", value))
+		}
+		if value := strings.TrimSpace(meta.UpstreamRequestID); value != "" {
+			fields = append(fields, zap.String("upstream_request_id", value))
+		}
+		if value := strings.TrimSpace(meta.RequestType); value != "" {
+			fields = append(fields, zap.String("request_type", value))
+		}
+		if value := strings.TrimSpace(meta.RequestedModel); value != "" {
+			fields = append(fields, zap.String("requested_model", value))
+		}
+		if value := strings.TrimSpace(meta.UpstreamModel); value != "" {
+			fields = append(fields, zap.String("upstream_model", value))
+		}
+		if requested := strings.TrimSpace(meta.RequestedModel); requested != "" && strings.TrimSpace(meta.UpstreamModel) != "" {
+			fields = append(fields, zap.Bool("model_mapped_for_upstream", requested != strings.TrimSpace(meta.UpstreamModel)))
+		}
+		if value := strings.TrimSpace(meta.InstructionsState); value != "" {
+			fields = append(fields, zap.String("instructions_state", value))
+		}
+		fields = append(fields,
+			zap.Bool("instructions_present", meta.InstructionsPresent),
+			zap.Bool("instructions_empty", meta.InstructionsEmpty),
+			zap.Bool("openai_passthrough", meta.Passthrough),
+			zap.Bool("openai_responses_compact", meta.Compact),
+		)
+	}
+
+	upstreamErrorType, upstreamErrorParam, upstreamErrorCode := extractOpenAIUpstreamErrorMeta(upstreamBody)
+	if upstreamErrorType != "" {
+		fields = append(fields, zap.String("upstream_error_type", upstreamErrorType))
+	}
+	if upstreamErrorParam != "" {
+		fields = append(fields, zap.String("upstream_error_param", upstreamErrorParam))
+	}
+	if upstreamErrorCode != "" {
+		fields = append(fields, zap.String("upstream_error_code", upstreamErrorCode))
+	}
+	return fields
+}
+
+func buildOpenAIInstructionsRequiredDebugMeta(
+	c *gin.Context,
+	originalRequestBody []byte,
+	upstreamReq *http.Request,
+	requestedModel string,
+	upstreamModel string,
+	passthrough bool,
+	upstreamRequestID string,
+) *openAIInstructionsRequiredDebugMeta {
+	if c == nil && upstreamReq == nil && len(originalRequestBody) == 0 && requestedModel == "" && upstreamModel == "" && upstreamRequestID == "" {
+		return nil
+	}
+
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		requestedModel, _, _ = extractOpenAIRequestMetaFromBody(originalRequestBody)
+	}
+	upstreamModel = strings.TrimSpace(upstreamModel)
+	if upstreamModel == "" {
+		upstreamModel = requestedModel
+	}
+
+	instructionsState, instructionsPresent, instructionsEmpty := detectOpenAIInstructionsState(originalRequestBody)
+	meta := &openAIInstructionsRequiredDebugMeta{
+		InboundEndpoint:       openAIInboundEndpoint(c),
+		InboundEndpointSuffix: strings.TrimSpace(openAIResponsesRequestPathSuffix(c)),
+		RequestType:           classifyOpenAIInstructionsRequiredRequestType(c, originalRequestBody, passthrough),
+		RequestedModel:        requestedModel,
+		UpstreamModel:         upstreamModel,
+		InstructionsState:     instructionsState,
+		InstructionsPresent:   instructionsPresent,
+		InstructionsEmpty:     instructionsEmpty,
+		Passthrough:           passthrough,
+		Compact:               isOpenAIResponsesCompactPath(c),
+		UpstreamRequestID:     strings.TrimSpace(upstreamRequestID),
+	}
+	if upstreamReq != nil && upstreamReq.URL != nil {
+		meta.UpstreamEndpoint = strings.TrimSpace(upstreamReq.URL.String())
+		meta.UpstreamHost = strings.TrimSpace(upstreamReq.URL.Host)
+		meta.UpstreamPath = strings.TrimSpace(upstreamReq.URL.Path)
+	}
+	return meta
+}
+
+func openAIInboundEndpoint(c *gin.Context) string {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return ""
+	}
+	return strings.TrimSpace(c.Request.URL.Path)
+}
+
+func detectOpenAIInstructionsState(body []byte) (state string, present bool, empty bool) {
+	if len(body) == 0 {
+		return "missing", false, false
+	}
+	value := gjson.GetBytes(body, "instructions")
+	if !value.Exists() {
+		return "missing", false, false
+	}
+	switch value.Type {
+	case gjson.Null:
+		return "null", true, true
+	case gjson.String:
+		if strings.TrimSpace(value.String()) == "" {
+			return "empty", true, true
+		}
+		return "present", true, false
+	default:
+		return "non_string", true, false
+	}
+}
+
+func classifyOpenAIInstructionsRequiredRequestType(c *gin.Context, body []byte, passthrough bool) string {
+	parts := []string{"responses"}
+	if passthrough {
+		parts = append(parts, "passthrough")
+	}
+	if isOpenAIResponsesCompactPath(c) {
+		parts = append(parts, "compact")
+	}
+	if gjson.GetBytes(body, "stream").Bool() {
+		parts = append(parts, "stream")
+	} else {
+		parts = append(parts, "nonstream")
+	}
+	if hasOpenAIImageInput(body) {
+		parts = append(parts, "multimodal")
+	}
+	return strings.Join(parts, ".")
+}
+
+func hasOpenAIImageInput(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	return bytes.Contains(body, []byte(`"input_image"`)) || bytes.Contains(body, []byte(`"image_url"`))
+}
+
+func extractOpenAIUpstreamErrorMeta(body []byte) (errorType string, param string, code string) {
+	if len(body) == 0 {
+		return "", "", ""
+	}
+	errorType = strings.TrimSpace(gjson.GetBytes(body, "error.type").String())
+	param = strings.TrimSpace(gjson.GetBytes(body, "error.param").String())
+	code = strings.TrimSpace(gjson.GetBytes(body, "error.code").String())
+	return errorType, param, code
 }
 
 func isOpenAIInstructionsRequiredError(upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {
@@ -1273,30 +1456,31 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if err != nil {
 		return nil
 	}
+	schedGroup := s.getOpenAIStickySchedulingGroup(ctx, groupID)
 
 	// 检查账号是否需要清理粘性会话
 	// Check if sticky session should be cleared
 	if shouldClearStickySession(account, requestedModel) {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonClearedUnschedulable)
+		return nil
+	}
+	if invalidationReason := s.classifyOpenAIStickySessionInvalidation(ctx, groupID, schedGroup, account, requestedModel, OpenAIUpstreamTransportAny, false); invalidationReason != "" {
+		_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonForInvalidation(invalidationReason))
 		return nil
 	}
 
 	// 验证账号是否可用于当前请求
 	// Verify account is usable for current request
-	if !account.IsSchedulable() || !account.IsOpenAI() {
-		return nil
-	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if !account.IsSchedulable() || !account.IsOpenAI() || (requestedModel != "" && !account.IsModelSupported(requestedModel)) {
 		return nil
 	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
 	if account == nil {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonDBRuntimeRecheck)
 		return nil
 	}
-	if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
-		s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+	if invalidationReason := s.classifyOpenAIStickySessionInvalidation(ctx, groupID, schedGroup, account, requestedModel, OpenAIUpstreamTransportAny, true); invalidationReason != "" {
+		_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonForInvalidation(invalidationReason))
 		return nil
 	}
 
@@ -1314,6 +1498,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}) *Account {
 	var selected *Account
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	schedGroup := s.getOpenAIStickySchedulingGroup(ctx, groupID)
 
 	for i := range accounts {
 		acc := &accounts[i]
@@ -1328,8 +1513,14 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		if fresh == nil {
 			continue
 		}
+		if schedGroup != nil && schedGroup.RequirePrivacySet && !fresh.IsPrivacySet() {
+			continue
+		}
 		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel)
 		if fresh == nil {
+			continue
+		}
+		if schedGroup != nil && schedGroup.RequirePrivacySet && !fresh.IsPrivacySet() {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel) {
@@ -1395,6 +1586,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 
 	cfg := s.schedulingConfig()
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	schedGroup := s.getOpenAIStickySchedulingGroup(ctx, groupID)
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil {
@@ -1413,6 +1605,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
 			waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
 			if waitingCount < cfg.StickySessionMaxWaiting {
+				_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
 				return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 					AccountID:      account.ID,
 					MaxConcurrency: account.Concurrency,
@@ -1453,15 +1646,21 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 			if err == nil {
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
-					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonClearedUnschedulable)
+				}
+				if !clearSticky {
+					if invalidationReason := s.classifyOpenAIStickySessionInvalidation(ctx, groupID, schedGroup, account, requestedModel, OpenAIUpstreamTransportAny, false); invalidationReason != "" {
+						_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonForInvalidation(invalidationReason))
+						clearSticky = true
+					}
 				}
 				if !clearSticky && account.IsSchedulable() && account.IsOpenAI() &&
 					(requestedModel == "" || account.IsModelSupported(requestedModel)) {
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
 					if account == nil {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+						_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonDBRuntimeRecheck)
+					} else if invalidationReason := s.classifyOpenAIStickySessionInvalidation(ctx, groupID, schedGroup, account, requestedModel, OpenAIUpstreamTransportAny, true); invalidationReason != "" {
+						_ = s.deleteStickySessionAccountIDIfMatch(ctx, groupID, sessionHash, accountID, stickyCleanupReasonForInvalidation(invalidationReason))
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result.Acquired {
@@ -1471,6 +1670,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 
 						waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
 						if waitingCount < cfg.StickySessionMaxWaiting {
+							_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
 							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 								AccountID:      accountID,
 								MaxConcurrency: account.Concurrency,
@@ -1495,6 +1695,9 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		// re-check schedulability here so recently rate-limited/overloaded accounts
 		// are not selected again before the bucket is rebuilt.
 		if !acc.IsSchedulable() {
+			continue
+		}
+		if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
 			continue
 		}
 		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
@@ -1613,6 +1816,47 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	return nil, ErrNoAvailableAccounts
+}
+
+func (s *OpenAIGatewayService) getOpenAIStickySchedulingGroup(ctx context.Context, groupID *int64) *Group {
+	if s == nil || groupID == nil || s.schedulerSnapshot == nil {
+		return nil
+	}
+	group, err := s.schedulerSnapshot.GetGroupByID(ctx, *groupID)
+	if err != nil {
+		return nil
+	}
+	return group
+}
+
+func (s *OpenAIGatewayService) classifyOpenAIStickySessionInvalidation(ctx context.Context, groupID *int64, schedGroup *Group, account *Account, requestedModel string, requiredTransport OpenAIUpstreamTransport, includeChannelRestriction bool) string {
+	if account == nil {
+		return ""
+	}
+	if schedGroup == nil {
+		schedGroup = s.getOpenAIStickySchedulingGroup(ctx, groupID)
+	}
+	return classifyStickySessionInvalidationReasonWithContext(account, stickySessionInvalidationContext{
+		RequestedModel:    requestedModel,
+		RequiredPlatform:  PlatformOpenAI,
+		InGroup:           isStickySessionAccountInGroup(account, groupID),
+		TransportMismatch: !s.isOpenAIAccountTransportCompatible(account, requiredTransport),
+		PrivacyRequired:   schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet(),
+		ChannelRestricted: includeChannelRestriction &&
+			groupID != nil &&
+			s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
+			s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel),
+	})
+}
+
+func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {
+	if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
+		return true
+	}
+	if s == nil || account == nil {
+		return false
+	}
+	return s.getOpenAIWSProtocolResolver().Resolve(account).Transport == requiredTransport
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
@@ -2389,7 +2633,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 				}
 			}
-			return s.handleErrorResponse(ctx, resp, c, account, body)
+			debugMeta := buildOpenAIInstructionsRequiredDebugMeta(c, originalBody, upstreamReq, originalModel, upstreamModel, false, resp.Header.Get("x-request-id"))
+			return s.handleErrorResponse(ctx, resp, c, account, body, debugMeta)
 		}
 		defer func() { _ = resp.Body.Close() }()
 
@@ -2563,12 +2808,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
+		debugMeta := buildOpenAIInstructionsRequiredDebugMeta(c, body, upstreamReq, reqModel, reqModel, true, resp.Header.Get("x-request-id"))
 		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
 		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
 		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
-			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
+			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, debugMeta)
 		}
-		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
+		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, debugMeta)
 	}
 
 	var usage *OpenAIUsage
@@ -2752,7 +2998,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 func shouldFailoverOpenAIPassthroughResponse(statusCode int) bool {
 	switch statusCode {
-	case http.StatusTooManyRequests, 529:
+	case http.StatusTooManyRequests,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+		529:
 		return true
 	default:
 		return false
@@ -2765,6 +3016,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	debugMeta *openAIInstructionsRequiredDebugMeta,
 ) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
@@ -2779,7 +3031,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
-	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
+	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body, debugMeta)
 	if s.rateLimitService != nil {
 		_ = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 	}
@@ -2808,6 +3060,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	debugMeta *openAIInstructionsRequiredDebugMeta,
 ) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
@@ -2822,7 +3075,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
-	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
+	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body, debugMeta)
 	if s.rateLimitService != nil {
 		// Passthrough mode preserves the raw upstream error response, but runtime
 		// account state still needs to be updated so sticky routing can stop
@@ -3255,6 +3508,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	debugMeta *openAIInstructionsRequiredDebugMeta,
 ) (*OpenAIForwardResult, error) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
@@ -3269,7 +3523,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
-	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
+	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body, debugMeta)
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		logger.LegacyPrintf("service.openai_gateway",
@@ -4415,7 +4669,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// 跳过所有 token 均为零的用量记录——上游未返回 usage 时不应写入数据库
 	if result.Usage.InputTokens == 0 && result.Usage.OutputTokens == 0 &&
-		result.Usage.CacheCreationInputTokens == 0 && result.Usage.CacheReadInputTokens == 0 {
+		result.Usage.CacheCreationInputTokens == 0 && result.Usage.CacheReadInputTokens == 0 &&
+		result.Usage.ImageOutputTokens == 0 {
 		return nil
 	}
 
@@ -4514,6 +4769,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		Model:               result.Model,
 		RequestedModel:      requestedModel,
 		UpstreamModel:       optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		Provider:            usageLogProviderFromAccount(account),
 		ServiceTier:         result.ServiceTier,
 		ReasoningEffort:     result.ReasoningEffort,
 		InboundEndpoint:     optionalTrimmedStringPtr(input.InboundEndpoint),
@@ -4594,7 +4850,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if billingErr != nil {
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	writeBilledUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 
 	return nil
 }

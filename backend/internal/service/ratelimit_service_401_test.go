@@ -20,6 +20,8 @@ type rateLimitAccountRepoStub struct {
 	updateCredentialsCalls int
 	lastCredentials        map[string]any
 	lastErrorMsg           string
+	updateExtraCalls       int
+	lastExtraUpdates       []map[string]any
 }
 
 func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
@@ -36,6 +38,16 @@ func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id 
 func (r *rateLimitAccountRepoStub) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
 	r.updateCredentialsCalls++
 	r.lastCredentials = cloneCredentials(credentials)
+	return nil
+}
+
+func (r *rateLimitAccountRepoStub) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	r.updateExtraCalls++
+	cloned := make(map[string]any, len(updates))
+	for k, v := range updates {
+		cloned[k] = v
+	}
+	r.lastExtraUpdates = append(r.lastExtraUpdates, cloned)
 	return nil
 }
 
@@ -77,6 +89,10 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 		require.True(t, shouldDisable)
 		require.Equal(t, 0, repo.setErrorCalls)
 		require.Equal(t, 1, repo.tempCalls)
+		require.Equal(t, 1, repo.updateExtraCalls)
+		require.Equal(t, "upstream_401_refresh_required", repo.lastExtraUpdates[0][accountAuthFailureReasonKey])
+		require.Equal(t, accountAuthClassTemporary, repo.lastExtraUpdates[0][accountAuthFailureClassKey])
+		require.Equal(t, accountAuthSourceUpstreamAuth, repo.lastExtraUpdates[0][accountAuthFailureSourceKey])
 		require.Len(t, invalidator.accounts, 1)
 	})
 
@@ -119,6 +135,7 @@ func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testin
 	require.Equal(t, 0, repo.setErrorCalls)
 	require.Equal(t, 1, repo.tempCalls)
 	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.Equal(t, 1, repo.updateExtraCalls)
 	require.Len(t, invalidator.accounts, 1)
 }
 
@@ -137,6 +154,8 @@ func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {
 
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, 1, repo.updateExtraCalls)
+	require.Equal(t, "authentication_failed", repo.lastExtraUpdates[0][accountAuthFailureReasonKey])
 	require.Empty(t, invalidator.accounts)
 }
 
@@ -157,4 +176,26 @@ func TestRateLimitService_HandleUpstreamError_OAuth401UsesCredentialsUpdater(t *
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.updateCredentialsCalls)
 	require.NotEmpty(t, repo.lastCredentials["expires_at"])
+	require.Equal(t, 1, repo.updateExtraCalls)
+	require.Equal(t, accountAuthStateRefreshPending, repo.lastExtraUpdates[0][accountAuthStateKey])
+}
+
+func TestRateLimitService_HandleUpstreamError_OpenAITokenRevokedMarksPermanentAuthState(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       104,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	}
+
+	body := []byte(`{"error":{"code":"token_revoked","message":"token revoked"}}`)
+	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, 1, repo.updateExtraCalls)
+	require.Equal(t, "token_revoked", repo.lastExtraUpdates[0][accountAuthFailureReasonKey])
+	require.Equal(t, accountAuthClassPermanent, repo.lastExtraUpdates[0][accountAuthFailureClassKey])
+	require.Equal(t, accountAuthStateReauthorizeRequired, repo.lastExtraUpdates[0][accountAuthStateKey])
 }

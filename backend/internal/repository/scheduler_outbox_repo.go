@@ -59,9 +59,11 @@ func (r *schedulerOutboxRepository) ListAfter(ctx context.Context, afterID int64
 		if len(payloadRaw) > 0 {
 			var payload map[string]any
 			if err := json.Unmarshal(payloadRaw, &payload); err != nil {
-				return nil, err
+				event.PayloadDecodeError = err.Error()
+				event.PayloadRaw = append(make([]byte, 0, len(payloadRaw)), payloadRaw...)
+			} else {
+				event.Payload = payload
 			}
-			event.Payload = payload
 		}
 		events = append(events, event)
 	}

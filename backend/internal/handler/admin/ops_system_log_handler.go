@@ -43,6 +43,11 @@ func (h *OpsHandler) ListSystemLogs(c *gin.Context) {
 	if pageSize > 200 {
 		pageSize = 200
 	}
+	exactTotal, err := parseExactTotalQuery(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid exact_total value, use true or false")
+		return
+	}
 
 	start, end, err := parseOpsTimeRange(c, "1h")
 	if err != nil {
@@ -62,6 +67,7 @@ func (h *OpsHandler) ListSystemLogs(c *gin.Context) {
 		Platform:        strings.TrimSpace(c.Query("platform")),
 		Model:           strings.TrimSpace(c.Query("model")),
 		Query:           strings.TrimSpace(c.Query("q")),
+		ExactTotal:      exactTotal,
 	}
 	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
 		id, parseErr := strconv.ParseInt(v, 10, 64)

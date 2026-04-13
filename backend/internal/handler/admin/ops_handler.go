@@ -91,6 +91,11 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 	if pageSize > 500 {
 		pageSize = 500
 	}
+	exactTotal, err := parseExactTotalQuery(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid exact_total value, use true or false")
+		return
+	}
 
 	startTime, endTime, err := parseOpsTimeRange(c, "1h")
 	if err != nil {
@@ -98,7 +103,7 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		return
 	}
 
-	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize}
+	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize, ExactTotal: exactTotal}
 
 	if !startTime.IsZero() {
 		filter.StartTime = &startTime
@@ -175,7 +180,15 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
+	hint := buildUpstreamErrorCorrelationHint()
+	errorsWithHint := make([]*opsErrorLogResponse, 0, len(result.Errors))
+	for _, item := range result.Errors {
+		errorsWithHint = append(errorsWithHint, &opsErrorLogResponse{
+			OpsErrorLog:     item,
+			CorrelationHint: hint,
+		})
+	}
+	response.Paginated(c, errorsWithHint, int64(result.Total), result.Page, result.PageSize)
 }
 
 // ListRequestErrors lists client-visible request errors.
@@ -194,13 +207,18 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 	if pageSize > 500 {
 		pageSize = 500
 	}
+	exactTotal, err := parseExactTotalQuery(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid exact_total value, use true or false")
+		return
+	}
 	startTime, endTime, err := parseOpsTimeRange(c, "1h")
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
 
-	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize}
+	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize, ExactTotal: exactTotal}
 	if !startTime.IsZero() {
 		filter.StartTime = &startTime
 	}
@@ -324,6 +342,11 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 	if pageSize > 500 {
 		pageSize = 500
 	}
+	exactTotal, err := parseExactTotalQuery(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid exact_total value, use true or false")
+		return
+	}
 
 	// Keep correlation window wide enough so linked upstream errors
 	// are discoverable even when UI defaults to 1h elsewhere.
@@ -333,7 +356,7 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 		return
 	}
 
-	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize}
+	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize, ExactTotal: exactTotal}
 	if !startTime.IsZero() {
 		filter.StartTime = &startTime
 	}
@@ -381,7 +404,15 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 		return
 	}
 
-	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
+	hint := buildRequestErrorCorrelationHint()
+	errorsWithHint := make([]*opsErrorLogResponse, 0, len(result.Errors))
+	for _, item := range result.Errors {
+		errorsWithHint = append(errorsWithHint, &opsErrorLogResponse{
+			OpsErrorLog:     item,
+			CorrelationHint: hint,
+		})
+	}
+	response.Paginated(c, errorsWithHint, int64(result.Total), result.Page, result.PageSize)
 }
 
 // RetryRequestErrorClient retries the client request based on stored request body.
@@ -479,13 +510,18 @@ func (h *OpsHandler) ListUpstreamErrors(c *gin.Context) {
 	if pageSize > 500 {
 		pageSize = 500
 	}
+	exactTotal, err := parseExactTotalQuery(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid exact_total value, use true or false")
+		return
+	}
 	startTime, endTime, err := parseOpsTimeRange(c, "1h")
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
 
-	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize}
+	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize, ExactTotal: exactTotal}
 	if !startTime.IsZero() {
 		filter.StartTime = &startTime
 	}
@@ -703,7 +739,16 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 		return
 	}
 
-	response.Paginated(c, out.Items, out.Total, out.Page, out.PageSize)
+	hint := buildRequestDetailHint(filter)
+	respItems := make([]*opsRequestDetailResponse, 0, len(out.Items))
+	for _, item := range out.Items {
+		respItems = append(respItems, &opsRequestDetailResponse{
+			OpsRequestDetail: item,
+			CorrelationHint:  hint,
+		})
+	}
+
+	response.Paginated(c, respItems, out.Total, out.Page, out.PageSize)
 }
 
 type opsRetryRequest struct {
@@ -922,4 +967,45 @@ func parseOpsDuration(v string) (time.Duration, bool) {
 	default:
 		return 0, false
 	}
+}
+
+type opsRequestDetailResponse struct {
+	*service.OpsRequestDetail
+	CorrelationHint string `json:"correlation_hint,omitempty"`
+}
+
+type opsErrorLogResponse struct {
+	*service.OpsErrorLog
+	CorrelationHint string `json:"correlation_hint,omitempty"`
+}
+
+func buildRequestDetailHint(filter *service.OpsRequestDetailFilter) string {
+	parts := []string{
+		"Request drilldowns read raw usage_logs/ops_error_logs and can be expensive; start with realtime/snapshot summaries before widening the window.",
+		"Drill down in order: request details, request-errors, then upstream-errors to trace the protocol/model path.",
+	}
+	if filter == nil {
+		return strings.Join(parts, " ")
+	}
+	if filter.Kind != "" {
+		parts = append(parts, fmt.Sprintf("Showing kind=%s entries to narrow the focus.", filter.Kind))
+	}
+	if filter.MinDurationMs != nil {
+		parts = append(parts, fmt.Sprintf("Min duration %dms highlights the slow path and raw payload risk.", *filter.MinDurationMs))
+	}
+	if filter.RequestID != "" {
+		parts = append(parts, fmt.Sprintf("Correlate request_id=%s with request-errors/upstream-errors for protocol/model diagnostics.", filter.RequestID))
+	}
+	if filter.Sort != "" {
+		parts = append(parts, fmt.Sprintf("Sorted by %s, so adjust duration bounds before scanning raw rows.", filter.Sort))
+	}
+	return strings.Join(parts, " ")
+}
+
+func buildRequestErrorCorrelationHint() string {
+	return "Request error listings read raw ops_error_logs; correlate request_id/client_request_id with the request detail entry, check failure-split guidance, then follow upstream-errors for protocol/model context."
+}
+
+func buildUpstreamErrorCorrelationHint() string {
+	return "Upstream errors tie to specific request IDs and raw upstream payloads; start at the matching request detail, review request-errors, then consult failure split diagnostics before retrying."
 }

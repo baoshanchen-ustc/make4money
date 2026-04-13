@@ -3,6 +3,7 @@ package repository
 import (
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,12 +19,15 @@ import (
 	"github.com/andybalholm/brotli"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
+
+var defaultHTTPUpstream atomic.Pointer[httpUpstreamService]
 
 // 默认配置常量
 // 这些值在配置文件未指定时作为回退默认值使用
@@ -44,11 +48,27 @@ const (
 	// defaultResponseHeaderTimeout: 默认等待响应头超时时间（5分钟）
 	// LLM 请求可能排队较久，需要较长超时
 	defaultResponseHeaderTimeout = 300 * time.Second
+	// defaultConnectTimeout: 默认 TCP 建连超时时间
+	defaultConnectTimeout = 10 * time.Second
+	// defaultTLSHandshakeTimeout: 默认 TLS 握手超时时间
+	defaultTLSHandshakeTimeout = 10 * time.Second
+	// defaultExpectContinueTimeout: 默认等待 100-continue 超时时间
+	defaultExpectContinueTimeout = 1 * time.Second
+	// defaultDialKeepAlive: 默认 TCP keepalive
+	defaultDialKeepAlive = 30 * time.Second
 	// defaultMaxUpstreamClients: 默认最大客户端缓存数量
 	// 超出后会淘汰最久未使用的客户端
 	defaultMaxUpstreamClients = 5000
 	// defaultClientIdleTTLSeconds: 默认客户端空闲回收阈值（15分钟）
 	defaultClientIdleTTLSeconds = 900
+)
+
+const (
+	httpPoolMaxIdleThreshold         = 1024
+	httpPoolMaxIdlePerHostThreshold  = 512
+	httpPoolMaxConnsPerHostThreshold = 1024
+	httpPoolMaxIdleRatioWarning      = 0.85
+	httpMaxUpstreamClientsThreshold  = 5000
 )
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
@@ -61,6 +81,9 @@ type poolSettings struct {
 	maxConnsPerHost       int           // 每主机最大连接数（含活跃）
 	idleConnTimeout       time.Duration // 空闲连接超时时间
 	responseHeaderTimeout time.Duration // 等待响应头超时时间
+	connectTimeout        time.Duration // TCP 建连超时时间
+	tlsHandshakeTimeout   time.Duration // TLS 握手超时时间
+	expectContinueTimeout time.Duration // 100-continue 超时时间
 }
 
 // upstreamClientEntry 上游客户端缓存条目
@@ -105,9 +128,102 @@ type httpUpstreamService struct {
 // 返回:
 //   - service.HTTPUpstream 接口实现
 func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
-	return &httpUpstreamService{
+	svc := &httpUpstreamService{
 		cfg:     cfg,
 		clients: make(map[string]*upstreamClientEntry),
+	}
+	defaultHTTPUpstream.Store(svc)
+	return svc
+}
+
+type HTTPUpstreamRuntimeSnapshot struct {
+	CachedClients           int      `json:"cached_clients"`
+	ActiveClients           int      `json:"active_clients"`
+	IdleClients             int      `json:"idle_clients"`
+	TotalInFlight           int64    `json:"total_inflight"`
+	MaxUpstreamClients      int      `json:"max_upstream_clients"`
+	CacheUsagePercent       *float64 `json:"cache_usage_percent,omitempty"`
+	ActiveClientRatio       *float64 `json:"active_client_ratio,omitempty"`
+	ClientHeadroomPercent   *float64 `json:"client_headroom_percent,omitempty"`
+	ActiveClientLoadPercent *float64 `json:"active_client_load_percent,omitempty"`
+	IsolationMode           string   `json:"isolation_mode,omitempty"`
+	ClientIdleTTL           int      `json:"client_idle_ttl_seconds"`
+}
+
+func SnapshotDefaultHTTPUpstreamRuntime() HTTPUpstreamRuntimeSnapshot {
+	svc := defaultHTTPUpstream.Load()
+	if svc == nil {
+		return HTTPUpstreamRuntimeSnapshot{}
+	}
+	return svc.SnapshotRuntime()
+}
+
+// EvaluateHTTPUpstreamPressure summarizes the HTTP client cache state for home screen resource guards.
+func EvaluateHTTPUpstreamPressure(snapshot HTTPUpstreamRuntimeSnapshot) (string, string) {
+	level := "normal"
+	note := "HTTP upstream cache healthy"
+	if snapshot.ActiveClientLoadPercent != nil {
+		load := *snapshot.ActiveClientLoadPercent
+		if load >= 95 {
+			level = "warning"
+			note = fmt.Sprintf("active client load %.1f%% of max", load)
+		} else if load >= 80 {
+			note = fmt.Sprintf("active client load %.1f%% of max", load)
+		}
+	}
+	if level == "normal" && snapshot.ClientHeadroomPercent != nil && *snapshot.ClientHeadroomPercent <= 15 {
+		level = "warning"
+		note = fmt.Sprintf("client headroom %.1f%% remains", *snapshot.ClientHeadroomPercent)
+	} else if level == "normal" && snapshot.CacheUsagePercent != nil {
+		usage := *snapshot.CacheUsagePercent
+		if usage >= 85 {
+			level = "warning"
+			note = "HTTP client cache near saturation"
+		} else {
+			note = fmt.Sprintf("cache usage %.1f%%", usage)
+		}
+	}
+	return level, note
+}
+
+func (s *httpUpstreamService) SnapshotRuntime() HTTPUpstreamRuntimeSnapshot {
+	if s == nil {
+		return HTTPUpstreamRuntimeSnapshot{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var activeClients int
+	var totalInFlight int64
+	for _, entry := range s.clients {
+		if entry == nil {
+			continue
+		}
+		inFlight := atomic.LoadInt64(&entry.inFlight)
+		if inFlight > 0 {
+			activeClients++
+			totalInFlight += inFlight
+		}
+	}
+	cachedClients := len(s.clients)
+	idleClients := cachedClients - activeClients
+	maxClients := s.maxUpstreamClients()
+	headroom := 0
+	if maxClients > cachedClients {
+		headroom = maxClients - cachedClients
+	}
+	return HTTPUpstreamRuntimeSnapshot{
+		CachedClients:           cachedClients,
+		ActiveClients:           activeClients,
+		IdleClients:             idleClients,
+		TotalInFlight:           totalInFlight,
+		MaxUpstreamClients:      maxClients,
+		CacheUsagePercent:       ratioPercent(cachedClients, maxClients),
+		ActiveClientRatio:       ratioPercent(activeClients, cachedClients),
+		ClientHeadroomPercent:   ratioPercent(headroom, maxClients),
+		ActiveClientLoadPercent: ratioPercent(activeClients, maxClients),
+		IsolationMode:           s.getIsolationMode(),
+		ClientIdleTTL:           int(s.clientIdleTTL().Seconds()),
 	}
 }
 
@@ -579,6 +695,49 @@ func (s *httpUpstreamService) maxUpstreamClients() int {
 	return defaultMaxUpstreamClients
 }
 
+func evaluateHTTPPoolWarnings(settings poolSettings) []string {
+	var warnings []string
+	if settings.maxIdleConns > httpPoolMaxIdleThreshold {
+		warnings = append(warnings, fmt.Sprintf("max_idle_conns (%d) exceeds %d", settings.maxIdleConns, httpPoolMaxIdleThreshold))
+	}
+	if settings.maxIdleConnsPerHost > httpPoolMaxIdlePerHostThreshold {
+		warnings = append(warnings, fmt.Sprintf("max_idle_conns_per_host (%d) exceeds %d", settings.maxIdleConnsPerHost, httpPoolMaxIdlePerHostThreshold))
+	}
+	if settings.maxConnsPerHost > httpPoolMaxConnsPerHostThreshold {
+		warnings = append(warnings, fmt.Sprintf("max_conns_per_host (%d) exceeds %d", settings.maxConnsPerHost, httpPoolMaxConnsPerHostThreshold))
+	}
+	if settings.maxIdleConns > 0 {
+		ratio := float64(settings.maxIdleConnsPerHost) / float64(settings.maxIdleConns)
+		if ratio >= httpPoolMaxIdleRatioWarning {
+			warnings = append(warnings, fmt.Sprintf("max_idle_conns_per_host (%d) is %.0f%% of max_idle_conns", settings.maxIdleConnsPerHost, ratio*100))
+		}
+	}
+	return warnings
+}
+
+func logHTTPPoolWarnings(warnings []string, settings poolSettings) {
+	if len(warnings) == 0 {
+		return
+	}
+	logger.WriteSinkEvent("warn", "repository.http_upstream", "http pool configuration guard", map[string]any{
+		"warnings": warnings,
+		"config": map[string]any{
+			"max_idle_conns":            settings.maxIdleConns,
+			"max_idle_conns_per_host":   settings.maxIdleConnsPerHost,
+			"max_conns_per_host":        settings.maxConnsPerHost,
+			"idle_conn_timeout_seconds": settings.idleConnTimeout.Seconds(),
+		},
+	})
+}
+
+func evaluateHTTPClientCacheWarnings(maxClients int) []string {
+	var warnings []string
+	if maxClients > httpMaxUpstreamClientsThreshold {
+		warnings = append(warnings, fmt.Sprintf("max_upstream_clients (%d) exceeds %d", maxClients, httpMaxUpstreamClientsThreshold))
+	}
+	return warnings
+}
+
 // clientIdleTTL 获取客户端空闲回收阈值
 // 从配置中读取，无效值使用默认值
 func (s *httpUpstreamService) clientIdleTTL() time.Duration {
@@ -714,6 +873,9 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 	maxConnsPerHost := defaultMaxConnsPerHost
 	idleConnTimeout := defaultIdleConnTimeout
 	responseHeaderTimeout := defaultResponseHeaderTimeout
+	connectTimeout := defaultConnectTimeout
+	tlsHandshakeTimeout := defaultTLSHandshakeTimeout
+	expectContinueTimeout := defaultExpectContinueTimeout
 
 	if cfg != nil {
 		if cfg.Gateway.MaxIdleConns > 0 {
@@ -731,15 +893,28 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 		if cfg.Gateway.ResponseHeaderTimeout > 0 {
 			responseHeaderTimeout = time.Duration(cfg.Gateway.ResponseHeaderTimeout) * time.Second
 		}
+		if cfg.Gateway.ConnectTimeoutSeconds > 0 {
+			connectTimeout = time.Duration(cfg.Gateway.ConnectTimeoutSeconds) * time.Second
+		}
+		if cfg.Gateway.TLSHandshakeTimeoutSeconds > 0 {
+			tlsHandshakeTimeout = time.Duration(cfg.Gateway.TLSHandshakeTimeoutSeconds) * time.Second
+		}
+		if cfg.Gateway.ExpectContinueTimeoutSeconds > 0 {
+			expectContinueTimeout = time.Duration(cfg.Gateway.ExpectContinueTimeoutSeconds) * time.Second
+		}
 	}
-
-	return poolSettings{
+	settings := poolSettings{
 		maxIdleConns:          maxIdleConns,
 		maxIdleConnsPerHost:   maxIdleConnsPerHost,
 		maxConnsPerHost:       maxConnsPerHost,
 		idleConnTimeout:       idleConnTimeout,
 		responseHeaderTimeout: responseHeaderTimeout,
+		connectTimeout:        connectTimeout,
+		tlsHandshakeTimeout:   tlsHandshakeTimeout,
+		expectContinueTimeout: expectContinueTimeout,
 	}
+	logHTTPPoolWarnings(evaluateHTTPPoolWarnings(settings), settings)
+	return settings
 }
 
 // buildUpstreamTransport 构建上游请求的 Transport
@@ -760,16 +935,24 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 //   - IdleConnTimeout: 空闲连接超时（超时后关闭）
 //   - ResponseHeaderTimeout: 等待响应头超时（不影响流式传输）
 func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) (*http.Transport, error) {
+	baseDialer := &net.Dialer{
+		Timeout:   settings.connectTimeout,
+		KeepAlive: defaultDialKeepAlive,
+	}
 	transport := &http.Transport{
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+		TLSHandshakeTimeout:   settings.tlsHandshakeTimeout,
+		ExpectContinueTimeout: settings.expectContinueTimeout,
+		DialContext:           baseDialer.DialContext,
 	}
 	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 		return nil, err
 	}
+	transport.DialContext = wrapDialContextWithTimeout(transport.DialContext, settings.connectTimeout)
 	return transport, nil
 }
 
@@ -790,12 +973,19 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) (*http.Tra
 //   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
 //   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
 func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
+	baseDialer := &net.Dialer{
+		Timeout:   settings.connectTimeout,
+		KeepAlive: defaultDialKeepAlive,
+	}
 	transport := &http.Transport{
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+		TLSHandshakeTimeout:   settings.tlsHandshakeTimeout,
+		ExpectContinueTimeout: settings.expectContinueTimeout,
+		DialContext:           baseDialer.DialContext,
 		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
 		ForceAttemptHTTP2: false,
 	}
@@ -827,8 +1017,50 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 			}
 		}
 	}
+	transport.DialContext = wrapDialContextWithTimeout(transport.DialContext, settings.connectTimeout)
+	transport.DialTLSContext = wrapDialTLSContextWithTimeout(transport.DialTLSContext, settings.tlsHandshakeTimeout)
 
 	return transport, nil
+}
+
+func wrapDialContextWithTimeout(base func(context.Context, string, string) (net.Conn, error), timeout time.Duration) func(context.Context, string, string) (net.Conn, error) {
+	if base == nil {
+		base = (&net.Dialer{Timeout: timeout, KeepAlive: defaultDialKeepAlive}).DialContext
+	}
+	if timeout <= 0 {
+		return base
+	}
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if _, ok := ctx.Deadline(); ok {
+			return base(ctx, network, addr)
+		}
+		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return base(timeoutCtx, network, addr)
+	}
+}
+
+func wrapDialTLSContextWithTimeout(base func(context.Context, string, string) (net.Conn, error), timeout time.Duration) func(context.Context, string, string) (net.Conn, error) {
+	if base == nil {
+		return nil
+	}
+	if timeout <= 0 {
+		return base
+	}
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if _, ok := ctx.Deadline(); ok {
+			return base(ctx, network, addr)
+		}
+		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return base(timeoutCtx, network, addr)
+	}
 }
 
 // trackedBody 带跟踪功能的响应体包装器

@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ const (
 	OpsUpstreamErrorMessageKey = "ops_upstream_error_message"
 	OpsUpstreamErrorDetailKey  = "ops_upstream_error_detail"
 	OpsUpstreamErrorsKey       = "ops_upstream_errors"
+	OpsModelChainHintKey       = "ops_model_chain_hint"
 
 	// Best-effort capture of the current upstream request body so ops can
 	// retry the specific upstream attempt (not just the client request).
@@ -104,6 +106,16 @@ type OpsUpstreamErrorEvent struct {
 	// Best-effort upstream response capture (sanitized+trimmed).
 	UpstreamResponseBody string `json:"upstream_response_body,omitempty"`
 
+	// Model diagnostics for debugging the requested ⇒ mapped ⇒ upstream chain.
+	RequestedModel string `json:"requested_model,omitempty"`
+	MappedModel    string `json:"mapped_model,omitempty"`
+	UpstreamModel  string `json:"upstream_model,omitempty"`
+	ModelChainHint string `json:"model_chain_hint,omitempty"`
+
+	// Failure categorization helpers (account vs protocol failures).
+	FailureCategory       string `json:"failure_category,omitempty"`
+	ProtocolFailureReason string `json:"protocol_failure_reason,omitempty"`
+
 	// Kind: http_error | request_error | retry_exhausted | failover
 	Kind string `json:"kind,omitempty"`
 
@@ -120,6 +132,11 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	}
 	ev.Platform = strings.TrimSpace(ev.Platform)
 	ev.UpstreamRequestID = strings.TrimSpace(ev.UpstreamRequestID)
+	ev.RequestedModel = strings.TrimSpace(ev.RequestedModel)
+	ev.MappedModel = strings.TrimSpace(ev.MappedModel)
+	ev.UpstreamModel = strings.TrimSpace(ev.UpstreamModel)
+	ev.FailureCategory = strings.TrimSpace(ev.FailureCategory)
+	ev.ProtocolFailureReason = strings.TrimSpace(ev.ProtocolFailureReason)
 	ev.UpstreamRequestBody = strings.TrimSpace(ev.UpstreamRequestBody)
 	ev.UpstreamResponseBody = strings.TrimSpace(ev.UpstreamResponseBody)
 	ev.Kind = strings.TrimSpace(ev.Kind)
@@ -151,10 +168,35 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	}
 
 	evCopy := ev
+	hint := buildModelChainHint(evCopy.RequestedModel, evCopy.MappedModel, evCopy.UpstreamModel)
+	if hint != "" {
+		evCopy.ModelChainHint = hint
+		c.Set(OpsModelChainHintKey, hint)
+	}
 	existing = append(existing, &evCopy)
 	c.Set(OpsUpstreamErrorsKey, existing)
 
 	checkSkipMonitoringForUpstreamEvent(c, &evCopy)
+}
+
+func buildModelChainHint(requested, mapped, upstream string) string {
+	req := strings.TrimSpace(requested)
+	mapModel := strings.TrimSpace(mapped)
+	up := strings.TrimSpace(upstream)
+	if req == "" && mapModel == "" && up == "" {
+		return ""
+	}
+	hints := make([]string, 0, 3)
+	if req != "" {
+		hints = append(hints, fmt.Sprintf("requested=%s", req))
+	}
+	if mapModel != "" {
+		hints = append(hints, fmt.Sprintf("mapped=%s", mapModel))
+	}
+	if up != "" {
+		hints = append(hints, fmt.Sprintf("upstream=%s", up))
+	}
+	return strings.Join(hints, " | ")
 }
 
 // checkSkipMonitoringForUpstreamEvent checks whether the upstream error event

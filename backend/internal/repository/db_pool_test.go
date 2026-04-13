@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,4 +49,71 @@ func TestApplyDBPoolSettings(t *testing.T) {
 	applyDBPoolSettings(db, cfg)
 	stats := db.Stats()
 	require.Equal(t, 40, stats.MaxOpenConnections)
+}
+
+func TestEvaluateDBPoolConfigWarnings(t *testing.T) {
+	warnings := evaluateDBPoolConfigWarnings(dbPoolSettings{
+		MaxOpenConns: 600,
+		MaxIdleConns: 550,
+	})
+	require.NotEmpty(t, warnings)
+	contains := false
+	conservativeOpen := false
+	conservativeIdle := false
+	for _, warn := range warnings {
+		if strings.Contains(warn, "exceeds") {
+			contains = true
+		}
+		if strings.Contains(warn, "verify against postgres max_connections") {
+			conservativeOpen = true
+		}
+		if strings.Contains(warn, "max_idle_conns (550) exceeds conservative threshold") {
+			conservativeIdle = true
+		}
+	}
+	require.True(t, contains)
+	require.True(t, conservativeOpen)
+	require.True(t, conservativeIdle)
+}
+
+func TestEvaluateDBPoolStatsWarnings(t *testing.T) {
+	warnings := evaluateDBPoolStatsWarnings(sql.DBStats{
+		MaxOpenConnections: 100,
+		OpenConnections:    90,
+		InUse:              100,
+		Idle:               90,
+		WaitCount:          3,
+	})
+	require.NotEmpty(t, warnings)
+}
+
+func TestDBPoolSnapshotFromStats(t *testing.T) {
+	snapshot := dbPoolSnapshotFromStats(sql.DBStats{
+		MaxOpenConnections: 100,
+		OpenConnections:    40,
+		InUse:              25,
+		Idle:               15,
+		WaitCount:          8,
+		WaitDuration:       3 * time.Second,
+	})
+	require.Equal(t, 40, snapshot.OpenConnections)
+	require.Equal(t, 25, snapshot.InUse)
+	require.Equal(t, 15, snapshot.Idle)
+	require.Equal(t, int64(8), snapshot.WaitCount)
+	require.Equal(t, int64(3000), snapshot.WaitDurationMs)
+	require.NotNil(t, snapshot.UsagePercent)
+	require.Equal(t, 40.0, *snapshot.UsagePercent)
+	require.NotNil(t, snapshot.InUsePercent)
+	require.Equal(t, 25.0, *snapshot.InUsePercent)
+	require.NotNil(t, snapshot.IdleReservationRatio)
+	require.Equal(t, 15.0, *snapshot.IdleReservationRatio)
+}
+
+func TestProbeDBNil(t *testing.T) {
+	require.ErrorIs(t, ProbeDB(context.TODO(), nil), ErrDBPoolNotInitialized)
+}
+
+func TestProbeDefaultDBWithoutInit(t *testing.T) {
+	defaultDBPool.Store(nil)
+	require.ErrorIs(t, ProbeDefaultDB(context.TODO()), ErrDBPoolNotInitialized)
 }

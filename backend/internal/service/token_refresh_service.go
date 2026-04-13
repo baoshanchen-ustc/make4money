@@ -236,10 +236,28 @@ func (s *TokenRefreshService) processRefresh() {
 	}
 }
 
-// listActiveAccounts 获取所有active状态的账号
-// 使用ListActive确保刷新所有活跃账号的token（包括临时禁用的）
+// listActiveAccounts 获取所有 active 状态的账号。
+// 对 OAuth 账号，即便处于 temp_unsched 也允许后台刷新继续尝试恢复；
+// 但已明确永久坏号的账号会被跳过，避免持续刷新风暴。
 func (s *TokenRefreshService) listActiveAccounts(ctx context.Context) ([]Account, error) {
-	return s.accountRepo.ListActive(ctx)
+	accounts, err := s.accountRepo.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(accounts) == 0 {
+		return accounts, nil
+	}
+	now := time.Now()
+	filtered := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil) {
+			if account.Type != AccountTypeOAuth || hasPermanentAccountAuthFailure(&account) {
+				continue
+			}
+		}
+		filtered = append(filtered, account)
+	}
+	return filtered, nil
 }
 
 // refreshWithRetry 带重试的刷新
@@ -278,11 +296,16 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 		if err == nil {
 			s.postRefreshActions(ctx, account)
+			s.clearTokenRefreshFailure(ctx, account.ID)
+			clearAccountAuthState(ctx, s.accountRepo, account.ID)
 			return nil
 		}
 
 		// 不可重试错误（invalid_grant/invalid_client 等）直接标记 error 状态并返回
-		if isNonRetryableRefreshError(err) {
+		if reason, ok := getNonRetryableRefreshReason(err); ok {
+			recordShadowPermanentFailure(account.ID, reason)
+			s.markTokenRefreshFailure(ctx, account.ID, reason)
+			markAccountAuthState(ctx, s.accountRepo, account.ID, reason, accountAuthClassPermanent, accountAuthSourceTokenRefresh)
 			errorMsg := fmt.Sprintf("Token refresh failed (non-retryable): %v", err)
 			if setErr := s.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
 				slog.Error("token_refresh.set_error_status_failed",
@@ -290,6 +313,11 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					"error", setErr,
 				)
 			}
+			slog.Warn("token_refresh.shadow_permanent_failure",
+				"account_id", account.ID,
+				"reason", reason,
+				"error", err,
+			)
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
 			s.ensureOpenAIPrivacy(ctx, account)
 			s.ensureAntigravityPrivacy(ctx, account)
@@ -333,6 +361,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 			"error", setErr,
 		)
 	} else {
+		markAccountAuthState(ctx, s.accountRepo, account.ID, "refresh_retry_exhausted", accountAuthClassTemporary, accountAuthSourceTokenRefresh)
 		slog.Info("token_refresh.temp_unschedulable_set",
 			"account_id", account.ID,
 			"until", until.Format(time.RFC3339),
@@ -408,28 +437,70 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 // errRefreshSkipped 表示刷新被跳过（锁竞争或已被其他路径刷新），不计入 failed 或 refreshed
 var errRefreshSkipped = fmt.Errorf("refresh skipped")
 
-// isNonRetryableRefreshError 判断是否为不可重试的刷新错误
-// 这些错误通常表示凭证已失效或配置确实缺失，需要用户重新授权
-// 注意：missing_project_id 错误只在真正缺失（从未获取过）时返回，临时获取失败不会返回此错误
-func isNonRetryableRefreshError(err error) bool {
+type nonRetryableRefreshEntry struct {
+	needle string
+	reason string
+}
+
+var nonRetryableRefreshEntries = []nonRetryableRefreshEntry{
+	{"invalid_grant", "invalid_grant"},
+	{"invalid_client", "invalid_client"},
+	{"unauthorized_client", "unauthorized_client"},
+	{"access_denied", "access_denied"},
+	{"missing_project_id", "missing_project_id"},
+	{"no refresh token available", "missing_refresh_token"},
+	{"refresh_token_reused", "refresh_token_reused"},
+	{"refresh token has been reused", "refresh_token_reused"},
+	{"token revoked", "token_revoked"},
+	{"invalid bearer token", "invalid_bearer_token"},
+}
+
+func getNonRetryableRefreshReason(err error) (string, bool) {
 	if err == nil {
-		return false
+		return "", false
 	}
 	msg := strings.ToLower(err.Error())
-	nonRetryable := []string{
-		"invalid_grant",       // refresh_token 已失效
-		"invalid_client",      // 客户端配置错误
-		"unauthorized_client", // 客户端未授权
-		"access_denied",       // 访问被拒绝
-		"missing_project_id",  // 缺少 project_id
-		"no refresh token available",
-	}
-	for _, needle := range nonRetryable {
-		if strings.Contains(msg, needle) {
-			return true
+	for _, entry := range nonRetryableRefreshEntries {
+		if strings.Contains(msg, entry.needle) {
+			return entry.reason, true
 		}
 	}
-	return false
+	return "", false
+}
+
+func (s *TokenRefreshService) markTokenRefreshFailure(ctx context.Context, accountID int64, reason string) {
+	if s == nil || s.accountRepo == nil || reason == "" {
+		return
+	}
+	extra := map[string]any{
+		"token_refresh_failure_reason": reason,
+		"token_refresh_failure_class":  "permanent",
+		"token_refresh_failed_at":      time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, accountID, extra); err != nil {
+		slog.Warn("token_refresh.mark_failure_extra_failed",
+			"account_id", accountID,
+			"reason", reason,
+			"error", err,
+		)
+	}
+}
+
+func (s *TokenRefreshService) clearTokenRefreshFailure(ctx context.Context, accountID int64) {
+	if s == nil || s.accountRepo == nil {
+		return
+	}
+	extra := map[string]any{
+		"token_refresh_failure_reason": nil,
+		"token_refresh_failure_class":  nil,
+		"token_refresh_failed_at":      nil,
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, accountID, extra); err != nil {
+		slog.Warn("token_refresh.clear_failure_extra_failed",
+			"account_id", accountID,
+			"error", err,
+		)
+	}
 }
 
 // ensureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，

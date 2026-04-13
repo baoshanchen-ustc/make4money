@@ -1218,6 +1218,12 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 
 // handleConcurrencyError handles concurrency-related errors with proper 429 response
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
+	if errors.Is(err, service.ErrConcurrencyServiceUnavailable) {
+		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "service_unavailable",
+			"Concurrency controls temporarily unavailable, please retry later", streamStarted)
+		return
+	}
+
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
 		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
 }
@@ -1738,18 +1744,28 @@ func (h *GatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {
 		return
 	}
 	if h.usageRecordWorkerPool != nil {
-		h.usageRecordWorkerPool.Submit(task)
+		if mode := h.usageRecordWorkerPool.Submit(task); mode == service.UsageRecordSubmitModeDropped {
+			logger.L().With(
+				zap.String("component", "handler.gateway.messages"),
+				zap.String("drop_reason", "queue_full_or_pool_stopped"),
+			).Warn("gateway.usage_record_task_dropped, running sync fallback")
+			runUsageRecordTaskSync(task, "handler.gateway.messages")
+		}
 		return
 	}
 	// 回退路径：worker 池未注入时同步执行，避免退回到无界 goroutine 模式。
+	runUsageRecordTaskSync(task, "handler.gateway.messages")
+}
+
+func runUsageRecordTaskSync(task service.UsageRecordTask, component string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.L().With(
-				zap.String("component", "handler.gateway.messages"),
+				zap.String("component", component),
 				zap.Any("panic", recovered),
-			).Error("gateway.usage_record_task_panic_recovered")
+			).Error(component + ".usage_record_task_panic_recovered")
 		}
 	}()
 	task(ctx)

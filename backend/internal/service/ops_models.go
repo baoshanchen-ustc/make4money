@@ -128,6 +128,8 @@ type OpsErrorLogFilter struct {
 
 	Page     int
 	PageSize int
+	// ExactTotal requests an exact COUNT(*) for pagination. Default false for faster large-table paging.
+	ExactTotal bool
 }
 
 type OpsErrorLogList struct {

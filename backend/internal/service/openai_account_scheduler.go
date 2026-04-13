@@ -21,6 +21,21 @@ const (
 	openAIAccountScheduleLayerLoadBalance      = "load_balance"
 )
 
+const (
+	openAIStickySessionShadowReasonExcluded             = "excluded"
+	openAIStickySessionShadowReasonAccountMissing       = "account_missing"
+	openAIStickySessionShadowReasonClearedUnschedulable = "cleared_unschedulable"
+	openAIStickySessionShadowReasonModelMismatch        = "model_mismatch"
+	openAIStickySessionShadowReasonPlatformMismatch     = "platform_mismatch"
+	openAIStickySessionShadowReasonGroupMismatch        = "group_mismatch"
+	openAIStickySessionShadowReasonTransportMismatch    = "transport_mismatch"
+	openAIStickySessionShadowReasonChannelRestricted    = "channel_restricted"
+	openAIStickySessionShadowReasonPrivacyRequired      = "privacy_required"
+	openAIStickySessionShadowReasonDBRuntimeRecheck     = "db_runtime_recheck"
+	openAIStickySessionShadowReasonWait                 = "wait"
+	openAIStickySessionShadowReasonAcquireError         = "acquire_error"
+)
+
 type OpenAIAccountScheduleRequest struct {
 	GroupID            *int64
 	SessionHash        string
@@ -44,17 +59,33 @@ type OpenAIAccountScheduleDecision struct {
 }
 
 type OpenAIAccountSchedulerMetricsSnapshot struct {
-	SelectTotal              int64
-	StickyPreviousHitTotal   int64
-	StickySessionHitTotal    int64
-	LoadBalanceSelectTotal   int64
-	AccountSwitchTotal       int64
-	SchedulerLatencyMsTotal  int64
-	SchedulerLatencyMsAvg    float64
-	StickyHitRatio           float64
-	AccountSwitchRate        float64
-	LoadSkewAvg              float64
-	RuntimeStatsAccountCount int
+	SelectTotal                     int64
+	StickyPreviousHitTotal          int64
+	StickySessionHitTotal           int64
+	StickySessionLookupTotal        int64
+	StickySessionWaitTotal          int64
+	StickySessionClearedTotal       int64
+	StickySessionGhostTotal         int64
+	StickySessionStaleTotal         int64
+	StickySessionWaitConflictTotal  int64
+	StickyWaitConflictTotal         int64
+	LoadBalanceSelectTotal          int64
+	AccountSwitchTotal              int64
+	SchedulerLatencyMsTotal         int64
+	SchedulerLatencyMsAvg           float64
+	StickyHitRatio                  float64
+	AccountSwitchRate               float64
+	LoadSkewAvg                     float64
+	StickyGhostRatio                float64
+	StickyStaleRatio                float64
+	StickyWaitConflictRatio         float64
+	StickySessionAccountFetchTotal  int64
+	StickySessionDBRecheckTotal     int64
+	LoadBatchCallTotal              int64
+	LoadBatchCandidateTotal         int64
+	LoadBatchFallbackTotal          int64
+	RuntimeStatsAccountCount        int
+	StickySessionShadowReasonTotals map[string]int64
 }
 
 type OpenAIAccountScheduler interface {
@@ -65,13 +96,32 @@ type OpenAIAccountScheduler interface {
 }
 
 type openAIAccountSchedulerMetrics struct {
-	selectTotal            atomic.Int64
-	stickyPreviousHitTotal atomic.Int64
-	stickySessionHitTotal  atomic.Int64
-	loadBalanceSelectTotal atomic.Int64
-	accountSwitchTotal     atomic.Int64
-	latencyMsTotal         atomic.Int64
-	loadSkewMilliTotal     atomic.Int64
+	selectTotal                            atomic.Int64
+	stickyPreviousHitTotal                 atomic.Int64
+	stickySessionHitTotal                  atomic.Int64
+	stickySessionLookupTotal               atomic.Int64
+	stickySessionWaitTotal                 atomic.Int64
+	stickySessionClearedTotal              atomic.Int64
+	stickySessionExcludedTotal             atomic.Int64
+	stickySessionAccountMissingTotal       atomic.Int64
+	stickySessionClearedUnschedulableTotal atomic.Int64
+	stickySessionModelMismatchTotal        atomic.Int64
+	stickySessionPlatformMismatchTotal     atomic.Int64
+	stickySessionGroupMismatchTotal        atomic.Int64
+	stickySessionTransportMismatchTotal    atomic.Int64
+	stickySessionChannelRestrictedTotal    atomic.Int64
+	stickySessionPrivacyRequiredTotal      atomic.Int64
+	stickySessionDBRuntimeRecheckTotal     atomic.Int64
+	stickySessionAcquireErrorTotal         atomic.Int64
+	stickySessionAccountFetchTotal         atomic.Int64
+	stickySessionDBRecheckTotal            atomic.Int64
+	loadBatchCallTotal                     atomic.Int64
+	loadBatchCandidateTotal                atomic.Int64
+	loadBatchFallbackTotal                 atomic.Int64
+	loadBalanceSelectTotal                 atomic.Int64
+	accountSwitchTotal                     atomic.Int64
+	latencyMsTotal                         atomic.Int64
+	loadSkewMilliTotal                     atomic.Int64
 }
 
 func (m *openAIAccountSchedulerMetrics) recordSelect(decision OpenAIAccountScheduleDecision) {
@@ -97,6 +147,117 @@ func (m *openAIAccountSchedulerMetrics) recordSwitch() {
 		return
 	}
 	m.accountSwitchTotal.Add(1)
+}
+
+func (m *openAIAccountSchedulerMetrics) recordStickySessionLookup() {
+	if m == nil {
+		return
+	}
+	m.stickySessionLookupTotal.Add(1)
+}
+
+func (m *openAIAccountSchedulerMetrics) recordStickySessionWait() {
+	if m == nil {
+		return
+	}
+	m.stickySessionWaitTotal.Add(1)
+	m.recordStickySessionShadowReason(openAIStickySessionShadowReasonWait)
+}
+
+func (m *openAIAccountSchedulerMetrics) recordStickySessionCleared(reason string) {
+	if m == nil {
+		return
+	}
+	m.stickySessionClearedTotal.Add(1)
+	m.recordStickySessionShadowReason(reason)
+}
+
+func (m *openAIAccountSchedulerMetrics) recordStickySessionShadowReason(reason string) {
+	if m == nil {
+		return
+	}
+	switch strings.TrimSpace(reason) {
+	case openAIStickySessionShadowReasonExcluded:
+		m.stickySessionExcludedTotal.Add(1)
+	case openAIStickySessionShadowReasonAccountMissing:
+		m.stickySessionAccountMissingTotal.Add(1)
+	case openAIStickySessionShadowReasonClearedUnschedulable:
+		m.stickySessionClearedUnschedulableTotal.Add(1)
+	case openAIStickySessionShadowReasonModelMismatch:
+		m.stickySessionModelMismatchTotal.Add(1)
+	case openAIStickySessionShadowReasonPlatformMismatch:
+		m.stickySessionPlatformMismatchTotal.Add(1)
+	case openAIStickySessionShadowReasonGroupMismatch:
+		m.stickySessionGroupMismatchTotal.Add(1)
+	case openAIStickySessionShadowReasonTransportMismatch:
+		m.stickySessionTransportMismatchTotal.Add(1)
+	case openAIStickySessionShadowReasonChannelRestricted:
+		m.stickySessionChannelRestrictedTotal.Add(1)
+	case openAIStickySessionShadowReasonPrivacyRequired:
+		m.stickySessionPrivacyRequiredTotal.Add(1)
+	case openAIStickySessionShadowReasonDBRuntimeRecheck:
+		m.stickySessionDBRuntimeRecheckTotal.Add(1)
+	case openAIStickySessionShadowReasonAcquireError:
+		m.stickySessionAcquireErrorTotal.Add(1)
+	}
+}
+
+func (m *openAIAccountSchedulerMetrics) recordStickySessionAccountFetch() {
+	if m == nil {
+		return
+	}
+	m.stickySessionAccountFetchTotal.Add(1)
+}
+
+func (m *openAIAccountSchedulerMetrics) recordStickySessionDBRecheck() {
+	if m == nil {
+		return
+	}
+	m.stickySessionDBRecheckTotal.Add(1)
+}
+
+func (m *openAIAccountSchedulerMetrics) recordLoadBatch(candidateCount int) {
+	if m == nil {
+		return
+	}
+	m.loadBatchCallTotal.Add(1)
+	if candidateCount > 0 {
+		m.loadBatchCandidateTotal.Add(int64(candidateCount))
+	}
+}
+
+func (m *openAIAccountSchedulerMetrics) recordLoadBatchFallback() {
+	if m == nil {
+		return
+	}
+	m.loadBatchFallbackTotal.Add(1)
+}
+
+func (m *openAIAccountSchedulerMetrics) stickySessionShadowReasonTotals() map[string]int64 {
+	if m == nil {
+		return map[string]int64{}
+	}
+	totals := map[string]int64{
+		openAIStickySessionShadowReasonExcluded:             m.stickySessionExcludedTotal.Load(),
+		openAIStickySessionShadowReasonAccountMissing:       m.stickySessionAccountMissingTotal.Load(),
+		openAIStickySessionShadowReasonClearedUnschedulable: m.stickySessionClearedUnschedulableTotal.Load(),
+		openAIStickySessionShadowReasonModelMismatch:        m.stickySessionModelMismatchTotal.Load(),
+		openAIStickySessionShadowReasonPlatformMismatch:     m.stickySessionPlatformMismatchTotal.Load(),
+		openAIStickySessionShadowReasonGroupMismatch:        m.stickySessionGroupMismatchTotal.Load(),
+		openAIStickySessionShadowReasonTransportMismatch:    m.stickySessionTransportMismatchTotal.Load(),
+		openAIStickySessionShadowReasonChannelRestricted:    m.stickySessionChannelRestrictedTotal.Load(),
+		openAIStickySessionShadowReasonPrivacyRequired:      m.stickySessionPrivacyRequiredTotal.Load(),
+		openAIStickySessionShadowReasonDBRuntimeRecheck:     m.stickySessionDBRuntimeRecheckTotal.Load(),
+		openAIStickySessionShadowReasonWait:                 m.stickySessionWaitTotal.Load(),
+		openAIStickySessionShadowReasonAcquireError:         m.stickySessionAcquireErrorTotal.Load(),
+	}
+	out := make(map[string]int64, len(totals))
+	for reason, total := range totals {
+		if total > 0 {
+			out[reason] = total
+		}
+	}
+	return out
 }
 
 type openAIAccountRuntimeStats struct {
@@ -309,31 +470,64 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	if accountID <= 0 {
 		return nil, nil
 	}
+	s.metrics.recordStickySessionLookup()
+	TrackStickyConsistencyHit()
 	if req.ExcludedIDs != nil {
 		if _, excluded := req.ExcludedIDs[accountID]; excluded {
+			s.metrics.recordStickySessionShadowReason(openAIStickySessionShadowReasonExcluded)
 			return nil, nil
 		}
 	}
 
+	s.metrics.recordStickySessionAccountFetch()
 	account, err := s.service.getSchedulableAccount(ctx, accountID)
 	if err != nil || account == nil {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		s.metrics.recordStickySessionCleared(openAIStickySessionShadowReasonAccountMissing)
+		TrackStickyConsistencyGhost(openAIStickySessionShadowReasonAccountMissing)
+		_ = s.service.deleteStickySessionAccountIDIfMatch(ctx, req.GroupID, sessionHash, accountID, stickyCleanupReasonAccountMissing)
 		return nil, nil
 	}
 	if shouldClearStickySession(account, req.RequestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		s.metrics.recordStickySessionCleared(openAIStickySessionShadowReasonClearedUnschedulable)
+		TrackStickyConsistencyGhost(openAIStickySessionShadowReasonClearedUnschedulable)
+		_ = s.service.deleteStickySessionAccountIDIfMatch(ctx, req.GroupID, sessionHash, accountID, stickyCleanupReasonClearedUnschedulable)
 		return nil, nil
 	}
-	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+	schedGroup := s.service.getOpenAIStickySchedulingGroup(ctx, req.GroupID)
+	invalidationReason := classifyStickySessionInvalidationReasonWithContext(account, stickySessionInvalidationContext{
+		RequestedModel:    req.RequestedModel,
+		RequiredPlatform:  PlatformOpenAI,
+		InGroup:           isStickySessionAccountInGroup(account, req.GroupID),
+		TransportMismatch: !s.isAccountTransportCompatible(account, req.RequiredTransport),
+		PrivacyRequired:   schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet(),
+	})
+	if invalidationReason != "" {
+		s.metrics.recordStickySessionCleared(invalidationReason)
+		TrackStickyConsistencyGhost(invalidationReason)
+		_ = s.service.deleteStickySessionAccountIDIfMatch(ctx, req.GroupID, sessionHash, accountID, stickyCleanupReasonForInvalidation(invalidationReason))
 		return nil, nil
 	}
-	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, nil
-	}
+	s.metrics.recordStickySessionDBRecheck()
 	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.RequestedModel)
 	if account == nil {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		s.metrics.recordStickySessionCleared(openAIStickySessionShadowReasonDBRuntimeRecheck)
+		TrackStickyConsistencyGhost(openAIStickySessionShadowReasonDBRuntimeRecheck)
+		_ = s.service.deleteStickySessionAccountIDIfMatch(ctx, req.GroupID, sessionHash, accountID, stickyCleanupReasonDBRuntimeRecheck)
+		return nil, nil
+	}
+	invalidationReason = classifyStickySessionInvalidationReasonWithContext(account, stickySessionInvalidationContext{
+		RequestedModel:    req.RequestedModel,
+		RequiredPlatform:  PlatformOpenAI,
+		InGroup:           isStickySessionAccountInGroup(account, req.GroupID),
+		TransportMismatch: !s.isAccountTransportCompatible(account, req.RequiredTransport),
+		PrivacyRequired:   schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet(),
+		ChannelRestricted: req.GroupID != nil && s.service.needsUpstreamChannelRestrictionCheck(ctx, req.GroupID) &&
+			s.service.isUpstreamModelRestrictedByChannel(ctx, *req.GroupID, account, req.RequestedModel),
+	})
+	if invalidationReason != "" {
+		s.metrics.recordStickySessionCleared(invalidationReason)
+		TrackStickyConsistencyGhost(invalidationReason)
+		_ = s.service.deleteStickySessionAccountIDIfMatch(ctx, req.GroupID, sessionHash, accountID, stickyCleanupReasonForInvalidation(invalidationReason))
 		return nil, nil
 	}
 
@@ -350,6 +544,15 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
+		if acquireErr != nil {
+			s.metrics.recordStickySessionShadowReason(openAIStickySessionShadowReasonAcquireError)
+		}
+		waitingCount, waitErr := s.service.concurrencyService.GetAccountWaitingCount(ctx, accountID)
+		if waitErr == nil && waitingCount >= cfg.StickySessionMaxWaiting {
+			return nil, nil
+		}
+		s.metrics.recordStickySessionWait()
+		_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
 		return &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
@@ -618,8 +821,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	loadMap := map[int64]*AccountLoadInfo{}
 	if s.service.concurrencyService != nil {
+		s.metrics.recordLoadBatch(len(loadReq))
 		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
 			loadMap = batchLoad
+		} else {
+			s.metrics.recordLoadBatchFallback()
 		}
 	}
 
@@ -788,19 +994,45 @@ func (s *defaultOpenAIAccountScheduler) SnapshotMetrics() OpenAIAccountScheduler
 	loadSkewTotal := s.metrics.loadSkewMilliTotal.Load()
 
 	snapshot := OpenAIAccountSchedulerMetricsSnapshot{
-		SelectTotal:              selectTotal,
-		StickyPreviousHitTotal:   prevHit,
-		StickySessionHitTotal:    sessionHit,
-		LoadBalanceSelectTotal:   s.metrics.loadBalanceSelectTotal.Load(),
-		AccountSwitchTotal:       switchTotal,
-		SchedulerLatencyMsTotal:  latencyTotal,
-		RuntimeStatsAccountCount: s.stats.size(),
+		SelectTotal:                     selectTotal,
+		StickyPreviousHitTotal:          prevHit,
+		StickySessionHitTotal:           sessionHit,
+		StickySessionLookupTotal:        s.metrics.stickySessionLookupTotal.Load(),
+		StickySessionWaitTotal:          s.metrics.stickySessionWaitTotal.Load(),
+		StickySessionClearedTotal:       s.metrics.stickySessionClearedTotal.Load(),
+		StickySessionWaitConflictTotal:  s.metrics.stickySessionWaitTotal.Load(),
+		StickyWaitConflictTotal:         s.metrics.stickySessionWaitTotal.Load(),
+		LoadBalanceSelectTotal:          s.metrics.loadBalanceSelectTotal.Load(),
+		AccountSwitchTotal:              switchTotal,
+		SchedulerLatencyMsTotal:         latencyTotal,
+		StickySessionAccountFetchTotal:  s.metrics.stickySessionAccountFetchTotal.Load(),
+		StickySessionDBRecheckTotal:     s.metrics.stickySessionDBRecheckTotal.Load(),
+		LoadBatchCallTotal:              s.metrics.loadBatchCallTotal.Load(),
+		LoadBatchCandidateTotal:         s.metrics.loadBatchCandidateTotal.Load(),
+		LoadBatchFallbackTotal:          s.metrics.loadBatchFallbackTotal.Load(),
+		RuntimeStatsAccountCount:        s.stats.size(),
+		StickySessionShadowReasonTotals: s.metrics.stickySessionShadowReasonTotals(),
 	}
+	snapshot.StickySessionGhostTotal = snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonAccountMissing] +
+		snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonDBRuntimeRecheck]
+	snapshot.StickySessionStaleTotal = snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonClearedUnschedulable] +
+		snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonModelMismatch] +
+		snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonPlatformMismatch] +
+		snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonGroupMismatch] +
+		snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonTransportMismatch] +
+		snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonChannelRestricted] +
+		snapshot.StickySessionShadowReasonTotals[openAIStickySessionShadowReasonPrivacyRequired]
 	if selectTotal > 0 {
 		snapshot.SchedulerLatencyMsAvg = float64(latencyTotal) / float64(selectTotal)
 		snapshot.StickyHitRatio = float64(prevHit+sessionHit) / float64(selectTotal)
 		snapshot.AccountSwitchRate = float64(switchTotal) / float64(selectTotal)
 		snapshot.LoadSkewAvg = float64(loadSkewTotal) / 1000 / float64(selectTotal)
+	}
+	if snapshot.StickySessionLookupTotal > 0 {
+		lookupTotal := float64(snapshot.StickySessionLookupTotal)
+		snapshot.StickyGhostRatio = float64(snapshot.StickySessionGhostTotal) / lookupTotal
+		snapshot.StickyStaleRatio = float64(snapshot.StickySessionStaleTotal) / lookupTotal
+		snapshot.StickyWaitConflictRatio = float64(snapshot.StickySessionWaitConflictTotal) / lookupTotal
 	}
 	return snapshot
 }

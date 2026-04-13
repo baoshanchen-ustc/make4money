@@ -242,16 +242,21 @@ type OpsSystemLogFilter struct {
 	Level     string
 	Component string
 
-	RequestID       string
-	ClientRequestID string
-	UserID          *int64
-	AccountID       *int64
-	Platform        string
-	Model           string
-	Query           string
+	RequestID         string
+	ResolvedRequestID string
+	ClientRequestID   string
+	UserID            *int64
+	AccountID         *int64
+	Platform          string
+	Model             string
+	Query             string
+	ExtraAPIKeyID     *int64
+	ExtraGroupID      *int64
 
 	Page     int
 	PageSize int
+	// ExactTotal requests an exact COUNT(*) for pagination. Default false for faster large-table paging.
+	ExactTotal bool
 }
 
 type OpsSystemLogCleanupFilter struct {

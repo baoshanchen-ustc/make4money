@@ -70,15 +70,17 @@ var (
 	opsErrorLogOnce  sync.Once
 	opsErrorLogQueue chan opsErrorLogJob
 
-	opsErrorLogStopOnce  sync.Once
-	opsErrorLogWorkersWg sync.WaitGroup
-	opsErrorLogMu        sync.RWMutex
-	opsErrorLogStopping  bool
-	opsErrorLogQueueLen  atomic.Int64
-	opsErrorLogEnqueued  atomic.Int64
-	opsErrorLogDropped   atomic.Int64
-	opsErrorLogProcessed atomic.Int64
-	opsErrorLogSanitized atomic.Int64
+	opsErrorLogStopOnce         sync.Once
+	opsErrorLogWorkersWg        sync.WaitGroup
+	opsErrorLogMu               sync.RWMutex
+	opsErrorLogStopping         bool
+	opsErrorLogQueueLen         atomic.Int64
+	opsErrorLogEnqueued         atomic.Int64
+	opsErrorLogDropped          atomic.Int64
+	opsErrorLogProcessed        atomic.Int64
+	opsErrorLogSanitized        atomic.Int64
+	opsErrorLogPersistedSuccess atomic.Int64
+	opsErrorLogPersistedFailure atomic.Int64
 
 	opsErrorLogLastDropLogAt atomic.Int64
 
@@ -173,8 +175,13 @@ func flushOpsErrorLogBatch(batch []opsErrorLogJob) {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), opsErrorLogTimeout)
-		_ = opsSvc.RecordErrorBatch(ctx, entries)
+		err := opsSvc.RecordErrorBatch(ctx, entries)
 		cancel()
+		if err != nil {
+			opsErrorLogPersistedFailure.Add(int64(len(entries)))
+			continue
+		}
+		opsErrorLogPersistedSuccess.Add(int64(len(entries)))
 	}
 	opsErrorLogProcessed.Add(processed)
 }
@@ -283,6 +290,14 @@ func OpsErrorLogProcessedTotal() int64 {
 
 func OpsErrorLogSanitizedTotal() int64 {
 	return opsErrorLogSanitized.Load()
+}
+
+func OpsErrorLogPersistedSuccessTotal() int64 {
+	return opsErrorLogPersistedSuccess.Load()
+}
+
+func OpsErrorLogPersistedFailureTotal() int64 {
+	return opsErrorLogPersistedFailure.Load()
 }
 
 func maybeLogOpsErrorLogDrop() {

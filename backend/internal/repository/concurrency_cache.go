@@ -190,6 +190,17 @@ var (
 	`)
 )
 
+var (
+	// Startup cleanup intentionally uses bounded SCAN loops so a cold start
+	// does not spend unbounded time traversing a huge Redis keyspace.
+	cleanupScanCount               int64 = 200
+	errCleanupScanBudgetExceeded         = errors.New("cleanup scan budget exceeded")
+	errCleanupDeleteBudgetExceeded       = errors.New("cleanup delete budget exceeded")
+
+	cleanupScanBudgetIterations   = 256
+	cleanupDeleteBudgetIterations = 256
+)
+
 type concurrencyCache struct {
 	rdb                 *redis.Client
 	slotTTLSeconds      int // 槽位过期时间（秒）
@@ -520,18 +531,30 @@ func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeR
 
 // cleanupSlotsByPattern 扫描匹配 pattern 的有序集合键，批量调用 Lua 脚本清理非当前进程成员。
 func (c *concurrencyCache) cleanupSlotsByPattern(ctx context.Context, pattern, activePrefix string) error {
-	const scanCount = 200
 	var cursor uint64
+	scanIterations := 0
+	cleanupIterations := 0
 	for {
-		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, scanCount).Result()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if scanIterations >= cleanupScanBudgetIterations {
+			return fmt.Errorf("%w: pattern=%s scans=%d", errCleanupScanBudgetExceeded, pattern, scanIterations)
+		}
+		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, cleanupScanCount).Result()
 		if err != nil {
 			return fmt.Errorf("scan %s: %w", pattern, err)
 		}
+		scanIterations++
+
 		if len(keys) > 0 {
-			_, err := startupCleanupScript.Run(ctx, c.rdb, keys, activePrefix, c.slotTTLSeconds).Result()
-			if err != nil {
+			if cleanupIterations >= cleanupDeleteBudgetIterations {
+				return fmt.Errorf("%w: pattern=%s cleanups=%d", errCleanupDeleteBudgetExceeded, pattern, cleanupIterations)
+			}
+			if _, err := startupCleanupScript.Run(ctx, c.rdb, keys, activePrefix, c.slotTTLSeconds).Result(); err != nil {
 				return fmt.Errorf("cleanup slots %s: %w", pattern, err)
 			}
+			cleanupIterations++
 		}
 		cursor = nextCursor
 		if cursor == 0 {
@@ -543,13 +566,21 @@ func (c *concurrencyCache) cleanupSlotsByPattern(ctx context.Context, pattern, a
 
 // deleteKeysByPattern 扫描匹配 pattern 的键并删除。
 func (c *concurrencyCache) deleteKeysByPattern(ctx context.Context, pattern string) error {
-	const scanCount = 200
 	var cursor uint64
+	scanIterations := 0
 	for {
-		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, scanCount).Result()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if scanIterations >= cleanupDeleteBudgetIterations {
+			return fmt.Errorf("%w: pattern=%s scans=%d", errCleanupDeleteBudgetExceeded, pattern, scanIterations)
+		}
+		keys, nextCursor, err := c.rdb.Scan(ctx, cursor, pattern, cleanupScanCount).Result()
 		if err != nil {
 			return fmt.Errorf("scan %s: %w", pattern, err)
 		}
+		scanIterations++
+
 		if len(keys) > 0 {
 			if err := c.rdb.Del(ctx, keys...).Err(); err != nil {
 				return fmt.Errorf("del %s: %w", pattern, err)

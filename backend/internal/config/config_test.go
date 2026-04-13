@@ -636,12 +636,14 @@ func TestConfigAddressHelpers(t *testing.T) {
 	}
 
 	dbCfg := DatabaseConfig{
-		Host:     "localhost",
-		Port:     5432,
-		User:     "postgres",
-		Password: "",
-		DBName:   "sub2api",
-		SSLMode:  "disable",
+		Host:                  "localhost",
+		Port:                  5432,
+		User:                  "postgres",
+		Password:              "",
+		DBName:                "sub2api",
+		SSLMode:               "disable",
+		ConnectTimeoutSeconds: 5,
+		ApplicationName:       "sub2api",
 	}
 	if !strings.Contains(dbCfg.DSN(), "password=") {
 	} else {
@@ -651,6 +653,12 @@ func TestConfigAddressHelpers(t *testing.T) {
 	dbCfg.Password = "secret"
 	if !strings.Contains(dbCfg.DSN(), "password=secret") {
 		t.Fatalf("DatabaseConfig.DSN() missing password")
+	}
+	if !strings.Contains(dbCfg.DSN(), "connect_timeout=5") {
+		t.Fatalf("DatabaseConfig.DSN() should include connect_timeout when configured")
+	}
+	if !strings.Contains(dbCfg.DSN(), "application_name=sub2api") {
+		t.Fatalf("DatabaseConfig.DSN() should include application_name when configured")
 	}
 
 	dbCfg.Password = ""
@@ -866,12 +874,17 @@ func TestGenerateJWTSecretWithLength(t *testing.T) {
 
 func TestDatabaseDSNWithTimezone_WithPassword(t *testing.T) {
 	d := &DatabaseConfig{
-		Host:     "localhost",
-		Port:     5432,
-		User:     "u",
-		Password: "p",
-		DBName:   "db",
-		SSLMode:  "prefer",
+		Host:                              "localhost",
+		Port:                              5432,
+		User:                              "u",
+		Password:                          "p",
+		DBName:                            "db",
+		SSLMode:                           "prefer",
+		ConnectTimeoutSeconds:             7,
+		StatementTimeoutMs:                120000,
+		LockTimeoutMs:                     5000,
+		IdleInTransactionSessionTimeoutMs: 15000,
+		ApplicationName:                   "sub2api",
 	}
 	got := d.DSNWithTimezone("UTC")
 	if !strings.Contains(got, "password=p") {
@@ -879,6 +892,17 @@ func TestDatabaseDSNWithTimezone_WithPassword(t *testing.T) {
 	}
 	if !strings.Contains(got, "TimeZone=UTC") {
 		t.Fatalf("DSNWithTimezone should include TimeZone=UTC: %q", got)
+	}
+	for _, want := range []string{
+		"connect_timeout=7",
+		"statement_timeout=120000",
+		"lock_timeout=5000",
+		"idle_in_transaction_session_timeout=15000",
+		"application_name=sub2api",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("DSNWithTimezone should include %s: %q", want, got)
+		}
 	}
 }
 
@@ -1140,6 +1164,21 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.max_body_size",
 		},
 		{
+			name:    "gateway connect timeout",
+			mutate:  func(c *Config) { c.Gateway.ConnectTimeoutSeconds = 0 },
+			wantErr: "gateway.connect_timeout_seconds",
+		},
+		{
+			name:    "gateway tls handshake timeout",
+			mutate:  func(c *Config) { c.Gateway.TLSHandshakeTimeoutSeconds = 0 },
+			wantErr: "gateway.tls_handshake_timeout_seconds",
+		},
+		{
+			name:    "gateway expect continue timeout",
+			mutate:  func(c *Config) { c.Gateway.ExpectContinueTimeoutSeconds = 0 },
+			wantErr: "gateway.expect_continue_timeout_seconds",
+		},
+		{
 			name:    "gateway max idle conns",
 			mutate:  func(c *Config) { c.Gateway.MaxIdleConns = 0 },
 			wantErr: "gateway.max_idle_conns",
@@ -1314,6 +1353,11 @@ func TestValidateConfigErrors(t *testing.T) {
 				c.Gateway.Scheduling.OutboxLagRebuildSeconds = 5
 			},
 			wantErr: "gateway.scheduling.outbox_lag_rebuild_seconds",
+		},
+		{
+			name:    "gateway outbox rebuild cooldown",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.OutboxRebuildCooldownSeconds = -1 },
+			wantErr: "gateway.scheduling.outbox_rebuild_cooldown_seconds",
 		},
 		{
 			name:    "log level invalid",

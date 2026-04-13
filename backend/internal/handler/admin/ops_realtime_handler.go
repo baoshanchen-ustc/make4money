@@ -150,10 +150,76 @@ func (h *OpsHandler) GetAccountAvailability(c *gin.Context) {
 		"group":    groupStats,
 		"account":  accountStats,
 	}
+	includeGlobalFailureSummaries := platform == "" && groupID == nil
+	if summary := service.SummarizeTokenRefreshFailures(accountStats); summary != nil {
+		payload["token_refresh_failures"] = summary
+	}
+	if summary := service.SummarizeAccountAuthFailures(accountStats); summary != nil {
+		payload["auth_failures"] = summary
+		payload["auth_failure_guidance"] = buildAuthFailureGuidance(summary)
+	}
+	if bundle := h.opsService.GetRealtimeSummaryBundle(c.Request.Context()); bundle != nil {
+		if bundle.ResourceBudgetSummary != nil {
+			payload["resource_budget_summary"] = bundle.ResourceBudgetSummary
+		}
+		if bundle.StorageGovernance != nil {
+			payload["storage_governance"] = bundle.StorageGovernance
+		}
+		if bundle.StickySessionCleanup != nil {
+			payload["sticky_session_cleanup"] = bundle.StickySessionCleanup
+		}
+		if bundle.StickyConsistency != nil {
+			payload["sticky_consistency"] = bundle.StickyConsistency
+		}
+		if includeGlobalFailureSummaries && bundle.ErrorFamilySummary != nil {
+			payload["error_family_summary"] = bundle.ErrorFamilySummary
+		}
+		if includeGlobalFailureSummaries && bundle.FailureSplitSummary != nil {
+			payload["failure_split_summary"] = bundle.FailureSplitSummary
+		}
+		if bundle.UsageIntegrity != nil {
+			payload["usage_integrity"] = bundle.UsageIntegrity
+		}
+		if bundle.DataSource != nil {
+			payload["data_source"] = bundle.DataSource
+		}
+	}
 	if collectedAt != nil {
 		payload["timestamp"] = collectedAt.UTC()
 	}
 	response.Success(c, payload)
+}
+
+func buildAuthFailureGuidance(summary *service.AccountAuthFailureRealtimeSummary) gin.H {
+	if summary == nil {
+		return gin.H{}
+	}
+	actions := make([]string, 0, 4)
+	permanentFailureAction := "Manual-review-required accounts should stay isolated until an admin reauthorizes or retires them."
+	backgroundRecoveryAction := "Keep background-refresh-eligible accounts out of scheduling until the refresh succeeds or their state escalates."
+	dispatchSuppressedAction := "Avoid widening failover pressure while dispatch-suppressed accounts remain elevated."
+	if summary.ManualReviewRequired > 0 {
+		actions = append(actions, permanentFailureAction)
+	}
+	if summary.BackgroundRecovery > 0 {
+		actions = append(actions, backgroundRecoveryAction)
+	}
+	if summary.DispatchSuppressed > 0 {
+		actions = append(actions, dispatchSuppressedAction)
+	}
+	if len(actions) == 0 {
+		actions = append(actions, "No immediate auth-specific remediation guidance.")
+	}
+	return gin.H{
+		"severity":                   "warning",
+		"dispatch_suppressed":        summary.DispatchSuppressed,
+		"background_recovery":        summary.BackgroundRecovery,
+		"manual_review_required":     summary.ManualReviewRequired,
+		"manual_review_action":       permanentFailureAction,
+		"background_recovery_action": backgroundRecoveryAction,
+		"dispatch_suppressed_action": dispatchSuppressedAction,
+		"actions":                    actions,
+	}
 }
 
 func parseOpsRealtimeWindow(v string) (time.Duration, string, bool) {
@@ -242,9 +308,37 @@ func (h *OpsHandler) GetRealtimeTrafficSummary(c *gin.Context) {
 	if summary != nil {
 		summary.Window = windowLabel
 	}
-	response.Success(c, gin.H{
+	payload := gin.H{
 		"enabled":   true,
 		"summary":   summary,
 		"timestamp": endTime,
-	})
+	}
+	includeGlobalFailureSummaries := platform == "" && groupID == nil
+	if bundle := h.opsService.GetRealtimeSummaryBundle(c.Request.Context()); bundle != nil {
+		if bundle.ResourceBudgetSummary != nil {
+			payload["resource_budget_summary"] = bundle.ResourceBudgetSummary
+		}
+		if bundle.StorageGovernance != nil {
+			payload["storage_governance"] = bundle.StorageGovernance
+		}
+		if bundle.StickySessionCleanup != nil {
+			payload["sticky_session_cleanup"] = bundle.StickySessionCleanup
+		}
+		if bundle.StickyConsistency != nil {
+			payload["sticky_consistency"] = bundle.StickyConsistency
+		}
+		if includeGlobalFailureSummaries && bundle.ErrorFamilySummary != nil {
+			payload["error_family_summary"] = bundle.ErrorFamilySummary
+		}
+		if includeGlobalFailureSummaries && bundle.FailureSplitSummary != nil {
+			payload["failure_split_summary"] = bundle.FailureSplitSummary
+		}
+		if bundle.UsageIntegrity != nil {
+			payload["usage_integrity"] = bundle.UsageIntegrity
+		}
+		if bundle.DataSource != nil {
+			payload["data_source"] = bundle.DataSource
+		}
+	}
+	response.Success(c, payload)
 }

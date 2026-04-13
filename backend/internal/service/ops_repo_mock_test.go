@@ -13,6 +13,11 @@ type opsRepoMock struct {
 	ListSystemLogsFn              func(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
 	DeleteSystemLogsFn            func(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
 	InsertSystemLogCleanupAuditFn func(ctx context.Context, input *OpsSystemLogCleanupAudit) error
+	GetDashboardOverviewFn        func(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error)
+	GetThroughputTrendFn          func(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsThroughputTrendResponse, error)
+	GetErrorTrendFn               func(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsErrorTrendResponse, error)
+	GetLatestSystemMetricsFn      func(ctx context.Context, windowMinutes int) (*OpsSystemMetricsSnapshot, error)
+	ListJobHeartbeatsFn           func(ctx context.Context) ([]*OpsJobHeartbeat, error)
 }
 
 func (m *opsRepoMock) InsertErrorLog(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
@@ -98,10 +103,16 @@ func (m *opsRepoMock) GetRealtimeTrafficSummary(ctx context.Context, filter *Ops
 }
 
 func (m *opsRepoMock) GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error) {
+	if m.GetDashboardOverviewFn != nil {
+		return m.GetDashboardOverviewFn(ctx, filter)
+	}
 	return &OpsDashboardOverview{}, nil
 }
 
 func (m *opsRepoMock) GetThroughputTrend(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsThroughputTrendResponse, error) {
+	if m.GetThroughputTrendFn != nil {
+		return m.GetThroughputTrendFn(ctx, filter, bucketSeconds)
+	}
 	return &OpsThroughputTrendResponse{}, nil
 }
 
@@ -110,6 +121,9 @@ func (m *opsRepoMock) GetLatencyHistogram(ctx context.Context, filter *OpsDashbo
 }
 
 func (m *opsRepoMock) GetErrorTrend(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsErrorTrendResponse, error) {
+	if m.GetErrorTrendFn != nil {
+		return m.GetErrorTrendFn(ctx, filter, bucketSeconds)
+	}
 	return &OpsErrorTrendResponse{}, nil
 }
 
@@ -126,6 +140,9 @@ func (m *opsRepoMock) InsertSystemMetrics(ctx context.Context, input *OpsInsertS
 }
 
 func (m *opsRepoMock) GetLatestSystemMetrics(ctx context.Context, windowMinutes int) (*OpsSystemMetricsSnapshot, error) {
+	if m.GetLatestSystemMetricsFn != nil {
+		return m.GetLatestSystemMetricsFn(ctx, windowMinutes)
+	}
 	return &OpsSystemMetricsSnapshot{}, nil
 }
 
@@ -134,6 +151,9 @@ func (m *opsRepoMock) UpsertJobHeartbeat(ctx context.Context, input *OpsUpsertJo
 }
 
 func (m *opsRepoMock) ListJobHeartbeats(ctx context.Context) ([]*OpsJobHeartbeat, error) {
+	if m.ListJobHeartbeatsFn != nil {
+		return m.ListJobHeartbeatsFn(ctx)
+	}
 	return []*OpsJobHeartbeat{}, nil
 }
 

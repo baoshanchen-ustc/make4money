@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -10,6 +12,29 @@ import (
 )
 
 const stickySessionPrefix = "sticky_session:"
+
+var (
+	stickySessionCompareDeleteAttemptTotal atomic.Int64
+	stickySessionCompareDeleteDeletedTotal atomic.Int64
+	stickySessionCompareDeleteMissTotal    atomic.Int64
+)
+
+type StickySessionCompareDeleteMetricsSnapshot struct {
+	AttemptTotal int64 `json:"attempt_total"`
+	DeletedTotal int64 `json:"deleted_total"`
+	MissTotal    int64 `json:"miss_total"`
+}
+
+var deleteSessionAccountIDIfMatchScript = redis.NewScript(`
+local current = redis.call("GET", KEYS[1])
+if not current then
+  return 0
+end
+if current == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -50,4 +75,30 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+func (c *gatewayCache) DeleteSessionAccountIDIfMatch(ctx context.Context, groupID int64, sessionHash string, expectedAccountID int64) error {
+	if expectedAccountID <= 0 {
+		return nil
+	}
+	stickySessionCompareDeleteAttemptTotal.Add(1)
+	key := buildSessionKey(groupID, sessionHash)
+	deleted, err := deleteSessionAccountIDIfMatchScript.Run(ctx, c.rdb, []string{key}, strconv.FormatInt(expectedAccountID, 10)).Int64()
+	if err != nil {
+		return err
+	}
+	if deleted > 0 {
+		stickySessionCompareDeleteDeletedTotal.Add(1)
+	} else {
+		stickySessionCompareDeleteMissTotal.Add(1)
+	}
+	return nil
+}
+
+func SnapshotStickySessionCompareDeleteMetrics() StickySessionCompareDeleteMetricsSnapshot {
+	return StickySessionCompareDeleteMetricsSnapshot{
+		AttemptTotal: stickySessionCompareDeleteAttemptTotal.Load(),
+		DeletedTotal: stickySessionCompareDeleteDeletedTotal.Load(),
+		MissTotal:    stickySessionCompareDeleteMissTotal.Load(),
+	}
 }

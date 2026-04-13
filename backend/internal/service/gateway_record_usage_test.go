@@ -77,6 +77,53 @@ func (s *openAIRecordUsageBestEffortLogRepoStub) Create(ctx context.Context, log
 	return false, s.createErr
 }
 
+func TestWriteUsageLogBestEffort_NotPersistedAlertGateway(t *testing.T) {
+	resetUsageLogNotPersistedAlertsForTest()
+	resetBillingCompensationCandidatesForTest()
+	usageLog := &UsageLog{
+		RequestID: "gateway-usage-alert",
+		UserID:    601,
+		AccountID: 701,
+	}
+	repo := &openAIRecordUsageBestEffortLogRepoStub{
+		bestEffortErr: errors.New("queue blocked"),
+		createErr:     errors.New("sync failed"),
+	}
+
+	writeUsageLogBestEffort(context.Background(), repo, usageLog, "gateway.usage")
+
+	require.Equal(t, int64(1), UsageLogNotPersistedAlertTotal())
+	history := UsageLogNotPersistedAlertsHistory()
+	require.Len(t, history, 1)
+	require.Equal(t, "gateway.usage", history[0].LogKey)
+	require.Equal(t, "gateway-usage-alert", history[0].RequestID)
+	require.Equal(t, int64(601), history[0].UserID)
+	require.Equal(t, int64(701), history[0].AccountID)
+	snapshot := SnapshotUsageLogNotPersistedMetrics()
+	require.Equal(t, int64(1), snapshot.Total)
+	require.Equal(t, int64(1), snapshot.Recent1mTotal)
+	require.Equal(t, int64(1), snapshot.Recent5mTotal)
+	require.Equal(t, int64(1), snapshot.Recent15mTotal)
+	require.NotNil(t, snapshot.Last)
+	require.Equal(t, "gateway-usage-alert", snapshot.Last.RequestID)
+	require.Len(t, snapshot.Recent, 1)
+
+	writeUsageLogBestEffort(context.Background(), repo, usageLog, "gateway.usage")
+	candidates := SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(0), candidates.Total)
+
+	writeBilledUsageLogBestEffort(context.Background(), repo, usageLog, "gateway.usage")
+	candidates = SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(1), candidates.Total)
+	require.Equal(t, int64(1), candidates.Recent1mTotal)
+	require.Equal(t, int64(1), candidates.Recent5mTotal)
+	require.Equal(t, int64(1), candidates.Recent15mTotal)
+	require.NotNil(t, candidates.Last)
+	require.Equal(t, "gateway-usage-alert", candidates.Last.RequestID)
+	require.Equal(t, "gateway.usage", candidates.Last.LogKey)
+	require.Len(t, candidates.Recent, 1)
+}
+
 func TestGatewayServiceRecordUsage_BillingUsesDetachedContext(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: context.DeadlineExceeded}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -107,7 +154,7 @@ func TestGatewayServiceRecordUsage_BillingUsesDetachedContext(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 2, usageRepo.calls)
 	require.Equal(t, 1, userRepo.deductCalls)
 	require.NoError(t, userRepo.lastCtxErr)
 	require.Equal(t, 1, quotaSvc.quotaCalls)
@@ -191,7 +238,34 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_PersistsProviderFromAccount(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_provider",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 501, Quota: 100},
+		User:    &User{ID: 601},
+		Account: &Account{ID: 701, Platform: PlatformAnthropic},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.Provider)
+	require.Equal(t, PlatformAnthropic, *usageRepo.lastLog.Provider)
+}
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
+	resetUsageLogNotPersistedAlertsForTest()
+	resetBillingCompensationCandidatesForTest()
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -218,9 +292,14 @@ func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testi
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 2, usageRepo.calls)
 	require.Equal(t, 1, userRepo.deductCalls)
 	require.Equal(t, 1, quotaSvc.quotaCalls)
+	require.Equal(t, int64(1), SnapshotUsageLogNotPersistedMetrics().Total)
+	candidates := SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(1), candidates.Total)
+	require.NotNil(t, candidates.Last)
+	require.Equal(t, "gateway_not_persisted", candidates.Last.RequestID)
 }
 
 func TestGatewayServiceRecordUsageWithLongContext_BillingUsesDetachedContext(t *testing.T) {
@@ -255,7 +334,7 @@ func TestGatewayServiceRecordUsageWithLongContext_BillingUsesDetachedContext(t *
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 2, usageRepo.calls)
 	require.Equal(t, 1, userRepo.deductCalls)
 	require.NoError(t, userRepo.lastCtxErr)
 	require.Equal(t, 1, quotaSvc.quotaCalls)
@@ -318,6 +397,31 @@ func TestGatewayServiceRecordUsage_PrefersClientRequestIDOverUpstreamRequestID(t
 	require.Equal(t, "client:client-stable-123", usageRepo.lastLog.RequestID)
 }
 
+func TestGatewayServiceRecordUsage_UsesUpstreamRequestIDWhenContextEmpty(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "upstream-only-321",
+			Usage: ClaudeUsage{
+				InputTokens:  12,
+				OutputTokens: 8,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 511},
+		User:    &User{ID: 611},
+		Account: &Account{ID: 711},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "upstream-only-321", usageRepo.lastLog.RequestID)
+	require.Equal(t, "upstream-only-321", billingRepo.lastCmd.RequestID)
+}
+
 func TestGatewayServiceRecordUsage_GeneratesRequestIDWhenAllSourcesMissing(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
@@ -345,9 +449,12 @@ func TestGatewayServiceRecordUsage_GeneratesRequestIDWhenAllSourcesMissing(t *te
 	require.Equal(t, billingRepo.lastCmd.RequestID, usageRepo.lastLog.RequestID)
 }
 
-func TestGatewayServiceRecordUsage_DroppedUsageLogDoesNotSyncFallback(t *testing.T) {
+func TestGatewayServiceRecordUsage_DroppedUsageLogFallsBackToSyncPersist(t *testing.T) {
+	resetUsageLogNotPersistedAlertsForTest()
+	resetBillingCompensationCandidatesForTest()
 	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{
 		bestEffortErr: MarkUsageLogCreateDropped(errors.New("usage log best-effort queue full")),
+		createErr:     errors.New("sync persist failed"),
 	}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
 	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
@@ -369,7 +476,49 @@ func TestGatewayServiceRecordUsage_DroppedUsageLogDoesNotSyncFallback(t *testing
 
 	require.NoError(t, err)
 	require.Equal(t, 1, usageRepo.bestEffortCalls)
-	require.Equal(t, 0, usageRepo.createCalls)
+	require.Equal(t, 1, usageRepo.createCalls)
+	require.Equal(t, int64(1), SnapshotUsageLogNotPersistedMetrics().Total)
+	candidates := SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(1), candidates.Total)
+	require.NotNil(t, candidates.Last)
+	require.Equal(t, "gateway_drop_usage_log", candidates.Last.RequestID)
+}
+
+func TestGatewayServiceRecordUsage_BillingSuccessTracksCompensationCandidateOnUsageFailure(t *testing.T) {
+	resetUsageLogNotPersistedAlertsForTest()
+	resetBillingCompensationCandidatesForTest()
+
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{
+		bestEffortErr: errors.New("queue blocked"),
+		createErr:     errors.New("sync failed"),
+	}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_compensation_candidate",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 509, Quota: 100},
+		User:    &User{ID: 609},
+		Account: &Account{ID: 709},
+	})
+
+	require.NoError(t, err)
+	snapshot := SnapshotBillingCompensationCandidates()
+	require.Equal(t, int64(1), snapshot.Total)
+	require.Equal(t, int64(1), snapshot.Recent1mTotal)
+	require.NotNil(t, snapshot.Last)
+	require.Equal(t, "gateway_compensation_candidate", snapshot.Last.RequestID)
+	require.Equal(t, int64(609), snapshot.Last.UserID)
+	require.Equal(t, int64(709), snapshot.Last.AccountID)
+	require.Equal(t, int64(1), SnapshotUsageLogNotPersistedMetrics().Total)
 }
 
 func TestGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) {

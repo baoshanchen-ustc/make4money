@@ -145,7 +145,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		// 只有当错误信息包含 "organization has been disabled" 时才禁用
 		if strings.Contains(strings.ToLower(upstreamMsg), "organization has been disabled") {
 			msg := "Organization disabled (400): " + upstreamMsg
-			s.handleAuthError(ctx, account, msg)
+			s.handleAuthErrorWithMetadata(ctx, account, msg, "organization_disabled", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 			shouldDisable = true
 		}
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
@@ -157,7 +157,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			if upstreamMsg != "" {
 				msg = "Token revoked (401): " + upstreamMsg
 			}
-			s.handleAuthError(ctx, account, msg)
+			s.handleAuthErrorWithMetadata(ctx, account, msg, "token_revoked", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 			shouldDisable = true
 			break
 		}
@@ -167,7 +167,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			if upstreamMsg != "" {
 				msg = "Unauthorized (401): " + upstreamMsg
 			}
-			s.handleAuthError(ctx, account, msg)
+			s.handleAuthErrorWithMetadata(ctx, account, msg, "account_deleted", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 			shouldDisable = true
 			break
 		}
@@ -203,6 +203,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
 				slog.Warn("oauth_401_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
 			}
+			markAccountAuthState(ctx, s.accountRepo, account.ID, "upstream_401_refresh_required", accountAuthClassTemporary, accountAuthSourceUpstreamAuth)
 			shouldDisable = true
 		} else {
 			// 非 OAuth / Antigravity OAuth：保持 SetError 行为
@@ -210,14 +211,14 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			if upstreamMsg != "" {
 				msg = "Authentication failed (401): " + upstreamMsg
 			}
-			s.handleAuthError(ctx, account, msg)
+			s.handleAuthErrorWithMetadata(ctx, account, msg, "authentication_failed", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 			shouldDisable = true
 		}
 	case 402:
 		// OpenAI: deactivated_workspace 表示工作区已停用，直接标记 error
 		if account.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail.code").String() == "deactivated_workspace" {
 			msg := "Workspace deactivated (402): workspace has been deactivated"
-			s.handleAuthError(ctx, account, msg)
+			s.handleAuthErrorWithMetadata(ctx, account, msg, "workspace_deactivated", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 			shouldDisable = true
 			break
 		}
@@ -226,7 +227,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		if upstreamMsg != "" {
 			msg = "Payment required (402): " + upstreamMsg
 		}
-		s.handleAuthError(ctx, account, msg)
+		s.handleAuthErrorWithMetadata(ctx, account, msg, "billing_required", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 		shouldDisable = true
 	case 403:
 		logger.LegacyPrintf(
@@ -636,11 +637,13 @@ func (s *RateLimitService) GeminiCooldown(ctx context.Context, account *Account)
 	return s.geminiQuotaService.CooldownForAccount(ctx, account)
 }
 
-// handleAuthError 处理认证类错误(401/403)，停止账号调度
-func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account, errorMsg string) {
+func (s *RateLimitService) handleAuthErrorWithMetadata(ctx context.Context, account *Account, errorMsg, reason, class, source string) {
 	if err := s.accountRepo.SetError(ctx, account.ID, errorMsg); err != nil {
 		slog.Warn("account_set_error_failed", "account_id", account.ID, "error", err)
 		return
+	}
+	if reason != "" || class != "" || source != "" {
+		markAccountAuthState(ctx, s.accountRepo, account.ID, reason, class, source)
 	}
 	slog.Warn("account_disabled_auth_error", "account_id", account.ID, "error", errorMsg)
 }
@@ -657,7 +660,7 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if upstreamMsg != "" {
 		msg = "Access forbidden (403): " + upstreamMsg
 	}
-	s.handleAuthError(ctx, account, msg)
+	s.handleAuthErrorWithMetadata(ctx, account, msg, "forbidden", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 	return true
 }
 
@@ -678,7 +681,7 @@ func (s *RateLimitService) handleAntigravity403(ctx context.Context, account *Ac
 		if validationURL := extractValidationURL(string(responseBody)); validationURL != "" {
 			msg += " | validation_url: " + validationURL
 		}
-		s.handleAuthError(ctx, account, msg)
+		s.handleAuthErrorWithMetadata(ctx, account, msg, "validation_required", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 		return true
 
 	case forbiddenTypeViolation:
@@ -687,7 +690,7 @@ func (s *RateLimitService) handleAntigravity403(ctx context.Context, account *Ac
 		if upstreamMsg != "" {
 			msg = "Account violation (403): " + upstreamMsg
 		}
-		s.handleAuthError(ctx, account, msg)
+		s.handleAuthErrorWithMetadata(ctx, account, msg, "policy_violation", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 		return true
 
 	default:
@@ -696,7 +699,7 @@ func (s *RateLimitService) handleAntigravity403(ctx context.Context, account *Ac
 		if upstreamMsg != "" {
 			msg = "Access forbidden (403): " + upstreamMsg
 		}
-		s.handleAuthError(ctx, account, msg)
+		s.handleAuthErrorWithMetadata(ctx, account, msg, "forbidden", accountAuthClassPermanent, accountAuthSourceUpstreamAuth)
 		return true
 	}
 }

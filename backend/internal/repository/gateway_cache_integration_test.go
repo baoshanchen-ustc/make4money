@@ -91,6 +91,31 @@ func (s *GatewayCacheSuite) TestDeleteSessionAccountID() {
 	require.True(s.T(), errors.Is(err, redis.Nil), "expected redis.Nil after delete")
 }
 
+func (s *GatewayCacheSuite) TestDeleteSessionAccountIDIfMatch_DeletesMatchingBinding() {
+	sessionID := "openai:s5"
+	accountID := int64(103)
+	groupID := int64(1)
+
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, sessionID, accountID, time.Minute))
+	require.NoError(s.T(), s.cache.DeleteSessionAccountIDIfMatch(s.ctx, groupID, sessionID, accountID))
+
+	_, err := s.cache.GetSessionAccountID(s.ctx, groupID, sessionID)
+	require.True(s.T(), errors.Is(err, redis.Nil), "expected redis.Nil after compare-delete")
+}
+
+func (s *GatewayCacheSuite) TestDeleteSessionAccountIDIfMatch_PreservesNewerBinding() {
+	sessionID := "openai:s6"
+	groupID := int64(1)
+
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, sessionID, 201, time.Minute))
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, sessionID, 202, time.Minute))
+	require.NoError(s.T(), s.cache.DeleteSessionAccountIDIfMatch(s.ctx, groupID, sessionID, 201))
+
+	got, err := s.cache.GetSessionAccountID(s.ctx, groupID, sessionID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(202), got, "compare-delete should not remove a newer rebinding")
+}
+
 func (s *GatewayCacheSuite) TestGetSessionAccountID_CorruptedValue() {
 	sessionID := "corrupted"
 	groupID := int64(1)

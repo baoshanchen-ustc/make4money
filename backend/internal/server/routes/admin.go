@@ -177,6 +177,12 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.POST("/system-logs/cleanup", h.Admin.Ops.CleanupSystemLogs)
 		ops.GET("/system-logs/health", h.Admin.Ops.GetSystemLogIngestionHealth)
 
+		// Billing compensation search
+		ops.GET("/billing-compensation", h.Admin.Ops.ListBillingCompensation)
+		ops.GET("/usage-log-not-persisted", h.Admin.Ops.ListUsageLogNotPersisted)
+		ops.GET("/usage-log-not-persisted/:request_id", h.Admin.Ops.GetUsageLogNotPersistedDetail)
+		ops.GET("/billing-compensation/:request_id", h.Admin.Ops.GetBillingCompensationDetail)
+
 		// Dashboard (vNext - raw path for MVP)
 		ops.GET("/dashboard/snapshot-v2", h.Admin.Ops.GetDashboardSnapshotV2)
 		ops.GET("/dashboard/overview", h.Admin.Ops.GetDashboardOverview)

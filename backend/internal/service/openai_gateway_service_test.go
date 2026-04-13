@@ -78,6 +78,10 @@ func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Co
 	return r.ListSchedulableByPlatform(ctx, platform)
 }
 
+func (r stubOpenAIAccountRepo) SetError(ctx context.Context, id int64, errMsg string) error {
+	return nil
+}
+
 type stubConcurrencyCache struct {
 	ConcurrencyCache
 	loadBatchErr    error
@@ -303,6 +307,7 @@ func (c stubConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accoun
 type stubGatewayCache struct {
 	sessionBindings map[string]int64
 	deletedSessions map[string]int
+	refreshedTTL    map[string]int
 }
 
 func (c *stubGatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
@@ -321,6 +326,10 @@ func (c *stubGatewayCache) SetSessionAccountID(ctx context.Context, groupID int6
 }
 
 func (c *stubGatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error {
+	if c.refreshedTTL == nil {
+		c.refreshedTTL = make(map[string]int)
+	}
+	c.refreshedTTL[sessionHash]++
 	return nil
 }
 
@@ -334,6 +343,27 @@ func (c *stubGatewayCache) DeleteSessionAccountID(ctx context.Context, groupID i
 	c.deletedSessions[sessionHash]++
 	delete(c.sessionBindings, sessionHash)
 	return nil
+}
+
+func (c *stubGatewayCache) DeleteSessionAccountIDIfMatch(ctx context.Context, groupID int64, sessionHash string, expectedAccountID int64) error {
+	if c.sessionBindings == nil {
+		return nil
+	}
+	if current, ok := c.sessionBindings[sessionHash]; ok && current == expectedAccountID {
+		return c.DeleteSessionAccountID(ctx, groupID, sessionHash)
+	}
+	return nil
+}
+
+func TestOpenAIGatewayService_DeleteStickySessionAccountIDIfMatch_PreservesNewBinding(t *testing.T) {
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{"openai:sticky": 22},
+	}
+	svc := &OpenAIGatewayService{cache: cache}
+
+	require.NoError(t, svc.deleteStickySessionAccountIDIfMatch(context.Background(), nil, "sticky", 11, stickyCleanupReasonBindingInvalidated))
+	require.Equal(t, int64(22), cache.sessionBindings["openai:sticky"])
+	require.Empty(t, cache.deletedSessions)
 }
 
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
@@ -654,6 +684,97 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyWaitPlan(t *testing.T) {
 	if selection.Account == nil || selection.Account.ID != 1 {
 		t.Fatalf("expected account 1")
 	}
+	if cache.refreshedTTL["openai:"+sessionHash] == 0 {
+		t.Fatalf("expected sticky session TTL refresh on wait plan")
+	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_StickyPrivacyRequiredClearsBinding(t *testing.T) {
+	sessionHash := "sticky-privacy"
+	groupID := int64(1)
+	sticky := Account{
+		ID:          11,
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Extra: map[string]any{
+			"privacy_mode": "",
+		},
+	}
+	backup := Account{
+		ID:          12,
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    2,
+		Extra: map[string]any{
+			"privacy_mode": PrivacyModeTrainingOff,
+		},
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{"openai:" + sessionHash: sticky.ID},
+	}
+	snapshotService := &SchedulerSnapshotService{
+		cache: &openAISnapshotCacheStub{
+			accountsByID: map[int64]*Account{
+				sticky.ID: &sticky,
+				backup.ID: &backup,
+			},
+		},
+		accountRepo: stubOpenAIAccountRepo{accounts: []Account{sticky, backup}},
+		groupRepo: &mockGroupRepoForGateway{
+			groups: map[int64]*Group{
+				groupID: &Group{
+					ID:                groupID,
+					Platform:          PlatformOpenAI,
+					Status:            StatusActive,
+					Hydrated:          true,
+					RequirePrivacySet: true,
+				},
+			},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{sticky, backup}},
+		cache:              cache,
+		cfg:                &config.Config{},
+		schedulerSnapshot:  snapshotService,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, sessionHash, "gpt-4", nil)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, backup.ID, selection.Account.ID)
+	require.Equal(t, 1, cache.deletedSessions["openai:"+sessionHash])
+}
+
+func TestClassifyStickySessionInvalidationReasonWithContext_ChannelRestricted(t *testing.T) {
+	account := &Account{
+		ID:          21,
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-4.1": "gpt-4o"},
+		},
+	}
+
+	reason := classifyStickySessionInvalidationReasonWithContext(account, stickySessionInvalidationContext{
+		RequestedModel:    "gpt-4.1",
+		RequiredPlatform:  PlatformOpenAI,
+		InGroup:           true,
+		ChannelRestricted: true,
+	})
+	require.Equal(t, stickyBindingInvalidationReasonChannelRestricted, reason)
+	require.Equal(t, stickyCleanupReasonChannelRestricted, stickyCleanupReasonForInvalidation(reason))
 }
 
 func TestOpenAISelectAccountWithLoadAwareness_PrefersLowerLoad(t *testing.T) {

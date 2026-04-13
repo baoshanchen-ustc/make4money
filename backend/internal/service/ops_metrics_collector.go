@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -29,15 +30,44 @@ const (
 
 	opsMetricsCollectorTimeout = 10 * time.Second
 
+	opsStorageGovernanceSampleInterval = 15 * time.Minute
+	opsErrorFamilySampleInterval       = 5 * time.Minute
+	opsErrorFamilyWindow               = 15 * time.Minute
+
 	opsMetricsCollectorLeaderLockKey = "ops:metrics:collector:leader"
 	opsMetricsCollectorLeaderLockTTL = 90 * time.Second
 
 	opsMetricsCollectorHeartbeatTimeout = 2 * time.Second
 
 	bytesPerMB = 1024 * 1024
+
+	opsRuntimeStorageGovernanceSummaryComponent = "ops.runtime.storage_governance.summary"
+	opsRuntimeErrorFamilySummaryComponent       = "ops.runtime.error_family.summary"
+
+	opsStorageUsageLogsWarnBytes      = 256 * bytesPerMB
+	opsStorageUsageLogsCriticalBytes  = 512 * bytesPerMB
+	opsStorageSystemLogsWarnBytes     = 512 * bytesPerMB
+	opsStorageSystemLogsCriticalBytes = 1024 * bytesPerMB
+	opsStorageErrorLogsWarnBytes      = 128 * bytesPerMB
+	opsStorageErrorLogsCriticalBytes  = 256 * bytesPerMB
+
+	opsStorageColdIndexWarnBytes           = 16 * bytesPerMB
+	opsStorageColdIndexCriticalBytes       = 64 * bytesPerMB
+	opsRuntimeCleanupSummaryComponent      = "ops.runtime.cleanup.summary"
+	opsRuntimeCleanupUsageSummaryComponent = "ops.runtime.cleanup.usage.summary"
 )
 
 var opsMetricsCollectorAdvisoryLockID = hashAdvisoryLockID(opsMetricsCollectorLeaderLockKey)
+
+var (
+	latestStorageGovernanceRuntimeMu       sync.RWMutex
+	latestStorageGovernanceRuntimeSnapshot *opsStorageGovernanceRuntimeSnapshot
+	latestStorageGovernanceRuntimeAt       time.Time
+
+	latestErrorFamilySummaryMu sync.RWMutex
+	latestErrorFamilySummary   *opsRuntimeErrorFamilySummary
+	latestErrorFamilyAt        time.Time
+)
 
 type OpsMetricsCollector struct {
 	opsRepo     OpsRepository
@@ -60,6 +90,30 @@ type OpsMetricsCollector struct {
 
 	skipLogMu sync.Mutex
 	skipLogAt time.Time
+
+	runtimeDeltaMu              sync.Mutex
+	runtimeDeltaBaselineSet     bool
+	lastUsageLogNotPersisted    int64
+	lastBillingCompensation     int64
+	lastSchedulerPoisonTotal    int64
+	lastSchedulerTransientTotal int64
+	lastSchedulerRuntimeState   string
+	lastUsageWorkerDropped      uint64
+	lastUsageWorkerSyncFallback uint64
+	lastUsageWorkerTimeouts     uint64
+	lastUsageWorkerPanics       uint64
+	lastDBWaitCount             uint64
+	lastRedisPoolStalls         int64
+	lastRedisPoolTimeouts       int64
+	lastStorageGovernanceSample time.Time
+	lastStorageGovernanceState  string
+	lastErrorFamilySample       time.Time
+	lastErrorFamilyState        string
+
+	redisPoolStatsFn         func() opsRedisPoolRuntimeStats
+	dbPoolStatsFn            func() (active int, idle int, waitCount uint64, waitDuration time.Duration)
+	storageGovernanceStatsFn func(ctx context.Context) (opsStorageGovernanceRuntimeSnapshot, error)
+	errorFamilyStatsFn       func(ctx context.Context, start, end time.Time) (opsRuntimeErrorFamilySummary, error)
 }
 
 func NewOpsMetricsCollector(
@@ -267,7 +321,7 @@ func (c *OpsMetricsCollector) collectAndPersist(ctx context.Context) error {
 
 	dbOK := c.checkDB(ctx)
 	redisOK := c.checkRedis(ctx)
-	active, idle := c.dbPoolStats()
+	active, idle, dbWaitCount, _ := c.dbPoolStats()
 	redisTotal, redisIdle, redisStatsOK := c.redisPoolStats()
 
 	successCount, tokenConsumed, err := c.queryUsageCounts(ctx, windowStart, windowEnd)
@@ -300,6 +354,9 @@ func (c *OpsMetricsCollector) collectAndPersist(ctx context.Context) error {
 
 	goroutines := runtime.NumGoroutine()
 	concurrencyQueueDepth := c.collectConcurrencyQueueDepth(ctx)
+
+	dbConnWaiting := int(clampNonNegativeDeltaUint(dbWaitCount, c.lastDBWaitCount))
+	c.lastDBWaitCount = dbWaitCount
 
 	input := &OpsInsertSystemMetricsInput{
 		CreatedAt:     windowEnd,
@@ -356,11 +413,1041 @@ func (c *OpsMetricsCollector) collectAndPersist(ctx context.Context) error {
 
 		DBConnActive:          intPtr(active),
 		DBConnIdle:            intPtr(idle),
+		DBConnWaiting:         intPtr(dbConnWaiting),
 		GoroutineCount:        intPtr(goroutines),
 		ConcurrencyQueueDepth: concurrencyQueueDepth,
 	}
 
-	return c.opsRepo.InsertSystemMetrics(ctx, input)
+	if err := c.opsRepo.InsertSystemMetrics(ctx, input); err != nil {
+		return err
+	}
+	if err := c.persistRuntimeAnomalySummary(ctx, windowEnd); err != nil {
+		log.Printf("[OpsMetricsCollector] runtime anomaly summary failed: %v", err)
+	}
+	return nil
+}
+
+func (c *OpsMetricsCollector) persistRuntimeAnomalySummary(ctx context.Context, createdAt time.Time) error {
+	if c == nil || c.opsRepo == nil {
+		return nil
+	}
+
+	usage := SnapshotUsageLogNotPersistedMetrics()
+	billing := SnapshotBillingCompensationCandidates()
+	scheduler := SnapshotSchedulerOutboxRuntimeMetrics()
+	worker := SnapshotUsageRecordWorkerPoolStats()
+	redisPool := c.snapshotRedisPoolRuntimeStats()
+	storageSampleDue := c.shouldSampleStorageGovernance(createdAt)
+	errorFamilySampleDue := c.shouldSampleErrorFamilies(createdAt)
+	schedulerState := schedulerOutboxRuntimeStateFingerprint(scheduler)
+	var storage opsStorageGovernanceRuntimeSnapshot
+	var storageState string
+	if storageSampleDue {
+		var err error
+		storage, err = c.snapshotStorageGovernanceRuntimeStats(ctx)
+		if err != nil {
+			return err
+		}
+		recordLatestStorageGovernanceRuntimeSnapshot(createdAt, storage)
+		storageState = storage.stateFingerprint()
+	}
+	var errorFamilies opsRuntimeErrorFamilySummary
+	var errorFamilyState string
+	if errorFamilySampleDue {
+		var err error
+		errorFamilies, err = c.queryRecentErrorFamilySummary(ctx, createdAt.Add(-opsErrorFamilyWindow), createdAt)
+		if err != nil {
+			return err
+		}
+		recordLatestErrorFamilySummary(createdAt, errorFamilies)
+		errorFamilyState = errorFamilies.stateFingerprint()
+	}
+
+	c.runtimeDeltaMu.Lock()
+	defer c.runtimeDeltaMu.Unlock()
+
+	if !c.runtimeDeltaBaselineSet {
+		c.lastUsageLogNotPersisted = usage.Total
+		c.lastBillingCompensation = billing.Total
+		c.lastSchedulerPoisonTotal = scheduler.PoisonTotal
+		c.lastSchedulerTransientTotal = scheduler.TransientTotal
+		c.lastSchedulerRuntimeState = schedulerState
+		c.lastUsageWorkerDropped = worker.DroppedQueueFull
+		c.lastUsageWorkerSyncFallback = worker.SyncFallbackTasks
+		c.lastUsageWorkerTimeouts = worker.TaskTimeouts
+		c.lastUsageWorkerPanics = worker.TaskPanics
+		c.lastRedisPoolStalls = redisPool.Stalls
+		c.lastRedisPoolTimeouts = redisPool.Timeouts
+		if storageSampleDue {
+			c.lastStorageGovernanceSample = createdAt
+			c.lastStorageGovernanceState = storageState
+		}
+		if errorFamilySampleDue {
+			c.lastErrorFamilySample = createdAt
+		}
+		c.runtimeDeltaBaselineSet = true
+		return nil
+	}
+
+	usageDelta := clampNonNegativeDelta(usage.Total, c.lastUsageLogNotPersisted)
+	billingDelta := clampNonNegativeDelta(billing.Total, c.lastBillingCompensation)
+	poisonDelta := clampNonNegativeDelta(scheduler.PoisonTotal, c.lastSchedulerPoisonTotal)
+	transientDelta := clampNonNegativeDelta(scheduler.TransientTotal, c.lastSchedulerTransientTotal)
+	workerDroppedDelta := clampNonNegativeDeltaUint(worker.DroppedQueueFull, c.lastUsageWorkerDropped)
+	workerSyncFallbackDelta := clampNonNegativeDeltaUint(worker.SyncFallbackTasks, c.lastUsageWorkerSyncFallback)
+	workerTimeoutDelta := clampNonNegativeDeltaUint(worker.TaskTimeouts, c.lastUsageWorkerTimeouts)
+	workerPanicDelta := clampNonNegativeDeltaUint(worker.TaskPanics, c.lastUsageWorkerPanics)
+	redisStallDelta := clampNonNegativeDelta(redisPool.Stalls, c.lastRedisPoolStalls)
+	redisTimeoutDelta := clampNonNegativeDelta(redisPool.Timeouts, c.lastRedisPoolTimeouts)
+
+	c.lastUsageLogNotPersisted = usage.Total
+	c.lastBillingCompensation = billing.Total
+	c.lastSchedulerPoisonTotal = scheduler.PoisonTotal
+	c.lastSchedulerTransientTotal = scheduler.TransientTotal
+	previousSchedulerState := c.lastSchedulerRuntimeState
+	c.lastSchedulerRuntimeState = schedulerState
+	c.lastUsageWorkerDropped = worker.DroppedQueueFull
+	c.lastUsageWorkerSyncFallback = worker.SyncFallbackTasks
+	c.lastUsageWorkerTimeouts = worker.TaskTimeouts
+	c.lastUsageWorkerPanics = worker.TaskPanics
+	c.lastRedisPoolStalls = redisPool.Stalls
+	c.lastRedisPoolTimeouts = redisPool.Timeouts
+	if storageSampleDue {
+		c.lastStorageGovernanceSample = createdAt
+	}
+	if errorFamilySampleDue {
+		c.lastErrorFamilySample = createdAt
+	}
+
+	inputs := make([]*OpsInsertSystemLogInput, 0, 7)
+	if usageDelta > 0 {
+		extra, err := marshalOpsRuntimeExtra(map[string]any{
+			"kind":             "summary",
+			"delta":            usageDelta,
+			"total":            usage.Total,
+			"recent_1m_total":  usage.Recent1mTotal,
+			"recent_5m_total":  usage.Recent5mTotal,
+			"recent_15m_total": usage.Recent15mTotal,
+			"last":             usage.Last,
+		})
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, &OpsInsertSystemLogInput{
+			CreatedAt: createdAt,
+			Level:     "warn",
+			Component: OpsRuntimeUsageLogSummaryComponent,
+			Message:   "usage log not persisted delta observed",
+			ExtraJSON: extra,
+		})
+	}
+
+	if billingDelta > 0 {
+		extra, err := marshalOpsRuntimeExtra(map[string]any{
+			"kind":             "summary",
+			"delta":            billingDelta,
+			"total":            billing.Total,
+			"recent_1m_total":  billing.Recent1mTotal,
+			"recent_5m_total":  billing.Recent5mTotal,
+			"recent_15m_total": billing.Recent15mTotal,
+			"last":             billing.Last,
+		})
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, &OpsInsertSystemLogInput{
+			CreatedAt: createdAt,
+			Level:     "warn",
+			Component: OpsRuntimeBillingCompensationSummaryComponent,
+			Message:   "billing compensation summary delta observed",
+			ExtraJSON: extra,
+		})
+	}
+
+	schedulerChanged := schedulerState != previousSchedulerState
+	if poisonDelta > 0 || transientDelta > 0 || (schedulerChanged && hasSchedulerOutboxAnomaly(scheduler)) {
+		extra, err := marshalOpsRuntimeExtra(map[string]any{
+			"kind":                                 "summary",
+			"poison_delta":                         poisonDelta,
+			"transient_delta":                      transientDelta,
+			"poison_total":                         scheduler.PoisonTotal,
+			"transient_total":                      scheduler.TransientTotal,
+			"payload_decode_poison_total":          scheduler.PayloadDecodePoisonTotal,
+			"malformed_payload_poison_total":       scheduler.MalformedPayloadPoisonTotal,
+			"unknown_event_poison_total":           scheduler.UnknownEventPoisonTotal,
+			"lock_contention_transient_total":      scheduler.LockContentionTransientTotal,
+			"db_transient_total":                   scheduler.DBTransientTotal,
+			"cache_transient_total":                scheduler.CacheTransientTotal,
+			"other_transient_total":                scheduler.OtherTransientTotal,
+			"checkpoint_fallback_total":            scheduler.CheckpointFallbackTotal,
+			"checkpoint_read_failure_total":        scheduler.CheckpointReadFailureTotal,
+			"checkpoint_write_failure_total":       scheduler.CheckpointWriteFailureTotal,
+			"checkpoint_last_fallback_at":          scheduler.CheckpointLastFallbackAt,
+			"checkpoint_last_read_failure_at":      scheduler.CheckpointLastReadFailureAt,
+			"checkpoint_last_write_failure_at":     scheduler.CheckpointLastWriteFailureAt,
+			"last_redis_watermark":                 scheduler.LastRedisWatermark,
+			"last_checkpoint_watermark":            scheduler.LastCheckpointWatermark,
+			"watermark_drift":                      scheduler.WatermarkDrift,
+			"backlog_rows":                         scheduler.BacklogRows,
+			"lag_seconds":                          scheduler.LagSeconds,
+			"lag_failure_streak":                   scheduler.LagFailureStreak,
+			"lag_rebuild_total":                    scheduler.LagRebuildTotal,
+			"backlog_rebuild_total":                scheduler.BacklogRebuildTotal,
+			"last_lag_rebuild_at":                  scheduler.LastLagRebuildAt,
+			"last_backlog_rebuild_at":              scheduler.LastBacklogRebuildAt,
+			"blocked_event_clear_total":            scheduler.BlockedEventClearTotal,
+			"blocked_event_last_cleared_id":        scheduler.BlockedEventLastClearedID,
+			"blocked_event_last_cleared_at":        scheduler.BlockedEventLastClearedAt,
+			"blocked_event_last_clear_reason":      scheduler.BlockedEventLastClearReason,
+			"bucket_rebuild_success_total":         scheduler.BucketRebuildSuccessTotal,
+			"bucket_rebuild_failure_total":         scheduler.BucketRebuildFailureTotal,
+			"bucket_rebuild_lock_contention_total": scheduler.BucketRebuildLockContention,
+			"last_bucket_rebuild_at":               scheduler.LastBucketRebuildAt,
+			"last_bucket_rebuild_reason":           scheduler.LastBucketRebuildReason,
+			"last_bucket_rebuild_status":           scheduler.LastBucketRebuildStatus,
+			"last_bucket_rebuild_bucket":           scheduler.LastBucketRebuildBucket,
+			"blocked_event":                        scheduler.BlockedEvent,
+			"last_poison":                          scheduler.LastPoison,
+			"last_transient":                       scheduler.LastTransient,
+		})
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, &OpsInsertSystemLogInput{
+			CreatedAt: createdAt,
+			Level:     "warn",
+			Component: OpsRuntimeSchedulerOutboxSummaryComponent,
+			Message:   "scheduler outbox anomaly delta observed",
+			ExtraJSON: extra,
+		})
+	}
+
+	if workerDroppedDelta > 0 || workerSyncFallbackDelta > 0 || workerTimeoutDelta > 0 || workerPanicDelta > 0 {
+		extra, err := marshalOpsRuntimeExtra(map[string]any{
+			"kind":                "summary",
+			"dropped_delta":       workerDroppedDelta,
+			"sync_fallback_delta": workerSyncFallbackDelta,
+			"timeout_delta":       workerTimeoutDelta,
+			"panic_delta":         workerPanicDelta,
+			"queue_depth":         worker.QueueDepth,
+			"waiting_tasks":       worker.WaitingTasks,
+			"submitted_tasks":     worker.SubmittedTasks,
+			"completed_tasks":     worker.CompletedTasks,
+			"successful_tasks":    worker.SuccessfulTasks,
+			"failed_tasks":        worker.FailedTasks,
+			"dropped_tasks":       worker.DroppedTasks,
+			"dropped_queue_full":  worker.DroppedQueueFull,
+			"sync_fallback_tasks": worker.SyncFallbackTasks,
+			"task_timeouts":       worker.TaskTimeouts,
+			"task_panics":         worker.TaskPanics,
+		})
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, &OpsInsertSystemLogInput{
+			CreatedAt: createdAt,
+			Level:     "warn",
+			Component: OpsRuntimeUsageWorkerSummaryComponent,
+			Message:   "usage record worker anomaly delta observed",
+			ExtraJSON: extra,
+		})
+	}
+
+	if redisStallDelta > 0 || redisTimeoutDelta > 0 {
+		extra, err := marshalOpsRuntimeExtra(map[string]any{
+			"kind":          "summary",
+			"stall_delta":   redisStallDelta,
+			"timeout_delta": redisTimeoutDelta,
+			"stalls":        redisPool.Stalls,
+			"timeouts":      redisPool.Timeouts,
+		})
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, &OpsInsertSystemLogInput{
+			CreatedAt: createdAt,
+			Level:     "warn",
+			Component: OpsRuntimeRedisPoolSummaryComponent,
+			Message:   "redis pool anomaly delta observed",
+			ExtraJSON: extra,
+		})
+	}
+
+	if storageSampleDue {
+		previousState := c.lastStorageGovernanceState
+		c.lastStorageGovernanceState = storageState
+		if storageState != previousState {
+			extra, err := storage.extraJSON()
+			if err != nil {
+				return err
+			}
+			level := "info"
+			message := "ops storage governance risks recovered"
+			if storage.HasRisk {
+				level = "warn"
+				message = "ops storage governance risk summary observed"
+				if storage.CriticalTables > 0 {
+					level = "error"
+				}
+			}
+			inputs = append(inputs, &OpsInsertSystemLogInput{
+				CreatedAt: createdAt,
+				Level:     level,
+				Component: opsRuntimeStorageGovernanceSummaryComponent,
+				Message:   message,
+				ExtraJSON: extra,
+			})
+		}
+	}
+	if errorFamilySampleDue {
+		previousState := c.lastErrorFamilyState
+		c.lastErrorFamilyState = errorFamilyState
+		if errorFamilies.TotalErrors > 0 && errorFamilyState != previousState {
+			extra, err := errorFamilies.extraJSON()
+			if err != nil {
+				return err
+			}
+			inputs = append(inputs, &OpsInsertSystemLogInput{
+				CreatedAt: createdAt,
+				Level:     "warn",
+				Component: opsRuntimeErrorFamilySummaryComponent,
+				Message:   "ops error family summary observed",
+				ExtraJSON: extra,
+			})
+		}
+	}
+
+	cleanup := SnapshotCleanupStats()
+	if cleanup.MaxRowsEnabled {
+		extra, err := marshalOpsRuntimeExtra(map[string]any{
+			"kind":             "summary",
+			"system_rows":      cleanup.SystemLogRows,
+			"error_rows":       cleanup.ErrorLogRows,
+			"system_limit":     cleanup.SystemLogLimit,
+			"error_limit":      cleanup.ErrorLogLimit,
+			"max_rows_hit":     cleanup.MaxRowsHit,
+			"max_rows_dry_run": cleanup.MaxRowsDryRun,
+		})
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, &OpsInsertSystemLogInput{
+			CreatedAt: createdAt,
+			Level:     "warn",
+			Component: opsRuntimeCleanupSummaryComponent,
+			Message:   "ops cleanup max rows status",
+			ExtraJSON: extra,
+		})
+	}
+
+	usageCleanup := SnapshotUsageCleanupStats()
+	if usageCleanup.LastTaskID > 0 || usageCleanup.StartedTotal > 0 || usageCleanup.FailedTotal > 0 {
+		enforcementMode := "disabled"
+		if c.cfg != nil {
+			switch {
+			case c.cfg.DashboardAgg.Retention.UsageLogsMaxRows > 0:
+				enforcementMode = "retention_plus_row_cap_configured"
+			case c.cfg.DashboardAgg.Retention.UsageLogsDays > 0:
+				enforcementMode = "retention_only"
+			}
+		}
+		extra, err := marshalOpsRuntimeExtra(map[string]any{
+			"kind":                 "summary",
+			"last_task_id":         usageCleanup.LastTaskID,
+			"deleted_rows":         usageCleanup.LastDeletedRows,
+			"started_total":        usageCleanup.StartedTotal,
+			"succeeded_total":      usageCleanup.SucceededTotal,
+			"failed_total":         usageCleanup.FailedTotal,
+			"canceled_total":       usageCleanup.CanceledTotal,
+			"last_started_at":      usageCleanup.LastStartedAt,
+			"last_succeeded_at":    usageCleanup.LastSucceededAt,
+			"last_failed_at":       usageCleanup.LastFailedAt,
+			"last_canceled_at":     usageCleanup.LastCanceledAt,
+			"last_duration_ms":     usageCleanup.LastDurationMs,
+			"last_status":          usageCleanup.LastStatus,
+			"last_error":           usageCleanup.LastError,
+			"usage_logs_retention": c.cfg != nil && c.cfg.DashboardAgg.Retention.UsageLogsDays > 0,
+			"usage_logs_retention_days": func() int {
+				if c.cfg == nil {
+					return 0
+				}
+				return c.cfg.DashboardAgg.Retention.UsageLogsDays
+			}(),
+			"usage_logs_max_rows": func() int64 {
+				if c.cfg == nil {
+					return 0
+				}
+				return c.cfg.DashboardAgg.Retention.UsageLogsMaxRows
+			}(),
+			"enforcement_mode": enforcementMode,
+		})
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, &OpsInsertSystemLogInput{
+			CreatedAt: createdAt,
+			Level:     "warn",
+			Component: opsRuntimeCleanupUsageSummaryComponent,
+			Message:   "usage cleanup task snapshot",
+			ExtraJSON: extra,
+		})
+	}
+
+	if len(inputs) == 0 {
+		return nil
+	}
+	if ctx == nil || ctx.Err() != nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, opsMetricsCollectorTimeout)
+	defer cancel()
+	_, err := c.opsRepo.BatchInsertSystemLogs(ctx, inputs)
+	return err
+}
+
+func (c *OpsMetricsCollector) shouldSampleStorageGovernance(createdAt time.Time) bool {
+	if c == nil {
+		return false
+	}
+	c.runtimeDeltaMu.Lock()
+	defer c.runtimeDeltaMu.Unlock()
+	if c.lastStorageGovernanceSample.IsZero() {
+		return true
+	}
+	return createdAt.Sub(c.lastStorageGovernanceSample) >= opsStorageGovernanceSampleInterval
+}
+
+func (c *OpsMetricsCollector) shouldSampleErrorFamilies(createdAt time.Time) bool {
+	if c == nil {
+		return false
+	}
+	c.runtimeDeltaMu.Lock()
+	defer c.runtimeDeltaMu.Unlock()
+	if c.lastErrorFamilySample.IsZero() {
+		return true
+	}
+	return createdAt.Sub(c.lastErrorFamilySample) >= opsErrorFamilySampleInterval
+}
+
+type opsStorageGovernanceRuntimeSnapshot struct {
+	Kind                  string                              `json:"kind"`
+	SampledTables         int                                 `json:"sampled_tables"`
+	RiskTables            int                                 `json:"risk_tables"`
+	WarnTables            int                                 `json:"warn_tables"`
+	CriticalTables        int                                 `json:"critical_tables"`
+	HasRisk               bool                                `json:"has_risk"`
+	SampleIntervalMinutes int                                 `json:"sample_interval_minutes"`
+	Tables                []opsStorageGovernanceTableSnapshot `json:"tables"`
+}
+
+type opsStorageGovernanceTableSnapshot struct {
+	Table                   string   `json:"table"`
+	TotalBytes              int64    `json:"total_bytes"`
+	TotalMB                 float64  `json:"total_mb"`
+	TableBytes              int64    `json:"table_bytes"`
+	IndexBytes              int64    `json:"index_bytes"`
+	LiveRows                int64    `json:"live_rows"`
+	DeadRows                int64    `json:"dead_rows"`
+	ApproxBytesPerLiveRow   float64  `json:"approx_bytes_per_live_row"`
+	Partitioned             bool     `json:"partitioned"`
+	RetentionManagedBy      string   `json:"retention_managed_by"`
+	RetentionStrategy       string   `json:"retention_strategy"`
+	RetentionDays           int      `json:"retention_days"`
+	RetentionEnabled        bool     `json:"retention_enabled"`
+	MaxRowsConfigured       int64    `json:"max_rows_configured"`
+	MaxRowsEnabled          bool     `json:"max_rows_enabled"`
+	MaxRowsExceeded         bool     `json:"max_rows_exceeded"`
+	SizeRisk                string   `json:"size_risk"`
+	ColdIndexRisk           string   `json:"cold_index_risk"`
+	RetentionRisk           string   `json:"retention_risk"`
+	ColdIndexCandidateCount int      `json:"cold_index_candidate_count"`
+	ColdIndexCandidateBytes int64    `json:"cold_index_candidate_bytes"`
+	LargestColdIndexName    string   `json:"largest_cold_index_name,omitempty"`
+	LargestColdIndexBytes   int64    `json:"largest_cold_index_bytes,omitempty"`
+	Reasons                 []string `json:"reasons,omitempty"`
+}
+
+type opsStorageGovernanceIndexStat struct {
+	Table            string
+	Name             string
+	Bytes            int64
+	ScanCount        int64
+	Primary          bool
+	ConstraintBacked bool
+}
+
+type opsRuntimeErrorFamilySummary struct {
+	Kind          string                      `json:"kind"`
+	WindowMinutes int                         `json:"window_minutes"`
+	TotalErrors   int64                       `json:"total_errors"`
+	Families      []opsRuntimeErrorFamilyItem `json:"families"`
+}
+
+type opsRuntimeErrorFamilyItem struct {
+	Phase           string  `json:"phase,omitempty"`
+	Type            string  `json:"type,omitempty"`
+	Owner           string  `json:"owner,omitempty"`
+	StatusCode      int     `json:"status_code"`
+	InboundEndpoint string  `json:"inbound_endpoint,omitempty"`
+	Count           int64   `json:"count"`
+	SharePercent    float64 `json:"share_percent"`
+}
+
+func (s opsRuntimeErrorFamilySummary) stateFingerprint() string {
+	raw, err := marshalOpsRuntimeExtra(map[string]any{
+		"window_minutes": s.WindowMinutes,
+		"total_errors":   s.TotalErrors,
+		"families":       s.Families,
+	})
+	if err != nil {
+		return ""
+	}
+	return raw
+}
+
+func (s opsRuntimeErrorFamilySummary) extraJSON() (string, error) {
+	return marshalOpsRuntimeExtra(map[string]any{
+		"kind":           "summary",
+		"window_minutes": s.WindowMinutes,
+		"total_errors":   s.TotalErrors,
+		"families":       s.Families,
+	})
+}
+
+func (s opsStorageGovernanceRuntimeSnapshot) stateFingerprint() string {
+	type stateTable struct {
+		Table         string `json:"table"`
+		SizeRisk      string `json:"size_risk"`
+		ColdIndexRisk string `json:"cold_index_risk"`
+		RetentionRisk string `json:"retention_risk"`
+	}
+	state := make([]stateTable, 0, len(s.Tables))
+	for _, table := range s.Tables {
+		state = append(state, stateTable{
+			Table:         table.Table,
+			SizeRisk:      table.SizeRisk,
+			ColdIndexRisk: table.ColdIndexRisk,
+			RetentionRisk: table.RetentionRisk,
+		})
+	}
+	raw, err := marshalOpsRuntimeExtra(map[string]any{
+		"risk_tables":     s.RiskTables,
+		"warn_tables":     s.WarnTables,
+		"critical_tables": s.CriticalTables,
+		"tables":          state,
+	})
+	if err != nil {
+		return ""
+	}
+	return raw
+}
+
+func (s opsStorageGovernanceRuntimeSnapshot) extraJSON() (string, error) {
+	return marshalOpsRuntimeExtra(map[string]any{
+		"kind":                    "summary",
+		"sampled_tables":          s.SampledTables,
+		"risk_tables":             s.RiskTables,
+		"warn_tables":             s.WarnTables,
+		"critical_tables":         s.CriticalTables,
+		"sample_interval_minutes": s.SampleIntervalMinutes,
+		"tables":                  s.Tables,
+	})
+}
+
+func (c *OpsMetricsCollector) snapshotStorageGovernanceRuntimeStats(ctx context.Context) (opsStorageGovernanceRuntimeSnapshot, error) {
+	if c == nil {
+		return opsStorageGovernanceRuntimeSnapshot{}, nil
+	}
+	if c.storageGovernanceStatsFn != nil {
+		return c.storageGovernanceStatsFn(ctx)
+	}
+	if c.db == nil {
+		return opsStorageGovernanceRuntimeSnapshot{}, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	tableRows, err := c.queryStorageGovernanceTableStats(ctx)
+	if err != nil {
+		return opsStorageGovernanceRuntimeSnapshot{}, err
+	}
+	indexRows, err := c.queryStorageGovernanceIndexStats(ctx)
+	if err != nil {
+		return opsStorageGovernanceRuntimeSnapshot{}, err
+	}
+
+	indexByTable := make(map[string][]opsStorageGovernanceIndexStat, len(indexRows))
+	for _, item := range indexRows {
+		indexByTable[item.Table] = append(indexByTable[item.Table], item)
+	}
+
+	snapshot := opsStorageGovernanceRuntimeSnapshot{
+		Kind:                  "summary",
+		SampledTables:         len(tableRows),
+		SampleIntervalMinutes: int(opsStorageGovernanceSampleInterval / time.Minute),
+		Tables:                make([]opsStorageGovernanceTableSnapshot, 0, len(tableRows)),
+	}
+	for _, table := range tableRows {
+		item := buildStorageGovernanceTableSnapshot(c.cfg, table, indexByTable[table.Table])
+		snapshot.Tables = append(snapshot.Tables, item)
+		if hasStorageRiskLevel(item.SizeRisk) || hasStorageRiskLevel(item.ColdIndexRisk) || hasStorageRiskLevel(item.RetentionRisk) {
+			snapshot.HasRisk = true
+			snapshot.RiskTables++
+		}
+		if isCriticalStorageRisk(item.SizeRisk) || isCriticalStorageRisk(item.ColdIndexRisk) || isCriticalStorageRisk(item.RetentionRisk) {
+			snapshot.CriticalTables++
+			continue
+		}
+		if isWarnStorageRisk(item.SizeRisk) || isWarnStorageRisk(item.ColdIndexRisk) || isWarnStorageRisk(item.RetentionRisk) {
+			snapshot.WarnTables++
+		}
+	}
+	return snapshot, nil
+}
+
+func buildStorageGovernanceTableSnapshot(cfg *config.Config, table opsStorageGovernanceTableSnapshot, indexes []opsStorageGovernanceIndexStat) opsStorageGovernanceTableSnapshot {
+	out := table
+	for _, index := range indexes {
+		if index.ScanCount > 0 || index.Primary || index.ConstraintBacked {
+			continue
+		}
+		out.ColdIndexCandidateCount++
+		out.ColdIndexCandidateBytes += index.Bytes
+		if index.Bytes > out.LargestColdIndexBytes {
+			out.LargestColdIndexBytes = index.Bytes
+			out.LargestColdIndexName = index.Name
+		}
+	}
+	if out.LiveRows > 0 && out.TotalBytes > 0 {
+		out.ApproxBytesPerLiveRow = roundTo1DP(float64(out.TotalBytes) / float64(out.LiveRows))
+	}
+	out.TotalMB = roundTo1DP(float64(out.TotalBytes) / float64(bytesPerMB))
+
+	switch out.Table {
+	case "usage_logs":
+		out.RetentionManagedBy = "dashboard_aggregation.retention.usage_logs_days"
+		out.RetentionStrategy = "dashboard_aggregation_cleanup"
+		if cfg != nil {
+			out.RetentionDays = cfg.DashboardAgg.Retention.UsageLogsDays
+			out.RetentionEnabled = cfg.DashboardAgg.Enabled && cfg.DashboardAgg.Retention.UsageLogsDays > 0
+			out.MaxRowsConfigured = cfg.DashboardAgg.Retention.UsageLogsMaxRows
+			out.MaxRowsEnabled = cfg.DashboardAgg.Retention.UsageLogsMaxRows > 0
+		}
+	case "ops_system_logs", "ops_error_logs":
+		out.RetentionManagedBy = "ops.cleanup.error_log_retention_days"
+		out.RetentionStrategy = "ops_cleanup_batch_delete"
+		if cfg != nil {
+			out.RetentionDays = cfg.Ops.Cleanup.ErrorLogRetentionDays
+			out.RetentionEnabled = cfg.Ops.Cleanup.ErrorLogRetentionDays > 0
+			if out.Table == "ops_system_logs" {
+				out.MaxRowsConfigured = cfg.Ops.Cleanup.SystemLogMaxRows
+				out.MaxRowsEnabled = cfg.Ops.Cleanup.SystemLogMaxRows > 0
+			} else {
+				out.MaxRowsConfigured = cfg.Ops.Cleanup.ErrorLogMaxRows
+				out.MaxRowsEnabled = cfg.Ops.Cleanup.ErrorLogMaxRows > 0
+			}
+		}
+	default:
+		out.RetentionManagedBy = "unknown"
+	}
+	if out.MaxRowsEnabled && out.LiveRows > out.MaxRowsConfigured {
+		out.MaxRowsExceeded = true
+	}
+
+	out.SizeRisk = classifyStorageSizeRisk(out.Table, out.TotalBytes)
+	out.ColdIndexRisk = classifyColdIndexRisk(out.ColdIndexCandidateCount, out.ColdIndexCandidateBytes)
+	out.RetentionRisk, out.Reasons = classifyRetentionRisk(cfg, out)
+	if isWarnStorageRisk(out.SizeRisk) {
+		out.Reasons = append(out.Reasons, fmt.Sprintf("table_size_%s", out.SizeRisk))
+	}
+	if isWarnStorageRisk(out.ColdIndexRisk) {
+		out.Reasons = append(out.Reasons, fmt.Sprintf("cold_secondary_indexes_%s", out.ColdIndexRisk))
+	}
+	return out
+}
+
+func (c *OpsMetricsCollector) queryStorageGovernanceTableStats(ctx context.Context) ([]opsStorageGovernanceTableSnapshot, error) {
+	q := `
+SELECT
+  st.relname,
+  COALESCE(pg_total_relation_size(st.relid), 0) AS total_bytes,
+  COALESCE(pg_relation_size(st.relid), 0) AS table_bytes,
+  COALESCE(pg_indexes_size(st.relid), 0) AS index_bytes,
+  COALESCE(st.n_live_tup, 0) AS live_rows,
+  COALESCE(st.n_dead_tup, 0) AS dead_rows,
+  EXISTS (SELECT 1 FROM pg_inherits i WHERE i.inhparent = st.relid) AS partitioned
+FROM pg_stat_user_tables st
+WHERE st.relname IN ('usage_logs', 'ops_system_logs', 'ops_error_logs')
+ORDER BY CASE st.relname
+  WHEN 'usage_logs' THEN 1
+  WHEN 'ops_system_logs' THEN 2
+  WHEN 'ops_error_logs' THEN 3
+  ELSE 99
+END`
+
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]opsStorageGovernanceTableSnapshot, 0, 3)
+	for rows.Next() {
+		var item opsStorageGovernanceTableSnapshot
+		if err := rows.Scan(
+			&item.Table,
+			&item.TotalBytes,
+			&item.TableBytes,
+			&item.IndexBytes,
+			&item.LiveRows,
+			&item.DeadRows,
+			&item.Partitioned,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *OpsMetricsCollector) queryStorageGovernanceIndexStats(ctx context.Context) ([]opsStorageGovernanceIndexStat, error) {
+	q := `
+SELECT
+  si.relname,
+  si.indexrelname,
+  COALESCE(pg_relation_size(si.indexrelid), 0) AS index_bytes,
+  COALESCE(si.idx_scan, 0) AS idx_scan,
+  COALESCE(pi.indisprimary, false) AS is_primary,
+  (con.oid IS NOT NULL) AS constraint_backed
+FROM pg_stat_user_indexes si
+JOIN pg_index pi ON pi.indexrelid = si.indexrelid
+LEFT JOIN pg_constraint con ON con.conindid = si.indexrelid
+WHERE si.relname IN ('usage_logs', 'ops_system_logs', 'ops_error_logs')
+ORDER BY CASE si.relname
+  WHEN 'usage_logs' THEN 1
+  WHEN 'ops_system_logs' THEN 2
+  WHEN 'ops_error_logs' THEN 3
+  ELSE 99
+END, index_bytes DESC, si.indexrelname ASC`
+
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]opsStorageGovernanceIndexStat, 0, 16)
+	for rows.Next() {
+		var item opsStorageGovernanceIndexStat
+		if err := rows.Scan(
+			&item.Table,
+			&item.Name,
+			&item.Bytes,
+			&item.ScanCount,
+			&item.Primary,
+			&item.ConstraintBacked,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func classifyStorageSizeRisk(table string, totalBytes int64) string {
+	switch table {
+	case "usage_logs":
+		return classifyThresholdRisk(totalBytes, opsStorageUsageLogsWarnBytes, opsStorageUsageLogsCriticalBytes)
+	case "ops_system_logs":
+		return classifyThresholdRisk(totalBytes, opsStorageSystemLogsWarnBytes, opsStorageSystemLogsCriticalBytes)
+	case "ops_error_logs":
+		return classifyThresholdRisk(totalBytes, opsStorageErrorLogsWarnBytes, opsStorageErrorLogsCriticalBytes)
+	default:
+		return "none"
+	}
+}
+
+func classifyColdIndexRisk(count int, totalBytes int64) string {
+	if count <= 0 || totalBytes <= 0 {
+		return "none"
+	}
+	if totalBytes >= opsStorageColdIndexCriticalBytes || count >= 10 {
+		return "critical"
+	}
+	if totalBytes >= opsStorageColdIndexWarnBytes || count >= 4 {
+		return "warn"
+	}
+	return "none"
+}
+
+func classifyRetentionRisk(cfg *config.Config, table opsStorageGovernanceTableSnapshot) (string, []string) {
+	reasons := make([]string, 0, 3)
+	switch table.Table {
+	case "usage_logs":
+		if cfg == nil || !cfg.DashboardAgg.Enabled {
+			reasons = append(reasons, "dashboard_aggregation_disabled")
+			return "critical", reasons
+		}
+		if cfg.DashboardAgg.Retention.UsageLogsDays <= 0 {
+			reasons = append(reasons, "usage_logs_retention_disabled")
+			return "critical", reasons
+		}
+		if !table.Partitioned && table.TotalBytes >= opsStorageUsageLogsWarnBytes {
+			reasons = append(reasons, "non_partitioned_delete_retention")
+			return "warn", reasons
+		}
+		if table.MaxRowsEnabled && table.MaxRowsExceeded {
+			reasons = append(reasons, "usage_logs_max_rows_exceeded")
+			return "warn", reasons
+		}
+	case "ops_system_logs", "ops_error_logs":
+		if cfg == nil || cfg.Ops.Cleanup.ErrorLogRetentionDays <= 0 {
+			reasons = append(reasons, "ops_cleanup_retention_disabled")
+			return "critical", reasons
+		}
+		if !table.Partitioned && table.TotalBytes >= retentionDeleteWarnBytes(table.Table) {
+			reasons = append(reasons, "batch_delete_retention_on_large_table")
+			return "warn", reasons
+		}
+		if table.MaxRowsEnabled && table.MaxRowsExceeded {
+			reasons = append(reasons, table.Table+"_max_rows_exceeded")
+			return "warn", reasons
+		}
+	}
+	return "none", reasons
+}
+
+func retentionDeleteWarnBytes(table string) int64 {
+	switch table {
+	case "ops_system_logs":
+		return opsStorageSystemLogsWarnBytes
+	case "ops_error_logs":
+		return opsStorageErrorLogsWarnBytes
+	default:
+		return opsStorageUsageLogsWarnBytes
+	}
+}
+
+func classifyThresholdRisk(value int64, warn int64, critical int64) string {
+	if critical > 0 && value >= critical {
+		return "critical"
+	}
+	if warn > 0 && value >= warn {
+		return "warn"
+	}
+	return "none"
+}
+
+func hasSchedulerOutboxAnomaly(metrics SchedulerOutboxRuntimeMetrics) bool {
+	return metrics.PoisonTotal > 0 ||
+		metrics.TransientTotal > 0 ||
+		metrics.CheckpointFallbackTotal > 0 ||
+		metrics.CheckpointReadFailureTotal > 0 ||
+		metrics.CheckpointWriteFailureTotal > 0 ||
+		metrics.LastRedisWatermark != 0 ||
+		metrics.LastCheckpointWatermark != 0 ||
+		metrics.WatermarkDrift != 0 ||
+		metrics.BacklogRows > 0 ||
+		metrics.LagSeconds > 0 ||
+		metrics.LagFailureStreak > 0 ||
+		metrics.LagRebuildTotal > 0 ||
+		metrics.BacklogRebuildTotal > 0 ||
+		metrics.BlockedEventClearTotal > 0 ||
+		metrics.BucketRebuildSuccessTotal > 0 ||
+		metrics.BucketRebuildFailureTotal > 0 ||
+		metrics.BucketRebuildLockContention > 0 ||
+		metrics.CheckpointLastFallbackAt != "" ||
+		metrics.CheckpointLastReadFailureAt != "" ||
+		metrics.CheckpointLastWriteFailureAt != "" ||
+		metrics.LastLagRebuildAt != "" ||
+		metrics.LastBacklogRebuildAt != "" ||
+		metrics.BlockedEventLastClearedAt != "" ||
+		metrics.LastBucketRebuildAt != "" ||
+		metrics.BlockedEvent != nil
+}
+
+func schedulerOutboxRuntimeStateFingerprint(metrics SchedulerOutboxRuntimeMetrics) string {
+	raw, err := marshalOpsRuntimeExtra(map[string]any{
+		"poison_total":                         metrics.PoisonTotal,
+		"transient_total":                      metrics.TransientTotal,
+		"checkpoint_fallback_total":            metrics.CheckpointFallbackTotal,
+		"checkpoint_fallback_streak":           metrics.CheckpointFallbackStreak,
+		"checkpoint_read_failure_total":        metrics.CheckpointReadFailureTotal,
+		"checkpoint_write_failure_total":       metrics.CheckpointWriteFailureTotal,
+		"checkpoint_last_fallback_at":          metrics.CheckpointLastFallbackAt,
+		"checkpoint_last_fallback_reason":      metrics.CheckpointLastFallbackReason,
+		"checkpoint_last_read_failure_at":      metrics.CheckpointLastReadFailureAt,
+		"checkpoint_last_write_failure_at":     metrics.CheckpointLastWriteFailureAt,
+		"last_redis_watermark":                 metrics.LastRedisWatermark,
+		"last_checkpoint_watermark":            metrics.LastCheckpointWatermark,
+		"watermark_drift":                      metrics.WatermarkDrift,
+		"backlog_rows":                         metrics.BacklogRows,
+		"lag_seconds":                          metrics.LagSeconds,
+		"lag_failure_streak":                   metrics.LagFailureStreak,
+		"lag_rebuild_total":                    metrics.LagRebuildTotal,
+		"backlog_rebuild_total":                metrics.BacklogRebuildTotal,
+		"last_lag_rebuild_at":                  metrics.LastLagRebuildAt,
+		"last_backlog_rebuild_at":              metrics.LastBacklogRebuildAt,
+		"blocked_event_clear_total":            metrics.BlockedEventClearTotal,
+		"blocked_event_last_cleared_id":        metrics.BlockedEventLastClearedID,
+		"blocked_event_last_cleared_at":        metrics.BlockedEventLastClearedAt,
+		"blocked_event_last_clear_reason":      metrics.BlockedEventLastClearReason,
+		"bucket_rebuild_success_total":         metrics.BucketRebuildSuccessTotal,
+		"bucket_rebuild_failure_total":         metrics.BucketRebuildFailureTotal,
+		"bucket_rebuild_lock_contention_total": metrics.BucketRebuildLockContention,
+		"last_bucket_rebuild_at":               metrics.LastBucketRebuildAt,
+		"last_bucket_rebuild_reason":           metrics.LastBucketRebuildReason,
+		"last_bucket_rebuild_status":           metrics.LastBucketRebuildStatus,
+		"last_bucket_rebuild_bucket":           metrics.LastBucketRebuildBucket,
+		"blocked_event":                        metrics.BlockedEvent,
+		"last_poison":                          metrics.LastPoison,
+		"last_transient":                       metrics.LastTransient,
+	})
+	if err != nil {
+		return ""
+	}
+	return raw
+}
+
+func recordLatestStorageGovernanceRuntimeSnapshot(sampledAt time.Time, snapshot opsStorageGovernanceRuntimeSnapshot) {
+	latestStorageGovernanceRuntimeMu.Lock()
+	defer latestStorageGovernanceRuntimeMu.Unlock()
+	copiedTables := make([]opsStorageGovernanceTableSnapshot, len(snapshot.Tables))
+	copy(copiedTables, snapshot.Tables)
+	cloned := snapshot
+	cloned.Tables = copiedTables
+	latestStorageGovernanceRuntimeSnapshot = &cloned
+	latestStorageGovernanceRuntimeAt = sampledAt.UTC()
+}
+
+func snapshotLatestStorageGovernanceRuntime() (*opsStorageGovernanceRuntimeSnapshot, *time.Time) {
+	latestStorageGovernanceRuntimeMu.RLock()
+	defer latestStorageGovernanceRuntimeMu.RUnlock()
+	if latestStorageGovernanceRuntimeSnapshot == nil {
+		return nil, nil
+	}
+	copiedTables := make([]opsStorageGovernanceTableSnapshot, len(latestStorageGovernanceRuntimeSnapshot.Tables))
+	copy(copiedTables, latestStorageGovernanceRuntimeSnapshot.Tables)
+	cloned := *latestStorageGovernanceRuntimeSnapshot
+	cloned.Tables = copiedTables
+	if latestStorageGovernanceRuntimeAt.IsZero() {
+		return &cloned, nil
+	}
+	sampledAt := latestStorageGovernanceRuntimeAt
+	return &cloned, &sampledAt
+}
+
+func recordLatestErrorFamilySummary(sampledAt time.Time, summary opsRuntimeErrorFamilySummary) {
+	latestErrorFamilySummaryMu.Lock()
+	defer latestErrorFamilySummaryMu.Unlock()
+	cloned := summary
+	if len(summary.Families) > 0 {
+		cloned.Families = make([]opsRuntimeErrorFamilyItem, len(summary.Families))
+		copy(cloned.Families, summary.Families)
+	}
+	latestErrorFamilySummary = &cloned
+	latestErrorFamilyAt = sampledAt.UTC()
+}
+
+func snapshotLatestErrorFamilySummary() (*opsRuntimeErrorFamilySummary, *time.Time) {
+	latestErrorFamilySummaryMu.RLock()
+	defer latestErrorFamilySummaryMu.RUnlock()
+	if latestErrorFamilySummary == nil {
+		return nil, nil
+	}
+	cloned := *latestErrorFamilySummary
+	if len(latestErrorFamilySummary.Families) > 0 {
+		cloned.Families = make([]opsRuntimeErrorFamilyItem, len(latestErrorFamilySummary.Families))
+		copy(cloned.Families, latestErrorFamilySummary.Families)
+	}
+	if latestErrorFamilyAt.IsZero() {
+		return &cloned, nil
+	}
+	sampledAt := latestErrorFamilyAt
+	return &cloned, &sampledAt
+}
+
+func resetLatestStorageGovernanceRuntimeForTest() {
+	latestStorageGovernanceRuntimeMu.Lock()
+	defer latestStorageGovernanceRuntimeMu.Unlock()
+	latestStorageGovernanceRuntimeSnapshot = nil
+	latestStorageGovernanceRuntimeAt = time.Time{}
+}
+
+func resetLatestErrorFamilySummaryForTest() {
+	latestErrorFamilySummaryMu.Lock()
+	defer latestErrorFamilySummaryMu.Unlock()
+	latestErrorFamilySummary = nil
+	latestErrorFamilyAt = time.Time{}
+}
+
+func hasStorageRiskLevel(level string) bool {
+	return isWarnStorageRisk(level) || isCriticalStorageRisk(level)
+}
+
+func isWarnStorageRisk(level string) bool {
+	return strings.EqualFold(strings.TrimSpace(level), "warn")
+}
+
+func isCriticalStorageRisk(level string) bool {
+	return strings.EqualFold(strings.TrimSpace(level), "critical")
+}
+
+func (c *OpsMetricsCollector) snapshotRedisPoolRuntimeStats() opsRedisPoolRuntimeStats {
+	if c == nil {
+		return opsRedisPoolRuntimeStats{}
+	}
+	if c.redisPoolStatsFn != nil {
+		return c.redisPoolStatsFn()
+	}
+	if c.redisClient == nil {
+		return opsRedisPoolRuntimeStats{}
+	}
+	stats := c.redisClient.PoolStats()
+	if stats == nil {
+		return opsRedisPoolRuntimeStats{}
+	}
+	return opsRedisPoolRuntimeStats{
+		Stalls:   int64(stats.WaitCount),
+		Timeouts: int64(stats.Timeouts),
+	}
+}
+
+type opsRedisPoolRuntimeStats struct {
+	Stalls   int64
+	Timeouts int64
+}
+
+func marshalOpsRuntimeExtra(extra map[string]any) (string, error) {
+	if len(extra) == 0 {
+		return "{}", nil
+	}
+	data, err := json.Marshal(extra)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func clampNonNegativeDelta(current, prev int64) int64 {
+	if current <= prev {
+		return 0
+	}
+	return current - prev
+}
+
+func clampNonNegativeDeltaUint(current, prev uint64) uint64 {
+	if current <= prev {
+		return 0
+	}
+	return current - prev
 }
 
 func (c *OpsMetricsCollector) collectConcurrencyQueueDepth(parentCtx context.Context) *int {
@@ -433,6 +1520,9 @@ type opsCollectedPercentiles struct {
 }
 
 func (c *OpsMetricsCollector) queryUsageCounts(ctx context.Context, start, end time.Time) (successCount int64, tokenConsumed int64, err error) {
+	if c == nil || c.db == nil {
+		return 0, 0, nil
+	}
 	q := `
 SELECT
   COALESCE(COUNT(*), 0) AS success_count,
@@ -451,6 +1541,9 @@ WHERE created_at >= $1 AND created_at < $2`
 }
 
 func (c *OpsMetricsCollector) queryUsageLatency(ctx context.Context, start, end time.Time) (duration opsCollectedPercentiles, ttft opsCollectedPercentiles, err error) {
+	if c == nil || c.db == nil {
+		return opsCollectedPercentiles{}, opsCollectedPercentiles{}, nil
+	}
 	{
 		q := `
 SELECT
@@ -529,6 +1622,9 @@ func (c *OpsMetricsCollector) queryErrorCounts(ctx context.Context, start, end t
 	upstream529 int64,
 	err error,
 ) {
+	if c == nil || c.db == nil {
+		return 0, 0, 0, 0, 0, 0, nil
+	}
 	q := `
 SELECT
   COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400), 0) AS error_total,
@@ -553,7 +1649,87 @@ WHERE created_at >= $1 AND created_at < $2`
 	return errorTotal, businessLimited, errorSLA, upstreamExcl429529, upstream429, upstream529, nil
 }
 
+func (c *OpsMetricsCollector) queryRecentErrorFamilySummary(ctx context.Context, start, end time.Time) (opsRuntimeErrorFamilySummary, error) {
+	if c == nil {
+		return opsRuntimeErrorFamilySummary{}, nil
+	}
+	if c.errorFamilyStatsFn != nil {
+		return c.errorFamilyStatsFn(ctx, start, end)
+	}
+	if c.db == nil {
+		return opsRuntimeErrorFamilySummary{}, nil
+	}
+
+	const q = `
+WITH grouped AS (
+  SELECT
+    COALESCE(NULLIF(TRIM(error_phase), ''), 'unknown') AS phase,
+    COALESCE(NULLIF(TRIM(error_type), ''), 'unknown') AS type,
+    COALESCE(NULLIF(TRIM(error_owner), ''), 'unknown') AS owner,
+    COALESCE(upstream_status_code, status_code, 0) AS status_code,
+    COALESCE(NULLIF(TRIM(inbound_endpoint), ''), NULLIF(TRIM(request_path), ''), 'unknown') AS inbound_endpoint,
+    COUNT(*) AS count
+  FROM ops_error_logs
+  WHERE created_at >= $1 AND created_at < $2
+    AND COALESCE(status_code, 0) >= 400
+  GROUP BY 1, 2, 3, 4, 5
+),
+totals AS (
+  SELECT COALESCE(SUM(count), 0) AS total_errors FROM grouped
+)
+SELECT
+  g.phase,
+  g.type,
+  g.owner,
+  g.status_code,
+  g.inbound_endpoint,
+  g.count,
+  t.total_errors
+FROM grouped g
+CROSS JOIN totals t
+ORDER BY g.count DESC, g.phase ASC, g.type ASC, g.owner ASC, g.status_code ASC
+LIMIT 5`
+
+	rows, err := c.db.QueryContext(ctx, q, start, end)
+	if err != nil {
+		return opsRuntimeErrorFamilySummary{}, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := opsRuntimeErrorFamilySummary{
+		Kind:          "summary",
+		WindowMinutes: int(end.Sub(start) / time.Minute),
+	}
+	for rows.Next() {
+		var item opsRuntimeErrorFamilyItem
+		var totalErrors int64
+		if err := rows.Scan(
+			&item.Phase,
+			&item.Type,
+			&item.Owner,
+			&item.StatusCode,
+			&item.InboundEndpoint,
+			&item.Count,
+			&totalErrors,
+		); err != nil {
+			return opsRuntimeErrorFamilySummary{}, err
+		}
+		out.TotalErrors = totalErrors
+		if totalErrors > 0 {
+			item.SharePercent = roundTo1DP(float64(item.Count) / float64(totalErrors) * 100)
+		}
+		out.Families = append(out.Families, item)
+	}
+	if err := rows.Err(); err != nil {
+		return opsRuntimeErrorFamilySummary{}, err
+	}
+	return out, nil
+}
+
 func (c *OpsMetricsCollector) queryAccountSwitchCount(ctx context.Context, start, end time.Time) (int64, error) {
+	if c == nil || c.db == nil {
+		return 0, nil
+	}
 	q := `
 SELECT
   COALESCE(SUM(CASE
@@ -842,12 +2018,22 @@ func (c *OpsMetricsCollector) redisPoolStats() (total int, idle int, ok bool) {
 	return int(stats.TotalConns), int(stats.IdleConns), true
 }
 
-func (c *OpsMetricsCollector) dbPoolStats() (active int, idle int) {
-	if c == nil || c.db == nil {
-		return 0, 0
+func (c *OpsMetricsCollector) dbPoolStats() (active int, idle int, waitCount uint64, waitDuration time.Duration) {
+	if c == nil {
+		return 0, 0, 0, 0
+	}
+	if c.dbPoolStatsFn != nil {
+		return c.dbPoolStatsFn()
+	}
+	if c.db == nil {
+		return 0, 0, 0, 0
 	}
 	stats := c.db.Stats()
-	return stats.InUse, stats.Idle
+	waitCount = 0
+	if stats.WaitCount > 0 {
+		waitCount = uint64(stats.WaitCount)
+	}
+	return stats.InUse, stats.Idle, waitCount, stats.WaitDuration
 }
 
 var opsMetricsCollectorReleaseScript = redis.NewScript(`

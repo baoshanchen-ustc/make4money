@@ -7,21 +7,27 @@ import (
 	"time"
 )
 
+type deferredLastUsedRepository interface {
+	BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error
+}
+
 // DeferredService provides deferred batch update functionality
 type DeferredService struct {
-	accountRepo AccountRepository
-	timingWheel *TimingWheelService
-	interval    time.Duration
+	accountRepo    deferredLastUsedRepository
+	schedulerCache SchedulerCache
+	timingWheel    *TimingWheelService
+	interval       time.Duration
 
 	lastUsedUpdates sync.Map
 }
 
 // NewDeferredService creates a new DeferredService instance
-func NewDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService, interval time.Duration) *DeferredService {
+func NewDeferredService(accountRepo deferredLastUsedRepository, schedulerCache SchedulerCache, timingWheel *TimingWheelService, interval time.Duration) *DeferredService {
 	return &DeferredService{
-		accountRepo: accountRepo,
-		timingWheel: timingWheel,
-		interval:    interval,
+		accountRepo:    accountRepo,
+		schedulerCache: schedulerCache,
+		timingWheel:    timingWheel,
+		interval:       interval,
 	}
 }
 
@@ -70,7 +76,18 @@ func (s *DeferredService) flushLastUsed() {
 		for id, ts := range updates {
 			s.lastUsedUpdates.Store(id, ts)
 		}
-	} else {
-		log.Printf("[DeferredService] BatchUpdateLastUsed flushed %d accounts", len(updates))
+		return
 	}
+
+	if s.schedulerCache != nil {
+		if err := s.schedulerCache.UpdateLastUsed(ctx, updates); err != nil {
+			log.Printf("[DeferredService] scheduler cache UpdateLastUsed failed (%d accounts): %v", len(updates), err)
+			for id, ts := range updates {
+				s.lastUsedUpdates.Store(id, ts)
+			}
+			return
+		}
+	}
+
+	log.Printf("[DeferredService] BatchUpdateLastUsed flushed %d accounts", len(updates))
 }
