@@ -51,14 +51,14 @@ func TestExtractCopilotPlan_NilExtra(t *testing.T) {
 }
 
 func TestExtractCopilotPlan_EmptyExtra(t *testing.T) {
-	acc := &Account{Extra: map[string]interface{}{}}
+	acc := &Account{Extra: map[string]any{}}
 	planType, seatCount := extractCopilotPlan(acc)
 	require.Equal(t, "individual_pro", planType)
 	require.Equal(t, 1, seatCount)
 }
 
 func TestExtractCopilotPlan_ValidPlanAndSeats(t *testing.T) {
-	acc := &Account{Extra: map[string]interface{}{
+	acc := &Account{Extra: map[string]any{
 		"copilot_plan_type":  "enterprise",
 		"copilot_seat_count": float64(50),
 	}}
@@ -68,7 +68,7 @@ func TestExtractCopilotPlan_ValidPlanAndSeats(t *testing.T) {
 }
 
 func TestExtractCopilotPlan_IntSeatCount(t *testing.T) {
-	acc := &Account{Extra: map[string]interface{}{
+	acc := &Account{Extra: map[string]any{
 		"copilot_plan_type":  "business",
 		"copilot_seat_count": int(10),
 	}}
@@ -78,7 +78,7 @@ func TestExtractCopilotPlan_IntSeatCount(t *testing.T) {
 }
 
 func TestExtractCopilotPlan_Int64SeatCount(t *testing.T) {
-	acc := &Account{Extra: map[string]interface{}{
+	acc := &Account{Extra: map[string]any{
 		"copilot_plan_type":  "individual_pro_plus",
 		"copilot_seat_count": int64(3),
 	}}
@@ -88,7 +88,7 @@ func TestExtractCopilotPlan_Int64SeatCount(t *testing.T) {
 }
 
 func TestExtractCopilotPlan_ZeroSeatFallsBackToOne(t *testing.T) {
-	acc := &Account{Extra: map[string]interface{}{
+	acc := &Account{Extra: map[string]any{
 		"copilot_plan_type":  "business",
 		"copilot_seat_count": float64(0),
 	}}
@@ -97,7 +97,7 @@ func TestExtractCopilotPlan_ZeroSeatFallsBackToOne(t *testing.T) {
 }
 
 func TestExtractCopilotPlan_EmptyPlanStringFallsToDefault(t *testing.T) {
-	acc := &Account{Extra: map[string]interface{}{
+	acc := &Account{Extra: map[string]any{
 		"copilot_plan_type": "",
 	}}
 	planType, _ := extractCopilotPlan(acc)

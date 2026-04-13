@@ -56,7 +56,7 @@ func TestGatewayServiceIsModelSupportedByAccount_CopilotWhitelistFilters(t *test
 	account := &Account{
 		Platform: PlatformCopilot,
 		Credentials: map[string]any{
-			"model_whitelist": []interface{}{"claude-sonnet-4.6", "gpt-4o"},
+			"model_whitelist": []any{"claude-sonnet-4.6", "gpt-4o"},
 		},
 	}
 	allowed := []string{"claude-sonnet-4.6", "gpt-4o"}
