@@ -219,10 +219,46 @@ func TestGeminiHandleNativeNonStreamingResponse_DebugDisabledDoesNotEmitHeaderLo
 		Body: io.NopCloser(strings.NewReader(`{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2}}`)),
 	}
 
-	usage, err := svc.handleNativeNonStreamingResponse(c, resp, false)
+	result, err := svc.handleNativeNonStreamingResponse(c, resp, false)
 	require.NoError(t, err)
-	require.NotNil(t, usage)
+	require.NotNil(t, result)
+	require.NotNil(t, result.usage)
 	require.False(t, logSink.ContainsMessage("[GeminiAPI]"), "debug 关闭时不应输出 Gemini 响应头日志")
+}
+
+func TestCountGeminiGeneratedImages(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  int
+	}{
+		{
+			name:  "text only response",
+			input: `{"candidates":[{"content":{"parts":[{"text":"hi"}]}}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2}}`,
+			want:  0,
+		},
+		{
+			name:  "single generated image",
+			input: `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"QUJD"}}]}}]}`,
+			want:  1,
+		},
+		{
+			name:  "mixed text and image parts",
+			input: `{"candidates":[{"content":{"parts":[{"text":"done"},{"inlineData":{"mimeType":"image/jpeg","data":"REVG"}}]}}]}`,
+			want:  1,
+		},
+		{
+			name:  "multiple generated images",
+			input: `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"QUJD"}},{"inlineData":{"mimeType":"image/png","data":"RUZH"}}]}}]}`,
+			want:  2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, countGeminiGeneratedImages([]byte(tt.input)))
+		})
+	}
 }
 
 func TestGeminiMessagesCompatServiceForward_PreservesRequestedModelAndMappedUpstreamModel(t *testing.T) {

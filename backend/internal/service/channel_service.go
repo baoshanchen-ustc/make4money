@@ -196,6 +196,33 @@ func newEmptyChannelCache() *channelCache {
 	}
 }
 
+func supportedChannelPlatformsForGroup(groupPlatform string) []string {
+	switch strings.ToLower(strings.TrimSpace(groupPlatform)) {
+	case PlatformGemini:
+		return []string{PlatformGemini, PlatformVertex}
+	default:
+		return []string{groupPlatform}
+	}
+}
+
+func isSupportedChannelPlatform(groupPlatform, channelPlatform string) bool {
+	channelPlatform = strings.ToLower(strings.TrimSpace(channelPlatform))
+	for _, platform := range supportedChannelPlatformsForGroup(groupPlatform) {
+		if channelPlatform == platform {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveChannelLookupPlatform(groupPlatform, requestedPlatform string) string {
+	requestedPlatform = strings.ToLower(strings.TrimSpace(requestedPlatform))
+	if requestedPlatform != "" && isSupportedChannelPlatform(groupPlatform, requestedPlatform) {
+		return requestedPlatform
+	}
+	return groupPlatform
+}
+
 // expandPricingToCache 将渠道的模型定价展开到缓存（按分组+平台维度）。
 // 各平台严格独立：antigravity 分组只匹配 antigravity 定价，不会匹配 anthropic/gemini 的定价。
 // 查找时通过 lookupPricingAcrossPlatforms() 在本平台内查找。
@@ -226,7 +253,7 @@ func expandPricingToCache(cache *channelCache, ch *Channel, gid int64, platform 
 // expandMappingToCache 将渠道的模型映射展开到缓存（按分组+平台维度）。
 // 各平台严格独立：antigravity 分组只匹配 antigravity 映射。
 func expandMappingToCache(cache *channelCache, ch *Channel, gid int64, platform string) {
-	for _, mappingPlatform := range matchingPlatforms(platform) {
+	for _, mappingPlatform := range supportedChannelPlatformsForGroup(platform) {
 		platformMapping, ok := ch.ModelMapping[mappingPlatform]
 		if !ok {
 			continue
@@ -323,7 +350,7 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 // isPlatformPricingMatch 判断定价条目的平台是否匹配分组平台。
 // 各平台（antigravity / anthropic / gemini / openai）严格独立，不跨平台匹配。
 func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
-	return groupPlatform == pricingPlatform
+	return isSupportedChannelPlatform(groupPlatform, pricingPlatform)
 }
 
 // matchingPlatforms 返回分组平台对应的可匹配平台列表。
@@ -452,8 +479,9 @@ func (s *ChannelService) GetChannelModelPricing(ctx context.Context, groupID int
 		return nil
 	}
 
+	lookupPlatform := resolveChannelLookupPlatform(lk.platform, ChannelPlatformOverrideFromContext(ctx))
 	modelLower := strings.ToLower(model)
-	pricing := lookupPricingAcrossPlatforms(lk.cache, groupID, lk.platform, modelLower)
+	pricing := lookupPricingAcrossPlatforms(lk.cache, groupID, lookupPlatform, modelLower)
 	if pricing == nil {
 		return nil
 	}
@@ -472,7 +500,7 @@ func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int6
 	if lk == nil {
 		return ChannelMappingResult{MappedModel: model}
 	}
-	return resolveMapping(lk, groupID, model)
+	return resolveMapping(lk, groupID, resolveChannelLookupPlatform(lk.platform, ChannelPlatformOverrideFromContext(ctx)), model)
 }
 
 // IsModelRestricted 检查模型是否被渠道限制。
@@ -486,7 +514,7 @@ func (s *ChannelService) IsModelRestricted(ctx context.Context, groupID int64, m
 	if lk == nil {
 		return false
 	}
-	return checkRestricted(lk, groupID, model)
+	return checkRestricted(lk, groupID, resolveChannelLookupPlatform(lk.platform, ChannelPlatformOverrideFromContext(ctx)), model)
 }
 
 // ResolveChannelMappingAndRestrict 解析渠道映射。
@@ -500,12 +528,12 @@ func (s *ChannelService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 	if lk == nil {
 		return ChannelMappingResult{MappedModel: model}, false
 	}
-	return resolveMapping(lk, *groupID, model), false
+	return resolveMapping(lk, *groupID, resolveChannelLookupPlatform(lk.platform, ChannelPlatformOverrideFromContext(ctx)), model), false
 }
 
 // resolveMapping 基于已查找的渠道信息解析模型映射。
 // antigravity 分组依次尝试所有匹配平台，确保跨平台同名映射各自独立。
-func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappingResult {
+func resolveMapping(lk *channelLookup, groupID int64, lookupPlatform string, model string) ChannelMappingResult {
 	result := ChannelMappingResult{
 		MappedModel:        model,
 		ChannelID:          lk.channel.ID,
@@ -516,7 +544,7 @@ func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappi
 	}
 
 	modelLower := strings.ToLower(model)
-	if mapped := lookupMappingAcrossPlatforms(lk.cache, groupID, lk.platform, modelLower); mapped != "" {
+	if mapped := lookupMappingAcrossPlatforms(lk.cache, groupID, lookupPlatform, modelLower); mapped != "" {
 		result.MappedModel = mapped
 		result.Mapped = true
 	}
@@ -526,13 +554,13 @@ func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappi
 
 // checkRestricted 基于已查找的渠道信息检查模型是否被限制。
 // 只在本平台的定价列表中查找。
-func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
+func checkRestricted(lk *channelLookup, groupID int64, lookupPlatform string, model string) bool {
 	if !lk.channel.RestrictModels {
 		return false
 	}
 	modelLower := strings.ToLower(model)
 	// 使用与查找定价相同的跨平台逻辑
-	if lookupPricingAcrossPlatforms(lk.cache, groupID, lk.platform, modelLower) != nil {
+	if lookupPricingAcrossPlatforms(lk.cache, groupID, lookupPlatform, modelLower) != nil {
 		return false
 	}
 	return true

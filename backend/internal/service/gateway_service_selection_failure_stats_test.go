@@ -139,3 +139,70 @@ func TestDiagnoseSelectionFailure_ModelRateLimitedDetail(t *testing.T) {
 		t.Fatalf("detail=%s want contains remaining=", diagnosis.Detail)
 	}
 }
+
+func TestBuildNoAvailableAccountsError_IncludesSelectionStats(t *testing.T) {
+	svc := &GatewayService{}
+	model := "gemini-3-flash-preview"
+	accounts := []Account{
+		{
+			ID:          11,
+			Platform:    PlatformGemini,
+			Status:      StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gemini-2.5-pro": "gemini-2.5-pro",
+				},
+			},
+		},
+	}
+
+	err := svc.buildNoAvailableAccountsError(
+		context.Background(),
+		nil,
+		"gemini-session",
+		model,
+		PlatformGemini,
+		accounts,
+		nil,
+		false,
+		false,
+	)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "model_unsupported=1") {
+		t.Fatalf("error=%q want contains model_unsupported=1", err.Error())
+	}
+}
+
+func TestBuildNoAvailableAccountsError_EligibleExhaustedHint(t *testing.T) {
+	svc := &GatewayService{}
+	model := "gemini-3-flash-preview"
+	accounts := []Account{
+		{
+			ID:          12,
+			Platform:    PlatformGemini,
+			Status:      StatusActive,
+			Schedulable: true,
+		},
+	}
+
+	err := svc.buildNoAvailableAccountsError(
+		context.Background(),
+		nil,
+		"gemini-session",
+		model,
+		PlatformGemini,
+		accounts,
+		nil,
+		false,
+		true,
+	)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "eligible_accounts_exhausted=true") {
+		t.Fatalf("error=%q want contains eligible_accounts_exhausted=true", err.Error())
+	}
+}

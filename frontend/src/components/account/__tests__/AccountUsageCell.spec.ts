@@ -193,7 +193,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2000)
+    expect(getUsage).toHaveBeenCalledWith(2000, undefined)
     expect(wrapper.text()).toContain('5h|15|300')
     expect(wrapper.text()).toContain('7d|77|300')
   })
@@ -254,7 +254,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2001)
+    expect(getUsage).toHaveBeenCalledWith(2001, undefined)
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
@@ -325,7 +325,7 @@ describe('AccountUsageCell', () => {
 
     // 手动刷新再拉一次
     expect(getUsage).toHaveBeenCalledTimes(2)
-    expect(getUsage).toHaveBeenCalledWith(2010)
+    expect(getUsage).toHaveBeenCalledWith(2010, undefined)
     // 单一数据源：始终使用 /usage API 值
     expect(wrapper.text()).toContain('5h|18|900')
   })
@@ -380,7 +380,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-	expect(getUsage).toHaveBeenCalledWith(2002)
+	expect(getUsage).toHaveBeenCalledWith(2002, undefined)
 	expect(wrapper.text()).toContain('5h|0|27700')
 	expect(wrapper.text()).toContain('7d|0|27700')
   })
@@ -512,7 +512,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-  expect(getUsage).toHaveBeenCalledWith(2004)
+  expect(getUsage).toHaveBeenCalledWith(2004, undefined)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
   })
@@ -602,5 +602,46 @@ describe('AccountUsageCell', () => {
 		await flushPromises()
 
 		expect(wrapper.text().trim()).toBe('-')
+  })
+
+  it('Vertex Gemini 在无配额窗口时展示今日实际统计而不是无限流', async () => {
+    getUsage.mockResolvedValue({
+      updated_at: '2026-03-15T10:00:00Z'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4001,
+          platform: 'gemini',
+          type: 'vertex',
+          credentials: {
+            project_id: 'vertex-project'
+          }
+        }),
+        todayStats: {
+          requests: 321,
+          tokens: 45678,
+          cost: 1.23,
+          standard_cost: 1.23,
+          user_cost: 0.98
+        }
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(4001, undefined)
+    expect(wrapper.text()).toContain('321 req')
+    expect(wrapper.text()).toContain('45.7K')
+    expect(wrapper.text()).toContain('A $1.23')
+    expect(wrapper.text()).toContain('U $0.98')
+    expect(wrapper.text()).not.toContain('admin.accounts.gemini.rateLimit.unlimited')
   })
 })

@@ -1039,6 +1039,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	var usage *ClaudeUsage
 	var firstTokenMs *int
+	imageCount := 0
 	if req.Stream {
 		streamRes, err := s.handleStreamingResponse(c, resp, startTime, originalModel)
 		if err != nil {
@@ -1046,6 +1047,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
+		imageCount = streamRes.imageCount
 	} else {
 		if useUpstreamStream {
 			collected, usageObj, err := collectGeminiSSE(resp.Body, true)
@@ -1059,19 +1061,21 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			if usageObj != nil && (usageObj.InputTokens > 0 || usageObj.OutputTokens > 0) {
 				usage = usageObj
 			}
+			if collectedBytes, err := json.Marshal(collected); err == nil {
+				imageCount = countGeminiGeneratedImages(collectedBytes)
+			}
 		} else {
-			usage, err = s.handleNonStreamingResponse(c, resp, originalModel)
+			nonStreamRes, err := s.handleNonStreamingResponse(c, resp, originalModel)
 			if err != nil {
 				return nil, err
 			}
+			usage = nonStreamRes.usage
+			imageCount = nonStreamRes.imageCount
 		}
 	}
-
-	// 图片生成计费
-	imageCount := 0
-	imageSize := s.extractImageSize(body)
-	if isImageGenerationModel(originalModel) {
-		imageCount = 1
+	imageSize := ""
+	if imageCount > 0 {
+		imageSize = s.extractImageSize(body)
 	}
 
 	return &ForwardResult{
@@ -1565,6 +1569,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 	var usage *ClaudeUsage
 	var firstTokenMs *int
+	imageCount := 0
 
 	if stream {
 		streamRes, err := s.handleNativeStreamingResponse(c, resp, startTime, isOAuth)
@@ -1573,6 +1578,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
+		imageCount = streamRes.imageCount
 	} else {
 		if useUpstreamStream {
 			collected, usageObj, err := collectGeminiSSE(resp.Body, isOAuth)
@@ -1582,12 +1588,14 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			b, _ := json.Marshal(collected)
 			c.Data(http.StatusOK, "application/json", b)
 			usage = usageObj
+			imageCount = countGeminiGeneratedImages(b)
 		} else {
 			usageResp, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth)
 			if err != nil {
 				return nil, err
 			}
-			usage = usageResp
+			usage = usageResp.usage
+			imageCount = usageResp.imageCount
 		}
 	}
 
@@ -1595,11 +1603,9 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		usage = &ClaudeUsage{}
 	}
 
-	// 图片生成计费
-	imageCount := 0
-	imageSize := s.extractImageSize(body)
-	if isImageGenerationModel(originalModel) {
-		imageCount = 1
+	imageSize := ""
+	if imageCount > 0 {
+		imageSize = s.extractImageSize(body)
 	}
 
 	return &ForwardResult{
@@ -1928,9 +1934,10 @@ func mapGeminiStatusToClaudeErrorType(status string) string {
 type geminiStreamResult struct {
 	usage        *ClaudeUsage
 	firstTokenMs *int
+	imageCount   int
 }
 
-func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
+func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*geminiStreamResult, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
@@ -1949,7 +1956,10 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel, unwrappedBody)
 	c.JSON(http.StatusOK, claudeResp)
 
-	return usage, nil
+	return &geminiStreamResult{
+		usage:      usage,
+		imageCount: countGeminiGeneratedImages(unwrappedBody),
+	}, nil
 }
 
 func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*geminiStreamResult, error) {
@@ -1986,6 +1996,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 	var firstTokenMs *int
 	var usage ClaudeUsage
+	imageCount := 0
 	finishReason := ""
 	sawToolUse := false
 
@@ -2027,6 +2038,9 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		var geminiResp map[string]any
 		if err := json.Unmarshal(unwrappedBytes, &geminiResp); err != nil {
 			continue
+		}
+		if count := countGeminiGeneratedImages(unwrappedBytes); count > imageCount {
+			imageCount = count
 		}
 
 		if fr := extractGeminiFinishReason(geminiResp); fr != "" {
@@ -2202,7 +2216,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	})
 	flusher.Flush()
 
-	return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
+	return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs, imageCount: imageCount}, nil
 }
 
 func writeSSE(w io.Writer, event string, data any) {
@@ -2401,6 +2415,7 @@ func mergeCollectedTextParts(response map[string]any, textParts []string) map[st
 type geminiNativeStreamResult struct {
 	usage        *ClaudeUsage
 	firstTokenMs *int
+	imageCount   int
 }
 
 func isGeminiInsufficientScope(headers http.Header, body []byte) bool {
@@ -2469,7 +2484,7 @@ type UpstreamHTTPResult struct {
 	Body       []byte
 }
 
-func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, error) {
+func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*geminiNativeStreamResult, error) {
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2511,9 +2526,15 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	c.Data(resp.StatusCode, contentType, respBody)
 
 	if u := extractGeminiUsage(respBody); u != nil {
-		return u, nil
+		return &geminiNativeStreamResult{
+			usage:      u,
+			imageCount: countGeminiGeneratedImages(respBody),
+		}, nil
 	}
-	return &ClaudeUsage{}, nil
+	return &geminiNativeStreamResult{
+		usage:      &ClaudeUsage{},
+		imageCount: countGeminiGeneratedImages(respBody),
+	}, nil
 }
 
 func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool) (*geminiNativeStreamResult, error) {
@@ -2550,6 +2571,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	reader := bufio.NewReader(resp.Body)
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
+	imageCount := 0
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -2578,6 +2600,9 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 
 					if u := extractGeminiUsage(rawBytes); u != nil {
 						usage = u
+					}
+					if count := countGeminiGeneratedImages(rawBytes); count > imageCount {
+						imageCount = count
 					}
 
 					if firstTokenMs == nil {
@@ -2608,7 +2633,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 		}
 	}
 
-	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs}, nil
+	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCount}, nil
 }
 
 // ForwardAIStudioGET forwards a GET request to Gemini direct APIs.
@@ -2805,6 +2830,32 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 		CacheReadInputTokens: cached,
 		ImageOutputTokens:    imageTokens,
 	}
+}
+
+func countGeminiGeneratedImages(data []byte) int {
+	count := 0
+	candidates := gjson.GetBytes(data, "candidates")
+	if !candidates.Exists() {
+		return 0
+	}
+
+	candidates.ForEach(func(_, candidate gjson.Result) bool {
+		parts := candidate.Get("content.parts")
+		if !parts.Exists() {
+			return true
+		}
+		parts.ForEach(func(_, part gjson.Result) bool {
+			mimeType := strings.ToLower(strings.TrimSpace(part.Get("inlineData.mimeType").String()))
+			inlineData := strings.TrimSpace(part.Get("inlineData.data").String())
+			if strings.HasPrefix(mimeType, "image/") && inlineData != "" {
+				count++
+			}
+			return true
+		})
+		return true
+	})
+
+	return count
 }
 
 func asInt(v any) (int, bool) {

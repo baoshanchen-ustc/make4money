@@ -290,7 +290,7 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	// require_oauth_only 检查
-		if (account.Type == AccountTypeAPIKey || account.Type == AccountTypeVertex) && req.GroupIDs != nil {
+	if (account.Type == AccountTypeAPIKey || account.Type == AccountTypeVertex) && req.GroupIDs != nil {
 		for _, gid := range *req.GroupIDs {
 			g, err := s.groupRepo.GetByID(ctx, gid)
 			if err != nil {

@@ -15,6 +15,10 @@
   <svg v-else-if="platform === 'gemini'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
     <path d="M12 2l1.89 7.2L21 12l-7.11 2.8L12 22l-1.89-7.2L3 12l7.11-2.8L12 2z" />
   </svg>
+  <!-- Vertex logo (simple hex/ribbon) -->
+  <svg v-else-if="platform === 'vertex'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 2 4 6.5v11L12 22l8-4.5v-11L12 2zm0 2.3 5.9 3.3v8.8L12 19.7l-5.9-3.3V7.6L12 4.3zm-3.2 4.1 3.2 5 3.2-5h2.2L12 17l-5.4-8.6h2.2z" />
+  </svg>
   <!-- Antigravity logo (cloud) -->
   <svg v-else-if="platform === 'antigravity'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
     <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
@@ -29,10 +33,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { GroupPlatform } from '@/types'
+import type { ChannelPlatform } from '@/types'
 
 interface Props {
-  platform?: GroupPlatform
+  platform?: ChannelPlatform
   size?: 'xs' | 'sm' | 'md' | 'lg'
 }
 

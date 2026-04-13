@@ -1667,6 +1667,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        vertex: 'Vertex',
         antigravity: 'Antigravity',
       },
       saving: '保存中...',

@@ -367,6 +367,8 @@ export interface PaginationConfig {
 
 export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 
+export type ChannelPlatform = GroupPlatform | 'vertex'
+
 export type SubscriptionType = 'standard' | 'subscription'
 
 export interface OpenAIMessagesDispatchModelConfig {

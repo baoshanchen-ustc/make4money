@@ -427,7 +427,7 @@ import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
-import type { AdminGroup, GroupPlatform } from '@/types'
+import type { AdminGroup, ChannelPlatform, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -448,7 +448,7 @@ const appStore = useAppStore()
 
 // ── Platform Section type ──
 interface PlatformSection {
-  platform: GroupPlatform
+  platform: ChannelPlatform
   enabled: boolean
   collapsed: boolean
   group_ids: number[]
@@ -527,13 +527,14 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity']
+const platformOrder: ChannelPlatform[] = ['anthropic', 'openai', 'gemini', 'vertex', 'antigravity']
 
 function getPlatformTextColor(platform: string): string {
   switch (platform) {
     case 'anthropic': return 'text-orange-600 dark:text-orange-400'
     case 'openai': return 'text-emerald-600 dark:text-emerald-400'
     case 'gemini': return 'text-blue-600 dark:text-blue-400'
+    case 'vertex': return 'text-sky-600 dark:text-sky-400'
     case 'antigravity': return 'text-purple-600 dark:text-purple-400'
     default: return 'text-gray-600 dark:text-gray-400'
   }
@@ -544,6 +545,7 @@ function getRateBadgeClass(platform: string): string {
     case 'anthropic': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
     case 'openai': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
     case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    case 'vertex': return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
     case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
   }
@@ -558,7 +560,7 @@ function formatDate(value: string): string {
 // ── Platform section helpers ──
 const activePlatforms = computed(() => form.platforms.filter(s => s.enabled).map(s => s.platform))
 
-function addPlatformSection(platform: GroupPlatform) {
+function addPlatformSection(platform: ChannelPlatform) {
   form.platforms.push({
     platform,
     enabled: true,
@@ -569,7 +571,7 @@ function addPlatformSection(platform: GroupPlatform) {
   })
 }
 
-function togglePlatform(platform: GroupPlatform) {
+function togglePlatform(platform: ChannelPlatform) {
   const section = form.platforms.find(s => s.platform === platform)
   if (section) {
     section.enabled = !section.enabled
@@ -581,7 +583,10 @@ function togglePlatform(platform: GroupPlatform) {
   }
 }
 
-function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
+function getGroupsForPlatform(platform: ChannelPlatform): AdminGroup[] {
+  if (platform === 'vertex') {
+    return allGroups.value.filter(g => g.platform === 'gemini')
+  }
   return allGroups.value.filter(g => g.platform === platform)
 }
 
@@ -680,13 +685,15 @@ function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
 
 // ── Form ↔ API conversion ──
 function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>> } {
-  const group_ids: number[] = []
+  const groupIDs = new Set<number>()
   const model_pricing: ChannelModelPricing[] = []
   const model_mapping: Record<string, Record<string, string>> = {}
 
   for (const section of form.platforms) {
     if (!section.enabled) continue
-    group_ids.push(...section.group_ids)
+    for (const groupId of section.group_ids) {
+      groupIDs.add(groupId)
+    }
 
     // Model mapping per platform
     if (Object.keys(section.model_mapping).length > 0) {
@@ -711,7 +718,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     }
   }
 
-  return { group_ids, model_pricing, model_mapping }
+  return { group_ids: Array.from(groupIDs), model_pricing, model_mapping }
 }
 
 function apiToForm(channel: Channel): PlatformSection[] {
@@ -722,16 +729,16 @@ function apiToForm(channel: Channel): PlatformSection[] {
   }
 
   // Determine which platforms are active (from groups + pricing + mapping)
-  const activePlatforms = new Set<GroupPlatform>()
+  const activePlatforms = new Set<ChannelPlatform>()
   for (const gid of channel.group_ids || []) {
     const p = groupPlatformMap.get(gid)
     if (p) activePlatforms.add(p)
   }
   for (const p of channel.model_pricing || []) {
-    if (p.platform) activePlatforms.add(p.platform as GroupPlatform)
+    if (p.platform) activePlatforms.add(p.platform as ChannelPlatform)
   }
   for (const p of Object.keys(channel.model_mapping || {})) {
-    if (platformOrder.includes(p as GroupPlatform)) activePlatforms.add(p as GroupPlatform)
+    if (platformOrder.includes(p as ChannelPlatform)) activePlatforms.add(p as ChannelPlatform)
   }
 
   // Build sections in platform order
@@ -739,7 +746,11 @@ function apiToForm(channel: Channel): PlatformSection[] {
   for (const platform of platformOrder) {
     if (!activePlatforms.has(platform)) continue
 
-    const groupIds = (channel.group_ids || []).filter(gid => groupPlatformMap.get(gid) === platform)
+    const groupIds = (channel.group_ids || []).filter(gid => {
+      const groupPlatform = groupPlatformMap.get(gid)
+      if (platform === 'vertex') return groupPlatform === 'gemini'
+      return groupPlatform === platform
+    })
     const mapping = (channel.model_mapping || {})[platform] || {}
     const pricing = (channel.model_pricing || [])
       .filter(p => (p.platform || 'anthropic') === platform)

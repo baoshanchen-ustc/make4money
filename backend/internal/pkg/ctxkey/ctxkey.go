@@ -55,4 +55,10 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
+
+	// ChannelPlatformOverride 覆盖渠道映射/定价使用的平台命名空间。
+	ChannelPlatformOverride Key = "ctx_channel_platform_override"
+
+	// SkipChannelPricingRestrictionPrecheck 跳过调度前的渠道限制预检查。
+	SkipChannelPricingRestrictionPrecheck Key = "ctx_skip_channel_pricing_restriction_precheck"
 )

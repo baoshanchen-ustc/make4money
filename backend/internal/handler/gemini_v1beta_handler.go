@@ -184,12 +184,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	setOpsRequestContext(c, modelName, stream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
 
-	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
-	reqModel := modelName // 保存映射前的原始模型名
-	if channelMapping.Mapped {
-		modelName = channelMapping.MappedModel
-	}
+	// Gemini 路由需要先选出具体账号，才能决定使用 gemini / vertex / antigravity 哪套渠道规则。
+	reqModel := modelName
+	requestCtx := service.WithSkipChannelPricingRestrictionPrecheck(c.Request.Context(), true)
+	c.Request = c.Request.WithContext(requestCtx)
 
 	// Get subscription (may be nil)
 	subscription, _ := middleware.GetSubscriptionFromContext(c)
@@ -360,7 +358,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	}
 
 	for {
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
 				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
@@ -381,6 +379,25 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		}
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		accountChannelCtx := service.WithChannelPlatformOverride(c.Request.Context(), service.ChannelPlatformForAccount(account))
+		channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(accountChannelCtx, apiKey.GroupID, reqModel)
+		forwardModelName := reqModel
+		if channelMapping.Mapped {
+			forwardModelName = channelMapping.MappedModel
+		}
+		if apiKey.GroupID != nil {
+			billingModel := geminiChannelBillingModel(channelMapping.BillingModelSource, reqModel, channelMapping.MappedModel)
+			if billingModel != "" && h.gatewayService.IsModelRestricted(accountChannelCtx, *apiKey.GroupID, billingModel) {
+				reqLog.Info("gemini.channel_pricing_restricted",
+					zap.Int64("account_id", account.ID),
+					zap.String("channel_platform", service.ChannelPlatformForAccount(account)),
+					zap.String("requested_model", reqModel),
+					zap.String("billing_model", billingModel),
+				)
+				fs.FailedAccountIDs[account.ID] = struct{}{}
+				continue
+			}
+		}
 
 		// 检测账号切换：如果粘性会话绑定的账号与当前选择的账号不同，清除 thoughtSignature
 		// 注意：Gemini 原生 API 的 thoughtSignature 与具体上游账号强相关；跨账号透传会导致 400。
@@ -460,14 +477,14 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 		// 5) forward (根据平台分流)
 		var result *service.ForwardResult
-		requestCtx := c.Request.Context()
+		forwardCtx := accountChannelCtx
 		if fs.SwitchCount > 0 {
-			requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
+			forwardCtx = service.WithAccountSwitchCount(forwardCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 		}
 		if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
-			result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, modelName, action, stream, body, hasBoundSession)
+			result, err = h.antigravityGatewayService.ForwardGemini(forwardCtx, c, account, forwardModelName, action, stream, body, hasBoundSession)
 		} else {
-			result, err = h.geminiCompatService.ForwardNative(requestCtx, c, account, modelName, action, stream, body)
+			result, err = h.geminiCompatService.ForwardNative(forwardCtx, c, account, forwardModelName, action, stream, body)
 		}
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -515,6 +532,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		h.submitUsageRecordTask(func(ctx context.Context) {
+			ctx = service.WithChannelPlatformOverride(ctx, service.ChannelPlatformForAccount(account))
 			if err := h.gatewayService.RecordUsageWithLongContext(ctx, &service.RecordUsageLongContextInput{
 				Result:                result,
 				APIKey:                apiKey,
@@ -537,7 +555,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 					zap.Int64("user_id", authSubject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
 					zap.Any("group_id", apiKey.GroupID),
-					zap.String("model", modelName),
+					zap.String("model", forwardModelName),
 					zap.Int64("account_id", account.ID),
 				).Error("gemini.record_usage_failed", zap.Error(err))
 			}
@@ -625,6 +643,19 @@ func mapGeminiUpstreamError(statusCode int) (int, string) {
 		return http.StatusBadGateway, "Upstream service temporarily unavailable"
 	default:
 		return http.StatusBadGateway, "Upstream request failed"
+	}
+}
+
+func geminiChannelBillingModel(source, requestedModel, channelMappedModel string) string {
+	switch source {
+	case service.BillingModelSourceRequested:
+		return requestedModel
+	case service.BillingModelSourceUpstream:
+		return ""
+	case service.BillingModelSourceChannelMapped:
+		return channelMappedModel
+	default:
+		return channelMappedModel
 	}
 }
 

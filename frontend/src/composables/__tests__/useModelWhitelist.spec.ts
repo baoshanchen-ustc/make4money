@@ -29,9 +29,22 @@ describe('useModelWhitelist', () => {
 
     expect(models).toContain('gemini-3-flash')
     expect(models).toContain('gemini-2.5-flash-image')
+    expect(models).toContain('gemini-3.1-flash-image-preview')
     expect(models).toContain('gemini-3.1-flash-image')
+    expect(models).toContain('gemini-3-pro-image')
+    expect(models.indexOf('gemini-3.1-flash-image-preview')).toBeLessThan(models.indexOf('gemini-3.1-flash-image'))
     expect(models.indexOf('gemini-3.1-flash-image')).toBeLessThan(models.indexOf('gemini-2.0-flash'))
     expect(models.indexOf('gemini-2.5-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash'))
+  })
+
+  it('Vertex 模型列表包含图片模型兼容项', () => {
+    const models = getModelsByPlatform('vertex')
+
+    expect(models).toContain('gemini-3-flash')
+    expect(models).toContain('gemini-2.5-flash-image')
+    expect(models).toContain('gemini-3.1-flash-image-preview')
+    expect(models).toContain('gemini-3.1-flash-image')
+    expect(models).toContain('gemini-3-pro-image')
   })
 
   it('antigravity 模型列表会把新的 Gemini 图片模型排在前面', () => {

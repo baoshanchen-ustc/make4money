@@ -1324,7 +1324,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, ErrNoAvailableAccounts
+		return nil, s.buildNoAvailableAccountsError(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, useMixed, false)
 	}
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
@@ -1684,7 +1684,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	if len(candidates) == 0 {
-		return nil, ErrNoAvailableAccounts
+		return nil, s.buildNoAvailableAccountsError(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, useMixed, false)
 	}
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -1768,7 +1768,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})
 	}
-	return nil, ErrNoAvailableAccounts
+	return nil, s.buildNoAvailableAccountsError(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, useMixed, true)
 }
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
@@ -3242,6 +3242,29 @@ type selectionFailureStats struct {
 type selectionFailureDiagnosis struct {
 	Category string
 	Detail   string
+}
+
+func (s *GatewayService) buildNoAvailableAccountsError(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	platform string,
+	accounts []Account,
+	excludedIDs map[int64]struct{},
+	allowMixedScheduling bool,
+	eligibleExhausted bool,
+) error {
+	if strings.TrimSpace(requestedModel) == "" {
+		return ErrNoAvailableAccounts
+	}
+
+	stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, allowMixedScheduling)
+	detail := summarizeSelectionFailureStats(stats)
+	if eligibleExhausted {
+		detail += " eligible_accounts_exhausted=true"
+	}
+	return fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, detail)
 }
 
 func (s *GatewayService) logDetailedSelectionFailure(
@@ -7783,13 +7806,22 @@ func (s *GatewayService) calculateRecordUsageCost(
 	multiplier float64,
 	opts *recordUsageOpts,
 ) *CostBreakdown {
-	// 图片生成计费
-	if result.ImageCount > 0 {
+	// 仅当上游没有返回图片 token 明细时，才回退到按张计费。
+	// Gemini 图片模型会返回 ImageOutputTokens，应继续走 token 计费；
+	// 像 Imagen 这类无图片 token 明细的模型，仍使用按张计费兜底。
+	if shouldBillByImageCount(result) {
 		return s.calculateImageCost(ctx, result, apiKey, billingModel, multiplier)
 	}
 
 	// Token 计费
 	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
+}
+
+func shouldBillByImageCount(result *ForwardResult) bool {
+	if result == nil || result.ImageCount <= 0 {
+		return false
+	}
+	return result.Usage.ImageOutputTokens <= 0
 }
 
 // resolveChannelPricing 检查指定模型是否存在渠道级别定价。
@@ -7974,7 +8006,7 @@ func resolveBillingMode(result *ForwardResult, cost *CostBreakdown) *string {
 	switch {
 	case cost != nil && cost.BillingMode != "":
 		mode = cost.BillingMode
-	case result.ImageCount > 0:
+	case shouldBillByImageCount(result):
 		mode = string(BillingModeImage)
 	default:
 		mode = string(BillingModeToken)
@@ -8024,6 +8056,9 @@ func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 // upstream 需逐账号检查，此处返回 false。
 func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
 	if groupID == nil || s.channelService == nil || requestedModel == "" {
+		return false
+	}
+	if SkipChannelPricingRestrictionPrecheckFromContext(ctx) {
 		return false
 	}
 	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)

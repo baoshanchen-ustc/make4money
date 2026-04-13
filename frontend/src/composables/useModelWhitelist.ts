@@ -50,9 +50,11 @@ export const claudeModels = [
 // Google Gemini
 const geminiModels = [
   // Keep in sync with backend curated Gemini lists.
-  // This list is intentionally conservative (models commonly available across OAuth/API key).
+  // This list is intentionally conservative (models commonly available across Gemini/Vertex flows).
+  'gemini-3.1-flash-image-preview',
   'gemini-3.1-flash-image',
   'gemini-2.5-flash-image',
+  'gemini-3-pro-image',
   'gemini-2.0-flash',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
@@ -365,6 +367,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'openai': return openaiModels
     case 'anthropic':
     case 'claude': return claudeModels
+    case 'vertex':
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
     case 'zhipu': return zhipuModels

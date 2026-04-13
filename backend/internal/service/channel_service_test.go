@@ -1940,8 +1940,10 @@ func TestIsPlatformPricingMatch(t *testing.T) {
 		{"anthropic does NOT match antigravity", PlatformAnthropic, PlatformAntigravity, false},
 		{"anthropic does NOT match gemini", PlatformAnthropic, PlatformGemini, false},
 		{"gemini matches gemini", PlatformGemini, PlatformGemini, true},
+		{"gemini matches vertex namespace", PlatformGemini, PlatformVertex, true},
 		{"gemini does NOT match antigravity", PlatformGemini, PlatformAntigravity, false},
 		{"gemini does NOT match anthropic", PlatformGemini, PlatformAnthropic, false},
+		{"vertex namespace does NOT match gemini group", PlatformVertex, PlatformGemini, false},
 		{"empty string matches nothing", "", PlatformAnthropic, false},
 		{"empty string matches empty", "", "", true},
 	}
@@ -2355,6 +2357,54 @@ func TestResolveChannelMapping_AntigravityDoesNotSeeWildcardMappingFromOtherPlat
 	result = svc.ResolveChannelMapping(context.Background(), 20, "claude-opus-4")
 	require.True(t, result.Mapped)
 	require.Equal(t, "claude-override", result.MappedModel)
+}
+
+func TestResolveChannelMapping_GeminiAndVertexNamespacesStayIsolated(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			PlatformGemini: {"gemini-3-flash-preview": "gemini-3-flash"},
+			PlatformVertex: {"gemini-3-flash-preview": "gemini-3-flash-preview"},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformGemini})
+	svc := newTestChannelService(repo)
+
+	result := svc.ResolveChannelMapping(context.Background(), 10, "gemini-3-flash-preview")
+	require.True(t, result.Mapped)
+	require.Equal(t, "gemini-3-flash", result.MappedModel)
+
+	vertexCtx := WithChannelPlatformOverride(context.Background(), PlatformVertex)
+	result = svc.ResolveChannelMapping(vertexCtx, 10, "gemini-3-flash-preview")
+	require.True(t, result.Mapped)
+	require.Equal(t, "gemini-3-flash-preview", result.MappedModel)
+}
+
+func TestGetChannelModelPricing_GeminiAndVertexNamespacesStayIsolated(t *testing.T) {
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelPricing: []ChannelModelPricing{
+			{ID: 700, Platform: PlatformGemini, Models: []string{"gemini-3-flash-preview"}, InputPrice: testPtrFloat64(1e-6)},
+			{ID: 701, Platform: PlatformVertex, Models: []string{"gemini-3-flash-preview"}, InputPrice: testPtrFloat64(2e-6)},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformGemini})
+	svc := newTestChannelService(repo)
+
+	pricing := svc.GetChannelModelPricing(context.Background(), 10, "gemini-3-flash-preview")
+	require.NotNil(t, pricing)
+	require.Equal(t, PlatformGemini, pricing.Platform)
+	require.Equal(t, 1e-6, *pricing.InputPrice)
+
+	vertexCtx := WithChannelPlatformOverride(context.Background(), PlatformVertex)
+	pricing = svc.GetChannelModelPricing(vertexCtx, 10, "gemini-3-flash-preview")
+	require.NotNil(t, pricing)
+	require.Equal(t, PlatformVertex, pricing.Platform)
+	require.Equal(t, 2e-6, *pricing.InputPrice)
 }
 
 // ---------------------------------------------------------------------------
