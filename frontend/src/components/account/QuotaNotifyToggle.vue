@@ -63,8 +63,7 @@ function toggleType(current: string | null) {
           min="0"
           :max="thresholdType === 'percentage' ? 100 : undefined"
           :step="thresholdType === 'percentage' ? 1 : 0.01"
-          class="input py-1 text-sm w-full"
-          :class="thresholdType === 'percentage' ? 'pr-7' : 'pr-7'"
+          class="input py-1 text-sm w-full pr-7"
           :placeholder="thresholdType === 'percentage' ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
         />
         <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
