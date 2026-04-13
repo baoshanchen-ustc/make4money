@@ -2540,7 +2540,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup' | 'data'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const },
@@ -2681,7 +2681,6 @@ const form = reactive<SettingsForm>({
   payment_cancel_rate_limit_window: 1,
   payment_cancel_rate_limit_unit: 'day',
   payment_cancel_rate_limit_window_mode: 'rolling',
-  sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: string}>,
   frontend_url: '',
