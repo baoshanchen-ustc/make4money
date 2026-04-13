@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { QUOTA_THRESHOLD_TYPE_FIXED, QUOTA_THRESHOLD_TYPE_PERCENTAGE } from '@/constants/account'
+import { QUOTA_THRESHOLD_TYPE_FIXED, QUOTA_THRESHOLD_TYPE_PERCENTAGE, type QuotaThresholdType } from '@/constants/account'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -7,13 +7,13 @@ const { t } = useI18n()
 defineProps<{
   enabled: boolean | null
   threshold: number | null
-  thresholdType: string | null // "fixed" (default) or "percentage"
+  thresholdType: QuotaThresholdType | null
 }>()
 
 const emit = defineEmits<{
   'update:enabled': [value: boolean | null]
   'update:threshold': [value: number | null]
-  'update:thresholdType': [value: string | null]
+  'update:thresholdType': [value: QuotaThresholdType | null]
 }>()
 
 function toggleType(current: string | null) {
