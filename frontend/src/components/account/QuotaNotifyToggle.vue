@@ -21,7 +21,7 @@ function toggleType(current: string | null) {
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
+  <div class="flex items-center gap-1.5">
     <label class="text-sm text-gray-500 whitespace-nowrap">{{ t('admin.accounts.quotaNotify.alert') }}</label>
     <button
       type="button"
