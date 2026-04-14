@@ -238,6 +238,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'tested', payload: { accountId: number; success: boolean }): void
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
@@ -344,6 +345,8 @@ const closeEventSource = () => {
   }
 }
 
+const isSuccessStatus = (value: string) => value === 'success'
+
 const addLine = (text: string, className: string = 'text-gray-300') => {
   outputLines.value.push({ text, class: className })
   scrollToBottom()
@@ -366,6 +369,9 @@ const startTest = async () => {
   addLine('', 'text-gray-300')
 
   closeEventSource()
+
+  let shouldEmitTested = false
+  let testSucceeded = false
 
   try {
     // Create EventSource for SSE
@@ -418,10 +424,22 @@ const startTest = async () => {
         }
       }
     }
+
+    shouldEmitTested = true
+    testSucceeded = isSuccessStatus(status.value)
   } catch (error: any) {
     status.value = 'error'
     errorMessage.value = error.message || 'Unknown error'
     addLine(`Error: ${errorMessage.value}`, 'text-red-400')
+    shouldEmitTested = true
+    testSucceeded = false
+  } finally {
+    if (shouldEmitTested && props.account) {
+      emit('tested', {
+        accountId: props.account.id,
+        success: testSucceeded
+      })
+    }
   }
 }
 

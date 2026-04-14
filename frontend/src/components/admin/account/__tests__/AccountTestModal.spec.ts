@@ -143,5 +143,9 @@ describe('AccountTestModal', () => {
     const preview = wrapper.find('img[alt="gemini-test-image-1"]')
     expect(preview.exists()).toBe(true)
     expect(preview.attributes('src')).toBe('data:image/png;base64,QUJD')
+
+    expect(wrapper.emitted('tested')).toEqual([
+      [{ accountId: 42, success: true }]
+    ])
   })
 })

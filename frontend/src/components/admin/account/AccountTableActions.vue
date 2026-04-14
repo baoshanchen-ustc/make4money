@@ -1,8 +1,9 @@
 <template>
   <div class="flex flex-wrap items-center gap-3">
     <slot name="before"></slot>
-    <button @click="$emit('refresh')" :disabled="loading" class="btn btn-secondary">
-      <Icon name="refresh" size="md" :class="[loading ? 'animate-spin' : '']" />
+    <button @click="$emit('refresh')" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
+      <Icon name="refresh" size="md" :class="[loading ? 'animate-spin' : '', 'md:mr-1.5']" />
+      <span class="hidden md:inline">{{ t('common.refresh') }}</span>
     </button>
     <slot name="after"></slot>
     <button @click="$emit('sync')" class="btn btn-secondary">{{ t('admin.accounts.syncFromCrs') }}</button>
