@@ -73,11 +73,12 @@ func TestStdLogBridgeRoutesLevels(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
+	t.Cleanup(Close)
 
 	log.Printf("service started")
 	log.Printf("Warning: queue full")
 	log.Printf("Forward request failed: timeout")
-	Sync()
+	syncTestLogger()
 
 	_ = stdoutW.Close()
 	_ = stderrW.Close()
@@ -135,11 +136,12 @@ func TestLegacyPrintfRoutesLevels(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
+	t.Cleanup(Close)
 
 	LegacyPrintf("service.test", "request started")
 	LegacyPrintf("service.test", "Warning: queue full")
 	LegacyPrintf("service.test", "forward failed: timeout")
-	Sync()
+	syncTestLogger()
 
 	_ = stdoutW.Close()
 	_ = stderrW.Close()

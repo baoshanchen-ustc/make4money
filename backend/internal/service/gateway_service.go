@@ -1964,10 +1964,10 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 		platforms := []string{platform, PlatformAntigravity}
 		var accounts []Account
 		var err error
-		if groupID != nil {
-			accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
-		} else if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
+		} else if groupID != nil {
+			accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
 		} else {
 			accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, platforms)
 		}
