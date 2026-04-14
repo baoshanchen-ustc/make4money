@@ -43,11 +43,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		server.ProviderSet,
 
 		// Payment providers
-		payment.ProvideRegistry,
-		payment.ProvideEncryptionKey,
-		payment.ProvideDefaultLoadBalancer,
-		service.ProvidePaymentConfigService,
-		service.ProvidePaymentOrderExpiryService,
+		// Note: ProvidePaymentConfigService and ProvidePaymentOrderExpiryService
+		// are already provided via service.ProviderSet; payment.ProviderSet
+		// supplies Registry, EncryptionKey, DefaultLoadBalancer and the
+		// LoadBalancer interface binding. Listing any of these individually here
+		// as well would trigger wire "multiple bindings" errors.
+		payment.ProviderSet,
 
 		// Privacy client factory for OpenAI training opt-out
 		providePrivacyClientFactory,

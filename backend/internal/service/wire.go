@@ -385,7 +385,7 @@ var ProviderSet = wire.NewSet(
 	// Core services
 	NewAuthService,
 	NewUserService,
-	NewAPIKeyService,
+	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
 	NewGroupService,
 	NewAccountService,
@@ -402,13 +402,13 @@ var ProviderSet = wire.NewSet(
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	NewOAuthService,
-	NewOpenAIOAuthService,
+	ProvideOpenAIOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
 	NewAntigravityOAuthService,
-	NewOAuthRefreshAPI,
+	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
@@ -466,6 +466,41 @@ var ProviderSet = wire.NewSet(
 	NewPaymentService,
 	ProvidePaymentOrderExpiryService,
 )
+
+// ProvideOAuthRefreshAPI wraps NewOAuthRefreshAPI to hide its variadic
+// lockTTL parameter from Wire. Wire v0.7 treats variadic params as a required
+// []time.Duration provider, which would otherwise fail generation.
+func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
+	return NewOAuthRefreshAPI(accountRepo, tokenCache)
+}
+
+// ProvideAPIKeyService wraps NewAPIKeyService so Wire can inject the optional
+// rate limit cache invalidator (BillingCache). Using a post-construction setter
+// here avoids the circular dependency between APIKeyService and
+// BillingCacheService that would otherwise require splitting one of them.
+func ProvideAPIKeyService(
+	apiKeyRepo APIKeyRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	cache APIKeyCache,
+	cfg *config.Config,
+	billingCache BillingCache,
+) *APIKeyService {
+	svc := NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, userGroupRateRepo, cache, cfg)
+	svc.SetRateLimitCacheInvalidator(billingCache)
+	return svc
+}
+
+// ProvideOpenAIOAuthService wraps NewOpenAIOAuthService to inject the
+// PrivacyClientFactory used for calling chatgpt.com/backend-api. The factory
+// is set after construction to keep the base constructor dependency-free.
+func ProvideOpenAIOAuthService(proxyRepo ProxyRepository, oauthClient OpenAIOAuthClient, privacyClientFactory PrivacyClientFactory) *OpenAIOAuthService {
+	svc := NewOpenAIOAuthService(proxyRepo, oauthClient)
+	svc.SetPrivacyClientFactory(privacyClientFactory)
+	return svc
+}
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
 // payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.
