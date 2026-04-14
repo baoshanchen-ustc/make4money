@@ -55,8 +55,11 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	responsesReq.Stream = true
 	isStream := true
 
-	// 2b. Handle BetaFastMode → service_tier: "priority"
-	if containsBetaToken(c.GetHeader("anthropic-beta"), claude.BetaFastMode) {
+	// 2b. Handle fast mode: group-level ForceFastMode wins over client header.
+	// When a codex group has force_fast_mode enabled, unconditionally override
+	// service_tier regardless of the client's anthropic-beta header.
+	if getForceFastModeFromContext(c) ||
+		containsBetaToken(c.GetHeader("anthropic-beta"), claude.BetaFastMode) {
 		responsesReq.ServiceTier = "priority"
 	}
 

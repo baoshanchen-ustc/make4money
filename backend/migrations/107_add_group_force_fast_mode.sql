@@ -1,0 +1,1 @@
+ALTER TABLE groups ADD COLUMN force_fast_mode BOOLEAN NOT NULL DEFAULT false;

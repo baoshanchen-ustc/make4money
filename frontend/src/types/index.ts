@@ -416,6 +416,8 @@ export interface Group {
   allow_messages_dispatch?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  // 强制 fast 模式（仅 openai 分组使用）
+  force_fast_mode?: boolean
   require_oauth_only: boolean
   require_privacy_set: boolean
   created_at: string
@@ -524,6 +526,8 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  // 强制 fast 模式（仅 openai 分组）
+  force_fast_mode?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -549,6 +553,8 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  // 强制 fast 模式（仅 openai 分组）
+  force_fast_mode?: boolean
   copy_accounts_from_group_ids?: number[]
 }
 

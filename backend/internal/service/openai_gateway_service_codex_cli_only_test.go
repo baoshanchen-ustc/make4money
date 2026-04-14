@@ -103,6 +103,79 @@ func TestLogCodexCLIOnlyDetection_NilSafety(t *testing.T) {
 	})
 }
 
+func TestGetForceFastModeFromContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newCtx := func() *gin.Context {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		return c
+	}
+
+	t.Run("context 为 nil", func(t *testing.T) {
+		require.False(t, getForceFastModeFromContext(nil))
+	})
+
+	t.Run("上下文没有 api_key", func(t *testing.T) {
+		require.False(t, getForceFastModeFromContext(newCtx()))
+	})
+
+	t.Run("api_key 类型错误", func(t *testing.T) {
+		c := newCtx()
+		c.Set("api_key", "not-api-key")
+		require.False(t, getForceFastModeFromContext(c))
+	})
+
+	t.Run("api_key 为 nil 指针", func(t *testing.T) {
+		c := newCtx()
+		var k *APIKey
+		c.Set("api_key", k)
+		require.False(t, getForceFastModeFromContext(c))
+	})
+
+	t.Run("group 为 nil", func(t *testing.T) {
+		c := newCtx()
+		c.Set("api_key", &APIKey{ID: 1, Group: nil})
+		require.False(t, getForceFastModeFromContext(c))
+	})
+
+	t.Run("group 未启用 force_fast_mode", func(t *testing.T) {
+		c := newCtx()
+		c.Set("api_key", &APIKey{
+			ID: 1,
+			Group: &Group{
+				Platform:      PlatformOpenAI,
+				ForceFastMode: false,
+			},
+		})
+		require.False(t, getForceFastModeFromContext(c))
+	})
+
+	t.Run("非 openai 平台分组即使启用也不生效", func(t *testing.T) {
+		c := newCtx()
+		c.Set("api_key", &APIKey{
+			ID: 1,
+			Group: &Group{
+				Platform:      PlatformAnthropic,
+				ForceFastMode: true,
+			},
+		})
+		require.False(t, getForceFastModeFromContext(c))
+	})
+
+	t.Run("openai 分组启用 force_fast_mode", func(t *testing.T) {
+		c := newCtx()
+		c.Set("api_key", &APIKey{
+			ID: 1,
+			Group: &Group{
+				Platform:      PlatformOpenAI,
+				ForceFastMode: true,
+			},
+		})
+		require.True(t, getForceFastModeFromContext(c))
+	})
+}
+
 func TestLogCodexCLIOnlyDetection_OnlyLogsRejected(t *testing.T) {
 	logSink, restore := captureStructuredLog(t)
 	defer restore()

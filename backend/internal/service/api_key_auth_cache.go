@@ -76,6 +76,9 @@ type APIKeyAuthGroupSnapshot struct {
 	AllowMessagesDispatch       bool                              `json:"allow_messages_dispatch"`
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
+
+	// 强制 fast 模式（仅 openai 平台使用）
+	ForceFastMode bool `json:"force_fast_mode,omitempty"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

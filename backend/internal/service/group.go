@@ -59,6 +59,11 @@ type Group struct {
 	DefaultMappedModel          string
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 
+	// 强制 fast 模式（仅 openai 分组使用）
+	// 启用后，所有转发给上游的请求都会被强制设置 service_tier="priority"，
+	// 忽略客户端传入的 service_tier 和 anthropic-beta: fast-mode 头。
+	ForceFastMode bool
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

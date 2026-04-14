@@ -76,6 +76,8 @@ const (
 	FieldDefaultMappedModel = "default_mapped_model"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
+	// FieldForceFastMode holds the string denoting the force_fast_mode field in the database.
+	FieldForceFastMode = "force_fast_mode"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -181,6 +183,7 @@ var Columns = []string{
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
+	FieldForceFastMode,
 }
 
 var (
@@ -258,6 +261,8 @@ var (
 	DefaultMappedModelValidator func(string) error
 	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
+	// DefaultForceFastMode holds the default value on creation for the "force_fast_mode" field.
+	DefaultForceFastMode bool
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -401,6 +406,11 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByForceFastMode orders the results by the force_fast_mode field.
+func ByForceFastMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForceFastMode, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

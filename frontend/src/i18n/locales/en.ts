@@ -1706,6 +1706,8 @@ export default {
         title: 'OpenAI Messages Dispatch',
         allowDispatch: 'Allow /v1/messages dispatch',
         allowDispatchHint: 'When enabled, API keys in this OpenAI group can dispatch requests through /v1/messages endpoint',
+        forceFastMode: 'Force Fast Mode',
+        forceFastModeHint: 'When enabled, all requests (/v1/responses, /v1/chat/completions, /v1/messages) handled by this group are forced to codex fast tier, overriding any service_tier or anthropic-beta header from the client. Note: fast tier is billed at priority pricing, roughly 2× the standard rate.',
         familyMappingTitle: 'Family Default Mapping',
         familyMappingHint: 'Requests that match the Opus, Sonnet, or Haiku families will prefer the target model configured here.',
         opusModel: 'Opus Target Model',

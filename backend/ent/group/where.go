@@ -190,6 +190,11 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// ForceFastMode applies equality check predicate on the "force_fast_mode" field. It's identical to ForceFastModeEQ.
+func ForceFastMode(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldForceFastMode, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1318,6 +1323,16 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// ForceFastModeEQ applies the EQ predicate on the "force_fast_mode" field.
+func ForceFastModeEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldForceFastMode, v))
+}
+
+// ForceFastModeNEQ applies the NEQ predicate on the "force_fast_mode" field.
+func ForceFastModeNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldForceFastMode, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

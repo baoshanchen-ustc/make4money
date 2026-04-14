@@ -8255,6 +8255,7 @@ type GroupMutation struct {
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
+	force_fast_mode                         *bool
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -9843,6 +9844,42 @@ func (m *GroupMutation) ResetMessagesDispatchModelConfig() {
 	m.messages_dispatch_model_config = nil
 }
 
+// SetForceFastMode sets the "force_fast_mode" field.
+func (m *GroupMutation) SetForceFastMode(b bool) {
+	m.force_fast_mode = &b
+}
+
+// ForceFastMode returns the value of the "force_fast_mode" field in the mutation.
+func (m *GroupMutation) ForceFastMode() (r bool, exists bool) {
+	v := m.force_fast_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldForceFastMode returns the old "force_fast_mode" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldForceFastMode(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldForceFastMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldForceFastMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldForceFastMode: %w", err)
+	}
+	return oldValue.ForceFastMode, nil
+}
+
+// ResetForceFastMode resets all changes to the "force_fast_mode" field.
+func (m *GroupMutation) ResetForceFastMode() {
+	m.force_fast_mode = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -10201,7 +10238,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 30)
+	fields := make([]string, 0, 31)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -10292,6 +10329,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.messages_dispatch_model_config != nil {
 		fields = append(fields, group.FieldMessagesDispatchModelConfig)
 	}
+	if m.force_fast_mode != nil {
+		fields = append(fields, group.FieldForceFastMode)
+	}
 	return fields
 }
 
@@ -10360,6 +10400,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.DefaultMappedModel()
 	case group.FieldMessagesDispatchModelConfig:
 		return m.MessagesDispatchModelConfig()
+	case group.FieldForceFastMode:
+		return m.ForceFastMode()
 	}
 	return nil, false
 }
@@ -10429,6 +10471,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDefaultMappedModel(ctx)
 	case group.FieldMessagesDispatchModelConfig:
 		return m.OldMessagesDispatchModelConfig(ctx)
+	case group.FieldForceFastMode:
+		return m.OldForceFastMode(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -10647,6 +10691,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMessagesDispatchModelConfig(v)
+		return nil
+	case group.FieldForceFastMode:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetForceFastMode(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -10990,6 +11041,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldMessagesDispatchModelConfig:
 		m.ResetMessagesDispatchModelConfig()
+		return nil
+	case group.FieldForceFastMode:
+		m.ResetForceFastMode()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

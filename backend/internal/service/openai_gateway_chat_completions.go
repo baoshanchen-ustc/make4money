@@ -166,6 +166,15 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 	}
 
+	// 分组级"强制 fast 模式"：无条件覆盖客户端显式传入的 service_tier。
+	// 同时更新 responsesBody（实际发送给上游的 bytes）和 responsesReq（下游 billing 传播源）。
+	if getForceFastModeFromContext(c) {
+		if patched, perr := sjson.SetBytes(responsesBody, "service_tier", "priority"); perr == nil {
+			responsesBody = patched
+		}
+		responsesReq.ServiceTier = "priority"
+	}
+
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {

@@ -567,6 +567,20 @@ func (_u *GroupUpdate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _u
 }
 
+// SetForceFastMode sets the "force_fast_mode" field.
+func (_u *GroupUpdate) SetForceFastMode(v bool) *GroupUpdate {
+	_u.mutation.SetForceFastMode(v)
+	return _u
+}
+
+// SetNillableForceFastMode sets the "force_fast_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableForceFastMode(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetForceFastMode(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1029,6 +1043,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ForceFastMode(); ok {
+		_spec.SetField(group.FieldForceFastMode, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1875,6 +1892,20 @@ func (_u *GroupUpdateOne) SetNillableMessagesDispatchModelConfig(v *domain.OpenA
 	return _u
 }
 
+// SetForceFastMode sets the "force_fast_mode" field.
+func (_u *GroupUpdateOne) SetForceFastMode(v bool) *GroupUpdateOne {
+	_u.mutation.SetForceFastMode(v)
+	return _u
+}
+
+// SetNillableForceFastMode sets the "force_fast_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableForceFastMode(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetForceFastMode(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2367,6 +2398,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ForceFastMode(); ok {
+		_spec.SetField(group.FieldForceFastMode, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

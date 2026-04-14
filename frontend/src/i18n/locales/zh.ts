@@ -1792,6 +1792,8 @@ export default {
         title: 'OpenAI Messages 调度配置',
         allowDispatch: '允许 /v1/messages 调度',
         allowDispatchHint: '启用后，此 OpenAI 分组的 API Key 可以通过 /v1/messages 端点调度请求',
+        forceFastMode: '强制 fast 模式',
+        forceFastModeHint: '启用后，此分组处理的所有请求（/v1/responses、/v1/chat/completions、/v1/messages）都会强制走 codex fast，忽略客户端传入的 service_tier 和 anthropic-beta 头。注意：fast 档按 priority 档位计费，约为普通档的 2 倍。',
         familyMappingTitle: '系列默认映射',
         familyMappingHint: '当请求命中 Opus、Sonnet、Haiku 系列时，会优先使用这里配置的目标模型。',
         opusModel: 'Opus 映射模型',

@@ -872,6 +872,25 @@ func getAPIKeyIDFromContext(c *gin.Context) int64 {
 	return apiKey.ID
 }
 
+// getForceFastModeFromContext 返回当前请求是否命中一个开启了"强制 fast 模式"的 openai 分组。
+// 启用后，所有转发给上游的 codex 请求都会被强制写入 service_tier="priority"，
+// 无条件覆盖客户端传入的 service_tier 和 anthropic-beta: fast-mode 头。
+// 该字段仅对 platform=openai 的分组有意义。
+func getForceFastModeFromContext(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	v, exists := c.Get("api_key")
+	if !exists {
+		return false
+	}
+	apiKey, ok := v.(*APIKey)
+	if !ok || apiKey == nil || apiKey.Group == nil {
+		return false
+	}
+	return apiKey.Group.Platform == PlatformOpenAI && apiKey.Group.ForceFastMode
+}
+
 // isolateOpenAISessionID 将 apiKeyID 混入 session 标识符，
 // 确保不同 API Key 的用户即使使用相同的原始 session_id/conversation_id，
 // 到达上游的标识符也不同，防止跨用户会话碰撞。
@@ -1856,6 +1875,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel)
+		// 分组级"强制 fast 模式"：即使走透传也要覆盖客户端的 service_tier。
+		if getForceFastModeFromContext(c) {
+			if patched, err := sjson.SetBytes(originalBody, "service_tier", "priority"); err == nil {
+				originalBody = patched
+			}
+		}
 		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
 	}
 
@@ -1989,6 +2014,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
+	}
+
+	// 分组级"强制 fast 模式"：无条件覆盖客户端显式传入的 service_tier。
+	// 放在 codex transform 之后，确保后者不会丢掉这次注入。
+	if getForceFastModeFromContext(c) {
+		reqBody["service_tier"] = "priority"
+		bodyModified = true
+		disablePatch()
 	}
 
 	// Handle max_output_tokens based on platform and account type

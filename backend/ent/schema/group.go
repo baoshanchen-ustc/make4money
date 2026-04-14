@@ -145,6 +145,11 @@ func (Group) Fields() []ent.Field {
 			Default(domain.OpenAIMessagesDispatchModelConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型"),
+
+		// 强制 fast 模式开关 (added by migration 103)
+		field.Bool("force_fast_mode").
+			Default(false).
+			Comment("仅 openai 分组：强制所有请求走 codex fast (service_tier=priority)，忽略客户端传入的 service_tier 和 anthropic-beta 头"),
 	}
 }
 

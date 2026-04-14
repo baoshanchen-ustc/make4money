@@ -477,6 +477,10 @@ func init() {
 	groupDescMessagesDispatchModelConfig := groupFields[26].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
+	// groupDescForceFastMode is the schema descriptor for force_fast_mode field.
+	groupDescForceFastMode := groupFields[27].Descriptor()
+	// group.DefaultForceFastMode holds the default value on creation for the force_fast_mode field.
+	group.DefaultForceFastMode = groupDescForceFastMode.Default.(bool)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0
