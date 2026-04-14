@@ -113,6 +113,13 @@
                   <span class="font-medium text-gray-900 dark:text-white">{{ row.output_tokens?.toLocaleString() || 0 }}</span>
                 </div>
               </div>
+              <div v-if="row.image_output_tokens > 0" class="flex items-center gap-2">
+                <div class="inline-flex items-center gap-1">
+                  <Icon name="image" size="sm" class="h-3.5 w-3.5 text-fuchsia-500" />
+                  <span class="font-medium text-fuchsia-600 dark:text-fuchsia-400">{{ row.image_output_tokens.toLocaleString() }}</span>
+                </div>
+                <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.usage.imageOutputTokens') }}</span>
+              </div>
               <div v-if="row.cache_read_tokens > 0 || row.cache_creation_tokens > 0" class="flex items-center gap-2">
                 <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
                   <svg class="h-3.5 w-3.5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
@@ -202,6 +209,10 @@
         <div class="space-y-1.5">
           <div>
             <div class="text-xs font-semibold text-gray-300 mb-1">{{ t('usage.tokenDetails') }}</div>
+            <div v-if="tokenTooltipData" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">ID</span>
+              <span class="font-medium text-white">{{ tokenTooltipData.id }}</span>
+            </div>
             <div v-if="tokenTooltipData && tokenTooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.inputTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.input_tokens.toLocaleString() }}</span>
@@ -209,6 +220,14 @@
             <div v-if="tokenTooltipData && tokenTooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.outputTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.output_tokens.toLocaleString() }}</span>
+            </div>
+            <div v-if="tokenTooltipData && getTextOutputTokens(tokenTooltipData) > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.textOutputTokens') }}</span>
+              <span class="font-medium text-white">{{ getTextOutputTokens(tokenTooltipData).toLocaleString() }}</span>
+            </div>
+            <div v-if="tokenTooltipData && tokenTooltipData.image_output_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.imageOutputTokens') }}</span>
+              <span class="font-medium text-white">{{ tokenTooltipData.image_output_tokens.toLocaleString() }}</span>
             </div>
             <div v-if="tokenTooltipData && tokenTooltipData.cache_creation_tokens > 0">
               <!-- 有 5m/1h 明细时，展开显示 -->
@@ -271,6 +290,10 @@
           <!-- Cost Breakdown -->
           <div class="mb-2 border-b border-gray-700 pb-1.5">
             <div class="text-xs font-semibold text-gray-300 mb-1">{{ t('usage.costDetails') }}</div>
+            <div v-if="tooltipData" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">ID</span>
+              <span class="font-medium text-white">{{ tooltipData.id }}</span>
+            </div>
             <div v-if="tooltipData && tooltipData.input_cost > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.inputCost') }}</span>
               <span class="font-medium text-white">${{ tooltipData.input_cost.toFixed(6) }}</span>
@@ -279,13 +302,21 @@
               <span class="text-gray-400">{{ t('admin.usage.outputCost') }}</span>
               <span class="font-medium text-white">${{ tooltipData.output_cost.toFixed(6) }}</span>
             </div>
+            <div v-if="tooltipData && tooltipData.image_output_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.imageOutputCost') }}</span>
+              <span class="font-medium text-white">${{ tooltipData.image_output_cost.toFixed(6) }}</span>
+            </div>
             <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
               <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
             </div>
-            <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
+            <div v-if="tooltipData && getTextOutputTokens(tooltipData) > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span>
-              <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+              <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, getTextOutputTokens(tooltipData)) }} {{ t('usage.perMillionTokens') }}</span>
+            </div>
+            <div v-if="tooltipData && tooltipData.image_output_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.imageOutputTokenPrice') }}</span>
+              <span class="font-medium text-fuchsia-300">{{ formatTokenPricePerMillion(tooltipData.image_output_cost, tooltipData.image_output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
             </div>
             <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') }}</span>
@@ -412,6 +443,12 @@ const formatDuration = (ms: number | null | undefined): string => {
   if (ms == null) return '-'
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(2)}s`
+}
+
+const getTextOutputTokens = (
+  log: Pick<AdminUsageLog, 'output_tokens' | 'image_output_tokens'>
+): number => {
+  return Math.max((log.output_tokens || 0) - (log.image_output_tokens || 0), 0)
 }
 
 // Cost tooltip functions
