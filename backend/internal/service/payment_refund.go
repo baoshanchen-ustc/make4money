@@ -94,14 +94,15 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 	// Check provider instance allows admin refund
 	inst, instErr := s.getOrderProviderInstance(ctx, o)
 	if instErr != nil {
-		slog.Warn("refund: provider instance not found", "orderID", oid, "error", instErr)
+		slog.Warn("refund: provider instance lookup failed", "orderID", oid, "error", instErr)
+		return nil, nil, infraerrors.InternalServer("PROVIDER_LOOKUP_FAILED", "failed to look up payment provider for this order")
 	}
-	if inst != nil && !inst.RefundEnabled {
-		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not enabled for this provider")
-	}
-	if inst == nil && instErr == nil {
+	if inst == nil {
 		// Legacy order without provider_instance_id — block refund
 		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not available for this order")
+	}
+	if !inst.RefundEnabled {
+		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not enabled for this provider")
 	}
 	if math.IsNaN(amt) || math.IsInf(amt, 0) {
 		return nil, nil, infraerrors.BadRequest("INVALID_AMOUNT", "invalid refund amount")
