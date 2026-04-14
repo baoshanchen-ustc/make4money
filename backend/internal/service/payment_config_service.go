@@ -27,6 +27,7 @@ const (
 	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingRechargeFeeRate    = "RECHARGE_FEE_RATE"
 	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
 	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
@@ -55,6 +56,7 @@ type PaymentConfig struct {
 	EnabledTypes              []string `json:"enabled_payment_types"`
 	BalanceDisabled           bool     `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
+	RechargeFeeRate          float64  `json:"recharge_fee_rate"`
 	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
 	ProductNamePrefix    string   `json:"product_name_prefix"`
 	ProductNameSuffix    string   `json:"product_name_suffix"`
@@ -81,6 +83,7 @@ type UpdatePaymentConfigRequest struct {
 	EnabledTypes              []string `json:"enabled_payment_types"`
 	BalanceDisabled           *bool    `json:"balance_disabled"`
 	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
+	RechargeFeeRate          *float64 `json:"recharge_fee_rate"`
 	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
 	ProductNamePrefix   *string  `json:"product_name_prefix"`
 	ProductNameSuffix   *string  `json:"product_name_suffix"`
@@ -220,6 +223,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:    pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		RechargeFeeRate:          pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:   vals[SettingProductNamePrefix],
 		ProductNameSuffix:   vals[SettingProductNameSuffix],
@@ -275,6 +279,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if req.BalanceRechargeMultiplier != nil {
 		if math.IsNaN(*req.BalanceRechargeMultiplier) || math.IsInf(*req.BalanceRechargeMultiplier, 0) || *req.BalanceRechargeMultiplier <= 0 {
 			return infraerrors.BadRequest("INVALID_BALANCE_RECHARGE_MULTIPLIER", "balance recharge multiplier must be greater than 0")
+		}
+	}
+	if req.RechargeFeeRate != nil {
+		if math.IsNaN(*req.RechargeFeeRate) || math.IsInf(*req.RechargeFeeRate, 0) || *req.RechargeFeeRate < 0 {
+			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate must be >= 0")
 		}
 	}
 	if s.entClient != nil {
@@ -356,6 +365,9 @@ func mergePaymentConfigPatch(current *PaymentConfig, req UpdatePaymentConfigRequ
 	if req.BalanceRechargeMultiplier != nil {
 		merged.BalanceRechargeMultiplier = normalizeBalanceRechargeMultiplier(*req.BalanceRechargeMultiplier)
 	}
+	if req.RechargeFeeRate != nil {
+		merged.RechargeFeeRate = *req.RechargeFeeRate
+	}
 	if req.LoadBalanceStrategy != nil {
 		merged.LoadBalanceStrategy = *req.LoadBalanceStrategy
 	}
@@ -405,6 +417,7 @@ func serializePaymentConfig(cfg *PaymentConfig) map[string]string {
 		SettingEnabledPaymentTypes: joinTypes(enabledTypes),
 		SettingBalancePayDisabled:  strconv.FormatBool(cfg.BalanceDisabled),
 		SettingBalanceRechargeMult: formatOptionalPositiveFloat(normalizeBalanceRechargeMultiplier(cfg.BalanceRechargeMultiplier)),
+		SettingRechargeFeeRate:     formatNonNegativeFloat(&cfg.RechargeFeeRate),
 		SettingLoadBalanceStrategy: nonEmptyOrDefault(cfg.LoadBalanceStrategy, payment.DefaultLoadBalanceStrategy),
 		SettingProductNamePrefix:   cfg.ProductNamePrefix,
 		SettingProductNameSuffix:   cfg.ProductNameSuffix,
@@ -446,6 +459,9 @@ func buildPaymentUpdateMap(req UpdatePaymentConfigRequest) map[string]string {
 	}
 	if req.BalanceRechargeMultiplier != nil {
 		updates[SettingBalanceRechargeMult] = formatPositiveFloat(req.BalanceRechargeMultiplier)
+	}
+	if req.RechargeFeeRate != nil {
+		updates[SettingRechargeFeeRate] = formatNonNegativeFloat(req.RechargeFeeRate)
 	}
 	if req.LoadBalanceStrategy != nil {
 		updates[SettingLoadBalanceStrategy] = nonEmptyOrDefault(*req.LoadBalanceStrategy, payment.DefaultLoadBalanceStrategy)
@@ -499,6 +515,12 @@ func formatOptionalPositiveInt(v int) string {
 		return ""
 	}
 	return strconv.Itoa(v)
+
+func formatNonNegativeFloat(v *float64) string {
+	if v == nil || *v < 0 {
+		return ""
+	}
+	return strconv.FormatFloat(*v, 'f', 2, 64)
 }
 
 func formatPositiveInt(v *int) string {
@@ -580,7 +602,7 @@ func paymentConfigSettingKeys() []string {
 	return []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
