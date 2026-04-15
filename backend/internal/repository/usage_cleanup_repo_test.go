@@ -298,12 +298,13 @@ func TestUsageCleanupRepositoryClaimNextPendingTaskInvalidFilters(t *testing.T) 
 func TestUsageCleanupRepositoryMarkTaskSucceeded(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
+	startedAt := time.Date(2026, 4, 15, 9, 0, 0, 0, time.UTC)
 
 	mock.ExpectExec("UPDATE usage_cleanup_tasks").
-		WithArgs(service.UsageCleanupStatusSucceeded, int64(12), int64(9)).
+		WithArgs(service.UsageCleanupStatusSucceeded, int64(12), int64(9), service.UsageCleanupStatusRunning, startedAt.UTC()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	err := repo.MarkTaskSucceeded(context.Background(), 9, 12)
+	err := repo.MarkTaskSucceeded(context.Background(), 9, startedAt, 12)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -311,12 +312,13 @@ func TestUsageCleanupRepositoryMarkTaskSucceeded(t *testing.T) {
 func TestUsageCleanupRepositoryMarkTaskFailed(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
+	startedAt := time.Date(2026, 4, 15, 9, 0, 0, 0, time.UTC)
 
 	mock.ExpectExec("UPDATE usage_cleanup_tasks").
-		WithArgs(service.UsageCleanupStatusFailed, int64(4), "boom", int64(2)).
+		WithArgs(service.UsageCleanupStatusFailed, int64(4), "boom", int64(2), service.UsageCleanupStatusRunning, startedAt.UTC()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	err := repo.MarkTaskFailed(context.Background(), 2, 4, "boom")
+	err := repo.MarkTaskFailed(context.Background(), 2, startedAt, 4, "boom")
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -351,12 +353,13 @@ func TestUsageCleanupRepositoryGetTaskStatusQueryError(t *testing.T) {
 func TestUsageCleanupRepositoryUpdateTaskProgress(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
+	startedAt := time.Date(2026, 4, 15, 9, 0, 0, 0, time.UTC)
 
 	mock.ExpectExec("UPDATE usage_cleanup_tasks").
-		WithArgs(int64(123), int64(8)).
+		WithArgs(int64(123), int64(8), service.UsageCleanupStatusRunning, startedAt.UTC()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	err := repo.UpdateTaskProgress(context.Background(), 8, 123)
+	err := repo.UpdateTaskProgress(context.Background(), 8, startedAt, 123)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -49,10 +49,25 @@ type Channel struct {
 	ModelPricing []ChannelModelPricing
 	// 渠道级模型映射（按平台分组：platform → {src→dst}）
 	ModelMapping map[string]map[string]string
+	// 渠道特性配置（如 {"web_search_emulation": {"anthropic": true}}）
+	FeaturesConfig map[string]any
 
 	// 账号统计定价
 	ApplyPricingToAccountStats bool                      // 是否应用渠道模型定价到账号统计
 	AccountStatsPricingRules   []AccountStatsPricingRule // 自定义账号统计定价规则（按 SortOrder 排序，先命中为准）
+}
+
+// IsWebSearchEmulationEnabled 返回该渠道是否为指定平台启用了 web search 模拟。
+func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	wse, ok := c.FeaturesConfig[featureKeyWebSearchEmulation].(map[string]any)
+	if !ok {
+		return false
+	}
+	enabled, ok := wse[platform].(bool)
+	return ok && enabled
 }
 
 // AccountStatsPricingRule 账号统计定价规则
@@ -196,6 +211,9 @@ func (c *Channel) Clone() *Channel {
 			cp.ModelMapping[platform] = inner
 		}
 	}
+	if c.FeaturesConfig != nil {
+		cp.FeaturesConfig = cloneStringAnyMap(c.FeaturesConfig)
+	}
 	if c.AccountStatsPricingRules != nil {
 		cp.AccountStatsPricingRules = make([]AccountStatsPricingRule, len(c.AccountStatsPricingRules))
 		for i, rule := range c.AccountStatsPricingRules {
@@ -217,6 +235,32 @@ func (c *Channel) Clone() *Channel {
 		}
 	}
 	return &cp
+}
+
+func cloneStringAnyMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = cloneAnyValue(v)
+	}
+	return dst
+}
+
+func cloneAnyValue(v any) any {
+	switch vv := v.(type) {
+	case map[string]any:
+		return cloneStringAnyMap(vv)
+	case []any:
+		out := make([]any, len(vv))
+		for i := range vv {
+			out[i] = cloneAnyValue(vv[i])
+		}
+		return out
+	default:
+		return vv
+	}
 }
 
 // ValidateIntervals 校验区间列表的合法性。

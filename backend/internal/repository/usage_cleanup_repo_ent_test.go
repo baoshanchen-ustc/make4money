@@ -90,7 +90,14 @@ func TestUsageCleanupRepositoryEntGetStatusAndProgress(t *testing.T) {
 	_, err = repo.GetTaskStatus(context.Background(), task.ID+99)
 	require.ErrorIs(t, err, sql.ErrNoRows)
 
-	require.NoError(t, repo.UpdateTaskProgress(context.Background(), task.ID, 42))
+	startedAt := time.Now().UTC()
+	_, err = client.UsageCleanupTask.UpdateOneID(task.ID).
+		SetStatus(service.UsageCleanupStatusRunning).
+		SetStartedAt(startedAt).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	require.NoError(t, repo.UpdateTaskProgress(context.Background(), task.ID, startedAt, 42))
 	loaded, err := client.UsageCleanupTask.Get(context.Background(), task.ID)
 	require.NoError(t, err)
 	require.Equal(t, int64(42), loaded.DeletedRows)
@@ -151,7 +158,13 @@ func TestUsageCleanupRepositoryEntMarkResults(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateTask(context.Background(), task))
 
-	require.NoError(t, repo.MarkTaskSucceeded(context.Background(), task.ID, 6))
+	startedAt1 := time.Now().UTC()
+	_, err := client.UsageCleanupTask.UpdateOneID(task.ID).
+		SetStartedAt(startedAt1).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	require.NoError(t, repo.MarkTaskSucceeded(context.Background(), task.ID, startedAt1, 6))
 	loaded, err := client.UsageCleanupTask.Get(context.Background(), task.ID)
 	require.NoError(t, err)
 	require.Equal(t, service.UsageCleanupStatusSucceeded, loaded.Status)
@@ -165,7 +178,13 @@ func TestUsageCleanupRepositoryEntMarkResults(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateTask(context.Background(), task2))
 
-	require.NoError(t, repo.MarkTaskFailed(context.Background(), task2.ID, 4, "boom"))
+	startedAt2 := time.Now().UTC()
+	_, err = client.UsageCleanupTask.UpdateOneID(task2.ID).
+		SetStartedAt(startedAt2).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	require.NoError(t, repo.MarkTaskFailed(context.Background(), task2.ID, startedAt2, 4, "boom"))
 	loaded2, err := client.UsageCleanupTask.Get(context.Background(), task2.ID)
 	require.NoError(t, err)
 	require.Equal(t, service.UsageCleanupStatusFailed, loaded2.Status)
