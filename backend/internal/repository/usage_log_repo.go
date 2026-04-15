@@ -3189,7 +3189,8 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 			COUNT(*) as requests,
 			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as total_tokens,
 			COALESCE(SUM(ul.total_cost), 0) as cost,
-			COALESCE(SUM(ul.actual_cost), 0) as actual_cost
+			COALESCE(SUM(ul.actual_cost), 0) as actual_cost,
+			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost
 		FROM usage_logs ul
 		LEFT JOIN users u ON u.id = ul.user_id
 		WHERE ul.created_at >= $1 AND ul.created_at < $2
@@ -3260,6 +3261,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 			&row.TotalTokens,
 			&row.Cost,
 			&row.ActualCost,
+			&row.AccountCost,
 		); err != nil {
 			return nil, err
 		}
