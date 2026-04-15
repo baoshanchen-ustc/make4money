@@ -127,14 +127,11 @@ func decideAdminBootstrap(totalUsers, adminUsers int64) adminBootstrapDecision {
 }
 
 // NeedsSetup checks if the system needs initial setup
-// Uses multiple checks to prevent attackers from forcing re-setup by deleting config
+// Uses the installation lock file as the source of truth for whether setup
+// has completed. This allows preseeded config.yaml files to coexist with the
+// initial setup flow until installation is explicitly finalized.
 func NeedsSetup() bool {
-	// Check 1: Config file must not exist in any supported config path.
-	if config.FindConfigFile() != "" {
-		return false // Config exists, no setup needed
-	}
-
-	// Check 2: Installation lock file (harder to bypass)
+	// Installation lock file is the authoritative signal that setup finished.
 	if _, err := os.Stat(GetInstallLockPath()); !os.IsNotExist(err) {
 		return false // Lock file exists, already installed
 	}

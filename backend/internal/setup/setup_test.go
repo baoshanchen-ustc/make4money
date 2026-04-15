@@ -88,6 +88,30 @@ func TestWriteConfigFileKeepsDefaultUserConcurrency(t *testing.T) {
 	}
 }
 
+func TestNeedsSetupIgnoresExistingConfigWithoutInstallLock(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+
+	if err := os.WriteFile(GetConfigFilePath(), []byte("server:\n  port: 8080\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(config) error = %v", err)
+	}
+
+	if !NeedsSetup() {
+		t.Fatalf("NeedsSetup() = false, want true when only config exists")
+	}
+}
+
+func TestNeedsSetupFalseWhenInstallLockExists(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+
+	if err := os.WriteFile(GetInstallLockPath(), []byte("installed_at=2026-04-15T00:00:00Z\n"), 0o400); err != nil {
+		t.Fatalf("WriteFile(lock) error = %v", err)
+	}
+
+	if NeedsSetup() {
+		t.Fatalf("NeedsSetup() = true, want false when install lock exists")
+	}
+}
+
 func TestResolveInstallServerConfigUsesBackendBootstrapPort(t *testing.T) {
 	t.Setenv("SERVER_HOST", "127.0.0.1")
 	t.Setenv("SERVER_PORT", "9090")
