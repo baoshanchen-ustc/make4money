@@ -214,12 +214,11 @@ func (s *SettingService) RebuildWebSearchManager(ctx context.Context) {
 	providerConfigs := make([]websearch.ProviderConfig, 0, len(cfg.Providers))
 	for _, p := range cfg.Providers {
 		providerConfigs = append(providerConfigs, websearch.ProviderConfig{
-			Type:                 p.Type,
-			APIKey:               p.APIKey,
-			Priority:             p.Priority,
-			QuotaLimit:           p.QuotaLimit,
-			QuotaRefreshInterval: p.QuotaRefreshInterval,
-			ExpiresAt:            p.ExpiresAt,
+			Type:         p.Type,
+			APIKey:       p.APIKey,
+			QuotaLimit:   p.QuotaLimit,
+			SubscribedAt: p.SubscribedAt,
+			ExpiresAt:    p.ExpiresAt,
 		})
 	}
 	SetWebSearchManager(websearch.NewManager(providerConfigs, s.webSearchRedis))
