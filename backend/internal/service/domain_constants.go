@@ -251,6 +251,10 @@ const (
 	// SettingKeyEnableCCHSigning 是否对 billing header 中的 cch 进行 xxHash64 签名（默认 false）
 	SettingKeyEnableCCHSigning = "enable_cch_signing"
 
+	// Web Search Emulation
+	// SettingKeyWebSearchEmulationConfig 全局 web search 模拟配置（JSON）
+	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config"
+
 	// Balance Low Notification
 	SettingKeyBalanceLowNotifyEnabled   = "balance_low_notify_enabled"   // 全局开关
 	SettingKeyBalanceLowNotifyThreshold = "balance_low_notify_threshold" // 默认阈值（USD）
