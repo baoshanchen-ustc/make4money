@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -693,19 +694,27 @@ func TestGetServerAddressFromEnv(t *testing.T) {
 }
 
 func TestBuildConfigSearchPathsOutsideContainerKeepsAppDataAsFallback(t *testing.T) {
-	paths := buildConfigSearchPaths("", false)
-	expected := []string{".", "./config", systemConfigDir, dockerDataDir}
+	execDir := "/opt/sub2api/backend"
+	paths := buildConfigSearchPaths("", false, execDir)
+	expected := []string{execDir, ".", "./config", filepath.Join(execDir, "config"), systemConfigDir, dockerDataDir}
 	require.Equal(t, expected, paths)
 }
 
 func TestBuildConfigSearchPathsInContainerPrefersAppData(t *testing.T) {
-	paths := buildConfigSearchPaths("", true)
-	expected := []string{dockerDataDir, ".", "./config", systemConfigDir}
+	execDir := "/opt/sub2api/backend"
+	paths := buildConfigSearchPaths("", true, execDir)
+	expected := []string{dockerDataDir, execDir, ".", "./config", filepath.Join(execDir, "config"), systemConfigDir}
 	require.Equal(t, expected, paths)
 }
 
-func TestResolveWritableDataDirOutsideContainerDefaultsToCurrentDirectory(t *testing.T) {
-	dir := resolveWritableDataDir("", false)
+func TestResolveWritableDataDirOutsideContainerPrefersExecutableDirectory(t *testing.T) {
+	execDir := t.TempDir()
+	dir := resolveWritableDataDir("", false, execDir)
+	require.Equal(t, execDir, dir)
+}
+
+func TestResolveWritableDataDirOutsideContainerFallsBackToCurrentDirectory(t *testing.T) {
+	dir := resolveWritableDataDir("", false, "")
 	require.Equal(t, ".", dir)
 }
 
@@ -897,6 +906,18 @@ func TestDatabaseDSNWithTimezone_WithPassword(t *testing.T) {
 	}
 	if !strings.Contains(got, "TimeZone=UTC") {
 		t.Fatalf("DSNWithTimezone should include TimeZone=UTC: %q", got)
+	}
+}
+
+func TestShouldFallbackDatabaseSSLModeToDisable(t *testing.T) {
+	if !ShouldFallbackDatabaseSSLModeToDisable("prefer", fmt.Errorf(`pq: unsupported sslmode "prefer"`)) {
+		t.Fatalf("ShouldFallbackDatabaseSSLModeToDisable() = false, want true")
+	}
+	if ShouldFallbackDatabaseSSLModeToDisable("disable", fmt.Errorf(`pq: unsupported sslmode "prefer"`)) {
+		t.Fatalf("ShouldFallbackDatabaseSSLModeToDisable() = true, want false for disable")
+	}
+	if ShouldFallbackDatabaseSSLModeToDisable("prefer", fmt.Errorf("some other error")) {
+		t.Fatalf("ShouldFallbackDatabaseSSLModeToDisable() = true, want false for unrelated error")
 	}
 }
 

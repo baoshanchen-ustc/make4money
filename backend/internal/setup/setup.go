@@ -139,15 +139,65 @@ func NeedsSetup() bool {
 	return true
 }
 
+func buildSetupPostgresDSN(cfg *DatabaseConfig, dbName string) string {
+	if strings.TrimSpace(dbName) == "" {
+		dbName = cfg.DBName
+	}
+	if cfg.Password == "" {
+		return fmt.Sprintf(
+			"host=%s port=%d user=%s dbname=%s sslmode=%s",
+			cfg.Host, cfg.Port, cfg.User, dbName, cfg.SSLMode,
+		)
+	}
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, dbName, cfg.SSLMode,
+	)
+}
+
+func pingPostgresDB(db *sql.DB, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return db.PingContext(ctx)
+}
+
+func openPostgresWithSSLFallback(cfg *DatabaseConfig, dbName string) (*sql.DB, error) {
+	openDB := func() (*sql.DB, error) {
+		return sql.Open("postgres", buildSetupPostgresDSN(cfg, dbName))
+	}
+
+	db, err := openDB()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := pingPostgresDB(db, 5*time.Second); err != nil {
+		if !config.ShouldFallbackDatabaseSSLModeToDisable(cfg.SSLMode, err) {
+			_ = db.Close()
+			return nil, err
+		}
+
+		logger.LegacyPrintf("setup", "database sslmode=prefer unsupported by driver, falling back to disable")
+		_ = db.Close()
+		cfg.SSLMode = config.DatabaseSSLModeDisable
+
+		db, err = openDB()
+		if err != nil {
+			return nil, err
+		}
+		if err := pingPostgresDB(db, 5*time.Second); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
+
+	return db, nil
+}
+
 // TestDatabaseConnection tests the database connection and creates database if not exists
 func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	// First, connect to the default 'postgres' database to check/create target database
-	defaultDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
-
-	db, err := sql.Open("postgres", defaultDSN)
+	// First, connect to the default 'postgres' database to check/create target database.
+	db, err := openPostgresWithSSLFallback(cfg, "postgres")
 	if err != nil {
 		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 	}
@@ -161,14 +211,9 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		}
 	}()
 
+	// Check if target database exists
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping failed: %w", err)
-	}
-
-	// Check if target database exists
 	var exists bool
 	row := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
 	if err := row.Scan(&exists); err != nil {
@@ -193,12 +238,7 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 	}
 	db = nil
 
-	targetDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
-
-	targetDB, err := sql.Open("postgres", targetDSN)
+	targetDB, err := openPostgresWithSSLFallback(cfg, cfg.DBName)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database '%s': %w", cfg.DBName, err)
 	}
@@ -208,13 +248,6 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 		}
 	}()
-
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel2()
-
-	if err := targetDB.PingContext(ctx2); err != nil {
-		return fmt.Errorf("ping target database failed: %w", err)
-	}
 
 	return nil
 }

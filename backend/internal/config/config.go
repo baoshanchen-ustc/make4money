@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,6 +20,9 @@ const (
 	RunModeSimple   = "simple"
 	dockerDataDir   = "/app/data"
 	systemConfigDir = "/etc/sub2api"
+
+	DatabaseSSLModePrefer  = "prefer"
+	DatabaseSSLModeDisable = "disable"
 )
 
 // 使用量记录队列溢出策略
@@ -745,6 +749,20 @@ func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 	)
 }
 
+func NormalizeDatabaseSSLMode(mode string) string {
+	return strings.ToLower(strings.TrimSpace(mode))
+}
+
+func ShouldFallbackDatabaseSSLModeToDisable(mode string, err error) bool {
+	if NormalizeDatabaseSSLMode(mode) != DatabaseSSLModePrefer || err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, `unsupported sslmode "prefer"`) ||
+		strings.Contains(msg, "unsupported sslmode prefer")
+}
+
 // RedisConfig Redis 连接配置
 // 性能优化：新增连接池和超时参数，提升高并发场景下的吞吐量
 type RedisConfig struct {
@@ -953,9 +971,21 @@ func LoadForBootstrap() (*Config, error) {
 	return load(true)
 }
 
-func buildConfigSearchPaths(dataDir string, preferContainerDataDir bool) []string {
-	paths := make([]string, 0, 5)
+func resolveExecutableDir() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(exePath); resolveErr == nil {
+		exePath = resolved
+	}
+	return strings.TrimSpace(filepath.Dir(exePath))
+}
+
+func buildConfigSearchPaths(dataDir string, preferContainerDataDir bool, execDir string) []string {
+	paths := make([]string, 0, 7)
 	dataDir = strings.TrimSpace(dataDir)
+	execDir = strings.TrimSpace(execDir)
 	if dataDir != "" {
 		paths = append(paths, dataDir)
 	}
@@ -963,7 +993,17 @@ func buildConfigSearchPaths(dataDir string, preferContainerDataDir bool) []strin
 		paths = append(paths, dockerDataDir)
 	}
 
-	paths = append(paths, ".", "./config", systemConfigDir)
+	if execDir != "" {
+		paths = append(paths, execDir)
+	}
+
+	paths = append(paths, ".", "./config")
+
+	if execDir != "" {
+		paths = append(paths, filepath.Join(execDir, "config"))
+	}
+
+	paths = append(paths, systemConfigDir)
 
 	// Outside Docker, keep /app/data as a last-resort compatibility fallback
 	// so old manual deployments can still be discovered without overriding
@@ -989,7 +1029,7 @@ func buildConfigSearchPaths(dataDir string, preferContainerDataDir bool) []strin
 }
 
 func addConfigSearchPaths(v *viper.Viper) {
-	for _, path := range buildConfigSearchPaths(os.Getenv("DATA_DIR"), shouldPreferContainerDataDir()) {
+	for _, path := range buildConfigSearchPaths(os.Getenv("DATA_DIR"), shouldPreferContainerDataDir(), resolveExecutableDir()) {
 		v.AddConfigPath(path)
 	}
 }
@@ -1029,21 +1069,26 @@ func isWritableDir(dir string) bool {
 	return true
 }
 
-func resolveWritableDataDir(dataDir string, preferContainerDataDir bool) string {
+func resolveWritableDataDir(dataDir string, preferContainerDataDir bool, execDir string) string {
 	dataDir = strings.TrimSpace(dataDir)
+	execDir = strings.TrimSpace(execDir)
 	if dataDir != "" {
 		return dataDir
 	}
 	if preferContainerDataDir && isWritableDir(dockerDataDir) {
 		return dockerDataDir
 	}
+	if execDir != "" && isWritableDir(execDir) {
+		return execDir
+	}
 	return "."
 }
 
 // ResolveDataDir returns the primary writable data directory used by setup.
-// Priority: DATA_DIR environment variable > /app/data in container deployments > current directory.
+// Priority: DATA_DIR environment variable > /app/data in container deployments >
+// executable directory > current directory.
 func ResolveDataDir() string {
-	return resolveWritableDataDir(os.Getenv("DATA_DIR"), shouldPreferContainerDataDir())
+	return resolveWritableDataDir(os.Getenv("DATA_DIR"), shouldPreferContainerDataDir(), resolveExecutableDir())
 }
 
 // FindConfigFile returns the first discovered config file according to the
