@@ -1,8 +1,9 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import UsageView from '../UsageView.vue'
+import Select from '@/components/common/Select.vue'
 
 const { query, getStatsByDateRange, list, showError, showWarning, showSuccess, showInfo } = vi.hoisted(() => ({
   query: vi.fn(),
@@ -32,6 +33,7 @@ const messages: Record<string, string> = {
   'usage.billed': 'Billed',
   'usage.allApiKeys': 'All API Keys',
   'usage.apiKeyFilter': 'API Key',
+  'keys.searchPlaceholder': 'Search name or key...',
   'usage.model': 'Model',
   'usage.reasoningEffort': 'Reasoning Effort',
   'usage.type': 'Type',
@@ -41,6 +43,8 @@ const messages: Record<string, string> = {
   'usage.duration': 'Duration',
   'usage.time': 'Time',
   'usage.userAgent': 'User Agent',
+  'common.loading': 'Loading...',
+  'common.noOptionsFound': 'No options found'
 }
 
 vi.mock('@/api', () => ({
@@ -72,6 +76,24 @@ const TablePageLayoutStub = {
   template: '<div><slot name="actions" /><slot name="filters" /><slot /></div>',
 }
 
+const mountUsageView = (useRealSelect: boolean = false) => {
+  return mount(UsageView, {
+    attachTo: document.body,
+    global: {
+      stubs: {
+        AppLayout: AppLayoutStub,
+        TablePageLayout: TablePageLayoutStub,
+        Pagination: true,
+        EmptyState: true,
+        Select: useRealSelect ? Select : true,
+        DateRangePicker: true,
+        Icon: true,
+        Teleport: true,
+      },
+    },
+  })
+}
+
 describe('user UsageView tooltip', () => {
   beforeEach(() => {
     query.mockReset()
@@ -98,6 +120,11 @@ describe('user UsageView tooltip', () => {
       observe() {}
       disconnect() {}
     }
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    document.body.innerHTML = ''
   })
 
   it('shows fast service tier and unit prices in user tooltip', async () => {
@@ -137,20 +164,7 @@ describe('user UsageView tooltip', () => {
     })
     list.mockResolvedValue({ items: [] })
 
-    const wrapper = mount(UsageView, {
-      global: {
-        stubs: {
-          AppLayout: AppLayoutStub,
-          TablePageLayout: TablePageLayoutStub,
-          Pagination: true,
-          EmptyState: true,
-          Select: true,
-          DateRangePicker: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
-    })
+    const wrapper = mountUsageView()
 
     await flushPromises()
     await nextTick()
@@ -235,20 +249,7 @@ describe('user UsageView tooltip', () => {
     window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    const wrapper = mount(UsageView, {
-      global: {
-        stubs: {
-          AppLayout: AppLayoutStub,
-          TablePageLayout: TablePageLayoutStub,
-          Pagination: true,
-          EmptyState: true,
-          Select: true,
-          DateRangePicker: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
-    })
+    const wrapper = mountUsageView()
 
     await flushPromises()
 
@@ -273,5 +274,113 @@ describe('user UsageView tooltip', () => {
     window.URL.createObjectURL = originalCreateObjectURL
     window.URL.revokeObjectURL = originalRevokeObjectURL
     clickSpy.mockRestore()
+  })
+
+  it('loads default API key options on select open instead of preloading 100 keys', async () => {
+    vi.useFakeTimers()
+    query.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [{ id: 11, name: 'Newest Key' }], total: 1, pages: 1 })
+
+    const wrapper = mountUsageView(true)
+
+    await flushPromises()
+    expect(list).not.toHaveBeenCalled()
+
+    await wrapper.get('button[aria-haspopup="true"]').trigger('click')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      { sort_by: 'created_at', sort_order: 'desc' },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    )
+  })
+
+  it('searches API keys by keyword and keeps selected label after options change', async () => {
+    vi.useFakeTimers()
+    query.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_duration_ms: 0,
+    })
+    list
+      .mockResolvedValueOnce({ items: [{ id: 11, name: 'Newest Key' }], total: 1, pages: 1 })
+      .mockResolvedValueOnce({ items: [{ id: 42, name: 'Alice Key' }], total: 1, pages: 1 })
+
+    const wrapper = mountUsageView(true)
+    await flushPromises()
+
+    await wrapper.get('button[aria-haspopup="true"]').trigger('click')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    const searchInput = wrapper.find('.select-search-input')
+    expect(searchInput.exists()).toBe(true)
+
+    await searchInput.setValue('alice')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    expect(list).toHaveBeenLastCalledWith(
+      1,
+      20,
+      { search: 'alice', sort_by: 'name', sort_order: 'asc' },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    )
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.filters.api_key_id = 42
+    setupState.onApiKeyChange(42, { value: 42, label: 'Alice Key' })
+    setupState.apiKeyOptionsState = [{ value: 7, label: 'Beta Key' }]
+    await nextTick()
+
+    expect(wrapper.get('button[aria-haspopup="true"]').text()).toContain('Alice Key')
+  })
+
+  it('resets API key filter back to all API keys', async () => {
+    query.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [], total: 0, pages: 0 })
+
+    const wrapper = mountUsageView(true)
+    await flushPromises()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.filters.api_key_id = 42
+    setupState.onApiKeyChange(42, { value: 42, label: 'Alice Key' })
+    await nextTick()
+    expect(wrapper.get('button[aria-haspopup="true"]').text()).toContain('Alice Key')
+
+    setupState.resetFilters()
+    await nextTick()
+
+    expect(wrapper.get('button[aria-haspopup="true"]').text()).toContain('All API Keys')
   })
 })
