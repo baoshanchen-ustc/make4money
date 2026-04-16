@@ -382,6 +382,7 @@ type ResponsesStreamEvent struct {
 type ChatCompletionsRequest struct {
 	Model               string             `json:"model"`
 	Messages            []ChatMessage      `json:"messages"`
+	Instructions        string             `json:"instructions,omitempty"` // OpenAI Responses API compat
 	MaxTokens           *int               `json:"max_tokens,omitempty"`
 	MaxCompletionTokens *int               `json:"max_completion_tokens,omitempty"`
 	Temperature         *float64           `json:"temperature,omitempty"`
