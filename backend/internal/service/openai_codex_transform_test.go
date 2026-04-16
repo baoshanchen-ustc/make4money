@@ -481,14 +481,14 @@ func TestExtractSystemMessagesFromInput(t *testing.T) {
 	})
 }
 
-// TestApplyCodexOAuthTransform_StripsPromptCacheRetention is a regression
-// test: some clients (e.g. Cursor cloud via the Responses-shape compat path)
-// send prompt_cache_retention, but the ChatGPT internal Codex endpoint
-// rejects it with "Unsupported parameter: prompt_cache_retention".
-func TestApplyCodexOAuthTransform_StripsPromptCacheRetention(t *testing.T) {
+// TestApplyCodexOAuthTransform_StripsUnsupportedResponsesFields is a regression
+// test: some OAuth callers can send Responses API passthrough fields that the
+// ChatGPT internal Codex endpoint rejects with "Unsupported parameter: <field>".
+func TestApplyCodexOAuthTransform_StripsUnsupportedResponsesFields(t *testing.T) {
 	reqBody := map[string]any{
 		"model":                  "gpt-5.1",
 		"prompt_cache_retention": "24h",
+		"safety_identifier":      "sid_123",
 		"input": []any{
 			map[string]any{"role": "user", "content": "hi"},
 		},
@@ -499,6 +499,9 @@ func TestApplyCodexOAuthTransform_StripsPromptCacheRetention(t *testing.T) {
 	_, stillThere := reqBody["prompt_cache_retention"]
 	require.False(t, stillThere,
 		"prompt_cache_retention must be stripped before forwarding to Codex upstream")
+	_, stillThere = reqBody["safety_identifier"]
+	require.False(t, stillThere,
+		"safety_identifier must be stripped before forwarding to Codex upstream")
 }
 
 func TestApplyCodexOAuthTransform_ExtractsSystemMessages(t *testing.T) {

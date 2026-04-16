@@ -124,15 +124,15 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 		"top_p",
 		"frequency_penalty",
 		"presence_penalty",
-		// prompt_cache_retention is a newer Responses API parameter (cache TTL).
-		// The ChatGPT internal Codex endpoint rejects it with
-		// "Unsupported parameter: prompt_cache_retention". Defense-in-depth
-		// for any OAuth path that reaches this transform — the Cursor
-		// Responses-shape short-circuit in ForwardAsChatCompletions strips
-		// it earlier too, but we keep this line so other OAuth callers are
-		// equally protected.
-		"prompt_cache_retention",
 	} {
+		if _, ok := reqBody[key]; ok {
+			delete(reqBody, key)
+			result.Modified = true
+		}
+	}
+	// Keep the OAuth transform aligned with the shared Responses-field filter so
+	// official-client paths do not diverge from passthrough normalization.
+	for _, key := range openAIResponsesUnsupportedFields {
 		if _, ok := reqBody[key]; ok {
 			delete(reqBody, key)
 			result.Modified = true

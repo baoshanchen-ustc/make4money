@@ -307,13 +307,14 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreami
 	require.Contains(t, rec.Body.String(), `"id":"cmp_123"`)
 }
 
-func TestOpenAIGatewayService_OAuthPassthrough_CompactStripsUnsupportedRetentionFields(t *testing.T) {
+func TestOpenAIGatewayService_OAuthPassthrough_CompactStripsUnsupportedResponsesFieldsForOfficialClient(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
-	c.Request.Header.Set("User-Agent", "Codex Desktop/0.119.0-alpha.11")
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	c.Request.Header.Set("originator", "codex_chatgpt_desktop")
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	originalBody := []byte(`{"model":"gpt-5.4","stream":true,"store":true,"instructions":"compact test","prompt_cache_retention":"ephemeral","safety_identifier":"sid_123","input":[{"type":"text","text":"compact me"}]}`)
