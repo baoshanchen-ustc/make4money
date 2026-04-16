@@ -4,6 +4,7 @@
 // Run ./dev-setup.sh first if this is a fresh clone.
 
 import { createServer } from "net";
+import { execSync } from "child_process";
 
 const root = path.dirname(new URL(import.meta.url).pathname);
 const backend = path.join(root, "backend");
@@ -14,6 +15,19 @@ $.verbose = false;
 // ── helpers ───────────────────────────────────────────────────────────────────
 const info = (s) => console.log(`${chalk.green("[dev-up]")} ${s}`);
 const die  = (s) => { console.error(chalk.red(`[dev-up] ${s}`)); process.exit(1); };
+
+function safeKill(proc, signal = "SIGTERM") {
+  try { proc.kill(signal); } catch {}
+}
+
+function killPort(port) {
+  try {
+    const pids = execSync(`lsof -ti:${port}`, { encoding: "utf8" }).trim();
+    if (pids) pids.split("\n").forEach(pid => {
+      try { process.kill(Number(pid), "SIGKILL"); } catch {}
+    });
+  } catch {}
+}
 
 function isPortInUse(port) {
   return new Promise((resolve) => {
@@ -41,13 +55,13 @@ if (await isPortInUse(8080)) die("Port 8080 already in use. Stop the existing pr
 if (await isPortInUse(3000)) die("Port 3000 already in use. Stop the existing process first.");
 
 // ── start backend ─────────────────────────────────────────────────────────────
-info("Starting backend on :8080 (may take up to 60s on first run) ...");
+info("Starting backend on :8080 ...");
 const backendProc = $({ cwd: backend })`go run ./cmd/server`.nothrow();
 
 const backendReady = await waitForPort(8080, 60_000);
 if (!backendReady) {
-  backendProc.kill("SIGKILL");
-  die("Backend did not start within 60s. Check output above.");
+  safeKill(backendProc, "SIGKILL");
+  die("Backend did not start within 60s.");
 }
 info("Backend ready.");
 
@@ -57,8 +71,8 @@ const frontendProc = $({ cwd: frontend })`pnpm dev`.nothrow();
 
 const frontendReady = await waitForPort(3000, 30_000);
 if (!frontendReady) {
-  frontendProc.kill("SIGKILL");
-  die("Frontend did not start within 30s. Check output above.");
+  safeKill(frontendProc, "SIGKILL");
+  die("Frontend did not start within 30s.");
 }
 info("Frontend ready.");
 
@@ -75,18 +89,16 @@ async function shutdown() {
   shuttingDown = true;
   console.log();
   info("Shutting down...");
-  backendProc.kill("SIGTERM");
-  frontendProc.kill("SIGTERM");
-  // Give 3s to exit gracefully, then force kill
+  safeKill(backendProc, "SIGTERM");
+  safeKill(frontendProc, "SIGTERM");
   await Promise.race([
     Promise.allSettled([backendProc, frontendProc]),
     sleep(3000),
   ]);
-  backendProc.kill("SIGKILL");
-  frontendProc.kill("SIGKILL");
-  // Also nuke anything lingering on the ports
-  await $`lsof -ti:8080 | xargs kill -9`.nothrow().quiet();
-  await $`lsof -ti:3000 | xargs kill -9`.nothrow().quiet();
+  safeKill(backendProc, "SIGKILL");
+  safeKill(frontendProc, "SIGKILL");
+  killPort(8080);
+  killPort(3000);
   info("All servers stopped.");
   process.exit(0);
 }
