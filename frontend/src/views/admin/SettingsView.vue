@@ -1152,6 +1152,40 @@
               v-if="form.wechat_connect_enabled"
               class="space-y-6 border-t border-gray-100 pt-4 dark:border-dark-700"
             >
+              <div
+                class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300"
+              >
+                <p class="font-medium">{{ t('admin.settings.wechat.paymentUsageTitle') }}</p>
+                <p class="mt-1">{{ t('admin.settings.wechat.paymentUsageDesc') }}</p>
+                <p class="mt-1">{{ t('admin.settings.wechat.paymentCompatibilityHint') }}</p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <a
+                    href="https://mp.weixin.qq.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="inline-flex items-center rounded border border-blue-300 bg-white px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-700/70 dark:bg-dark-800 dark:text-blue-200 dark:hover:bg-dark-700"
+                  >
+                    {{ t('admin.settings.wechat.linkPublicPlatform') }}
+                  </a>
+                  <a
+                    href="https://pay.weixin.qq.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="inline-flex items-center rounded border border-blue-300 bg-white px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-700/70 dark:bg-dark-800 dark:text-blue-200 dark:hover:bg-dark-700"
+                  >
+                    {{ t('admin.settings.wechat.linkMerchantPlatform') }}
+                  </a>
+                  <a
+                    href="https://pay.wechatpay.cn/doc/v3/merchant/4015423216"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="inline-flex items-center rounded border border-blue-300 bg-white px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-700/70 dark:bg-dark-800 dark:text-blue-200 dark:hover:bg-dark-700"
+                  >
+                    {{ t('admin.settings.wechat.linkJsapiGuide') }}
+                  </a>
+                </div>
+              </div>
+
               <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div>
                   <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">

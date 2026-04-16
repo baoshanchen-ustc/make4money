@@ -76,6 +76,29 @@
         <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
           {{ t('admin.settings.payment.providerConfig') }}
         </h4>
+        <div
+          v-if="providerGuide"
+          class="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300"
+        >
+          <p class="font-medium">{{ providerGuide.title }}</p>
+          <p class="mt-1">{{ providerGuide.description }}</p>
+          <p v-if="providerGuide.compatibility" class="mt-1">{{ providerGuide.compatibility }}</p>
+          <div v-if="providerGuide.notes.length" class="mt-2 space-y-1">
+            <p v-for="note in providerGuide.notes" :key="note">{{ note }}</p>
+          </div>
+          <div v-if="providerGuide.links.length" class="mt-3 flex flex-wrap gap-2">
+            <a
+              v-for="link in providerGuide.links"
+              :key="link.href"
+              :href="link.href"
+              target="_blank"
+              rel="noreferrer"
+              class="inline-flex items-center rounded border border-blue-300 bg-white px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-700/70 dark:bg-dark-800 dark:text-blue-200 dark:hover:bg-dark-700"
+            >
+              {{ link.label }}
+            </a>
+          </div>
+        </div>
         <div class="space-y-3">
           <div v-for="field in resolvedFields" :key="field.key">
             <label class="input-label">
@@ -112,6 +135,12 @@
               class="input"
               :placeholder="field.defaultValue || ''"
             />
+            <p
+              v-if="providerFieldHint(field.key)"
+              class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+            >
+              {{ providerFieldHint(field.key) }}
+            </p>
           </div>
         </div>
 
@@ -269,6 +298,13 @@ const returnBaseUrl = ref('')
 const limitsExpanded = ref(false)
 const visibleFields = reactive<Record<string, boolean>>({})
 
+const WECHAT_PUBLIC_PLATFORM_URL = 'https://mp.weixin.qq.com/'
+const WECHAT_PAY_MERCHANT_URL = 'https://pay.weixin.qq.com/'
+const WECHAT_PAY_JSAPI_GUIDE_URL = 'https://pay.wechatpay.cn/doc/v3/merchant/4015423216'
+const WECHAT_PAY_PARAMS_GUIDE_URL = 'https://pay.wechatpay.cn/doc/v3/merchant/4013070756'
+const ALIPAY_OPEN_PLATFORM_URL = 'https://open.alipay.com/module/webApp'
+const ALIPAY_DEV_TOOL_URL = 'https://open.alipay.com/tool'
+
 // --- Computed ---
 const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
@@ -301,6 +337,42 @@ const resolvedFields = computed(() => {
     ...f,
     label: f.label || t(`admin.settings.payment.field_${f.key}`),
   }))
+})
+
+const providerGuide = computed(() => {
+  if (form.provider_key === 'wxpay') {
+    return {
+      title: t('admin.settings.payment.wxpayGuideTitle'),
+      description: t('admin.settings.payment.wxpayGuideDescription'),
+      compatibility: t('admin.settings.payment.wxpayGuideCompatibility'),
+      notes: [
+        t('admin.settings.payment.wxpayGuideNoteAppId'),
+        t('admin.settings.payment.wxpayGuideNoteApi'),
+      ],
+      links: [
+        { label: t('admin.settings.payment.linkWechatPublicPlatform'), href: WECHAT_PUBLIC_PLATFORM_URL },
+        { label: t('admin.settings.payment.linkWechatMerchantPlatform'), href: WECHAT_PAY_MERCHANT_URL },
+        { label: t('admin.settings.payment.linkWechatJsapiGuide'), href: WECHAT_PAY_JSAPI_GUIDE_URL },
+        { label: t('admin.settings.payment.linkWechatParamsGuide'), href: WECHAT_PAY_PARAMS_GUIDE_URL },
+      ],
+    }
+  }
+  if (form.provider_key === 'alipay') {
+    return {
+      title: t('admin.settings.payment.alipayGuideTitle'),
+      description: t('admin.settings.payment.alipayGuideDescription'),
+      compatibility: '',
+      notes: [
+        t('admin.settings.payment.alipayGuideNoteApp'),
+        t('admin.settings.payment.alipayGuideNoteKeys'),
+      ],
+      links: [
+        { label: t('admin.settings.payment.linkAlipayOpenPlatform'), href: ALIPAY_OPEN_PLATFORM_URL },
+        { label: t('admin.settings.payment.linkAlipayDevTools'), href: ALIPAY_DEV_TOOL_URL },
+      ],
+    }
+  }
+  return null
 })
 
 const limitableTypes = computed(() => {
@@ -440,6 +512,40 @@ function handleSave() {
     config: filteredConfig,
     limits: serializeLimits(),
   })
+}
+
+function providerFieldHint(fieldKey: string): string {
+  if (form.provider_key === 'wxpay') {
+    switch (fieldKey) {
+      case 'appId':
+        return t('admin.settings.payment.wxpayFieldHintAppId')
+      case 'mchId':
+        return t('admin.settings.payment.wxpayFieldHintMchId')
+      case 'apiV3Key':
+        return t('admin.settings.payment.wxpayFieldHintApiV3Key')
+      case 'publicKey':
+        return t('admin.settings.payment.wxpayFieldHintPublicKey')
+      case 'publicKeyId':
+        return t('admin.settings.payment.wxpayFieldHintPublicKeyId')
+      case 'certSerial':
+        return t('admin.settings.payment.wxpayFieldHintCertSerial')
+      default:
+        return ''
+    }
+  }
+  if (form.provider_key === 'alipay') {
+    switch (fieldKey) {
+      case 'appId':
+        return t('admin.settings.payment.alipayFieldHintAppId')
+      case 'privateKey':
+        return t('admin.settings.payment.alipayFieldHintPrivateKey')
+      case 'publicKey':
+        return t('admin.settings.payment.alipayFieldHintPublicKey')
+      default:
+        return ''
+    }
+  }
+  return ''
 }
 
 function emitValidationError(msg: string) {
