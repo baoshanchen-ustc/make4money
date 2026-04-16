@@ -227,3 +227,24 @@ func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *
 	}
 	return &cost
 }
+
+// applyAccountStatsCost resolves the account stats cost for a usage log entry.
+// It falls back from the upstream model to the requested model before calling
+// the main 4-level priority chain in resolveAccountStatsCost.
+func applyAccountStatsCost(
+	ctx context.Context,
+	usageLog *UsageLog,
+	cs *ChannelService, bs *BillingService,
+	accountID int64, groupID int64,
+	upstreamModel, requestedModel string,
+	tokens UsageTokens,
+	totalCost float64,
+) {
+	model := upstreamModel
+	if model == "" {
+		model = requestedModel
+	}
+	usageLog.AccountStatsCost = resolveAccountStatsCost(
+		ctx, cs, bs, accountID, groupID, model, tokens, 1, totalCost,
+	)
+}
