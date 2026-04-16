@@ -36,13 +36,11 @@ type APIKeyAuthUserSnapshot struct {
 	Concurrency int     `json:"concurrency"`
 
 	// Balance notification fields (required for CheckBalanceAfterDeduction)
-	Email                      string             `json:"email"`
-	Username                   string             `json:"username"`
-	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
-	BalanceNotifyThresholdType string             `json:"balance_notify_threshold_type"`
-	BalanceNotifyThreshold     *float64           `json:"balance_notify_threshold,omitempty"`
-	BalanceNotifyExtraEmails   []NotifyEmailEntry `json:"balance_notify_extra_emails,omitempty"`
-	TotalRecharged             float64            `json:"total_recharged"`
+	Email                    string             `json:"email"`
+	Username                 string             `json:"username"`
+	BalanceNotifyEnabled     bool               `json:"balance_notify_enabled"`
+	BalanceNotifyThreshold   *float64           `json:"balance_notify_threshold,omitempty"`
+	BalanceNotifyExtraEmails []NotifyEmailEntry `json:"balance_notify_extra_emails,omitempty"`
 }
 
 // APIKeyAuthGroupSnapshot 分组快照

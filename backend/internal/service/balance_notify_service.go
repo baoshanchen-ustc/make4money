@@ -53,12 +53,9 @@ func NewBalanceNotifyService(emailService *EmailService, settingRepo SettingRepo
 	}
 }
 
-// resolveBalanceThreshold returns the effective balance threshold.
-// For percentage type, it computes threshold = totalRecharged * percentage / 100.
-func resolveBalanceThreshold(threshold float64, thresholdType string, totalRecharged float64) float64 {
-	if thresholdType == thresholdTypePercentage && totalRecharged > 0 {
-		return totalRecharged * threshold / 100
-	}
+// resolveBalanceThreshold returns the effective fixed balance threshold.
+// Legacy percentage-based balance thresholds are no longer applied.
+func resolveBalanceThreshold(threshold float64) float64 {
 	return threshold
 }
 
@@ -101,7 +98,7 @@ func (s *BalanceNotifyService) resolveUserEffectiveThreshold(ctx context.Context
 	if threshold <= 0 {
 		return 0, "", false
 	}
-	effectiveThreshold = resolveBalanceThreshold(threshold, user.BalanceNotifyThresholdType, user.TotalRecharged)
+	effectiveThreshold = resolveBalanceThreshold(threshold)
 	if effectiveThreshold <= 0 {
 		return 0, "", false
 	}
