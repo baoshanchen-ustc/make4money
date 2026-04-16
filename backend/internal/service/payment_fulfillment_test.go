@@ -9,24 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type redeemAction int
-
-const (
-	redeemActionCreate redeemAction = iota
-	redeemActionRedeem
-	redeemActionSkipCompleted
-)
-
-func resolveRedeemAction(code *RedeemCode, err error) redeemAction {
-	if err != nil || code == nil {
-		return redeemActionCreate
-	}
-	if code.IsUsed() {
-		return redeemActionSkipCompleted
-	}
-	return redeemActionRedeem
-}
-
 // ---------------------------------------------------------------------------
 // resolveRedeemAction — pure idempotency decision logic
 // ---------------------------------------------------------------------------

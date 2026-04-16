@@ -114,6 +114,32 @@ func TestValidateProviderRequest(t *testing.T) {
 			wantErr:     true,
 			errContains: "alipay config missing required key: publicKey (or alipayPublicKey)",
 		},
+		{
+			name:           "alipay masked private key is rejected",
+			providerKey:    "alipay",
+			providerName:   "Alipay Direct",
+			supportedTypes: "alipay",
+			config: map[string]string{
+				"appId":      "2021001234567890",
+				"privateKey": maskedSensitiveConfigValue,
+				"publicKey":  "public-key",
+			},
+			wantErr:     true,
+			errContains: "alipay config missing required key: privateKey",
+		},
+		{
+			name:           "alipay masked public key is rejected",
+			providerKey:    "alipay",
+			providerName:   "Alipay Direct",
+			supportedTypes: "alipay",
+			config: map[string]string{
+				"appId":      "2021001234567890",
+				"privateKey": "private-key",
+				"publicKey":  maskedSensitiveConfigValue,
+			},
+			wantErr:     true,
+			errContains: "alipay config missing required key: publicKey (or alipayPublicKey)",
+		},
 	}
 
 	for _, tc := range tests {

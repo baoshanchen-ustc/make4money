@@ -17,6 +17,26 @@ import (
 
 // --- Payment Notification & Fulfillment ---
 
+type redeemAction int
+
+const (
+	redeemActionCreate redeemAction = iota
+	redeemActionRedeem
+	redeemActionSkipCompleted
+)
+
+// resolveRedeemAction decides how balance fulfillment should proceed after
+// looking up the recharge redeem code from a previous attempt.
+func resolveRedeemAction(code *RedeemCode, lookupErr error) redeemAction {
+	if lookupErr != nil || code == nil {
+		return redeemActionCreate
+	}
+	if code.IsUsed() {
+		return redeemActionSkipCompleted
+	}
+	return redeemActionRedeem
+}
+
 func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payment.PaymentNotification, pk string) error {
 	if n.Status != payment.NotificationStatusSuccess {
 		return nil
@@ -162,15 +182,13 @@ func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int6
 }
 
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) error {
-	// Idempotency: check if redeem code already exists (from a previous partial run)
-	existing, _ := s.redeemService.GetByCode(ctx, o.RechargeCode)
-	if existing != nil {
-		if existing.IsUsed() {
-			// Code already created and redeemed — just mark completed
-			return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
-		}
-		// Code exists but unused — skip creation, proceed to redeem
-	} else {
+	// Idempotency: inspect any redeem code from a previous partial run and choose
+	// the next action before redeeming the balance.
+	existing, err := s.redeemService.GetByCode(ctx, o.RechargeCode)
+	switch resolveRedeemAction(existing, err) {
+	case redeemActionSkipCompleted:
+		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+	case redeemActionCreate:
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
 		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
 			return fmt.Errorf("create redeem code: %w", err)

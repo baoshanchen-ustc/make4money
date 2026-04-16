@@ -204,16 +204,27 @@ func validateProviderRequest(providerKey, name, supportedTypes string, config ma
 	return validateProviderConfig(providerKey, config)
 }
 
+func hasRequiredConfigValue(key, value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+	if isSensitiveConfigField(key) && isMaskedSensitiveConfigValue(trimmed) {
+		return false
+	}
+	return true
+}
+
 func validateProviderConfig(providerKey string, config map[string]string) error {
 	switch providerKey {
 	case payment.TypeAlipay:
-		if strings.TrimSpace(config["appId"]) == "" {
+		if !hasRequiredConfigValue("appId", config["appId"]) {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: appId")
 		}
-		if strings.TrimSpace(config["privateKey"]) == "" {
+		if !hasRequiredConfigValue("privateKey", config["privateKey"]) {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: privateKey")
 		}
-		if strings.TrimSpace(config["publicKey"]) == "" && strings.TrimSpace(config["alipayPublicKey"]) == "" {
+		if !hasRequiredConfigValue("publicKey", config["publicKey"]) && !hasRequiredConfigValue("alipayPublicKey", config["alipayPublicKey"]) {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: publicKey (or alipayPublicKey)")
 		}
 	}
@@ -227,7 +238,7 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 	if req.Config != nil {
 		hasSensitive := false
 		for k := range req.Config {
-			if isSensitiveConfigField(k) && req.Config[k] != "" {
+			if isSensitiveConfigField(k) && strings.TrimSpace(req.Config[k]) != "" && !isMaskedSensitiveConfigValue(req.Config[k]) {
 				hasSensitive = true
 				break
 			}
