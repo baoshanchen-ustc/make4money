@@ -209,15 +209,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { defineAsyncComponent, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
-import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
-import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
+
+const SubscriptionProgressMini = defineAsyncComponent(
+  () => import('@/components/common/SubscriptionProgressMini.vue')
+)
+const AnnouncementBell = defineAsyncComponent(
+  () => import('@/components/common/AnnouncementBell.vue')
+)
 
 const router = useRouter()
 const route = useRoute()

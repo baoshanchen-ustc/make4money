@@ -267,7 +267,7 @@
                 <div class="pl-6">
                   <div
                     class="markdown-body prose prose-sm max-w-none dark:prose-invert"
-                    v-html="renderMarkdown(selectedAnnouncement.content)"
+                    v-html="renderedDetailContent"
                   ></div>
                 </div>
               </div>
@@ -315,23 +315,16 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import { useAppStore } from '@/stores/app'
 import { useAnnouncementStore } from '@/stores/announcements'
 import { formatRelativeTime, formatRelativeWithDateTime } from '@/utils/format'
+import { renderMarkdownToSafeHtml } from '@/utils/markdown'
 import type { UserAnnouncement } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const announcementStore = useAnnouncementStore()
-
-// Configure marked
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-})
 
 // Use store state (storeToRefs for reactivity)
 const { announcements, loading } = storeToRefs(announcementStore)
@@ -341,12 +334,17 @@ const unreadCount = computed(() => announcementStore.unreadCount)
 const isModalOpen = ref(false)
 const detailModalOpen = ref(false)
 const selectedAnnouncement = ref<UserAnnouncement | null>(null)
+const renderedDetailContent = ref('')
+let detailRenderSequence = 0
 
 // Methods
-function renderMarkdown(content: string): string {
-  if (!content) return ''
-  const html = marked.parse(content) as string
-  return DOMPurify.sanitize(html)
+async function loadDetailContent(content: string): Promise<void> {
+  const sequence = ++detailRenderSequence
+  renderedDetailContent.value = ''
+  const html = await renderMarkdownToSafeHtml(content)
+  if (sequence === detailRenderSequence) {
+    renderedDetailContent.value = html
+  }
 }
 
 function openModal() {
@@ -360,14 +358,17 @@ function closeModal() {
 function openDetail(announcement: UserAnnouncement) {
   selectedAnnouncement.value = announcement
   detailModalOpen.value = true
+  void loadDetailContent(announcement.content)
   if (!announcement.read_at) {
     markAsRead(announcement.id)
   }
 }
 
 function closeDetail() {
+  detailRenderSequence++
   detailModalOpen.value = false
   selectedAnnouncement.value = null
+  renderedDetailContent.value = ''
 }
 
 async function markAsRead(id: number) {

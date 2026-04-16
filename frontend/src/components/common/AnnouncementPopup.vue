@@ -84,31 +84,41 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import { useAnnouncementStore } from '@/stores/announcements'
 import { formatRelativeWithDateTime } from '@/utils/format'
+import { renderMarkdownToSafeHtml } from '@/utils/markdown'
 
 const { t } = useI18n()
 const announcementStore = useAnnouncementStore()
 
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-})
-
-const renderedContent = computed(() => {
-  const content = announcementStore.currentPopup?.content
-  if (!content) return ''
-  const html = marked.parse(content) as string
-  return DOMPurify.sanitize(html)
-})
+const renderedContent = ref('')
+let popupRenderSequence = 0
 
 function handleDismiss() {
   announcementStore.dismissPopup()
 }
+
+watch(
+  () => announcementStore.currentPopup?.content,
+  (content) => {
+    popupRenderSequence++
+    if (!content) {
+      renderedContent.value = ''
+      return
+    }
+
+    const currentSequence = popupRenderSequence
+    renderedContent.value = ''
+    void renderMarkdownToSafeHtml(content).then((html) => {
+      if (currentSequence === popupRenderSequence) {
+        renderedContent.value = html
+      }
+    })
+  },
+  { immediate: true }
+)
 
 // Manage body overflow — only set, never unset (bell component handles restore)
 watch(

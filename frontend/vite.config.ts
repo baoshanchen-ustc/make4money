@@ -82,8 +82,38 @@ export default defineConfig(({ mode }) => {
               return 'vendor-vue'
             }
 
+            // 导出能力：仅在管理员导出时按需加载
+            if (id.includes('/xlsx/') || id.includes('/file-saver/')) {
+              return 'vendor-export'
+            }
+
+            // 支付 SDK：仅在 Stripe 支付流程按需加载
+            if (id.includes('/@stripe/stripe-js/')) {
+              return 'vendor-stripe'
+            }
+
+            // 二维码能力：仅在支付/TOTP 场景按需加载
+            if (id.includes('/qrcode/')) {
+              return 'vendor-qrcode'
+            }
+
+            // Markdown 渲染：仅在公告详情等富文本场景按需加载
+            if (id.includes('/marked/')) {
+              return 'vendor-markdown'
+            }
+
+            // 引导能力：仅在 onboarding 场景按需加载
+            if (id.includes('/driver.js/')) {
+              return 'vendor-onboarding'
+            }
+
+            // 拖拽能力：仅在分组/支付配置编辑场景按需加载
+            if (id.includes('/vue-draggable-plus/')) {
+              return 'vendor-dnd'
+            }
+
             // UI 工具库（较大，单独分离）
-            if (id.includes('/@vueuse/') || id.includes('/xlsx/')) {
+            if (id.includes('/@vueuse/')) {
               return 'vendor-ui'
             }
 
