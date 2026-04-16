@@ -342,6 +342,36 @@ func matchingPlatforms(groupPlatform string) []string {
 	}
 	return []string{groupPlatform}
 }
+
+// matchingLookupPlatforms returns the platform search order for hot-path lookup.
+// Antigravity only falls back cross-platform when the model family is explicit;
+// ambiguous model names remain isolated to the antigravity namespace.
+func matchingLookupPlatforms(groupPlatform, modelLower string) []string {
+	if groupPlatform != PlatformAntigravity {
+		return []string{groupPlatform}
+	}
+	switch inferAntigravityModelPlatform(modelLower) {
+	case PlatformAnthropic:
+		return []string{PlatformAntigravity, PlatformAnthropic}
+	case PlatformGemini:
+		return []string{PlatformAntigravity, PlatformGemini}
+	default:
+		return []string{PlatformAntigravity}
+	}
+}
+
+func inferAntigravityModelPlatform(modelLower string) string {
+	normalized := strings.ToLower(strings.TrimSpace(modelLower))
+	switch {
+	case strings.Contains(normalized, "claude"):
+		return PlatformAnthropic
+	case strings.Contains(normalized, "gemini"):
+		return PlatformGemini
+	default:
+		return ""
+	}
+}
+
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
 	s.cacheSF.Forget("channel_cache")
@@ -377,15 +407,18 @@ func (c *channelCache) matchWildcardMapping(groupID int64, platform, modelLower 
 }
 
 // lookupPricingAcrossPlatforms 在所有可匹配平台中查找模型定价。
+// antigravity 只对可识别的 claude/gemini 模型做跨平台回退，避免
+// 同名或重叠通配符被固定顺序静默命中。
 func lookupPricingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) *ChannelModelPricing {
-	for _, p := range matchingPlatforms(groupPlatform) {
+	platforms := matchingLookupPlatforms(groupPlatform, modelLower)
+	for _, p := range platforms {
 		key := channelModelKey{groupID: groupID, platform: p, model: modelLower}
 		if pricing, ok := cache.pricingByGroupModel[key]; ok {
 			return pricing
 		}
 	}
 	// 精确查找全部失败，依次尝试通配符匹配
-	for _, p := range matchingPlatforms(groupPlatform) {
+	for _, p := range platforms {
 		if pricing := cache.matchWildcard(groupID, p, modelLower); pricing != nil {
 			return pricing
 		}
@@ -396,13 +429,14 @@ func lookupPricingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatf
 // lookupMappingAcrossPlatforms 在所有可匹配平台中查找模型映射。
 // 逻辑与 lookupPricingAcrossPlatforms 相同：先精确查找，再通配符。
 func lookupMappingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) string {
-	for _, p := range matchingPlatforms(groupPlatform) {
+	platforms := matchingLookupPlatforms(groupPlatform, modelLower)
+	for _, p := range platforms {
 		key := channelModelKey{groupID: groupID, platform: p, model: modelLower}
 		if mapped, ok := cache.mappingByGroupModel[key]; ok {
 			return mapped
 		}
 	}
-	for _, p := range matchingPlatforms(groupPlatform) {
+	for _, p := range platforms {
 		if mapped := cache.matchWildcardMapping(groupID, p, modelLower); mapped != "" {
 			return mapped
 		}
@@ -460,7 +494,7 @@ func (s *ChannelService) lookupGroupChannel(ctx context.Context, groupID int64) 
 }
 
 // GetChannelModelPricing 获取指定分组+模型的渠道定价（热路径 O(1)）。
-// 各平台严格独立，只在本平台内查找定价。
+// antigravity 分组会基于模型族对 anthropic/gemini 做受限回退。
 func (s *ChannelService) GetChannelModelPricing(ctx context.Context, groupID int64, model string) *ChannelModelPricing {
 	lk, err := s.lookupGroupChannel(ctx, groupID)
 	if err != nil {
@@ -523,7 +557,7 @@ func (s *ChannelService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 }
 
 // resolveMapping 基于已查找的渠道信息解析模型映射。
-// antigravity 分组依次尝试所有匹配平台，确保跨平台同名映射各自独立。
+// antigravity 仅对可识别模型族做跨平台回退，避免歧义模型误命中。
 func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappingResult {
 	result := ChannelMappingResult{
 		MappedModel:        model,
@@ -544,7 +578,7 @@ func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappi
 }
 
 // checkRestricted 基于已查找的渠道信息检查模型是否被限制。
-// 只在本平台的定价列表中查找。
+// 使用与定价查找相同的模型族感知逻辑。
 func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 	if !lk.channel.RestrictModels {
 		return false

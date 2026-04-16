@@ -1978,6 +1978,30 @@ func TestMatchingPlatforms(t *testing.T) {
 }
 
 // ===========================================================================
+// 8.1 matchingLookupPlatforms
+// ===========================================================================
+
+func TestMatchingLookupPlatforms(t *testing.T) {
+	tests := []struct {
+		name          string
+		groupPlatform string
+		model         string
+		want          []string
+	}{
+		{"antigravity claude model prefers anthropic fallback", PlatformAntigravity, "claude-opus-4-6", []string{PlatformAntigravity, PlatformAnthropic}},
+		{"antigravity gemini model prefers gemini fallback", PlatformAntigravity, "gemini-2.5-pro", []string{PlatformAntigravity, PlatformGemini}},
+		{"antigravity ambiguous model stays isolated", PlatformAntigravity, "shared-model", []string{PlatformAntigravity}},
+		{"anthropic remains isolated", PlatformAnthropic, "claude-opus-4-6", []string{PlatformAnthropic}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, matchingLookupPlatforms(tt.groupPlatform, tt.model))
+		})
+	}
+}
+
+// ===========================================================================
 // 9. Antigravity can reuse anthropic/gemini pricing and mapping
 // ===========================================================================
 
@@ -2043,7 +2067,7 @@ func TestResolveChannelMapping_AntigravitySeesAnthropicMapping(t *testing.T) {
 // 11. Antigravity platform isolation — same-name model across platforms
 // ===========================================================================
 
-func TestGetChannelModelPricing_AntigravityPrefersAnthropicBeforeGeminiForSharedModel(t *testing.T) {
+func TestGetChannelModelPricing_AntigravityDoesNotUseAmbiguousCrossPlatformPricing(t *testing.T) {
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -2057,8 +2081,7 @@ func TestGetChannelModelPricing_AntigravityPrefersAnthropicBeforeGeminiForShared
 	svc := newTestChannelService(repo)
 
 	result := svc.GetChannelModelPricing(context.Background(), 10, "shared-model")
-	require.NotNil(t, result)
-	require.Equal(t, int64(200), result.ID)
+	require.Nil(t, result, "ambiguous antigravity model should not silently choose anthropic or gemini pricing")
 }
 
 func TestGetChannelModelPricing_AntigravitySeesGeminiOnlyPricing(t *testing.T) {
@@ -2078,25 +2101,29 @@ func TestGetChannelModelPricing_AntigravitySeesGeminiOnlyPricing(t *testing.T) {
 	require.Equal(t, int64(300), result.ID)
 }
 
-func TestGetChannelModelPricing_AntigravitySeesWildcardFromOtherPlatforms(t *testing.T) {
+func TestGetChannelModelPricing_AntigravitySeesFamilyWildcardFromOtherPlatforms(t *testing.T) {
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
 		GroupIDs: []int64{10},
 		ModelPricing: []ChannelModelPricing{
-			{ID: 400, Platform: PlatformAnthropic, Models: []string{"shared-*"}, InputPrice: testPtrFloat64(10e-6)},
-			{ID: 401, Platform: PlatformGemini, Models: []string{"shared-*"}, InputPrice: testPtrFloat64(5e-6)},
+			{ID: 400, Platform: PlatformAnthropic, Models: []string{"claude-*"}, InputPrice: testPtrFloat64(10e-6)},
+			{ID: 401, Platform: PlatformGemini, Models: []string{"gemini-*"}, InputPrice: testPtrFloat64(5e-6)},
 		},
 	}
 	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravity})
 	svc := newTestChannelService(repo)
 
-	result := svc.GetChannelModelPricing(context.Background(), 10, "shared-model")
+	result := svc.GetChannelModelPricing(context.Background(), 10, "claude-opus-4")
 	require.NotNil(t, result)
 	require.Equal(t, int64(400), result.ID)
+
+	result = svc.GetChannelModelPricing(context.Background(), 10, "gemini-2.5-pro")
+	require.NotNil(t, result)
+	require.Equal(t, int64(401), result.ID)
 }
 
-func TestResolveChannelMapping_AntigravitySeesMappingFromOtherPlatforms(t *testing.T) {
+func TestResolveChannelMapping_AntigravityDoesNotUseAmbiguousCrossPlatformMapping(t *testing.T) {
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -2110,11 +2137,35 @@ func TestResolveChannelMapping_AntigravitySeesMappingFromOtherPlatforms(t *testi
 	svc := newTestChannelService(repo)
 
 	result := svc.ResolveChannelMapping(context.Background(), 10, "alias")
-	require.True(t, result.Mapped)
-	require.Equal(t, "anthropic-target", result.MappedModel)
+	require.False(t, result.Mapped)
+	require.Equal(t, "alias", result.MappedModel)
 }
 
-func TestCheckRestricted_AntigravityAllowsModelsFromOtherPlatforms(t *testing.T) {
+func TestCheckRestricted_AntigravityAllowsFamilyModelsFromOtherPlatforms(t *testing.T) {
+	ch := Channel{
+		ID:             1,
+		Status:         StatusActive,
+		RestrictModels: true,
+		GroupIDs:       []int64{10},
+		ModelPricing: []ChannelModelPricing{
+			{ID: 500, Platform: PlatformAnthropic, Models: []string{"claude-opus-4-6"}, InputPrice: testPtrFloat64(10e-6)},
+			{ID: 501, Platform: PlatformGemini, Models: []string{"gemini-2.5-pro"}, InputPrice: testPtrFloat64(5e-6)},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravity})
+	svc := newTestChannelService(repo)
+
+	restricted := svc.IsModelRestricted(context.Background(), 10, "claude-opus-4-6")
+	require.False(t, restricted, "claude model from anthropic pricing should be allowed for antigravity")
+
+	restricted = svc.IsModelRestricted(context.Background(), 10, "gemini-2.5-pro")
+	require.False(t, restricted, "gemini model from gemini pricing should be allowed for antigravity")
+
+	restricted = svc.IsModelRestricted(context.Background(), 10, "unknown-model")
+	require.True(t, restricted, "unknown-model should still be restricted")
+}
+
+func TestCheckRestricted_AntigravityRestrictsAmbiguousCrossPlatformModel(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
@@ -2129,10 +2180,7 @@ func TestCheckRestricted_AntigravityAllowsModelsFromOtherPlatforms(t *testing.T)
 	svc := newTestChannelService(repo)
 
 	restricted := svc.IsModelRestricted(context.Background(), 10, "shared-model")
-	require.False(t, restricted, "shared-model from anthropic/gemini should be allowed for antigravity")
-
-	restricted = svc.IsModelRestricted(context.Background(), 10, "unknown-model")
-	require.True(t, restricted, "unknown-model should still be restricted")
+	require.True(t, restricted, "ambiguous model should not silently borrow anthropic/gemini pricing")
 }
 
 func TestGetChannelModelPricing_AntigravityOwnPricingWorks(t *testing.T) {
