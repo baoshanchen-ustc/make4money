@@ -99,6 +99,14 @@ func (s *emailCacheStub) DeleteNotifyVerifyCode(ctx context.Context, email strin
 	return nil
 }
 
+func (s *emailCacheStub) IncrNotifyCodeUserRate(ctx context.Context, userID int64, window time.Duration) (int64, error) {
+	return 0, nil
+}
+
+func (s *emailCacheStub) GetNotifyCodeUserRate(ctx context.Context, userID int64) (int64, error) {
+	return 0, nil
+}
+
 func (s *emailCacheStub) GetPasswordResetToken(ctx context.Context, email string) (*PasswordResetTokenData, error) {
 	return nil, nil
 }

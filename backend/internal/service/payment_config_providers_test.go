@@ -18,6 +18,7 @@ func TestValidateProviderRequest(t *testing.T) {
 		providerKey    string
 		providerName   string
 		supportedTypes string
+		config         map[string]string
 		wantErr        bool
 		errContains    string
 	}{
@@ -26,6 +27,7 @@ func TestValidateProviderRequest(t *testing.T) {
 			providerKey:    "easypay",
 			providerName:   "MyProvider",
 			supportedTypes: "alipay,wxpay",
+			config:         map[string]string{"apiBase": "https://example.com"},
 			wantErr:        false,
 		},
 		{
@@ -33,6 +35,7 @@ func TestValidateProviderRequest(t *testing.T) {
 			providerKey:    "stripe",
 			providerName:   "Stripe Provider",
 			supportedTypes: "",
+			config:         map[string]string{"secretKey": "sk_test_123"},
 			wantErr:        false,
 		},
 		{
@@ -40,13 +43,31 @@ func TestValidateProviderRequest(t *testing.T) {
 			providerKey:    "alipay",
 			providerName:   "Alipay Direct",
 			supportedTypes: "alipay",
-			wantErr:        false,
+			config: map[string]string{
+				"appId":      "2021001234567890",
+				"privateKey": "private-key",
+				"publicKey":  "public-key",
+			},
+			wantErr: false,
+		},
+		{
+			name:           "valid alipay provider with legacy alipayPublicKey",
+			providerKey:    "alipay",
+			providerName:   "Alipay Direct Legacy",
+			supportedTypes: "alipay",
+			config: map[string]string{
+				"appId":           "2021001234567890",
+				"privateKey":      "private-key",
+				"alipayPublicKey": "public-key",
+			},
+			wantErr: false,
 		},
 		{
 			name:           "valid wxpay provider",
 			providerKey:    "wxpay",
 			providerName:   "WeChat Pay",
 			supportedTypes: "wxpay",
+			config:         map[string]string{"mchId": "1234567890"},
 			wantErr:        false,
 		},
 		{
@@ -81,13 +102,25 @@ func TestValidateProviderRequest(t *testing.T) {
 			wantErr:        true,
 			errContains:    "provider name is required",
 		},
+		{
+			name:           "alipay missing public key is rejected",
+			providerKey:    "alipay",
+			providerName:   "Alipay Direct",
+			supportedTypes: "alipay",
+			config: map[string]string{
+				"appId":      "2021001234567890",
+				"privateKey": "private-key",
+			},
+			wantErr:     true,
+			errContains: "alipay config missing required key: publicKey (or alipayPublicKey)",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validateProviderRequest(tc.providerKey, tc.providerName, tc.supportedTypes)
+			err := validateProviderRequest(tc.providerKey, tc.providerName, tc.supportedTypes, tc.config)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.errContains)

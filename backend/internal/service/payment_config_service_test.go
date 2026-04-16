@@ -2,10 +2,59 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+type paymentConfigSettingRepoStub struct {
+	data map[string]string
+}
+
+func (s *paymentConfigSettingRepoStub) Get(context.Context, string) (*Setting, error) {
+	return nil, ErrSettingNotFound
+}
+
+func (s *paymentConfigSettingRepoStub) GetValue(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (s *paymentConfigSettingRepoStub) Set(context.Context, string, string) error {
+	return nil
+}
+
+func (s *paymentConfigSettingRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
+	result := make(map[string]string, len(s.data))
+	for key, value := range s.data {
+		result[key] = value
+	}
+	return result, nil
+}
+
+func (s *paymentConfigSettingRepoStub) SetMultiple(_ context.Context, settings map[string]string) error {
+	if s.data == nil {
+		s.data = make(map[string]string)
+	}
+	for key, value := range settings {
+		s.data[key] = value
+	}
+	return nil
+}
+
+func (s *paymentConfigSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	result := make(map[string]string, len(s.data))
+	for key, value := range s.data {
+		result[key] = value
+	}
+	return result, nil
+}
+
+func (s *paymentConfigSettingRepoStub) Delete(_ context.Context, key string) error {
+	delete(s.data, key)
+	return nil
+}
 
 func TestPcParseFloat(t *testing.T) {
 	t.Parallel()
@@ -350,5 +399,113 @@ func TestBuildUpdateMapDoesNotMaterializeOmittedDefaults(t *testing.T) {
 	}
 	if _, ok := updates[SettingOrderTimeoutMinutes]; ok {
 		t.Fatal("omitted order timeout should not be materialized")
+	}
+}
+
+func TestBuildUpdateMapRejectsInvalidBalanceRechargeMultiplier(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentConfigService{}
+	invalid := 0.0
+
+	_, err := svc.BuildUpdateMap(context.Background(), UpdatePaymentConfigRequest{
+		BalanceRechargeMultiplier: &invalid,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if got := infraerrors.Code(err); got != http.StatusBadRequest {
+		t.Fatalf("status code = %d, want %d", got, http.StatusBadRequest)
+	}
+	if got := infraerrors.Reason(err); got != "INVALID_BALANCE_RECHARGE_MULTIPLIER" {
+		t.Fatalf("reason = %q, want %q", got, "INVALID_BALANCE_RECHARGE_MULTIPLIER")
+	}
+	if got := infraerrors.Message(err); got != "balance recharge multiplier must be greater than 0" {
+		t.Fatalf("message = %q, want %q", got, "balance recharge multiplier must be greater than 0")
+	}
+}
+
+func TestBuildUpdateMapRejectsInvalidRechargeFeeRate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   float64
+		reason  string
+		message string
+	}{
+		{
+			name:    "out of range",
+			value:   100.01,
+			reason:  "INVALID_RECHARGE_FEE_RATE",
+			message: "recharge fee rate must be between 0 and 100",
+		},
+		{
+			name:    "too many decimals",
+			value:   1.234,
+			reason:  "INVALID_RECHARGE_FEE_RATE",
+			message: "recharge fee rate allows at most 2 decimal places",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := &PaymentConfigService{}
+			_, err := svc.BuildUpdateMap(context.Background(), UpdatePaymentConfigRequest{
+				RechargeFeeRate: &tt.value,
+			})
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if got := infraerrors.Code(err); got != http.StatusBadRequest {
+				t.Fatalf("status code = %d, want %d", got, http.StatusBadRequest)
+			}
+			if got := infraerrors.Reason(err); got != tt.reason {
+				t.Fatalf("reason = %q, want %q", got, tt.reason)
+			}
+			if got := infraerrors.Message(err); got != tt.message {
+				t.Fatalf("message = %q, want %q", got, tt.message)
+			}
+		})
+	}
+}
+
+func TestUpdatePaymentConfigUsesSharedSerializedPatchFlow(t *testing.T) {
+	t.Parallel()
+
+	repo := &paymentConfigSettingRepoStub{data: map[string]string{}}
+	repo.data[SettingLoadBalanceStrategy] = string(payment.StrategyLeastAmount)
+	repo.data[SettingEnabledPaymentTypes] = "alipay"
+
+	svc := &PaymentConfigService{settingRepo: repo}
+	loadBalanceStrategy := ""
+	balanceMultiplier := 2.5
+	req := UpdatePaymentConfigRequest{
+		LoadBalanceStrategy:       &loadBalanceStrategy,
+		EnabledTypes:              []string{" Stripe ", "card"},
+		BalanceRechargeMultiplier: &balanceMultiplier,
+	}
+
+	expected, err := svc.BuildUpdateMap(context.Background(), req)
+	if err != nil {
+		t.Fatalf("BuildUpdateMap returned error: %v", err)
+	}
+
+	if err := svc.UpdatePaymentConfig(context.Background(), req); err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	if len(repo.data) < len(expected) {
+		t.Fatalf("repo stored %d settings, expected at least %d", len(repo.data), len(expected))
+	}
+	for key, want := range expected {
+		if got := repo.data[key]; got != want {
+			t.Fatalf("stored value for %s = %q, want %q", key, got, want)
+		}
+	}
+	if _, ok := expected[SettingOrderTimeoutMinutes]; ok {
+		t.Fatal("shared flow should not materialize omitted order timeout")
 	}
 }

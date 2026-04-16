@@ -177,7 +177,7 @@ var validProviderKeys = map[string]bool{
 
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
 	typesStr := joinTypes(req.SupportedTypes)
-	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
+	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr, req.Config); err != nil {
 		return nil, err
 	}
 	enc, err := s.encryptConfig(req.Config)
@@ -193,7 +193,7 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 		Save(ctx)
 }
 
-func validateProviderRequest(providerKey, name, supportedTypes string) error {
+func validateProviderRequest(providerKey, name, supportedTypes string, config map[string]string) error {
 	if strings.TrimSpace(name) == "" {
 		return infraerrors.BadRequest("VALIDATION_ERROR", "provider name is required")
 	}
@@ -201,6 +201,22 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 		return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("invalid provider key: %s", providerKey))
 	}
 	// supported_types can be empty (provider accepts no payment types until configured)
+	return validateProviderConfig(providerKey, config)
+}
+
+func validateProviderConfig(providerKey string, config map[string]string) error {
+	switch providerKey {
+	case payment.TypeAlipay:
+		if strings.TrimSpace(config["appId"]) == "" {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: appId")
+		}
+		if strings.TrimSpace(config["privateKey"]) == "" {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: privateKey")
+		}
+		if strings.TrimSpace(config["publicKey"]) == "" && strings.TrimSpace(config["alipayPublicKey"]) == "" {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: publicKey (or alipayPublicKey)")
+		}
+	}
 	return nil
 }
 
@@ -242,8 +258,11 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetName(*req.Name)
 	}
 	if req.Config != nil {
-		merged, err := s.mergeConfig(ctx, id, req.Config)
+		inst, merged, err := s.loadMergedProviderConfig(ctx, id, req.Config)
 		if err != nil {
+			return nil, err
+		}
+		if err := validateProviderConfig(inst.ProviderKey, merged); err != nil {
 			return nil, err
 		}
 		enc, err := s.encryptConfig(merged)
@@ -343,16 +362,17 @@ func (s *PaymentConfigService) GetUserRefundEligibleInstanceIDs(ctx context.Cont
 	}
 	return ids, nil
 }
-func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newConfig map[string]string) (map[string]string, error) {
+
+func (s *PaymentConfigService) loadMergedProviderConfig(ctx context.Context, id int64, newConfig map[string]string) (*dbent.PaymentProviderInstance, map[string]string, error) {
 	inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("load existing provider: %w", err)
+		return nil, nil, fmt.Errorf("load existing provider: %w", err)
 	}
 	existing, err := s.decryptConfig(inst.Config)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt existing config for instance %d: %w", id, err)
+		return nil, nil, fmt.Errorf("decrypt existing config for instance %d: %w", id, err)
 	}
-	return mergeProviderConfig(existing, newConfig), nil
+	return inst, mergeProviderConfig(existing, newConfig), nil
 }
 
 func (s *PaymentConfigService) decryptConfig(encrypted string) (map[string]string, error) {
