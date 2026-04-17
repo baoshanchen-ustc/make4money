@@ -64,11 +64,27 @@ func RegisterAuthRoutes(
 		}), h.Auth.ResetPassword)
 		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
 		auth.GET("/oauth/linuxdo/callback", h.Auth.LinuxDoOAuthCallback)
-		auth.GET("/oauth/wechat/callback", h.Auth.WeChatPaymentOAuthCallback)
+		auth.POST("/oauth/linuxdo/bind-login", rateLimiter.LimitWithOptions("oauth-linuxdo-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.BindLinuxDoOAuthLogin)
+		auth.GET("/oauth/wechat/start", h.Auth.WeChatOAuthStart)
+		auth.GET("/oauth/wechat/callback", h.Auth.WeChatOAuthCallback)
+		auth.POST("/oauth/wechat/bind-login", rateLimiter.LimitWithOptions("oauth-wechat-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.BindWeChatOAuthLogin)
+		auth.POST("/oauth/wechat/create-account", rateLimiter.LimitWithOptions("oauth-wechat-create-account", 10, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.CreateWeChatOAuthAccount)
 		auth.GET("/oauth/wechat/payment/start", h.Auth.WeChatPaymentOAuthStart)
 		auth.GET("/oauth/wechat/payment/callback", h.Auth.WeChatPaymentOAuthCallback)
+		auth.POST("/oauth/linuxdo/create-account",
+			rateLimiter.LimitWithOptions("oauth-linuxdo-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CreateLinuxDoOAuthAccount,
+		)
 		auth.POST("/oauth/linuxdo/complete-registration",
-			rateLimiter.LimitWithOptions("oauth-linuxdo-complete", 10, time.Minute, middleware.RateLimitOptions{
+			rateLimiter.LimitWithOptions("oauth-linuxdo-create-account", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
 			}),
 			h.Auth.CompleteLinuxDoOAuthRegistration,

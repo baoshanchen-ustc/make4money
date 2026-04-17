@@ -94,9 +94,9 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/auth/wechat/callback',
+    path: '/auth/wechat/payment/callback',
     name: 'WechatPaymentCallback',
-    component: () => import('@/views/auth/WechatCallbackView.vue'),
+    component: () => import('@/views/auth/WechatPaymentCallbackView.vue'),
     meta: {
       requiresAuth: false,
       title: 'WeChat Payment Callback'

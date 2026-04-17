@@ -210,6 +210,18 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			path:       "/api/v1/auth/forgot-password",
 			wantStatus: http.StatusForbidden,
 		},
+		{
+			name:       "enabled_blocks_linuxdo_bind_login",
+			enabled:    "true",
+			path:       "/api/v1/auth/oauth/linuxdo/bind-login",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "enabled_blocks_wechat_create_account",
+			enabled:    "true",
+			path:       "/api/v1/auth/oauth/wechat/create-account",
+			wantStatus: http.StatusForbidden,
+		},
 	}
 
 	for _, tc := range tests {

@@ -73,6 +73,10 @@ type AuthService struct {
 	defaultSubAssigner DefaultSubscriptionAssigner
 }
 
+type externalIdentityLookupRepo interface {
+	FindExternalIdentity(ctx context.Context, provider, providerUserID string) (*UserExternalIdentity, error)
+}
+
 type DefaultSubscriptionAssigner interface {
 	AssignOrExtendSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error)
 }
@@ -330,6 +334,56 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string) (*S
 	return &SendVerifyCodeResult{
 		Countdown: 60, // 60秒倒计时
 	}, nil
+}
+
+// SendOAuthVerifyCode sends an email ownership verification code for OAuth
+// account confirmation. Existing local emails are allowed so users can prove
+// mailbox ownership before binding an unbound OAuth identity.
+func (s *AuthService) SendOAuthVerifyCode(ctx context.Context, email string) (*SendVerifyCodeResult, error) {
+	email = strings.TrimSpace(email)
+	if email == "" || len(email) > 255 {
+		return nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+	}
+	if isReservedEmail(email) {
+		return nil, ErrEmailReserved
+	}
+
+	_, err := s.userRepo.GetByEmail(ctx, email)
+	switch {
+	case err == nil:
+		// Existing accounts are allowed here; ownership verification gates binding.
+	case errors.Is(err, ErrUserNotFound):
+		if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+			return nil, ErrRegDisabled
+		}
+		if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+			return nil, err
+		}
+	default:
+		logger.LegacyPrintf("service.auth", "[Auth] Database error checking oauth verify email exists: %v", err)
+		return nil, ErrServiceUnavailable
+	}
+
+	if s.emailQueueService == nil {
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email queue service not configured for oauth verify")
+		return nil, errors.New("email queue service not configured")
+	}
+
+	siteName := "Sub2API"
+	if s.settingService != nil {
+		siteName = s.settingService.GetSiteName(ctx)
+	}
+
+	logger.LegacyPrintf("service.auth", "[Auth] Enqueueing oauth verify code for: %s", email)
+	if err := s.emailQueueService.EnqueueVerifyCode(email, siteName); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to enqueue oauth verify code: %v", err)
+		return nil, fmt.Errorf("enqueue verify code: %w", err)
+	}
+
+	return &SendVerifyCodeResult{Countdown: 60}, nil
 }
 
 // VerifyTurnstileForRegister 在注册场景下验证 Turnstile。
@@ -678,6 +732,172 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 	return tokenPair, user, nil
 }
 
+func (s *AuthService) FindUserByExternalIdentity(ctx context.Context, provider, subject string) (*User, error) {
+	lookupRepo, ok := s.userRepo.(externalIdentityLookupRepo)
+	if !ok {
+		return nil, ErrExternalIdentityNotFound
+	}
+	identity, err := lookupRepo.FindExternalIdentity(ctx, NormalizeExternalProvider(provider), strings.TrimSpace(subject))
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.userRepo.GetByID(ctx, identity.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (s *AuthService) BindPendingOAuthIdentityToUser(ctx context.Context, userID int64, identity PendingOAuthIdentity) (*User, error) {
+	if NormalizeExternalProvider(identity.Provider) == "" || strings.TrimSpace(identity.Subject) == "" {
+		return nil, ErrInvalidExternalIdentity
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !user.IsActive() {
+		return nil, ErrUserNotActive
+	}
+	if _, err := s.userRepo.UpsertExternalIdentity(ctx, userID, UpsertUserExternalIdentityInput{
+		Provider:         NormalizeExternalProvider(identity.Provider),
+		ProviderUserID:   strings.TrimSpace(identity.Subject),
+		ProviderUsername: strings.TrimSpace(identity.Username),
+		DisplayName:      strings.TrimSpace(identity.Username),
+		AvatarURL:        strings.TrimSpace(identity.AvatarURL),
+	}); err != nil {
+		return nil, err
+	}
+	user, err = s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user.Username == "" && strings.TrimSpace(identity.Username) != "" {
+		user.Username = strings.TrimSpace(identity.Username)
+		if updateErr := s.userRepo.Update(ctx, user); updateErr == nil {
+			user, _ = s.userRepo.GetByID(ctx, userID)
+		}
+	}
+	return user, nil
+}
+
+func (s *AuthService) CreateAccountFromPendingOAuthIdentity(ctx context.Context, identity PendingOAuthIdentity, email, verifyCode, invitationCode string) (*TokenPair, *User, error) {
+	email, needsOwnershipVerify, err := s.resolvePendingOAuthEmail(ctx, identity, email)
+	if err != nil {
+		return nil, nil, err
+	}
+	if email == "" {
+		return nil, nil, ErrPendingOAuthEmailRequired
+	}
+	if strings.EqualFold(strings.TrimSpace(identity.Intent), "bind") {
+		return nil, nil, ErrPendingOAuthBindOnly
+	}
+
+	if !canBindPendingOAuthIdentity(identity) {
+		return s.LoginOrRegisterOAuthWithTokenPair(ctx, email, strings.TrimSpace(identity.Username), invitationCode)
+	}
+
+	exists, err := s.userRepo.ExistsByEmail(ctx, email)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Database error checking oauth target email exists: %v", err)
+		return nil, nil, ErrServiceUnavailable
+	}
+	if needsOwnershipVerify {
+		if err := ensureVerifiedEmailForOAuth(ctx, s.emailService, email, verifyCode); err != nil {
+			return nil, nil, err
+		}
+	}
+	if exists {
+		if !needsOwnershipVerify {
+			return nil, nil, ErrEmailExists
+		}
+		user, err := s.userRepo.GetByEmail(ctx, email)
+		if err != nil {
+			if errors.Is(err, ErrUserNotFound) {
+				return nil, nil, ErrServiceUnavailable
+			}
+			logger.LegacyPrintf("service.auth", "[Auth] Database error loading oauth owner by email: %v", err)
+			return nil, nil, ErrServiceUnavailable
+		}
+		user, err = s.BindPendingOAuthIdentityToUser(ctx, user.ID, identity)
+		if err != nil {
+			return nil, nil, err
+		}
+		tokenPair, err := s.GenerateTokenPair(ctx, user, "")
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate token pair: %w", err)
+		}
+		return tokenPair, user, nil
+	}
+
+	identity.Email = email
+	tokenPair, user, err := s.LoginOrRegisterOAuthWithTokenPair(ctx, email, strings.TrimSpace(identity.Username), invitationCode)
+	if err != nil {
+		return nil, nil, err
+	}
+	user, err = s.BindPendingOAuthIdentityToUser(ctx, user.ID, identity)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tokenPair, user, nil
+}
+
+func (s *AuthService) resolvePendingOAuthEmail(ctx context.Context, identity PendingOAuthIdentity, email string) (string, bool, error) {
+	email = strings.TrimSpace(email)
+	if email != "" {
+		if _, err := mail.ParseAddress(email); err != nil {
+			return "", false, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+		}
+		if isReservedEmail(email) {
+			return "", false, ErrEmailReserved
+		}
+		if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+			return "", false, err
+		}
+		return email, true, nil
+	}
+
+	email = strings.TrimSpace(identity.Email)
+	if email == "" {
+		return "", false, nil
+	}
+	if isReservedEmail(email) {
+		if !canBindPendingOAuthIdentity(identity) {
+			if _, err := mail.ParseAddress(email); err == nil {
+				return email, false, nil
+			}
+		}
+		return "", false, nil
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		return "", false, nil
+	}
+	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+		return "", false, err
+	}
+	return email, false, nil
+}
+
+func canBindPendingOAuthIdentity(identity PendingOAuthIdentity) bool {
+	return NormalizeExternalProvider(identity.Provider) != "" && strings.TrimSpace(identity.Subject) != ""
+}
+
+func (s *AuthService) BindPendingOAuthIdentityWithCredentials(ctx context.Context, identity PendingOAuthIdentity, email, password string) (*TokenPair, *User, error) {
+	_, user, err := s.Login(ctx, email, password)
+	if err != nil {
+		return nil, nil, err
+	}
+	user, err = s.BindPendingOAuthIdentityToUser(ctx, user.ID, identity)
+	if err != nil {
+		return nil, nil, err
+	}
+	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate token pair: %w", err)
+	}
+	return tokenPair, user, nil
+}
+
 // pendingOAuthTokenTTL is the validity period for pending OAuth tokens.
 const pendingOAuthTokenTTL = 10 * time.Minute
 
@@ -685,20 +905,49 @@ const pendingOAuthTokenTTL = 10 * time.Minute
 const pendingOAuthPurpose = "pending_oauth_registration"
 
 type pendingOAuthClaims struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Purpose  string `json:"purpose"`
+	Email       string `json:"email"`
+	Username    string `json:"username"`
+	Provider    string `json:"provider,omitempty"`
+	Subject     string `json:"subject,omitempty"`
+	IdentityKey string `json:"identity_key,omitempty"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+	Intent      string `json:"intent,omitempty"`
+	Purpose     string `json:"purpose"`
 	jwt.RegisteredClaims
+}
+
+type PendingOAuthIdentity struct {
+	Email       string
+	Username    string
+	Provider    string
+	Subject     string
+	IdentityKey string
+	AvatarURL   string
+	Intent      string
 }
 
 // CreatePendingOAuthToken generates a short-lived JWT that carries the OAuth identity
 // while waiting for the user to supply an invitation code.
 func (s *AuthService) CreatePendingOAuthToken(email, username string) (string, error) {
-	now := time.Now()
-	claims := &pendingOAuthClaims{
+	return s.CreatePendingOAuthTokenWithIdentity(PendingOAuthIdentity{
 		Email:    email,
 		Username: username,
-		Purpose:  pendingOAuthPurpose,
+	})
+}
+
+// CreatePendingOAuthTokenWithIdentity generates a short-lived JWT that carries the
+// pending OAuth identity plus optional provider identity metadata for bind/create flows.
+func (s *AuthService) CreatePendingOAuthTokenWithIdentity(identity PendingOAuthIdentity) (string, error) {
+	now := time.Now()
+	claims := &pendingOAuthClaims{
+		Email:       identity.Email,
+		Username:    identity.Username,
+		Provider:    identity.Provider,
+		Subject:     identity.Subject,
+		IdentityKey: identity.IdentityKey,
+		AvatarURL:   identity.AvatarURL,
+		Intent:      strings.TrimSpace(identity.Intent),
+		Purpose:     pendingOAuthPurpose,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(pendingOAuthTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -712,8 +961,18 @@ func (s *AuthService) CreatePendingOAuthToken(email, username string) (string, e
 // VerifyPendingOAuthToken validates a pending OAuth token and returns the embedded identity.
 // Returns ErrInvalidToken when the token is invalid or expired.
 func (s *AuthService) VerifyPendingOAuthToken(tokenStr string) (email, username string, err error) {
+	identity, err := s.VerifyPendingOAuthTokenDetails(tokenStr)
+	if err != nil {
+		return "", "", err
+	}
+	return identity.Email, identity.Username, nil
+}
+
+// VerifyPendingOAuthTokenDetails validates a pending OAuth token and returns the
+// embedded identity plus optional provider metadata.
+func (s *AuthService) VerifyPendingOAuthTokenDetails(tokenStr string) (*PendingOAuthIdentity, error) {
 	if len(tokenStr) > maxTokenLength {
-		return "", "", ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}))
 	token, parseErr := parser.ParseWithClaims(tokenStr, &pendingOAuthClaims{}, func(t *jwt.Token) (any, error) {
@@ -723,16 +982,24 @@ func (s *AuthService) VerifyPendingOAuthToken(tokenStr string) (email, username 
 		return []byte(s.cfg.JWT.Secret), nil
 	})
 	if parseErr != nil {
-		return "", "", ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 	claims, ok := token.Claims.(*pendingOAuthClaims)
 	if !ok || !token.Valid {
-		return "", "", ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 	if claims.Purpose != pendingOAuthPurpose {
-		return "", "", ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
-	return claims.Email, claims.Username, nil
+	return &PendingOAuthIdentity{
+		Email:       claims.Email,
+		Username:    claims.Username,
+		Provider:    claims.Provider,
+		Subject:     claims.Subject,
+		IdentityKey: claims.IdentityKey,
+		AvatarURL:   claims.AvatarURL,
+		Intent:      claims.Intent,
+	}, nil
 }
 
 func (s *AuthService) assignDefaultSubscriptions(ctx context.Context, userID int64) {
@@ -834,7 +1101,8 @@ func randomHexString(byteLength int) (string, error) {
 func isReservedEmail(email string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(email))
 	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(normalized, OIDCConnectSyntheticEmailDomain)
+		strings.HasSuffix(normalized, OIDCConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, WeChatConnectSyntheticEmailDomain)
 }
 
 // GenerateToken 生成JWT access token

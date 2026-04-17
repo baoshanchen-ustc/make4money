@@ -36,6 +36,7 @@ const (
 	oidcOAuthStateCookieName   = "oidc_oauth_state"
 	oidcOAuthVerifierCookie    = "oidc_oauth_verifier"
 	oidcOAuthRedirectCookie    = "oidc_oauth_redirect"
+	oidcOAuthIntentCookie      = "oidc_oauth_intent"
 	oidcOAuthNonceCookie       = "oidc_oauth_nonce"
 	oidcOAuthCookieMaxAgeSec   = 10 * 60 // 10 minutes
 	oidcOAuthDefaultRedirectTo = "/dashboard"
@@ -126,10 +127,23 @@ func (h *AuthHandler) OIDCOAuthStart(c *gin.Context) {
 	if redirectTo == "" {
 		redirectTo = oidcOAuthDefaultRedirectTo
 	}
+	intent := normalizeOAuthIntent(c.Query("intent"))
+	frontendCallback := strings.TrimSpace(cfg.FrontendRedirectURL)
+	if frontendCallback == "" {
+		frontendCallback = oidcOAuthDefaultFrontendCB
+	}
+	if isOAuthBindIntent(intent) {
+		fragment := url.Values{}
+		fragment.Set("error", "binding_not_supported")
+		appendOAuthFlowFragment(fragment, redirectTo, intent)
+		redirectWithFragment(c, frontendCallback, fragment)
+		return
+	}
 
 	secureCookie := isRequestHTTPS(c)
 	oidcSetCookie(c, oidcOAuthStateCookieName, encodeCookieValue(state), oidcOAuthCookieMaxAgeSec, secureCookie)
 	oidcSetCookie(c, oidcOAuthRedirectCookie, encodeCookieValue(redirectTo), oidcOAuthCookieMaxAgeSec, secureCookie)
+	oidcSetCookie(c, oidcOAuthIntentCookie, encodeCookieValue(intent), oidcOAuthCookieMaxAgeSec, secureCookie)
 
 	codeChallenge := ""
 	if cfg.UsePKCE {
@@ -198,6 +212,7 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		oidcClearCookie(c, oidcOAuthStateCookieName, secureCookie)
 		oidcClearCookie(c, oidcOAuthVerifierCookie, secureCookie)
 		oidcClearCookie(c, oidcOAuthRedirectCookie, secureCookie)
+		oidcClearCookie(c, oidcOAuthIntentCookie, secureCookie)
 		oidcClearCookie(c, oidcOAuthNonceCookie, secureCookie)
 	}()
 
@@ -211,6 +226,15 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 	redirectTo = sanitizeFrontendRedirectPath(redirectTo)
 	if redirectTo == "" {
 		redirectTo = oidcOAuthDefaultRedirectTo
+	}
+	intent, _ := readCookieDecoded(c, oidcOAuthIntentCookie)
+	intent = normalizeOAuthIntent(intent)
+	if isOAuthBindIntent(intent) {
+		fragment := url.Values{}
+		fragment.Set("error", "binding_not_supported")
+		appendOAuthFlowFragment(fragment, redirectTo, intent)
+		redirectWithFragment(c, frontendCallback, fragment)
+		return
 	}
 
 	codeVerifier := ""
@@ -326,7 +350,7 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 			fragment := url.Values{}
 			fragment.Set("error", "invitation_required")
 			fragment.Set("pending_oauth_token", pendingToken)
-			fragment.Set("redirect", redirectTo)
+			appendOAuthFlowFragment(fragment, redirectTo, intent)
 			redirectWithFragment(c, frontendCallback, fragment)
 			return
 		}
@@ -345,7 +369,7 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 
 type completeOIDCOAuthRequest struct {
 	PendingOAuthToken string `json:"pending_oauth_token" binding:"required"`
-	InvitationCode    string `json:"invitation_code"     binding:"required"`
+	InvitationCode    string `json:"invitation_code"`
 }
 
 // CompleteOIDCOAuthRegistration completes a pending OAuth registration by validating

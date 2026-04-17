@@ -208,9 +208,13 @@ export const useAuthStore = defineStore('auth', () => {
    * @returns Promise resolving to the authenticated user
    * @throws Error if 2FA verification fails
    */
-  async function login2FA(tempToken: string, totpCode: string): Promise<User> {
+  async function login2FA(tempToken: string, totpCode: string, pendingOAuthToken?: string): Promise<User> {
     try {
-      const response = await authAPI.login2FA({ temp_token: tempToken, totp_code: totpCode })
+      const response = await authAPI.login2FA({
+        temp_token: tempToken,
+        totp_code: totpCode,
+        pending_oauth_token: pendingOAuthToken
+      })
       setAuthFromResponse(response)
       return user.value!
     } catch (error) {

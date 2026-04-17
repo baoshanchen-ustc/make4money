@@ -2,10 +2,13 @@ package handler
 
 import (
 	"log/slog"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -50,8 +53,9 @@ type RegisterRequest struct {
 
 // SendVerifyCodeRequest 发送验证码请求
 type SendVerifyCodeRequest struct {
-	Email          string `json:"email" binding:"required,email"`
-	TurnstileToken string `json:"turnstile_token"`
+	Email             string `json:"email" binding:"required,email"`
+	TurnstileToken    string `json:"turnstile_token"`
+	PendingOAuthToken string `json:"pending_oauth_token"`
 }
 
 // SendVerifyCodeResponse 发送验证码响应
@@ -65,6 +69,20 @@ type LoginRequest struct {
 	Email          string `json:"email" binding:"required,email"`
 	Password       string `json:"password" binding:"required"`
 	TurnstileToken string `json:"turnstile_token"`
+}
+
+type oauthBindLoginRequest struct {
+	PendingOAuthToken string `json:"pending_oauth_token" binding:"required"`
+	Email             string `json:"email" binding:"required,email"`
+	Password          string `json:"password" binding:"required"`
+	TurnstileToken    string `json:"turnstile_token"`
+}
+
+type oauthCreateAccountRequest struct {
+	PendingOAuthToken string `json:"pending_oauth_token" binding:"required"`
+	Email             string `json:"email" binding:"omitempty,email"`
+	VerifyCode        string `json:"verify_code"`
+	InvitationCode    string `json:"invitation_code"`
 }
 
 // AuthResponse 认证响应格式（匹配前端期望）
@@ -143,6 +161,28 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		return
 	}
 
+	if strings.TrimSpace(req.PendingOAuthToken) != "" {
+		identity, err := h.authService.VerifyPendingOAuthTokenDetails(req.PendingOAuthToken)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if service.NormalizeExternalProvider(identity.Provider) == "" {
+			response.BadRequest(c, "Pending OAuth token is not eligible for email verification")
+			return
+		}
+		result, err := h.authService.SendOAuthVerifyCode(c.Request.Context(), req.Email)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, SendVerifyCodeResponse{
+			Message:   "Verification code sent successfully",
+			Countdown: result.Countdown,
+		})
+		return
+	}
+
 	result, err := h.authService.SendVerifyCodeAsync(c.Request.Context(), req.Email)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -203,17 +243,114 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	h.respondWithTokenPair(c, user)
 }
 
+func (h *AuthHandler) bindOAuthLogin(c *gin.Context, provider string) {
+	var req oauthBindLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	identity, err := h.authService.VerifyPendingOAuthTokenDetails(req.PendingOAuthToken)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if providerName := strings.TrimSpace(identity.Provider); providerName != "" && providerName != provider {
+		response.BadRequest(c, "OAuth provider mismatch")
+		return
+	}
+
+	_, user, err := h.authService.Login(c.Request.Context(), req.Email, req.Password)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if h.totpService != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) && user.TotpEnabled {
+		tempToken, err := h.totpService.CreateLoginSession(c.Request.Context(), user.ID, user.Email)
+		if err != nil {
+			response.InternalError(c, "Failed to create 2FA session")
+			return
+		}
+		response.Success(c, TotpLoginResponse{
+			Requires2FA:       true,
+			TempToken:         tempToken,
+			PendingOAuthToken: req.PendingOAuthToken,
+			UserEmailMasked:   service.MaskEmail(user.Email),
+		})
+		return
+	}
+
+	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
+		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
+		return
+	}
+
+	user, err = h.authService.BindPendingOAuthIdentityToUser(c.Request.Context(), user.ID, *identity)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	h.respondWithTokenPair(c, user)
+}
+
+func (h *AuthHandler) createOAuthAccount(c *gin.Context, provider string) {
+	var req oauthCreateAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	identity, err := h.authService.VerifyPendingOAuthTokenDetails(req.PendingOAuthToken)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if providerName := strings.TrimSpace(identity.Provider); providerName != "" && providerName != provider {
+		response.BadRequest(c, "OAuth provider mismatch")
+		return
+	}
+	tokenPair, _, err := h.authService.CreateAccountFromPendingOAuthIdentity(c.Request.Context(), *identity, req.Email, req.VerifyCode, req.InvitationCode)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+		"token_type":    "Bearer",
+	})
+}
+
+func (h *AuthHandler) BindLinuxDoOAuthLogin(c *gin.Context) { h.bindOAuthLogin(c, "linuxdo") }
+func (h *AuthHandler) BindWeChatOAuthLogin(c *gin.Context)  { h.bindOAuthLogin(c, "wechat") }
+func (h *AuthHandler) BindOIDCOAuthLogin(c *gin.Context) {
+	response.NotFound(c, "OIDC account binding is not supported")
+}
+func (h *AuthHandler) CreateLinuxDoOAuthAccount(c *gin.Context) {
+	h.createOAuthAccount(c, "linuxdo")
+}
+func (h *AuthHandler) CreateWeChatOAuthAccount(c *gin.Context) {
+	h.createOAuthAccount(c, "wechat")
+}
+
 // TotpLoginResponse represents the response when 2FA is required
 type TotpLoginResponse struct {
-	Requires2FA     bool   `json:"requires_2fa"`
-	TempToken       string `json:"temp_token,omitempty"`
-	UserEmailMasked string `json:"user_email_masked,omitempty"`
+	Requires2FA       bool   `json:"requires_2fa"`
+	TempToken         string `json:"temp_token,omitempty"`
+	PendingOAuthToken string `json:"pending_oauth_token,omitempty"`
+	UserEmailMasked   string `json:"user_email_masked,omitempty"`
 }
 
 // Login2FARequest represents the 2FA login request
 type Login2FARequest struct {
-	TempToken string `json:"temp_token" binding:"required"`
-	TotpCode  string `json:"totp_code" binding:"required,len=6"`
+	TempToken         string `json:"temp_token" binding:"required"`
+	TotpCode          string `json:"totp_code" binding:"required,len=6"`
+	PendingOAuthToken string `json:"pending_oauth_token"`
 }
 
 // Login2FA completes the login with 2FA verification
@@ -263,16 +400,57 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 		return
 	}
 
+	if !user.IsActive() {
+		response.ErrorFrom(c, service.ErrUserNotActive)
+		return
+	}
+
 	// Backend mode: only admin can login (check BEFORE deleting session)
 	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
 		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
 		return
 	}
 
+	if strings.TrimSpace(req.PendingOAuthToken) != "" {
+		identity, err := h.authService.VerifyPendingOAuthTokenDetails(req.PendingOAuthToken)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		user, err = h.authService.BindPendingOAuthIdentityToUser(c.Request.Context(), user.ID, *identity)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+
 	// Delete the login session (only after all checks pass)
 	_ = h.totpService.DeleteLoginSession(c.Request.Context(), req.TempToken)
 
 	h.respondWithTokenPair(c, user)
+}
+
+func (h *AuthHandler) redirectOAuthSuccessForUser(c *gin.Context, frontendCallback, redirectTo string, user *service.User) {
+	if user == nil {
+		redirectOAuthError(c, frontendCallback, "login_failed", "service_error", "")
+		return
+	}
+	if !user.IsActive() {
+		redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(service.ErrUserNotActive), infraerrors.Message(service.ErrUserNotActive))
+		return
+	}
+	tokenPair, err := h.authService.GenerateTokenPair(c.Request.Context(), user, "")
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "login_failed", "service_error", "")
+		return
+	}
+	urlValues := url.Values{}
+	urlValues.Set("access_token", tokenPair.AccessToken)
+	urlValues.Set("refresh_token", tokenPair.RefreshToken)
+	urlValues.Set("token_type", "Bearer")
+	urlValues.Set("redirect", redirectTo)
+	urlValues.Set("expires_in", strconv.Itoa(tokenPair.ExpiresIn))
+	redirectWithFragment(c, frontendCallback, urlValues)
 }
 
 // GetCurrentUser handles getting current authenticated user

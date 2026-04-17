@@ -186,6 +186,35 @@ export interface RefreshTokenResponse {
   token_type: string
 }
 
+export type OAuthProvider = 'linuxdo' | 'oidc' | 'wechat'
+
+export interface OAuthTokenPairResponse {
+  access_token: string
+  refresh_token?: string
+  expires_in?: number
+  token_type: string
+}
+
+export interface OAuthBindLoginRequest {
+  pendingOAuthToken: string
+  email: string
+  password: string
+  turnstileToken?: string
+}
+
+export interface OAuthCreateAccountRequest {
+  pendingOAuthToken: string
+  email?: string
+  verifyCode?: string
+  invitationCode?: string
+}
+
+export type OAuthBindLoginResponse = OAuthTokenPairResponse | TotpLoginResponse
+
+function getOAuthProviderBasePath(provider: OAuthProvider): string {
+  return `/auth/oauth/${provider}`
+}
+
 /**
  * Refresh the access token using the refresh token
  * @returns New token pair
@@ -344,13 +373,8 @@ export async function resetPassword(request: ResetPasswordRequest): Promise<Rese
 export async function completeLinuxDoOAuthRegistration(
   pendingOAuthToken: string,
   invitationCode: string
-): Promise<{ access_token: string; refresh_token: string; expires_in: number; token_type: string }> {
-  const { data } = await apiClient.post<{
-    access_token: string
-    refresh_token: string
-    expires_in: number
-    token_type: string
-  }>('/auth/oauth/linuxdo/complete-registration', {
+): Promise<OAuthTokenPairResponse> {
+  const { data } = await apiClient.post<OAuthTokenPairResponse>('/auth/oauth/linuxdo/complete-registration', {
     pending_oauth_token: pendingOAuthToken,
     invitation_code: invitationCode
   })
@@ -366,16 +390,77 @@ export async function completeLinuxDoOAuthRegistration(
 export async function completeOIDCOAuthRegistration(
   pendingOAuthToken: string,
   invitationCode: string
-): Promise<{ access_token: string; refresh_token: string; expires_in: number; token_type: string }> {
-  const { data } = await apiClient.post<{
-    access_token: string
-    refresh_token: string
-    expires_in: number
-    token_type: string
-  }>('/auth/oauth/oidc/complete-registration', {
+): Promise<OAuthTokenPairResponse> {
+  const { data } = await apiClient.post<OAuthTokenPairResponse>('/auth/oauth/oidc/complete-registration', {
     pending_oauth_token: pendingOAuthToken,
     invitation_code: invitationCode
   })
+  return data
+}
+
+/**
+ * Bind a pending third-party login to an existing account.
+ *
+ * Assumption for the additive account refactor:
+ * the backend exposes a provider-scoped `bind-login` endpoint that accepts
+ * credentials plus a pending third-party login token and returns a normal
+ * auth token pair.
+ */
+export async function bindOAuthLogin(
+  provider: OAuthProvider,
+  request: OAuthBindLoginRequest
+): Promise<OAuthBindLoginResponse> {
+  const { data } = await apiClient.post<OAuthBindLoginResponse>(
+    `${getOAuthProviderBasePath(provider)}/bind-login`,
+    {
+      pending_oauth_token: request.pendingOAuthToken,
+      pending_login_token: request.pendingOAuthToken,
+      email: request.email,
+      password: request.password,
+      turnstile_token: request.turnstileToken
+    }
+  )
+  return data
+}
+
+/**
+ * Create an account from a pending third-party login.
+ *
+ * LinuxDo and OIDC keep their existing `complete-registration` endpoints for
+ * backwards compatibility with the pre-refactor invitation-only flow.
+ */
+export async function createOAuthAccount(
+  provider: OAuthProvider,
+  request: OAuthCreateAccountRequest
+): Promise<OAuthTokenPairResponse> {
+  if (provider === 'linuxdo') {
+    const { data } = await apiClient.post<OAuthTokenPairResponse>('/auth/oauth/linuxdo/create-account', {
+      pending_oauth_token: request.pendingOAuthToken,
+      pending_login_token: request.pendingOAuthToken,
+      email: request.email,
+      verify_code: request.verifyCode,
+      invitation_code: request.invitationCode
+    })
+    return data
+  }
+
+  if (provider === 'oidc') {
+    return completeOIDCOAuthRegistration(
+      request.pendingOAuthToken,
+      request.invitationCode || ''
+    )
+  }
+
+  const { data } = await apiClient.post<OAuthTokenPairResponse>(
+    `${getOAuthProviderBasePath(provider)}/create-account`,
+    {
+      pending_oauth_token: request.pendingOAuthToken,
+      pending_login_token: request.pendingOAuthToken,
+      email: request.email,
+      verify_code: request.verifyCode,
+      invitation_code: request.invitationCode
+    }
+  )
   return data
 }
 
@@ -402,6 +487,8 @@ export const authAPI = {
   resetPassword,
   refreshToken,
   revokeAllSessions,
+  bindOAuthLogin,
+  createOAuthAccount,
   completeLinuxDoOAuthRegistration,
   completeOIDCOAuthRegistration
 }

@@ -29,6 +29,7 @@ const (
 	linuxDoOAuthStateCookieName   = "linuxdo_oauth_state"
 	linuxDoOAuthVerifierCookie    = "linuxdo_oauth_verifier"
 	linuxDoOAuthRedirectCookie    = "linuxdo_oauth_redirect"
+	linuxDoOAuthIntentCookie      = "linuxdo_oauth_intent"
 	linuxDoOAuthCookieMaxAgeSec   = 10 * 60 // 10 minutes
 	linuxDoOAuthDefaultRedirectTo = "/dashboard"
 	linuxDoOAuthDefaultFrontendCB = "/auth/linuxdo/callback"
@@ -86,10 +87,12 @@ func (h *AuthHandler) LinuxDoOAuthStart(c *gin.Context) {
 	if redirectTo == "" {
 		redirectTo = linuxDoOAuthDefaultRedirectTo
 	}
+	intent := normalizeOAuthIntent(c.Query("intent"))
 
 	secureCookie := isRequestHTTPS(c)
 	setCookie(c, linuxDoOAuthStateCookieName, encodeCookieValue(state), linuxDoOAuthCookieMaxAgeSec, secureCookie)
 	setCookie(c, linuxDoOAuthRedirectCookie, encodeCookieValue(redirectTo), linuxDoOAuthCookieMaxAgeSec, secureCookie)
+	setCookie(c, linuxDoOAuthIntentCookie, encodeCookieValue(intent), linuxDoOAuthCookieMaxAgeSec, secureCookie)
 
 	codeChallenge := ""
 	if cfg.UsePKCE {
@@ -148,6 +151,7 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		clearCookie(c, linuxDoOAuthStateCookieName, secureCookie)
 		clearCookie(c, linuxDoOAuthVerifierCookie, secureCookie)
 		clearCookie(c, linuxDoOAuthRedirectCookie, secureCookie)
+		clearCookie(c, linuxDoOAuthIntentCookie, secureCookie)
 	}()
 
 	expectedState, err := readCookieDecoded(c, linuxDoOAuthStateCookieName)
@@ -161,6 +165,8 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 	if redirectTo == "" {
 		redirectTo = linuxDoOAuthDefaultRedirectTo
 	}
+	intent, _ := readCookieDecoded(c, linuxDoOAuthIntentCookie)
+	intent = normalizeOAuthIntent(intent)
 
 	codeVerifier := ""
 	if cfg.UsePKCE {
@@ -205,75 +211,73 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		return
 	}
 
-	// 安全考虑：不要把第三方返回的 email 直接映射到本地账号（可能与本地邮箱用户冲突导致账号被接管）。
-	// 统一使用基于 subject 的稳定合成邮箱来做账号绑定。
-	if subject != "" {
-		email = linuxDoSyntheticEmail(subject)
+	identityKey := linuxDoIdentityKey(subject)
+	legacyEmail := linuxDoSyntheticEmail(subject)
+	pendingIdentity := service.PendingOAuthIdentity{
+		Email:       strings.TrimSpace(email),
+		Username:    username,
+		Provider:    "linuxdo",
+		Subject:     subject,
+		IdentityKey: identityKey,
+		Intent:      intent,
 	}
 
-	// 传入空邀请码；如果需要邀请码，服务层返回 ErrOAuthInvitationRequired
-	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "")
-	if err != nil {
-		if errors.Is(err, service.ErrOAuthInvitationRequired) {
-			pendingToken, tokenErr := h.authService.CreatePendingOAuthToken(email, username)
-			if tokenErr != nil {
-				redirectOAuthError(c, frontendCallback, "login_failed", "service_error", "")
-				return
-			}
+	if existingUser, lookupErr := h.authService.FindUserByExternalIdentity(c.Request.Context(), pendingIdentity.Provider, pendingIdentity.Subject); lookupErr == nil && existingUser != nil {
+		if isOAuthBindIntent(intent) {
 			fragment := url.Values{}
-			fragment.Set("error", "invitation_required")
-			fragment.Set("pending_oauth_token", pendingToken)
-			fragment.Set("redirect", redirectTo)
+			fragment.Set("error", "external_identity_already_bound")
+			fragment.Set("provider", "linuxdo")
+			appendOAuthFlowFragment(fragment, redirectTo, intent)
 			redirectWithFragment(c, frontendCallback, fragment)
 			return
 		}
-		// 避免把内部细节泄露给客户端；给前端保留结构化原因与提示信息即可。
-		redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
+		h.redirectOAuthSuccessForUser(c, frontendCallback, redirectTo, existingUser)
 		return
 	}
 
+	if !isOAuthBindIntent(intent) && h.userService != nil && legacyEmail != "" {
+		if legacyUser, legacyErr := h.userService.GetByEmail(c.Request.Context(), legacyEmail); legacyErr == nil && legacyUser != nil {
+			if _, bindErr := h.authService.BindPendingOAuthIdentityToUser(c.Request.Context(), legacyUser.ID, pendingIdentity); bindErr == nil {
+				// Backward compatibility for legacy LinuxDo users created before external identities persisted.
+				h.redirectOAuthSuccessForUser(c, frontendCallback, redirectTo, legacyUser)
+				return
+			}
+		}
+	}
+
+	pendingToken, tokenErr := h.authService.CreatePendingOAuthTokenWithIdentity(pendingIdentity)
+	if tokenErr != nil {
+		redirectOAuthError(c, frontendCallback, "login_failed", "service_error", "")
+		return
+	}
 	fragment := url.Values{}
-	fragment.Set("access_token", tokenPair.AccessToken)
-	fragment.Set("refresh_token", tokenPair.RefreshToken)
-	fragment.Set("expires_in", fmt.Sprintf("%d", tokenPair.ExpiresIn))
-	fragment.Set("token_type", "Bearer")
-	fragment.Set("redirect", redirectTo)
+	fragment.Set("error", "unbound_oauth_account")
+	fragment.Set("pending_oauth_token", pendingToken)
+	fragment.Set("provider", "linuxdo")
+	if subject != "" {
+		fragment.Set("provider_subject", subject)
+	}
+	if identityKey != "" {
+		fragment.Set("provider_identity_key", identityKey)
+	}
+	appendOAuthFlowFragment(fragment, redirectTo, intent)
 	redirectWithFragment(c, frontendCallback, fragment)
+	return
+
 }
 
 type completeLinuxDoOAuthRequest struct {
 	PendingOAuthToken string `json:"pending_oauth_token" binding:"required"`
-	InvitationCode    string `json:"invitation_code"     binding:"required"`
+	Email             string `json:"email" binding:"omitempty,email"`
+	VerifyCode        string `json:"verify_code"`
+	InvitationCode    string `json:"invitation_code"`
 }
 
 // CompleteLinuxDoOAuthRegistration completes a pending OAuth registration by validating
 // the invitation code and creating the user account.
 // POST /api/v1/auth/oauth/linuxdo/complete-registration
 func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
-	var req completeLinuxDoOAuthRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_REQUEST", "message": err.Error()})
-		return
-	}
-
-	email, username, err := h.authService.VerifyPendingOAuthToken(req.PendingOAuthToken)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "INVALID_TOKEN", "message": "invalid or expired registration token"})
-		return
-	}
-
-	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"access_token":  tokenPair.AccessToken,
-		"refresh_token": tokenPair.RefreshToken,
-		"expires_in":    tokenPair.ExpiresIn,
-		"token_type":    "Bearer",
-	})
+	h.createOAuthAccount(c, "linuxdo")
 }
 
 func (h *AuthHandler) getLinuxDoOAuthConfig(ctx context.Context) (config.LinuxDoConnectConfig, error) {
@@ -727,4 +731,33 @@ func linuxDoSyntheticEmail(subject string) string {
 		return ""
 	}
 	return "linuxdo-" + subject + service.LinuxDoConnectSyntheticEmailDomain
+}
+
+func linuxDoIdentityKey(subject string) string {
+	return "linuxdo\x1f" + strings.TrimSpace(subject)
+}
+
+func normalizeOAuthIntent(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "bind":
+		return "bind"
+	default:
+		return ""
+	}
+}
+
+func isOAuthBindIntent(raw string) bool {
+	return normalizeOAuthIntent(raw) == "bind"
+}
+
+func appendOAuthFlowFragment(fragment url.Values, redirectTo, intent string) {
+	if fragment == nil {
+		return
+	}
+	if strings.TrimSpace(redirectTo) != "" {
+		fragment.Set("redirect", redirectTo)
+	}
+	if normalizedIntent := normalizeOAuthIntent(intent); normalizedIntent != "" {
+		fragment.Set("intent", normalizedIntent)
+	}
 }

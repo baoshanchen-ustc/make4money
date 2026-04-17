@@ -35,6 +35,42 @@ func TestVerifyPendingOAuthToken_ValidToken(t *testing.T) {
 	require.Equal(t, "alice", username)
 }
 
+func TestVerifyPendingOAuthTokenDetails_PreservesProviderIdentity(t *testing.T) {
+	svc := newAuthServiceForPendingOAuthTest()
+
+	token, err := svc.CreatePendingOAuthTokenWithIdentity(PendingOAuthIdentity{
+		Email:       "wechat-abc@wechat-connect.invalid",
+		Username:    "wechat_user",
+		Provider:    "wechat",
+		Subject:     "unionid-123",
+		IdentityKey: "wechat\x1funionid\x1fopen\x1fappid\x1funionid-123",
+	})
+	require.NoError(t, err)
+
+	identity, err := svc.VerifyPendingOAuthTokenDetails(token)
+	require.NoError(t, err)
+	require.Equal(t, "wechat-abc@wechat-connect.invalid", identity.Email)
+	require.Equal(t, "wechat_user", identity.Username)
+	require.Equal(t, "wechat", identity.Provider)
+	require.Equal(t, "unionid-123", identity.Subject)
+	require.Equal(t, "wechat\x1funionid\x1fopen\x1fappid\x1funionid-123", identity.IdentityKey)
+}
+
+func TestVerifyPendingOAuthTokenDetails_PreservesBindIntent(t *testing.T) {
+	svc := newAuthServiceForPendingOAuthTest()
+
+	token, err := svc.CreatePendingOAuthTokenWithIdentity(PendingOAuthIdentity{
+		Provider: "linuxdo",
+		Subject:  "linuxdo-subject-1",
+		Intent:   "bind",
+	})
+	require.NoError(t, err)
+
+	identity, err := svc.VerifyPendingOAuthTokenDetails(token)
+	require.NoError(t, err)
+	require.Equal(t, "bind", identity.Intent)
+}
+
 // TestVerifyPendingOAuthToken_RegularJWTRejected 用普通 access token 尝试验证，应返回 ErrInvalidToken。
 func TestVerifyPendingOAuthToken_RegularJWTRejected(t *testing.T) {
 	svc := newAuthServiceForPendingOAuthTest()

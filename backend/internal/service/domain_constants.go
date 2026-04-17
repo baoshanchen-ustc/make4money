@@ -75,6 +75,9 @@ const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
 // OIDCConnectSyntheticEmailDomain 是 OIDC 用户的合成邮箱后缀（RFC 保留域名）。
 const OIDCConnectSyntheticEmailDomain = "@oidc-connect.invalid"
 
+// WeChatConnectSyntheticEmailDomain 是 WeChat Connect 用户的合成邮箱后缀（RFC 保留域名）。
+const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
+
 // Setting keys
 const (
 	// 注册设置
