@@ -3214,6 +3214,13 @@ export default {
         https: 'HTTPS',
         socks5: 'SOCKS5',
         socks5h: 'SOCKS5H (远程 DNS)',
+        stellar: 'Stellar'
+      },
+      stellar: {
+        token: 'Token',
+        tokenPlaceholder: 'Base64 认证令牌',
+        serverName: '服务器名称（SNI）',
+        serverNamePlaceholder: 'cloudflare.com（可选）'
       },
       name: '名称',
       protocol: '协议',

@@ -7,8 +7,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	spcore "github.com/ruilisi/stellar-proxy/core"
+	"github.com/ruilisi/stellar-proxy/module/ipinfo"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
@@ -62,6 +66,12 @@ type proxyProbeService struct {
 }
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
+	// stellar-proxy uses a custom TLS protocol; probe it directly via stellar's
+	// ipinfo module rather than creating a standard HTTP client.
+	if parsed, err := url.Parse(proxyURL); err == nil && strings.ToLower(parsed.Scheme) == "stellar" {
+		return s.probeStellar(parsed)
+	}
+
 	client, err := httpclient.GetClient(httpclient.Options{
 		ProxyURL:           proxyURL,
 		Timeout:            defaultProxyProbeTimeout,
@@ -83,6 +93,34 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 	}
 
 	return nil, 0, fmt.Errorf("all probe URLs failed, last error: %w", lastErr)
+}
+
+// probeStellar probes a stellar-proxy server by doing a TCP ping (for latency)
+// and fetching IP info through the proxy.
+func (s *proxyProbeService) probeStellar(u *url.URL) (*service.ProxyExitInfo, int64, error) {
+	server := u.Host
+	token := u.Query().Get("token")
+
+	// TCP ping for latency
+	latency, _, pingErr := spcore.TCPPing(server)
+	latencyMs := latency.Milliseconds()
+
+	// Fetch IP info through the proxy
+	info, err := ipinfo.GetIPInfo(server, token)
+	if err != nil {
+		if pingErr != nil {
+			return nil, 0, fmt.Errorf("stellar ping failed: %w; ip info failed: %v", pingErr, err)
+		}
+		return nil, latencyMs, fmt.Errorf("stellar ip info failed: %w", err)
+	}
+
+	// ipinfo.io returns country as a 2-letter ISO code (e.g. "US")
+	return &service.ProxyExitInfo{
+		IP:          info.IP,
+		City:        info.City,
+		Region:      info.Region,
+		CountryCode: info.Country,
+	}, latencyMs, nil
 }
 
 func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Client, url string, parser string) (*service.ProxyExitInfo, int64, error) {

@@ -678,13 +678,16 @@ func normalizeProxyURL(raw string) (string, *url.URL, error) {
 		return directProxyKey, nil, nil
 	}
 	// 规范化：小写 scheme/host，去除路径和查询参数
+	// stellar 协议的 token/sn 存储在查询参数中，必须保留 RawQuery
 	parsed.Scheme = strings.ToLower(parsed.Scheme)
 	parsed.Host = strings.ToLower(parsed.Host)
 	parsed.Path = ""
 	parsed.RawPath = ""
-	parsed.RawQuery = ""
+	if strings.ToLower(parsed.Scheme) != "stellar" {
+		parsed.RawQuery = ""
+		parsed.ForceQuery = false
+	}
 	parsed.Fragment = ""
-	parsed.ForceQuery = false
 	if hostname := parsed.Hostname(); hostname != "" {
 		port := parsed.Port()
 		if (parsed.Scheme == "http" && port == "80") || (parsed.Scheme == "https" && port == "443") {

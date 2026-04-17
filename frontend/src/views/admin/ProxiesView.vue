@@ -125,9 +125,9 @@
           <template #cell-protocol="{ value }">
             <span
               v-if="value"
-              :class="['badge', value.startsWith('socks5') ? 'badge-primary' : 'badge-gray']"
+              :class="['badge', value.startsWith('socks5') ? 'badge-primary' : value === 'stellar' ? 'badge-success' : 'badge-gray']"
             >
-              {{ value.toUpperCase() }}
+              {{ value === 'stellar' ? 'Stellar' : value.toUpperCase() }}
             </span>
             <span v-else class="text-sm text-gray-400">-</span>
           </template>
@@ -444,22 +444,22 @@
           </div>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.proxies.username') }}</label>
+          <label class="input-label">{{ createForm.protocol === 'stellar' ? t('admin.proxies.stellar.serverName') : t('admin.proxies.username') }}</label>
           <input
             v-model="createForm.username"
             type="text"
             class="input"
-            :placeholder="t('admin.proxies.optionalAuth')"
+            :placeholder="createForm.protocol === 'stellar' ? t('admin.proxies.stellar.serverNamePlaceholder') : t('admin.proxies.optionalAuth')"
           />
         </div>
         <div>
-          <label class="input-label">{{ t('admin.proxies.password') }}</label>
+          <label class="input-label">{{ createForm.protocol === 'stellar' ? t('admin.proxies.stellar.token') : t('admin.proxies.password') }}</label>
           <div class="relative">
             <input
               v-model="createForm.password"
               :type="createPasswordVisible ? 'text' : 'password'"
               class="input pr-10"
-              :placeholder="t('admin.proxies.optionalAuth')"
+              :placeholder="createForm.protocol === 'stellar' ? t('admin.proxies.stellar.tokenPlaceholder') : t('admin.proxies.optionalAuth')"
             />
             <button
               type="button"
@@ -642,16 +642,21 @@
           </div>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.proxies.username') }}</label>
-          <input v-model="editForm.username" type="text" class="input" />
+          <label class="input-label">{{ editForm.protocol === 'stellar' ? t('admin.proxies.stellar.serverName') : t('admin.proxies.username') }}</label>
+          <input
+            v-model="editForm.username"
+            type="text"
+            class="input"
+            :placeholder="editForm.protocol === 'stellar' ? t('admin.proxies.stellar.serverNamePlaceholder') : ''"
+          />
         </div>
         <div>
-          <label class="input-label">{{ t('admin.proxies.password') }}</label>
+          <label class="input-label">{{ editForm.protocol === 'stellar' ? t('admin.proxies.stellar.token') : t('admin.proxies.password') }}</label>
           <div class="relative">
             <input
               v-model="editForm.password"
               :type="editPasswordVisible ? 'text' : 'password'"
-              :placeholder="t('admin.proxies.leaveEmptyToKeep')"
+              :placeholder="editForm.protocol === 'stellar' ? t('admin.proxies.stellar.tokenPlaceholder') : t('admin.proxies.leaveEmptyToKeep')"
               class="input pr-10"
               @input="editPasswordDirty = true"
             />
@@ -917,7 +922,8 @@ const protocolOptions = computed(() => [
   { value: 'http', label: 'HTTP' },
   { value: 'https', label: 'HTTPS' },
   { value: 'socks5', label: 'SOCKS5' },
-  { value: 'socks5h', label: 'SOCKS5H' }
+  { value: 'socks5h', label: 'SOCKS5H' },
+  { value: 'stellar', label: 'Stellar' }
 ])
 
 const statusOptions = computed(() => [
@@ -931,7 +937,8 @@ const protocolSelectOptions = computed(() => [
   { value: 'http', label: t('admin.proxies.protocols.http') },
   { value: 'https', label: t('admin.proxies.protocols.https') },
   { value: 'socks5', label: t('admin.proxies.protocols.socks5') },
-  { value: 'socks5h', label: t('admin.proxies.protocols.socks5h') }
+  { value: 'socks5h', label: t('admin.proxies.protocols.socks5h') },
+  { value: 'stellar', label: t('admin.proxies.protocols.stellar') }
 ])
 
 const editStatusOptions = computed(() => [

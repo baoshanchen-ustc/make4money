@@ -25,6 +25,21 @@ func (p *Proxy) IsActive() bool {
 }
 
 func (p *Proxy) URL() string {
+	if p.Protocol == "stellar" {
+		u := &url.URL{
+			Scheme: "stellar",
+			Host:   net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),
+		}
+		q := url.Values{}
+		q.Set("token", p.Password)
+		sn := p.Username
+		if sn == "" {
+			sn = "cloudflare.com"
+		}
+		q.Set("sn", sn)
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
 	u := &url.URL{
 		Scheme: p.Protocol,
 		Host:   net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),

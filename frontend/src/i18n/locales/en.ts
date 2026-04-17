@@ -3082,7 +3082,14 @@ export default {
         http: 'HTTP',
         https: 'HTTPS',
         socks5: 'SOCKS5',
-        socks5h: 'SOCKS5H (Remote DNS)'
+        socks5h: 'SOCKS5H (Remote DNS)',
+        stellar: 'Stellar'
+      },
+      stellar: {
+        token: 'Token',
+        tokenPlaceholder: 'Base64 authentication token',
+        serverName: 'Server Name (SNI)',
+        serverNamePlaceholder: 'cloudflare.com (optional)'
       },
       columns: {
         name: 'Name',
