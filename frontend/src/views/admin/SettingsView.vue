@@ -1158,6 +1158,19 @@
                 <p class="font-medium">{{ t('admin.settings.wechat.paymentUsageTitle') }}</p>
                 <p class="mt-1">{{ t('admin.settings.wechat.paymentUsageDesc') }}</p>
                 <p class="mt-1">{{ t('admin.settings.wechat.paymentCompatibilityHint') }}</p>
+                <p class="mt-3 font-medium">{{ t('admin.settings.wechat.authDomainTitle') }}</p>
+                <p class="mt-1">{{ t('admin.settings.wechat.authDomainDesc') }}</p>
+                <p class="mt-1">{{ t('admin.settings.wechat.authDomainDiff') }}</p>
+                <p class="mt-1">{{ t('admin.settings.wechat.authDomainCallbackHint') }}</p>
+                <div class="mt-3 rounded border border-blue-300/80 bg-white/70 px-3 py-2 dark:border-blue-800/60 dark:bg-dark-800/50">
+                  <p class="font-medium">{{ t('admin.settings.wechat.mpVerifyTitle') }}</p>
+                  <p class="mt-1">{{ t('admin.settings.wechat.mpVerifyDesc') }}</p>
+                  <p class="mt-1">{{ t('admin.settings.wechat.mpVerifyProxyHint') }}</p>
+                  <p class="mt-1">{{ t('admin.settings.wechat.mpVerifyAccessHint') }}</p>
+                  <code class="mt-2 inline-block rounded bg-white px-2 py-1 font-mono text-[11px] text-blue-800 dark:bg-dark-900 dark:text-blue-200">
+                    https://your-domain.com/MP_verify_xxx.txt
+                  </code>
+                </div>
                 <div class="mt-3 flex flex-wrap gap-2">
                   <a
                     href="https://mp.weixin.qq.com/"
@@ -1174,6 +1187,14 @@
                     class="inline-flex items-center rounded border border-blue-300 bg-white px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-700/70 dark:bg-dark-800 dark:text-blue-200 dark:hover:bg-dark-700"
                   >
                     {{ t('admin.settings.wechat.linkMerchantPlatform') }}
+                  </a>
+                  <a
+                    href="https://developers.weixin.qq.com/doc/offiaccount/OA_Web_Apps/Wechat_webpage_authorization.html"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="inline-flex items-center rounded border border-blue-300 bg-white px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-700/70 dark:bg-dark-800 dark:text-blue-200 dark:hover:bg-dark-700"
+                  >
+                    {{ t('admin.settings.wechat.linkWebAuthGuide') }}
                   </a>
                   <a
                     href="https://pay.wechatpay.cn/doc/v3/merchant/4015423216"
@@ -3223,7 +3244,7 @@ const form = reactive<SettingsForm>({
   wechat_connect_app_secret: '',
   wechat_connect_app_secret_configured: false,
   wechat_connect_mode: '',
-  wechat_connect_scopes: 'snsapi_login',
+  wechat_connect_scopes: 'snsapi_base',
   wechat_connect_redirect_url: '',
   wechat_connect_frontend_redirect_url: '/auth/wechat/callback',
   // Generic OIDC OAuth 登录

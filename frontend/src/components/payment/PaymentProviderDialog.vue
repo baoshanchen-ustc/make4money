@@ -365,6 +365,7 @@ const providerGuide = computed(() => {
       notes: [
         t('admin.settings.payment.alipayGuideNoteApp'),
         t('admin.settings.payment.alipayGuideNoteKeys'),
+        t('admin.settings.payment.alipayGuideNoteIpWhitelist'),
       ],
       links: [
         { label: t('admin.settings.payment.linkAlipayOpenPlatform'), href: ALIPAY_OPEN_PLATFORM_URL },
