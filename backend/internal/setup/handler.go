@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/mail"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -348,8 +349,12 @@ func install(c *gin.Context) {
 		sysutil.RestartServiceAsync()
 	}()
 
+	restartMsg := "Installation completed successfully. Service will restart automatically."
+	if runtime.GOOS != "linux" {
+		restartMsg = "Installation completed successfully. Please restart the application manually."
+	}
 	response.Success(c, gin.H{
-		"message": "Installation completed successfully. Service will restart automatically.",
-		"restart": true,
+		"message": restartMsg,
+		"restart": runtime.GOOS == "linux",
 	})
 }
