@@ -1122,8 +1122,8 @@ func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) str
 // GenerateSessionHash generates a sticky-session hash for OpenAI requests.
 //
 // Priority:
-//  1. Header: session_id
-//  2. Header: conversation_id
+//  1. Header: conversation_id
+//  2. Header: session_id
 //  3. Body:   prompt_cache_key (opencode)
 //  4. Body:   content-based fallback (model + system + tools + first user message)
 func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
@@ -1131,9 +1131,9 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 		return ""
 	}
 
-	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
+	sessionID := strings.TrimSpace(c.GetHeader("conversation_id"))
 	if sessionID == "" {
-		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
+		sessionID = strings.TrimSpace(c.GetHeader("session_id"))
 	}
 	if sessionID == "" && len(body) > 0 {
 		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
@@ -2698,8 +2698,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
 		// 先保存客户端原始值，再做 compact 补充，避免后续统一隔离时读到已处理的值。
-		clientSessionID := strings.TrimSpace(req.Header.Get("session_id"))
 		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
+		clientSessionID := clientConversationID
+		if clientSessionID == "" {
+			clientSessionID = strings.TrimSpace(req.Header.Get("session_id"))
+		}
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
@@ -4317,11 +4320,11 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 
 func resolveOpenAICompactSessionID(c *gin.Context) string {
 	if c != nil {
-		if sessionID := strings.TrimSpace(c.GetHeader("session_id")); sessionID != "" {
-			return sessionID
-		}
 		if conversationID := strings.TrimSpace(c.GetHeader("conversation_id")); conversationID != "" {
 			return conversationID
+		}
+		if sessionID := strings.TrimSpace(c.GetHeader("session_id")); sessionID != "" {
+			return sessionID
 		}
 		if seed, ok := c.Get(openAICompactSessionSeedKey); ok {
 			if seedStr, ok := seed.(string); ok && strings.TrimSpace(seedStr) != "" {
