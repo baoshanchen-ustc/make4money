@@ -276,7 +276,8 @@ func normalizeCodexModel(model string) string {
 	if strings.Contains(normalized, "codex") {
 		return "gpt-5.1-codex"
 	}
-	if strings.Contains(normalized, "gpt-5") || strings.Contains(normalized, "gpt 5") {
+	// 精确匹配 gpt-5 或 gpt-5.0，避免误匹配 gpt-5.x
+	if normalized == "gpt-5" || normalized == "gpt-5.0" || strings.Contains(normalized, "gpt 5") && !strings.Contains(normalized, ".") {
 		return "gpt-5.1"
 	}
 
