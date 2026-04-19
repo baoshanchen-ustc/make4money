@@ -1,10 +1,47 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
+
+type paymentConfigSettingRepoStub struct {
+	lastSet map[string]string
+}
+
+func (s *paymentConfigSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (s *paymentConfigSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	panic("unexpected GetValue call")
+}
+
+func (s *paymentConfigSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	panic("unexpected Set call")
+}
+
+func (s *paymentConfigSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	panic("unexpected GetMultiple call")
+}
+
+func (s *paymentConfigSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	s.lastSet = make(map[string]string, len(settings))
+	for key, value := range settings {
+		s.lastSet[key] = value
+	}
+	return nil
+}
+
+func (s *paymentConfigSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (s *paymentConfigSettingRepoStub) Delete(ctx context.Context, key string) error {
+	panic("unexpected Delete call")
+}
 
 func TestPcParseFloat(t *testing.T) {
 	t.Parallel()
@@ -163,6 +200,20 @@ func TestParsePaymentConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("enabled types normalize legacy and stripe sub-method values", func(t *testing.T) {
+		t.Parallel()
+		vals := map[string]string{
+			SettingEnabledPaymentTypes: " alipay_direct , wxpay_direct , card , link , stripe ",
+		}
+		cfg := svc.parsePaymentConfig(vals)
+		if len(cfg.EnabledTypes) != 3 {
+			t.Fatalf("EnabledTypes len = %d, want 3", len(cfg.EnabledTypes))
+		}
+		if cfg.EnabledTypes[0] != "alipay" || cfg.EnabledTypes[1] != "wxpay" || cfg.EnabledTypes[2] != "stripe" {
+			t.Fatalf("EnabledTypes = %v, want [alipay wxpay stripe]", cfg.EnabledTypes)
+		}
+	})
+
 	t.Run("empty enabled types string", func(t *testing.T) {
 		t.Parallel()
 		vals := map[string]string{
@@ -202,5 +253,81 @@ func TestGetBasePaymentType(t *testing.T) {
 				t.Fatalf("GetBasePaymentType(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestJoinVisibleTypes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input []string
+		want  string
+	}{
+		{
+			name:  "legacy aliases collapse to visible capabilities",
+			input: []string{"alipay_direct", "wxpay_direct", "stripe"},
+			want:  "alipay,wxpay,stripe",
+		},
+		{
+			name:  "stripe sub-methods collapse to stripe once",
+			input: []string{"card", "link", "stripe"},
+			want:  "stripe",
+		},
+		{
+			name:  "unknown values are dropped",
+			input: []string{"unknown", "alipay"},
+			want:  "alipay",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := joinVisibleTypes(tt.input)
+			if got != tt.want {
+				t.Fatalf("joinVisibleTypes(%v) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpdatePaymentConfig_OmittedEnabledTypesPreservesStoredValue(t *testing.T) {
+	t.Parallel()
+
+	repo := &paymentConfigSettingRepoStub{}
+	svc := NewPaymentConfigService(nil, repo, nil)
+	enabled := true
+
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		Enabled: &enabled,
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig() error = %v", err)
+	}
+
+	if got := repo.lastSet[SettingPaymentEnabled]; got != "true" {
+		t.Fatalf("SetMultiple[%q] = %q, want %q", SettingPaymentEnabled, got, "true")
+	}
+	if _, ok := repo.lastSet[SettingEnabledPaymentTypes]; ok {
+		t.Fatalf("SetMultiple unexpectedly included %q: %q", SettingEnabledPaymentTypes, repo.lastSet[SettingEnabledPaymentTypes])
+	}
+}
+
+func TestUpdatePaymentConfig_ExplicitEmptyEnabledTypesClearsStoredValue(t *testing.T) {
+	t.Parallel()
+
+	repo := &paymentConfigSettingRepoStub{}
+	svc := NewPaymentConfigService(nil, repo, nil)
+
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		EnabledTypes: []string{},
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig() error = %v", err)
+	}
+
+	if got, ok := repo.lastSet[SettingEnabledPaymentTypes]; !ok || got != "" {
+		t.Fatalf("SetMultiple[%q] = %q, present=%v, want empty string", SettingEnabledPaymentTypes, got, ok)
 	}
 }

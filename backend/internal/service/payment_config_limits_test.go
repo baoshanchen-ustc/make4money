@@ -195,6 +195,26 @@ func TestPcGroupByPaymentType(t *testing.T) {
 			t.Fatalf("stripe with empty types should still be in stripe group, got %v", groups)
 		}
 	})
+
+	t.Run("legacy direct types are grouped under visible capabilities", func(t *testing.T) {
+		t.Parallel()
+		easypay := makeInstance(1, payment.TypeEasyPay, "alipay_direct,wxpay_direct", "")
+
+		groups := pcGroupByPaymentType([]*dbent.PaymentProviderInstance{easypay})
+
+		if len(groups[payment.TypeAlipay]) != 1 || groups[payment.TypeAlipay][0].ID != 1 {
+			t.Fatalf("alipay group should contain easypay legacy type, got %v", groups[payment.TypeAlipay])
+		}
+		if len(groups[payment.TypeWxpay]) != 1 || groups[payment.TypeWxpay][0].ID != 1 {
+			t.Fatalf("wxpay group should contain easypay legacy type, got %v", groups[payment.TypeWxpay])
+		}
+		if _, ok := groups[payment.TypeAlipayDirect]; ok {
+			t.Fatalf("legacy alipay_direct group should not be exposed: %v", groups)
+		}
+		if _, ok := groups[payment.TypeWxpayDirect]; ok {
+			t.Fatalf("legacy wxpay_direct group should not be exposed: %v", groups)
+		}
+	})
 }
 
 func TestPcComputeGlobalRange(t *testing.T) {
@@ -296,6 +316,32 @@ func TestPcInstanceTypeLimits(t *testing.T) {
 		_, ok := pcInstanceTypeLimits(inst, "alipay")
 		if ok {
 			t.Fatal("expected ok=false for invalid JSON")
+		}
+	})
+
+	t.Run("legacy direct key falls back to visible capability", func(t *testing.T) {
+		t.Parallel()
+		inst := makeInstance(1, "easypay", "wxpay",
+			`{"wxpay_direct":{"singleMin":6,"singleMax":66}}`)
+		cl, ok := pcInstanceTypeLimits(inst, "wxpay")
+		if !ok {
+			t.Fatal("expected ok=true for legacy direct key")
+		}
+		if cl.SingleMin != 6 || cl.SingleMax != 66 {
+			t.Fatalf("limits = %+v, want min:6 max:66", cl)
+		}
+	})
+
+	t.Run("stripe always reads stripe key", func(t *testing.T) {
+		t.Parallel()
+		inst := makeInstance(1, "stripe", "card,link",
+			`{"stripe":{"singleMin":9,"singleMax":99},"wxpay":{"singleMin":1,"singleMax":10}}`)
+		cl, ok := pcInstanceTypeLimits(inst, "wxpay")
+		if !ok {
+			t.Fatal("expected ok=true for stripe key lookup")
+		}
+		if cl.SingleMin != 9 || cl.SingleMax != 99 {
+			t.Fatalf("limits = %+v, want min:9 max:99", cl)
 		}
 	})
 }

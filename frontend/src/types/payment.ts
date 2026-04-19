@@ -19,6 +19,7 @@ export type OrderStatus =
   | 'REFUND_FAILED'
 
 export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay'
+export type PaymentProviderKey = 'easypay' | 'alipay' | 'wxpay' | 'stripe'
 
 export type OrderType = 'balance' | 'subscription'
 
@@ -135,7 +136,7 @@ export interface PaymentChannel {
 
 export interface ProviderInstance {
   id: number
-  provider_key: string
+  provider_key: PaymentProviderKey
   name: string
   config: Record<string, string>
   supported_types: string[]

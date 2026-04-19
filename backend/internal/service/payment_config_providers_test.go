@@ -5,6 +5,7 @@ package service
 import (
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,12 +50,35 @@ func TestValidateProviderRequest(t *testing.T) {
 			wantErr:        false,
 		},
 		{
+			name:           "legacy direct type normalizes for validation",
+			providerKey:    "easypay",
+			providerName:   "Legacy EasyPay",
+			supportedTypes: "alipay_direct,wxpay_direct",
+			wantErr:        false,
+		},
+		{
 			name:           "invalid provider key",
 			providerKey:    "invalid",
 			providerName:   "Name",
 			supportedTypes: "alipay",
 			wantErr:        true,
 			errContains:    "invalid provider key",
+		},
+		{
+			name:           "alipay provider rejects wxpay capability",
+			providerKey:    "alipay",
+			providerName:   "Ali",
+			supportedTypes: "wxpay",
+			wantErr:        true,
+			errContains:    "provider alipay only supports [alipay]",
+		},
+		{
+			name:           "easypay rejects stripe capability",
+			providerKey:    "easypay",
+			providerName:   "Easy",
+			supportedTypes: "stripe",
+			wantErr:        true,
+			errContains:    "provider easypay only supports [alipay wxpay]",
 		},
 		{
 			name:           "empty name",
@@ -150,6 +174,11 @@ func TestJoinTypes(t *testing.T) {
 			want:  "alipay,wxpay",
 		},
 		{
+			name:  "legacy direct types normalize and dedupe",
+			input: []string{"alipay_direct", "alipay", "wxpay_direct"},
+			want:  "alipay,wxpay",
+		},
+		{
 			name:  "single type",
 			input: []string{"stripe"},
 			want:  "stripe",
@@ -170,9 +199,14 @@ func TestJoinTypes(t *testing.T) {
 			want:  "alipay,wxpay,stripe",
 		},
 		{
-			name:  "types with spaces are not trimmed",
+			name:  "types with spaces are trimmed",
 			input: []string{" alipay ", " wxpay "},
-			want:  " alipay , wxpay ",
+			want:  "alipay,wxpay",
+		},
+		{
+			name:  "stripe sub-methods are preserved",
+			input: []string{" card ", "link", "alipay_direct"},
+			want:  "card,link,alipay",
 		},
 	}
 
@@ -182,6 +216,79 @@ func TestJoinTypes(t *testing.T) {
 
 			got := joinTypes(tc.input)
 			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestValidateCapabilityRouteConflicts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		existing       []*dbent.PaymentProviderInstance
+		selfID         int64
+		providerKey    string
+		supportedTypes string
+		enabled        bool
+		wantErr        bool
+		errContains    string
+	}{
+		{
+			name: "same provider type across multiple instances is allowed",
+			existing: []*dbent.PaymentProviderInstance{
+				{ID: 1, ProviderKey: "wxpay", SupportedTypes: "wxpay", Enabled: true},
+				{ID: 2, ProviderKey: "wxpay", SupportedTypes: "wxpay_direct", Enabled: true},
+			},
+			providerKey:    "wxpay",
+			supportedTypes: "wxpay",
+			enabled:        true,
+			wantErr:        false,
+		},
+		{
+			name: "wxpay capability conflict is explicit",
+			existing: []*dbent.PaymentProviderInstance{
+				{ID: 1, ProviderKey: "wxpay", SupportedTypes: "wxpay", Enabled: true},
+			},
+			providerKey:    "easypay",
+			supportedTypes: "wxpay_direct",
+			enabled:        true,
+			wantErr:        true,
+			errContains:    "wxpay capability conflict: enabled provider types [easypay wxpay]",
+		},
+		{
+			name: "disabled instance does not conflict",
+			existing: []*dbent.PaymentProviderInstance{
+				{ID: 1, ProviderKey: "wxpay", SupportedTypes: "wxpay", Enabled: true},
+			},
+			providerKey:    "easypay",
+			supportedTypes: "wxpay",
+			enabled:        false,
+			wantErr:        false,
+		},
+		{
+			name: "self instance is ignored during update",
+			existing: []*dbent.PaymentProviderInstance{
+				{ID: 9, ProviderKey: "easypay", SupportedTypes: "alipay", Enabled: true},
+			},
+			selfID:         9,
+			providerKey:    "easypay",
+			supportedTypes: "alipay_direct",
+			enabled:        true,
+			wantErr:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateCapabilityRouteConflicts(tt.existing, tt.selfID, tt.providerKey, tt.supportedTypes, tt.enabled)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

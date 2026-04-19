@@ -12,6 +12,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
 // --- Dashboard & Analytics ---
@@ -103,10 +104,14 @@ func buildDailySeries(orders []*dbent.PaymentOrder, since time.Time, days int) [
 func buildMethodDistribution(orders []*dbent.PaymentOrder) []PaymentMethodStat {
 	methodMap := make(map[string]*PaymentMethodStat)
 	for _, o := range orders {
-		ms, ok := methodMap[o.PaymentType]
+		normalized := string(payment.NormalizeVisiblePaymentType(o.PaymentType))
+		if normalized == "" {
+			continue
+		}
+		ms, ok := methodMap[normalized]
 		if !ok {
-			ms = &PaymentMethodStat{Type: o.PaymentType}
-			methodMap[o.PaymentType] = ms
+			ms = &PaymentMethodStat{Type: normalized}
+			methodMap[normalized] = ms
 		}
 		ms.Amount += o.PayAmount
 		ms.Count++
@@ -116,7 +121,28 @@ func buildMethodDistribution(orders []*dbent.PaymentOrder) []PaymentMethodStat {
 		ms.Amount = math.Round(ms.Amount*100) / 100
 		methods = append(methods, *ms)
 	}
+	sort.Slice(methods, func(i, j int) bool {
+		left := paymentMethodSortOrder(methods[i].Type)
+		right := paymentMethodSortOrder(methods[j].Type)
+		if left != right {
+			return left < right
+		}
+		return methods[i].Type < methods[j].Type
+	})
 	return methods
+}
+
+func paymentMethodSortOrder(t string) int {
+	switch payment.NormalizeVisiblePaymentType(t) {
+	case payment.TypeAlipay:
+		return 0
+	case payment.TypeWxpay:
+		return 1
+	case payment.TypeStripe:
+		return 2
+	default:
+		return 99
+	}
 }
 
 func buildTopUsers(orders []*dbent.PaymentOrder) []TopUserStat {

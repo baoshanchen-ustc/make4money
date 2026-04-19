@@ -49,7 +49,7 @@
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
               <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
             </div>
-            <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
+            <div v-if="methodOptions.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
             <template v-else>
@@ -62,7 +62,7 @@
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
             </div>
-            <div v-if="enabledMethods.length >= 1" class="card p-6">
+            <div v-if="methodOptions.length > 0" class="card p-6">
               <PaymentMethodSelector
                 :methods="methodOptions"
                 :selected="selectedMethod"
@@ -154,7 +154,7 @@
                   </div>
                 </div>
               </div>
-              <div v-if="enabledMethods.length >= 1" class="card p-6">
+              <div v-if="subMethodOptions.length > 0" class="card p-6">
                 <PaymentMethodSelector
                   :methods="subMethodOptions"
                   :selected="selectedMethod"
@@ -277,13 +277,12 @@ import type { SubscriptionPlan, CheckoutInfoResponse, OrderType } from '@/types/
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
-import { METHOD_ORDER, POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
+import { METHOD_ORDER, POPUP_WINDOW_FEATURES, normalizeVisiblePaymentType } from '@/components/payment/providerConfig'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import StripePaymentInline from '@/components/payment/StripePaymentInline.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -308,6 +307,17 @@ const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
+const VISIBLE_METHOD_ORDER = ['alipay', 'wxpay', 'stripe'] as const
+
+type VisiblePaymentMethod = typeof VISIBLE_METHOD_ORDER[number]
+
+interface ResolvedPaymentMethodOption {
+  type: VisiblePaymentMethod
+  fee_rate: number
+  available: boolean
+  requestType: string
+  rawTypes: string[]
+}
 
 // Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
 const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
@@ -371,6 +381,21 @@ const tabs = computed(() => {
   return result
 })
 
+function normalizeVisiblePaymentMethod(type: string): VisiblePaymentMethod | '' {
+  const normalized = normalizeVisiblePaymentType(type)
+  return VISIBLE_METHOD_ORDER.includes(normalized as VisiblePaymentMethod)
+    ? normalized as VisiblePaymentMethod
+    : ''
+}
+
+function sortRawMethods(methodTypes: string[]): string[] {
+  return [...methodTypes].sort((a, b) => {
+    const ai = METHOD_ORDER.indexOf(a as typeof METHOD_ORDER[number])
+    const bi = METHOD_ORDER.indexOf(b as typeof METHOD_ORDER[number])
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+  })
+}
+
 const enabledMethods = computed(() => Object.keys(checkout.value.methods))
 const validAmount = computed(() => amount.value ?? 0)
 const balanceRechargeMultiplier = computed(() => {
@@ -386,8 +411,8 @@ const planGridClass = computed(() => {
   return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
 })
 
-// Check if an amount fits a method's [min, max]. 0 = no limit.
-function amountFitsMethod(amt: number, methodType: string): boolean {
+// Check if an amount fits a raw method's [min, max]. 0 = no limit.
+function amountFitsRawMethod(amt: number, methodType: string): boolean {
   if (amt <= 0) return true
   const ml = checkout.value.methods[methodType]
   if (!ml) return false
@@ -396,23 +421,67 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
   return true
 }
 
+function isRawMethodEnabled(methodType: string): boolean {
+  const method = checkout.value.methods[methodType]
+  return !!method && method.available !== false
+}
+
+function resolveVisibleMethodOptions(amt: number): ResolvedPaymentMethodOption[] {
+  return VISIBLE_METHOD_ORDER.map((visibleType) => {
+    const rawTypes = sortRawMethods(
+      enabledMethods.value.filter((methodType) => normalizeVisiblePaymentMethod(methodType) === visibleType),
+    )
+    if (!rawTypes.length) return null
+
+    const enabledRawTypes = rawTypes.filter(isRawMethodEnabled)
+    const eligibleRawTypes = enabledRawTypes.filter((methodType) => amountFitsRawMethod(amt, methodType))
+    const preferredRawType = (amt > 0 ? eligibleRawTypes[0] : enabledRawTypes[0]) || rawTypes[0]
+
+    return {
+      type: visibleType,
+      fee_rate: checkout.value.methods[preferredRawType]?.fee_rate ?? 0,
+      available: amt > 0 ? eligibleRawTypes.length > 0 : enabledRawTypes.length > 0,
+      requestType: preferredRawType,
+      rawTypes,
+    }
+  }).filter((option): option is ResolvedPaymentMethodOption => option !== null)
+}
+
+function visibleMethodValidationError(amt: number, visibleType: string): string {
+  if (amt <= 0) return ''
+
+  const rawTypes = sortRawMethods(
+    enabledMethods.value.filter((methodType) => normalizeVisiblePaymentMethod(methodType) === visibleType),
+  ).filter(isRawMethodEnabled)
+
+  if (!rawTypes.length || rawTypes.some((methodType) => amountFitsRawMethod(amt, methodType))) {
+    return ''
+  }
+
+  const minCandidates = rawTypes
+    .map((methodType) => checkout.value.methods[methodType]?.single_min ?? 0)
+    .filter((min) => min > 0)
+  if (minCandidates.length) {
+    const minRequired = Math.min(...minCandidates)
+    if (amt < minRequired) return t('payment.amountTooLow', { min: minRequired })
+  }
+
+  const maxCandidates = rawTypes
+    .map((methodType) => checkout.value.methods[methodType]?.single_max ?? 0)
+    .filter((max) => max > 0)
+  if (maxCandidates.length) {
+    const maxAllowed = Math.max(...maxCandidates)
+    if (amt > maxAllowed) return t('payment.amountTooHigh', { max: maxAllowed })
+  }
+
+  return ''
+}
+
 // Global range for AmountInput (union of all methods, precomputed by backend)
 const globalMinAmount = computed(() => checkout.value.global_min)
 const globalMaxAmount = computed(() => checkout.value.global_max)
 
-// Selected method's limits (for validation and error messages)
-const selectedLimit = computed(() => checkout.value.methods[selectedMethod.value])
-
-const methodOptions = computed<PaymentMethodOption[]>(() =>
-  enabledMethods.value.map((type) => {
-    const ml = checkout.value.methods[type]
-    return {
-      type,
-      fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
-    }
-  })
-)
+const methodOptions = computed<ResolvedPaymentMethodOption[]>(() => resolveVisibleMethodOptions(validAmount.value))
 
 const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
 const feeAmount = computed(() =>
@@ -429,35 +498,21 @@ const totalAmount = computed(() =>
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
   // No method can handle this amount
-  if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
+  if (!methodOptions.value.some((method) => method.available)) {
     return t('payment.amountNoMethod')
   }
-  // Selected method can't handle this amount (but others can)
-  const ml = selectedLimit.value
-  if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: ml.single_min })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: ml.single_max })
-  }
-  return ''
+  return visibleMethodValidationError(validAmount.value, selectedMethod.value)
 })
 
 const canSubmit = computed(() =>
   validAmount.value > 0
-    && amountFitsMethod(validAmount.value, selectedMethod.value)
-    && selectedLimit.value?.available !== false
+    && methodOptions.value.some((method) => method.type === selectedMethod.value && method.available)
 )
 
 // Subscription-specific: method options based on plan price
-const subMethodOptions = computed<PaymentMethodOption[]>(() => {
+const subMethodOptions = computed<ResolvedPaymentMethodOption[]>(() => {
   const planPrice = selectedPlan.value?.price ?? 0
-  return enabledMethods.value.map((type) => {
-    const ml = checkout.value.methods[type]
-    return {
-      type,
-      fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(planPrice, type),
-    }
-  })
+  return resolveVisibleMethodOptions(planPrice)
 })
 
 const subFeeAmount = computed(() => {
@@ -474,23 +529,28 @@ const subTotalAmount = computed(() => {
 
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
-    && amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
-    && selectedLimit.value?.available !== false
+    && subMethodOptions.value.some((method) => method.type === selectedMethod.value && method.available)
 )
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
-  if (amt <= 0 || amountFitsMethod(amt, method)) return
-  const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
-  if (available) selectedMethod.value = available
+  if (amt <= 0 || methodOptions.value.some((option) => option.type === method && option.available)) return
+  const available = methodOptions.value.find((option) => option.available)
+  if (available) selectedMethod.value = available.type
+})
+
+watch(() => [selectedPlan.value?.price ?? 0, selectedMethod.value] as const, ([price, method]) => {
+  if (price <= 0 || subMethodOptions.value.some((option) => option.type === method && option.available)) return
+  const available = subMethodOptions.value.find((option) => option.available)
+  if (available) selectedMethod.value = available.type
 })
 
 // Payment button class: follows selected payment method color
 const paymentButtonClass = computed(() => {
   const m = selectedMethod.value
   if (!m) return 'btn-primary'
-  if (m.includes('alipay')) return 'btn-alipay'
-  if (m.includes('wxpay')) return 'btn-wxpay'
+  if (m === 'alipay') return 'btn-alipay'
+  if (m === 'wxpay') return 'btn-wxpay'
   if (m === 'stripe') return 'btn-stripe'
   return 'btn-primary'
 })
@@ -546,9 +606,17 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   submitting.value = true
   errorMessage.value = ''
   try {
+    const sourceOptions = orderType === 'subscription' ? subMethodOptions.value : methodOptions.value
+    const selectedOption = sourceOptions.find((method) => method.type === selectedMethod.value)
+    if (!selectedOption) {
+      errorMessage.value = t('payment.notAvailable')
+      appStore.showError(errorMessage.value)
+      return
+    }
+
     const result = await paymentStore.createOrder({
       amount: orderAmount,
-      payment_type: selectedMethod.value,
+      payment_type: selectedOption.requestType,
       order_type: orderType,
       plan_id: planId,
     })
@@ -562,7 +630,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       // Stripe: show Payment Element inline (user picks method → confirms → redirect if needed)
       paymentState.value = {
         orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: '',
+        paymentType: selectedOption.type, payUrl: '',
         clientSecret: result.client_secret, payAmount: result.pay_amount,
         orderType,
       }
@@ -571,7 +639,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       // Mobile + pay_url: redirect directly instead of QR/popup (mobile browsers block popups)
       paymentState.value = {
         orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: result.pay_url,
+        paymentType: selectedOption.type, payUrl: result.pay_url,
         clientSecret: '', payAmount: 0,
         orderType,
       }
@@ -582,7 +650,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       // QR mode: show QR code inline
       paymentState.value = {
         orderId: result.order_id, amount: result.amount, qrCode: result.qr_code,
-        expiresAt: result.expires_at || '', paymentType: selectedMethod.value, payUrl: '',
+        expiresAt: result.expires_at || '', paymentType: selectedOption.type, payUrl: '',
         clientSecret: '', payAmount: 0,
         orderType,
       }
@@ -592,7 +660,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       openWindow(result.pay_url)
       paymentState.value = {
         orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: result.pay_url,
+        paymentType: selectedOption.type, payUrl: result.pay_url,
         clientSecret: '', payAmount: 0,
         orderType,
       }
@@ -621,14 +689,8 @@ onMounted(async () => {
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
-    if (enabledMethods.value.length) {
-      const order: readonly string[] = METHOD_ORDER
-      const sorted = [...enabledMethods.value].sort((a, b) => {
-        const ai = order.indexOf(a)
-        const bi = order.indexOf(b)
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-      })
-      selectedMethod.value = sorted[0]
+    if (methodOptions.value.length) {
+      selectedMethod.value = methodOptions.value[0].type
     }
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'

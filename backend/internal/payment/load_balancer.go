@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -97,7 +98,7 @@ func (lb *DefaultLoadBalancer) SelectInstance(
 // queryEnabledInstances returns enabled instances that support paymentType.
 // When providerKey is non-empty, only instances with that provider key are considered.
 // When providerKey is empty, instances across all providers are considered,
-// enabling cross-provider load balancing (e.g. EasyPay + Alipay direct for "alipay").
+// but a capability may only resolve to one enabled provider implementation type.
 func (lb *DefaultLoadBalancer) queryEnabledInstances(
 	ctx context.Context,
 	providerKey string,
@@ -117,18 +118,17 @@ func (lb *DefaultLoadBalancer) queryEnabledInstances(
 
 	var matched []*dbent.PaymentProviderInstance
 	for _, inst := range instances {
-		// Stripe: match by provider_key because supported_types lists sub-types (card,link,alipay,wxpay),
-		// not "stripe" itself. The checkout page aggregates all sub-types under "stripe".
-		if paymentType == TypeStripe {
-			if inst.ProviderKey == TypeStripe {
-				matched = append(matched, inst)
-			}
-		} else if InstanceSupportsType(inst.SupportedTypes, paymentType) {
+		if instanceSupportsCapability(inst, paymentType) {
 			matched = append(matched, inst)
 		}
 	}
 	if len(matched) == 0 {
 		return nil, fmt.Errorf("no enabled instance for payment type %s", paymentType)
+	}
+	if providerKey == "" {
+		if err := validateCapabilitySelection(paymentType, matched); err != nil {
+			return nil, err
+		}
 	}
 	return matched, nil
 }
@@ -223,13 +223,10 @@ func getInstanceChannelLimits(inst *dbent.PaymentProviderInstance, paymentType P
 	if err := json.Unmarshal([]byte(inst.Limits), &limits); err != nil {
 		return ChannelLimits{}
 	}
-	// For Stripe, limits are stored under the provider key "stripe".
-	lookupKey := paymentType
-	if inst.ProviderKey == "stripe" {
-		lookupKey = "stripe"
-	}
-	if cl, ok := limits[lookupKey]; ok {
-		return cl
+	for _, lookupKey := range channelLimitLookupKeys(inst.ProviderKey, paymentType) {
+		if cl, ok := limits[lookupKey]; ok {
+			return cl
+		}
 	}
 	return ChannelLimits{}
 }
@@ -322,11 +319,60 @@ func InstanceSupportsType(supportedTypes string, target PaymentType) bool {
 		return true
 	}
 	for _, t := range strings.Split(supportedTypes, ",") {
-		if strings.TrimSpace(t) == target {
+		if NormalizeVisiblePaymentType(t) == NormalizeVisiblePaymentType(string(target)) {
 			return true
 		}
 	}
 	return false
+}
+
+func instanceSupportsCapability(inst *dbent.PaymentProviderInstance, paymentType PaymentType) bool {
+	target := NormalizeVisiblePaymentType(string(paymentType))
+	for _, capability := range VisiblePaymentTypesForProvider(inst.ProviderKey, inst.SupportedTypes) {
+		if capability == target {
+			return true
+		}
+	}
+	return false
+}
+
+func validateCapabilitySelection(paymentType PaymentType, instances []*dbent.PaymentProviderInstance) error {
+	capability := NormalizeVisiblePaymentType(string(paymentType))
+	if capability == TypeStripe {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(instances))
+	providerKeys := make([]string, 0, len(instances))
+	for _, inst := range instances {
+		if _, ok := seen[inst.ProviderKey]; ok {
+			continue
+		}
+		seen[inst.ProviderKey] = struct{}{}
+		providerKeys = append(providerKeys, inst.ProviderKey)
+	}
+	if len(providerKeys) <= 1 {
+		return nil
+	}
+
+	slices.Sort(providerKeys)
+	return fmt.Errorf("%s capability conflict: enabled provider types %v", capability, providerKeys)
+}
+
+func channelLimitLookupKeys(providerKey string, paymentType PaymentType) []string {
+	if providerKey == string(TypeStripe) {
+		return []string{string(TypeStripe)}
+	}
+
+	capability := NormalizeVisiblePaymentType(string(paymentType))
+	switch capability {
+	case TypeAlipay:
+		return []string{string(TypeAlipay), string(TypeAlipayDirect)}
+	case TypeWxpay:
+		return []string{string(TypeWxpay), string(TypeWxpayDirect)}
+	default:
+		return []string{string(capability)}
+	}
 }
 
 // GetInstanceConfig decrypts and returns the configuration for a provider instance by ID.

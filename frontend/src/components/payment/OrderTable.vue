@@ -24,7 +24,7 @@
       </div>
     </template>
     <template #cell-payment_type="{ value }">
-      <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + value, value) }}</span>
+      <span class="text-sm text-gray-700 dark:text-gray-300">{{ paymentMethodLabel(value) }}</span>
     </template>
     <template #cell-status="{ value }">
       <OrderStatusBadge :status="value" />
@@ -55,6 +55,19 @@ const props = defineProps<{
 }>()
 
 function formatDate(dateStr: string) { return new Date(dateStr).toLocaleString() }
+
+function normalizePaymentType(type: string): string {
+  const lower = type.toLowerCase()
+  if (lower === 'stripe' || lower.includes('stripe') || lower === 'card' || lower === 'link') return 'stripe'
+  if (lower.includes('wxpay') || lower.includes('wechat')) return 'wxpay'
+  if (lower.includes('alipay') || lower === 'easypay') return 'alipay'
+  return type
+}
+
+function paymentMethodLabel(type: string): string {
+  const normalized = normalizePaymentType(type)
+  return t(`payment.methods.${normalized}`, normalized)
+}
 
 const columns = computed((): Column[] => {
   const cols: Column[] = [

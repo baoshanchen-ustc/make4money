@@ -64,9 +64,12 @@
       </template>
 
       <template #cell-payment_type="{ value }">
-        <span class="text-sm text-gray-700 dark:text-gray-300">
-          {{ t('payment.methods.' + value, value) }}
-        </span>
+        <div class="text-sm text-gray-700 dark:text-gray-300">
+          <p>{{ paymentMethodLabel(value) }}</p>
+          <p v-if="paymentMethodSecondary(value)" class="text-xs text-gray-500 dark:text-gray-400">
+            {{ paymentMethodSecondary(value) }}
+          </p>
+        </div>
       </template>
 
       <template #cell-status="{ value }">
@@ -167,6 +170,24 @@ const emit = defineEmits<{
 
 const searchQuery = ref('')
 const filters = reactive({ status: '', payment_type: '', order_type: '' })
+
+function normalizePaymentType(type: string): string {
+  const lower = type.toLowerCase()
+  if (lower === 'stripe' || lower.includes('stripe') || lower === 'card' || lower === 'link') return 'stripe'
+  if (lower.includes('wxpay') || lower.includes('wechat')) return 'wxpay'
+  if (lower.includes('alipay') || lower === 'easypay') return 'alipay'
+  return type
+}
+
+function paymentMethodLabel(type: string): string {
+  const normalized = normalizePaymentType(type)
+  return t(`payment.methods.${normalized}`, normalized)
+}
+
+function paymentMethodSecondary(type: string): string {
+  const normalized = normalizePaymentType(type)
+  return normalized !== type ? type : ''
+}
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 function handleSearch() {

@@ -69,6 +69,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 }
 
 func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig) (*dbent.SubscriptionPlan, error) {
+	if !psIsEnabledPaymentType(req.PaymentType, cfg.EnabledTypes) {
+		return nil, infraerrors.Forbidden("PAYMENT_TYPE_DISABLED", "payment method is disabled")
+	}
 	if req.OrderType == payment.OrderTypeBalance && cfg.BalanceDisabled {
 		return nil, infraerrors.Forbidden("BALANCE_PAYMENT_DISABLED", "balance recharge has been disabled")
 	}
@@ -83,6 +86,19 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", cfg.MinAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)})
 	}
 	return nil, nil
+}
+
+func psIsEnabledPaymentType(requested string, enabledTypes []string) bool {
+	normalizedRequested := string(payment.NormalizeVisiblePaymentType(requested))
+	if !payment.IsVisiblePaymentType(normalizedRequested) {
+		return false
+	}
+	for _, enabledType := range enabledTypes {
+		if string(payment.NormalizeVisiblePaymentType(enabledType)) == normalizedRequested {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRequest) (*dbent.SubscriptionPlan, error) {
@@ -112,7 +128,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err := s.checkPendingLimit(ctx, tx, req.UserID, cfg.MaxPendingOrders); err != nil {
 		return nil, err
 	}
-	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
+	if err := s.checkDailyLimit(ctx, tx, req.UserID, psDailyLimitAmount(req.OrderType, limitAmount, payAmount), cfg.DailyLimit); err != nil {
 		return nil, err
 	}
 	tm := cfg.OrderTimeoutMin
@@ -184,16 +200,19 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 	}
 	var used float64
 	for _, o := range orders {
-		if o.OrderType == payment.OrderTypeBalance {
-			used += o.PayAmount
-			continue
-		}
-		used += o.Amount
+		used += psDailyLimitAmount(o.OrderType, o.Amount, o.PayAmount)
 	}
 	if used+amount > limit {
 		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", fmt.Sprintf("daily recharge limit reached, remaining: %.2f", math.Max(0, limit-used)))
 	}
 	return nil
+}
+
+func psDailyLimitAmount(orderType string, amount, payAmount float64) float64 {
+	if orderType == payment.OrderTypeBalance {
+		return payAmount
+	}
+	return amount
 }
 
 func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, limitAmount float64, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan) (*CreateOrderResponse, error) {
@@ -277,7 +296,9 @@ func (s *PaymentService) GetUserOrders(ctx context.Context, userID int64, p Orde
 		q = q.Where(paymentorder.OrderTypeEQ(p.OrderType))
 	}
 	if p.PaymentType != "" {
-		q = q.Where(paymentorder.PaymentTypeEQ(p.PaymentType))
+		if types := psPaymentTypeFilterValues(p.PaymentType); len(types) > 0 {
+			q = q.Where(paymentorder.PaymentTypeIn(types...))
+		}
 	}
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
@@ -304,7 +325,9 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 		q = q.Where(paymentorder.OrderTypeEQ(p.OrderType))
 	}
 	if p.PaymentType != "" {
-		q = q.Where(paymentorder.PaymentTypeEQ(p.PaymentType))
+		if types := psPaymentTypeFilterValues(p.PaymentType); len(types) > 0 {
+			q = q.Where(paymentorder.PaymentTypeIn(types...))
+		}
 	}
 	if p.Keyword != "" {
 		q = q.Where(paymentorder.Or(

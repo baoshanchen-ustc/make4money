@@ -2,7 +2,10 @@
 // registry, load balancing, and shared utilities for the payment subsystem.
 package payment
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // PaymentType represents a supported payment method.
 type PaymentType = string
@@ -11,8 +14,8 @@ type PaymentType = string
 const (
 	TypeAlipay       PaymentType = "alipay"
 	TypeWxpay        PaymentType = "wxpay"
-	TypeAlipayDirect PaymentType = "alipay_direct"
-	TypeWxpayDirect  PaymentType = "wxpay_direct"
+	TypeAlipayDirect PaymentType = "alipay_direct" // legacy alias, normalized to alipay on read/write
+	TypeWxpayDirect  PaymentType = "wxpay_direct"  // legacy alias, normalized to wxpay on read/write
 	TypeStripe       PaymentType = "stripe"
 	TypeCard         PaymentType = "card"
 	TypeLink         PaymentType = "link"
@@ -79,17 +82,110 @@ const ConfigKeyPublishableKey = "publishableKey"
 // GetBasePaymentType extracts the base payment method from a composite key.
 // For example, "alipay_direct" -> "alipay".
 func GetBasePaymentType(t string) string {
-	switch {
-	case t == TypeEasyPay:
-		return TypeEasyPay
-	case t == TypeStripe || t == TypeCard || t == TypeLink:
-		return TypeStripe
-	case len(t) >= len(TypeAlipay) && t[:len(TypeAlipay)] == TypeAlipay:
+	return string(NormalizeVisiblePaymentType(t))
+}
+
+// NormalizeStoredPaymentType normalizes legacy aliases while preserving provider-specific sub-methods.
+func NormalizeStoredPaymentType(t string) PaymentType {
+	switch strings.TrimSpace(t) {
+	case string(TypeAlipayDirect):
 		return TypeAlipay
-	case len(t) >= len(TypeWxpay) && t[:len(TypeWxpay)] == TypeWxpay:
+	case string(TypeWxpayDirect):
 		return TypeWxpay
 	default:
-		return t
+		return PaymentType(strings.TrimSpace(t))
+	}
+}
+
+// NormalizeVisiblePaymentType normalizes legacy aliases and Stripe sub-methods into user-facing capabilities.
+func NormalizeVisiblePaymentType(t string) PaymentType {
+	switch NormalizeStoredPaymentType(t) {
+	case TypeCard, TypeLink, TypeStripe:
+		return TypeStripe
+	case TypeAlipay:
+		return TypeAlipay
+	case TypeWxpay:
+		return TypeWxpay
+	default:
+		return NormalizeStoredPaymentType(t)
+	}
+}
+
+// IsVisiblePaymentType reports whether the type is a user-facing capability.
+func IsVisiblePaymentType(t string) bool {
+	switch NormalizeVisiblePaymentType(t) {
+	case TypeAlipay, TypeWxpay, TypeStripe:
+		return true
+	default:
+		return false
+	}
+}
+
+// VisiblePaymentTypeFilterValues expands a user-facing payment type into the stored
+// variants that should match it in queries.
+func VisiblePaymentTypeFilterValues(filter string) []string {
+	switch NormalizeVisiblePaymentType(filter) {
+	case TypeAlipay:
+		return []string{string(TypeAlipay), string(TypeAlipayDirect)}
+	case TypeWxpay:
+		return []string{string(TypeWxpay), string(TypeWxpayDirect)}
+	case TypeStripe:
+		return []string{string(TypeStripe), string(TypeCard), string(TypeLink)}
+	default:
+		normalized := strings.TrimSpace(string(NormalizeStoredPaymentType(filter)))
+		if normalized == "" {
+			return nil
+		}
+		return []string{normalized}
+	}
+}
+
+// VisiblePaymentTypesForProvider returns the user-facing capabilities served by a provider instance.
+func VisiblePaymentTypesForProvider(providerKey, supportedTypes string) []PaymentType {
+	allowed := allowedVisibleTypesForProvider(providerKey)
+	if len(allowed) == 0 {
+		return nil
+	}
+	if providerKey == string(TypeStripe) {
+		return []PaymentType{TypeStripe}
+	}
+	if strings.TrimSpace(supportedTypes) == "" {
+		return append([]PaymentType(nil), allowed...)
+	}
+
+	allowedSet := make(map[PaymentType]struct{}, len(allowed))
+	for _, t := range allowed {
+		allowedSet[t] = struct{}{}
+	}
+
+	seen := make(map[PaymentType]struct{}, len(allowed))
+	result := make([]PaymentType, 0, len(allowed))
+	for _, raw := range strings.Split(supportedTypes, ",") {
+		normalized := NormalizeVisiblePaymentType(raw)
+		if _, ok := allowedSet[normalized]; !ok {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+func allowedVisibleTypesForProvider(providerKey string) []PaymentType {
+	switch providerKey {
+	case string(TypeAlipay):
+		return []PaymentType{TypeAlipay}
+	case string(TypeWxpay):
+		return []PaymentType{TypeWxpay}
+	case string(TypeEasyPay):
+		return []PaymentType{TypeAlipay, TypeWxpay}
+	case string(TypeStripe):
+		return []PaymentType{TypeStripe}
+	default:
+		return nil
 	}
 }
 

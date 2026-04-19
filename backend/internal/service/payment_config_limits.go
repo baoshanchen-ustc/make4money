@@ -10,9 +10,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
-// GetAvailableMethodLimits collects all payment types from enabled provider
+// GetAvailableMethodLimits collects user-facing payment capabilities from enabled provider
 // instances and returns limits for each, plus the global widest range.
-// Stripe sub-types (card, link) are aggregated under "stripe".
 func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) (*MethodLimitsResponse, error) {
 	instances, err := s.entClient.PaymentProviderInstance.Query().
 		Where(paymentproviderinstance.EnabledEQ(true)).All(ctx)
@@ -42,19 +41,16 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 	for _, pt := range types {
 		var matching []*dbent.PaymentProviderInstance
 		for _, inst := range instances {
-			if payment.InstanceSupportsType(inst.SupportedTypes, pt) {
+			if pcInstanceSupportsVisibleType(inst, pt) {
 				matching = append(matching, inst)
 			}
 		}
-		result = append(result, pcAggregateMethodLimits(pt, matching))
+		result = append(result, pcAggregateMethodLimits(string(payment.NormalizeVisiblePaymentType(pt)), matching))
 	}
 	return result, nil
 }
 
-// pcGroupByPaymentType groups instances by user-facing payment type.
-// For Stripe providers, ALL sub-types (card, link, alipay, wxpay) map to "stripe"
-// because the user sees a single "Stripe" button, not individual sub-methods.
-// Uses a seen set to avoid counting one instance twice.
+// pcGroupByPaymentType groups instances by user-facing payment capability.
 func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string][]*dbent.PaymentProviderInstance {
 	typeInstances := make(map[string][]*dbent.PaymentProviderInstance)
 	seen := make(map[string]map[int64]bool)
@@ -68,13 +64,8 @@ func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string
 		}
 	}
 	for _, inst := range instances {
-		// Stripe provider: all sub-types → single "stripe" group
-		if inst.ProviderKey == payment.TypeStripe {
-			add(payment.TypeStripe, inst)
-			continue
-		}
-		for _, t := range splitTypes(inst.SupportedTypes) {
-			add(t, inst)
+		for _, t := range payment.VisiblePaymentTypesForProvider(inst.ProviderKey, inst.SupportedTypes) {
+			add(string(t), inst)
 		}
 	}
 	return typeInstances
@@ -82,7 +73,7 @@ func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string
 
 // pcInstanceTypeLimits extracts per-type limits from a provider instance.
 // Returns (limits, true) if configured; (zero, false) if unlimited.
-// For Stripe instances, limits are stored under "stripe" key regardless of sub-types.
+// Supports legacy direct keys on read while exposing only visible capabilities.
 func pcInstanceTypeLimits(inst *dbent.PaymentProviderInstance, pt string) (payment.ChannelLimits, bool) {
 	if inst.Limits == "" {
 		return payment.ChannelLimits{}, false
@@ -91,8 +82,12 @@ func pcInstanceTypeLimits(inst *dbent.PaymentProviderInstance, pt string) (payme
 	if err := json.Unmarshal([]byte(inst.Limits), &limits); err != nil {
 		return payment.ChannelLimits{}, false
 	}
-	cl, ok := limits[pt]
-	return cl, ok
+	for _, lookupKey := range pcLimitLookupKeys(inst.ProviderKey, pt) {
+		if cl, ok := limits[lookupKey]; ok {
+			return cl, true
+		}
+	}
+	return payment.ChannelLimits{}, false
 }
 
 // unionFloat merges a single limit value into the aggregate using UNION semantics.
@@ -169,4 +164,29 @@ func pcComputeGlobalRange(methods map[string]MethodLimits) (globalMin, globalMax
 		globalMax = 0
 	}
 	return globalMin, globalMax
+}
+
+func pcInstanceSupportsVisibleType(inst *dbent.PaymentProviderInstance, pt string) bool {
+	target := payment.NormalizeVisiblePaymentType(pt)
+	for _, capability := range payment.VisiblePaymentTypesForProvider(inst.ProviderKey, inst.SupportedTypes) {
+		if capability == target {
+			return true
+		}
+	}
+	return false
+}
+
+func pcLimitLookupKeys(providerKey, pt string) []string {
+	if providerKey == payment.TypeStripe {
+		return []string{payment.TypeStripe}
+	}
+
+	switch payment.NormalizeVisiblePaymentType(pt) {
+	case payment.TypeAlipay:
+		return []string{payment.TypeAlipay, payment.TypeAlipayDirect}
+	case payment.TypeWxpay:
+		return []string{payment.TypeWxpay, payment.TypeWxpayDirect}
+	default:
+		return []string{string(payment.NormalizeVisiblePaymentType(pt))}
+	}
 }

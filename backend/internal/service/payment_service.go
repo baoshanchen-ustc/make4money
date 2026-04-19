@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 
@@ -306,4 +307,12 @@ func applyPagination(pageSize, page int) (size, pg int) {
 		pg = 1
 	}
 	return size, pg
+}
+
+func psPaymentTypeFilterValues(filter string) []string {
+	raw := strings.TrimSpace(filter)
+	if raw == "" {
+		return nil
+	}
+	return payment.VisiblePaymentTypeFilterValues(raw)
 }

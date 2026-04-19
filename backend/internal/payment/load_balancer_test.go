@@ -68,10 +68,10 @@ func TestInstanceSupportsType(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name:           "partial match should not succeed",
+			name:           "legacy direct type is normalized to alipay",
 			supportedTypes: "alipay_direct",
 			target:         "alipay",
-			expected:       false,
+			expected:       true,
 		},
 		{
 			name:           "empty supported types means all supported",
@@ -87,6 +87,62 @@ func TestInstanceSupportsType(t *testing.T) {
 			got := InstanceSupportsType(tt.supportedTypes, tt.target)
 			if got != tt.expected {
 				t.Fatalf("InstanceSupportsType(%q, %q) = %v, want %v", tt.supportedTypes, tt.target, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestVisiblePaymentTypesForProvider(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		providerKey    string
+		supportedTypes string
+		want           []PaymentType
+	}{
+		{
+			name:        "alipay provider defaults to alipay capability",
+			providerKey: TypeAlipay,
+			want:        []PaymentType{TypeAlipay},
+		},
+		{
+			name:        "wxpay provider defaults to wxpay capability",
+			providerKey: TypeWxpay,
+			want:        []PaymentType{TypeWxpay},
+		},
+		{
+			name:        "easypay provider with empty types routes both capabilities",
+			providerKey: TypeEasyPay,
+			want:        []PaymentType{TypeAlipay, TypeWxpay},
+		},
+		{
+			name:           "legacy direct values normalize for easypay",
+			providerKey:    TypeEasyPay,
+			supportedTypes: "alipay_direct,wxpay_direct",
+			want:           []PaymentType{TypeAlipay, TypeWxpay},
+		},
+		{
+			name:           "unsupported type is ignored for direct provider",
+			providerKey:    TypeAlipay,
+			supportedTypes: "wxpay",
+			want:           nil,
+		},
+		{
+			name:           "stripe stays isolated regardless of sub-methods",
+			providerKey:    TypeStripe,
+			supportedTypes: "card,link,wxpay",
+			want:           []PaymentType{TypeStripe},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := VisiblePaymentTypesForProvider(tt.providerKey, tt.supportedTypes)
+			if !stringSliceEqual(paymentTypesToStrings(got), paymentTypesToStrings(tt.want)) {
+				t.Fatalf("VisiblePaymentTypesForProvider(%q, %q) = %v, want %v", tt.providerKey, tt.supportedTypes, got, tt.want)
 			}
 		})
 	}
@@ -363,6 +419,13 @@ func TestGetInstanceChannelLimits(t *testing.T) {
 			want:        ChannelLimits{},
 		},
 		{
+			name: "legacy direct limits key is normalized for lookup",
+			inst: testInstance(1, "easypay",
+				`{"wxpay_direct":{"singleMin":8,"singleMax":88}}`),
+			paymentType: "wxpay",
+			want:        ChannelLimits{SingleMin: 8, SingleMax: 88},
+		},
+		{
 			name: "stripe provider uses stripe lookup key regardless of payment type",
 			inst: testInstance(1, "stripe",
 				`{"stripe":{"singleMin":10,"singleMax":500,"dailyLimit":5000}}`),
@@ -401,6 +464,49 @@ func TestGetInstanceChannelLimits(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateCapabilitySelection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("allows multiple instances from the same provider source", func(t *testing.T) {
+		t.Parallel()
+
+		err := validateCapabilitySelection(TypeWxpay, []*dbent.PaymentProviderInstance{
+			{ID: 1, ProviderKey: string(TypeWxpay), SupportedTypes: "wxpay"},
+			{ID: 2, ProviderKey: string(TypeWxpay), SupportedTypes: "wxpay"},
+		})
+
+		if err != nil {
+			t.Fatalf("validateCapabilitySelection() unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects mixed provider sources for the same visible capability", func(t *testing.T) {
+		t.Parallel()
+
+		err := validateCapabilitySelection(TypeAlipay, []*dbent.PaymentProviderInstance{
+			{ID: 1, ProviderKey: string(TypeEasyPay), SupportedTypes: "alipay"},
+			{ID: 2, ProviderKey: string(TypeAlipay), SupportedTypes: "alipay"},
+		})
+
+		if err == nil || err.Error() != "alipay capability conflict: enabled provider types [alipay easypay]" {
+			t.Fatalf("validateCapabilitySelection() = %v, want explicit alipay capability conflict", err)
+		}
+	})
+
+	t.Run("never treats stripe as a visible source conflict", func(t *testing.T) {
+		t.Parallel()
+
+		err := validateCapabilitySelection(TypeStripe, []*dbent.PaymentProviderInstance{
+			{ID: 1, ProviderKey: string(TypeStripe), SupportedTypes: "card,alipay,wxpay,link"},
+			{ID: 2, ProviderKey: string(TypeStripe), SupportedTypes: "card"},
+		})
+
+		if err != nil {
+			t.Fatalf("validateCapabilitySelection() unexpected stripe error: %v", err)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -462,6 +568,26 @@ func int64SliceEqual(a, b []int64) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
 	}
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func paymentTypesToStrings(types []PaymentType) []string {
+	out := make([]string, len(types))
+	for i, t := range types {
+		out[i] = string(t)
+	}
+	return out
+}
+
+func stringSliceEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}

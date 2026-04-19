@@ -233,14 +233,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
 	}
-	if raw := vals[SettingEnabledPaymentTypes]; raw != "" {
-		for _, t := range strings.Split(raw, ",") {
-			t = strings.TrimSpace(t)
-			if t != "" {
-				cfg.EnabledTypes = append(cfg.EnabledTypes, t)
-			}
-		}
-	}
+	cfg.EnabledTypes = splitVisibleTypes(vals[SettingEnabledPaymentTypes])
 	return cfg
 }
 
@@ -303,9 +296,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingCancelWindowMode:    derefStr(req.CancelRateLimitMode),
 	}
 	if req.EnabledTypes != nil {
-		m[SettingEnabledPaymentTypes] = strings.Join(req.EnabledTypes, ",")
-	} else {
-		m[SettingEnabledPaymentTypes] = ""
+		m[SettingEnabledPaymentTypes] = joinVisibleTypes(req.EnabledTypes)
 	}
 	return s.settingRepo.SetMultiple(ctx, m)
 }
@@ -350,18 +341,57 @@ func splitTypes(s string) []string {
 		return nil
 	}
 	parts := strings.Split(s, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
+	return normalizeTypeList(parts, func(raw string) string {
+		return string(payment.NormalizeStoredPaymentType(raw))
+	}, nil)
 }
 
 func joinTypes(types []string) string {
-	return strings.Join(types, ",")
+	return strings.Join(normalizeTypeList(types, func(raw string) string {
+		return string(payment.NormalizeStoredPaymentType(raw))
+	}, nil), ",")
+}
+
+func splitVisibleTypes(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return normalizeTypeList(strings.Split(s, ","), func(raw string) string {
+		return string(payment.NormalizeVisiblePaymentType(raw))
+	}, func(normalized string) bool {
+		return payment.IsVisiblePaymentType(normalized)
+	})
+}
+
+func joinVisibleTypes(types []string) string {
+	return strings.Join(normalizeTypeList(types, func(raw string) string {
+		return string(payment.NormalizeVisiblePaymentType(raw))
+	}, func(normalized string) bool {
+		return payment.IsVisiblePaymentType(normalized)
+	}), ",")
+}
+
+func normalizeTypeList(values []string, normalize func(string) string, keep func(string) bool) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, raw := range values {
+		normalized := strings.TrimSpace(normalize(raw))
+		if normalized == "" {
+			continue
+		}
+		if keep != nil && !keep(normalized) {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
 }
 
 func pcParseFloat(s string, defaultVal float64) float64 {

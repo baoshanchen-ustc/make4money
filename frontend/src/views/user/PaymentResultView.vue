@@ -40,8 +40,8 @@
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">&#165;{{ baseAmount.toFixed(2) }}</span>
             </div>
-            <div v-if="order.fee_rate > 0" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</span>
+            <div v-if="feeRate > 0" class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ feeRate }}%)</span>
               <span class="font-medium text-gray-900 dark:text-white">&#165;{{ feeAmount.toFixed(2) }}</span>
             </div>
             <div class="flex justify-between">
@@ -54,7 +54,7 @@
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ t('payment.methods.' + order.payment_type, order.payment_type) }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ paymentMethodLabel(order.payment_type) }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</span>
@@ -75,7 +75,7 @@
             </div>
             <div v-if="returnInfo.type" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ t('payment.methods.' + returnInfo.type, returnInfo.type) }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ paymentMethodLabel(returnInfo.type) }}</span>
             </div>
           </div>
         </div>
@@ -97,6 +97,7 @@ import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import type { PaymentOrder } from '@/types/payment'
+import { normalizeVisiblePaymentType } from '@/components/payment/providerConfig'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -116,15 +117,30 @@ const returnInfo = ref<ReturnInfo | null>(null)
 
 const SUCCESS_STATUSES = new Set(['COMPLETED', 'PAID', 'RECHARGING'])
 
+function normalizePaymentType(type: string): string {
+  return normalizeVisiblePaymentType(type)
+}
+
+function paymentMethodLabel(type: string): string {
+  const normalized = normalizePaymentType(type)
+  return t(`payment.methods.${normalized}`, normalized)
+}
+
+/** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
+const feeRate = computed(() => {
+  const raw = Number(order.value?.fee_rate ?? 0)
+  return Number.isFinite(raw) ? raw : 0
+})
+
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
-  if (!order.value || order.value.fee_rate <= 0) return order.value?.pay_amount ?? 0
-  return Math.round((order.value.pay_amount / (1 + order.value.fee_rate / 100)) * 100) / 100
+  if (!order.value || feeRate.value <= 0) return order.value?.pay_amount ?? 0
+  return Math.round((order.value.pay_amount / (1 + feeRate.value / 100)) * 100) / 100
 })
 
 /** 手续费 = pay_amount - baseAmount */
 const feeAmount = computed(() => {
-  if (!order.value || order.value.fee_rate <= 0) return 0
+  if (!order.value || feeRate.value <= 0) return 0
   return Math.round((order.value.pay_amount - baseAmount.value) * 100) / 100
 })
 
@@ -139,21 +155,13 @@ const isSuccess = computed(() => {
   return false
 })
 
-/** Extract numeric order ID from out_trade_no like "sub2_46" → 46 */
-function parseOutTradeNo(outTradeNo: string): number {
-  const match = outTradeNo.match(/_(\d+)$/)
-  return match ? Number(match[1]) : 0
-}
-
 onMounted(async () => {
   // Try order_id first (internal navigation from QRCode/Stripe pages)
-  let orderId = Number(route.query.order_id) || 0
+  const orderId = Number(route.query.order_id) || 0
   const outTradeNo = String(route.query.out_trade_no || '')
 
-  // Fallback: EasyPay return URL with out_trade_no
-  if (!orderId && outTradeNo) {
-    orderId = parseOutTradeNo(outTradeNo)
-    // Store return info for display when order lookup fails
+  if (outTradeNo) {
+    // Preserve return-page details even when backend lookup cannot resolve an order.
     returnInfo.value = {
       outTradeNo,
       money: String(route.query.money || ''),
@@ -176,7 +184,7 @@ onMounted(async () => {
     }
   }
 
-  // Normal order lookup by ID (if verify didn't load the order)
+  // Normal order lookup by explicit ID (if verify didn't load the order)
   if (!order.value && orderId) {
     try {
       order.value = await paymentStore.pollOrderStatus(orderId)

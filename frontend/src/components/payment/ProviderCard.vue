@@ -22,23 +22,34 @@
             :class="provider.enabled && enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
           />
         </div>
-        <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
-        <span class="text-xs text-gray-400 dark:text-gray-500">{{ keyLabel }}</span>
-        <span v-if="provider.payment_mode" class="text-xs text-gray-400 dark:text-gray-500">· {{ modeLabel }}</span>
-        <span v-if="enabled && availableTypes.length" class="text-xs text-gray-300 dark:text-gray-600">|</span>
-        <div v-if="enabled" class="flex items-center gap-1">
-          <button
-            v-for="pt in availableTypes"
-            :key="pt.value"
-            type="button"
-            @click="emit('toggleType', pt.value)"
-            :class="[
-              'rounded px-2 py-0.5 text-xs font-medium transition-all',
-              isSelected(pt.value)
-                ? 'bg-primary-500 text-white'
-                : 'bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-gray-500',
-            ]"
-          >{{ pt.label }}</button>
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
+            <span class="text-xs text-gray-400 dark:text-gray-500">{{ keyLabel }}</span>
+            <span v-if="provider.payment_mode" class="text-xs text-gray-400 dark:text-gray-500">· {{ modeLabel }}</span>
+          </div>
+          <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ providerIntro }}</p>
+          <div v-if="enabled && showStaticCapabilityBadges" class="mt-2 flex items-center gap-1">
+            <span
+              v-for="pt in displayTypes"
+              :key="pt.value"
+              class="rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+            >{{ pt.label }}</span>
+          </div>
+          <div v-else-if="enabled" class="mt-2 flex items-center gap-1">
+            <button
+              v-for="pt in displayTypes"
+              :key="pt.value"
+              type="button"
+              @click="emit('toggleType', pt.value)"
+              :class="[
+                'rounded px-2 py-0.5 text-xs font-medium transition-all',
+                isSelected(pt.value)
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-gray-500',
+              ]"
+            >{{ pt.label }}</button>
+          </div>
         </div>
       </div>
 
@@ -94,6 +105,14 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const keyLabel = computed(() => t(PROVIDER_KEY_LABELS[props.provider.provider_key] || props.provider.provider_key))
+const providerIntro = computed(() => t(`admin.settings.payment.providerIntro_${props.provider.provider_key}`))
+const showStaticCapabilityBadges = computed(() => props.provider.provider_key === 'stripe')
+const displayTypes = computed<TypeOption[]>(() => {
+  if (props.provider.provider_key === 'stripe') {
+    return [{ value: 'stripe', label: t('payment.methods.stripe') }]
+  }
+  return props.availableTypes
+})
 
 const modeLabel = computed(() => {
   if (props.provider.payment_mode === PAYMENT_MODE_QRCODE) return t('admin.settings.payment.modeQRCode')

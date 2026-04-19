@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -108,6 +109,9 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
 		return nil, err
 	}
+	if err := s.validateProviderCapabilityRoute(ctx, 0, req.ProviderKey, typesStr, req.Enabled); err != nil {
+		return nil, err
+	}
 	enc, err := s.encryptConfig(req.Config)
 	if err != nil {
 		return nil, err
@@ -128,7 +132,9 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 	if !validProviderKeys[providerKey] {
 		return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("invalid provider key: %s", providerKey))
 	}
-	// supported_types can be empty (provider accepts no payment types until configured)
+	if err := validateSupportedTypesForProvider(providerKey, supportedTypes); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -136,6 +142,25 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 // NOTE: This function exceeds 30 lines due to per-field nil-check patch update
 // boilerplate and pending-order safety checks.
 func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id int64, req UpdateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
+	current, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("load provider instance: %w", err)
+	}
+	finalSupportedTypes := current.SupportedTypes
+	if req.SupportedTypes != nil {
+		finalSupportedTypes = joinTypes(req.SupportedTypes)
+		if err := validateSupportedTypesForProvider(current.ProviderKey, finalSupportedTypes); err != nil {
+			return nil, err
+		}
+	}
+	finalEnabled := current.Enabled
+	if req.Enabled != nil {
+		finalEnabled = *req.Enabled
+	}
+	if err := s.validateProviderCapabilityRoute(ctx, id, current.ProviderKey, finalSupportedTypes, finalEnabled); err != nil {
+		return nil, err
+	}
+
 	if req.Config != nil {
 		hasSensitive := false
 		for k := range req.Config {
@@ -188,11 +213,7 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		}
 		if count > 0 {
 			// Load current instance to compare types
-			inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
-			if err != nil {
-				return nil, fmt.Errorf("load provider instance: %w", err)
-			}
-			oldTypes := strings.Split(inst.SupportedTypes, ",")
+			oldTypes := strings.Split(current.SupportedTypes, ",")
 			newTypes := req.SupportedTypes
 			for _, ot := range oldTypes {
 				ot = strings.TrimSpace(ot)
@@ -237,10 +258,7 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 			if req.RefundEnabled != nil {
 				refundEnabled = *req.RefundEnabled
 			} else {
-				inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
-				if err == nil {
-					refundEnabled = inst.RefundEnabled
-				}
+				refundEnabled = current.RefundEnabled
 			}
 			if refundEnabled {
 				u.SetAllowUserRefund(true)
@@ -253,6 +271,91 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetPaymentMode(*req.PaymentMode)
 	}
 	return u.Save(ctx)
+}
+
+func validateSupportedTypesForProvider(providerKey, supportedTypes string) error {
+	allowed := allowedStoredTypesForProvider(providerKey)
+	if len(allowed) == 0 {
+		return nil
+	}
+	for _, typ := range splitTypes(supportedTypes) {
+		if _, ok := allowed[typ]; !ok {
+			return infraerrors.BadRequest("VALIDATION_ERROR",
+				fmt.Sprintf("provider %s only supports %v", providerKey, orderedAllowedTypes(allowed)))
+		}
+	}
+	return nil
+}
+
+func allowedStoredTypesForProvider(providerKey string) map[string]struct{} {
+	switch providerKey {
+	case payment.TypeAlipay:
+		return map[string]struct{}{payment.TypeAlipay: {}}
+	case payment.TypeWxpay:
+		return map[string]struct{}{payment.TypeWxpay: {}}
+	case payment.TypeEasyPay:
+		return map[string]struct{}{payment.TypeAlipay: {}, payment.TypeWxpay: {}}
+	case payment.TypeStripe:
+		return map[string]struct{}{
+			payment.TypeStripe: {},
+			payment.TypeCard:   {},
+			payment.TypeLink:   {},
+			payment.TypeAlipay: {},
+			payment.TypeWxpay:  {},
+		}
+	default:
+		return nil
+	}
+}
+
+func orderedAllowedTypes(allowed map[string]struct{}) []string {
+	result := make([]string, 0, len(allowed))
+	for typ := range allowed {
+		result = append(result, typ)
+	}
+	slices.Sort(result)
+	return result
+}
+
+func (s *PaymentConfigService) validateProviderCapabilityRoute(ctx context.Context, selfID int64, providerKey, supportedTypes string, enabled bool) error {
+	instances, err := s.entClient.PaymentProviderInstance.Query().All(ctx)
+	if err != nil {
+		return fmt.Errorf("query provider instances: %w", err)
+	}
+	return validateCapabilityRouteConflicts(instances, selfID, providerKey, supportedTypes, enabled)
+}
+
+func validateCapabilityRouteConflicts(instances []*dbent.PaymentProviderInstance, selfID int64, providerKey, supportedTypes string, enabled bool) error {
+	typeProviders := make(map[string]map[string]struct{})
+	add := func(instID int64, instProviderKey, instSupportedTypes string, instEnabled bool) {
+		if !instEnabled || (selfID > 0 && instID == selfID) {
+			return
+		}
+		for _, capability := range payment.VisiblePaymentTypesForProvider(instProviderKey, instSupportedTypes) {
+			if capability == payment.TypeStripe {
+				continue
+			}
+			key := string(capability)
+			if typeProviders[key] == nil {
+				typeProviders[key] = make(map[string]struct{})
+			}
+			typeProviders[key][instProviderKey] = struct{}{}
+		}
+	}
+
+	for _, inst := range instances {
+		add(int64(inst.ID), inst.ProviderKey, inst.SupportedTypes, inst.Enabled)
+	}
+	add(selfID, providerKey, supportedTypes, enabled)
+
+	for _, capability := range []string{payment.TypeAlipay, payment.TypeWxpay} {
+		providerTypes := orderedAllowedTypes(typeProviders[capability])
+		if len(providerTypes) > 1 {
+			return infraerrors.Conflict("PAYMENT_CAPABILITY_CONFLICT",
+				fmt.Sprintf("%s capability conflict: enabled provider types %v", capability, providerTypes))
+		}
+	}
+	return nil
 }
 
 // GetUserRefundEligibleInstanceIDs returns provider instance IDs that allow user refund.

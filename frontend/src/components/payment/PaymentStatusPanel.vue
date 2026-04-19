@@ -77,9 +77,9 @@
           <div :class="['relative rounded-lg border-2 p-4', qrBorderClass]">
             <canvas ref="qrCanvas" class="mx-auto"></canvas>
             <!-- Brand logo overlay -->
-            <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div v-if="qrLogoIcon" class="pointer-events-none absolute inset-0 flex items-center justify-center">
               <span :class="['rounded-full p-2 shadow ring-2 ring-white', qrLogoBgClass]">
-                <img :src="isAlipay ? alipayIcon : wxpayIcon" alt="" class="h-5 w-5 brightness-0 invert" />
+                <img :src="qrLogoIcon" alt="" class="h-5 w-5 brightness-0 invert" />
               </span>
             </div>
           </div>
@@ -159,8 +159,17 @@ const outcome = ref<'success' | 'cancelled' | 'expired' | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
-const isAlipay = computed(() => props.paymentType.includes('alipay'))
-const isWxpay = computed(() => props.paymentType.includes('wxpay'))
+function normalizeDisplayType(type: string): string {
+  const lower = type.toLowerCase()
+  if (lower === 'stripe' || lower.includes('stripe') || lower === 'card' || lower === 'link') return 'stripe'
+  if (lower.includes('wxpay') || lower.includes('wechat')) return 'wxpay'
+  if (lower.includes('alipay') || lower === 'easypay') return 'alipay'
+  return type
+}
+
+const displayPaymentType = computed(() => normalizeDisplayType(props.paymentType))
+const isAlipay = computed(() => displayPaymentType.value === 'alipay')
+const isWxpay = computed(() => displayPaymentType.value === 'wxpay')
 
 const qrBorderClass = computed(() => {
   if (isAlipay.value) return 'border-[#00AEEF] bg-blue-50 dark:border-[#00AEEF]/70 dark:bg-blue-950/20'
@@ -172,6 +181,12 @@ const qrLogoBgClass = computed(() => {
   if (isAlipay.value) return 'bg-[#00AEEF]'
   if (isWxpay.value) return 'bg-[#2BB741]'
   return 'bg-gray-400'
+})
+
+const qrLogoIcon = computed(() => {
+  if (isAlipay.value) return alipayIcon
+  if (isWxpay.value) return wxpayIcon
+  return ''
 })
 
 const scanTitle = computed(() => {
