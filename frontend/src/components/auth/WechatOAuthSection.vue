@@ -40,12 +40,16 @@ const props = withDefaults(
     disabled?: boolean
     showDivider?: boolean
     openEnabled?: boolean
+    openConfigured?: boolean
     mpEnabled?: boolean
+    mpConfigured?: boolean
   }>(),
   {
     showDivider: true,
     openEnabled: false,
-    mpEnabled: false
+    openConfigured: true,
+    mpEnabled: false,
+    mpConfigured: true
   }
 )
 
@@ -57,7 +61,9 @@ const userAgent = computed(() => (typeof navigator === 'undefined' ? '' : naviga
 const startUrl = computed(() =>
   getOAuthStartUrl('wechat', (route.query.redirect as string) || '/dashboard', 'login', {
     wechatOpenEnabled: props.openEnabled,
+    wechatOpenConfigured: props.openConfigured,
     wechatMpEnabled: props.mpEnabled,
+    wechatMpConfigured: props.mpConfigured,
     userAgent: userAgent.value
   })
 )
@@ -65,7 +71,9 @@ const startUrl = computed(() =>
 const availabilityHintKey = computed(() =>
   getWechatOAuthAvailabilityHintKey({
     wechatOpenEnabled: props.openEnabled,
+    wechatOpenConfigured: props.openConfigured,
     wechatMpEnabled: props.mpEnabled,
+    wechatMpConfigured: props.mpConfigured,
     userAgent: userAgent.value
   })
 )

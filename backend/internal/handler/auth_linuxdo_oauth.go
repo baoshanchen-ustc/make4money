@@ -30,15 +30,17 @@ import (
 )
 
 const (
-	linuxDoOAuthCookiePath        = "/api/v1/auth/oauth/linuxdo"
-	linuxDoOAuthStateCookieName   = "linuxdo_oauth_state"
-	linuxDoOAuthVerifierCookie    = "linuxdo_oauth_verifier"
-	linuxDoOAuthRedirectCookie    = "linuxdo_oauth_redirect"
-	linuxDoOAuthIntentCookieName  = "linuxdo_oauth_intent"
-	linuxDoOAuthCookieMaxAgeSec   = 10 * 60 // 10 minutes
-	linuxDoOAuthDefaultRedirectTo = "/dashboard"
-	linuxDoOAuthDefaultFrontendCB = "/auth/linuxdo/callback"
-	linuxDoOAuthProviderKey       = "linuxdo"
+	linuxDoOAuthCookiePath         = "/api/v1/auth/oauth/linuxdo"
+	oauthBindAccessTokenCookiePath = "/api/v1/auth/oauth"
+	linuxDoOAuthStateCookieName    = "linuxdo_oauth_state"
+	linuxDoOAuthVerifierCookie     = "linuxdo_oauth_verifier"
+	linuxDoOAuthRedirectCookie     = "linuxdo_oauth_redirect"
+	linuxDoOAuthIntentCookieName   = "linuxdo_oauth_intent"
+	oauthBindAccessTokenCookieName = "oauth_bind_access_token"
+	linuxDoOAuthCookieMaxAgeSec    = 10 * 60 // 10 minutes
+	linuxDoOAuthDefaultRedirectTo  = "/dashboard"
+	linuxDoOAuthDefaultFrontendCB  = "/auth/linuxdo/callback"
+	linuxDoOAuthProviderKey        = "linuxdo"
 
 	linuxDoOAuthMaxRedirectLen      = 2048
 	linuxDoOAuthMaxFragmentValueLen = 512
@@ -244,8 +246,9 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 }
 
 type completeLinuxDoOAuthRequest struct {
-	PendingOAuthToken string `json:"pending_oauth_token" binding:"required"`
-	InvitationCode    string `json:"invitation_code"     binding:"required"`
+	PendingAuthToken  string `json:"pending_auth_token,omitempty"`
+	PendingOAuthToken string `json:"pending_oauth_token,omitempty"`
+	InvitationCode    string `json:"invitation_code" binding:"required"`
 }
 
 // CompleteLinuxDoOAuthRegistration completes a pending OAuth registration by validating
@@ -258,16 +261,22 @@ func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
 		return
 	}
 
-	email, username, err := h.authService.VerifyPendingOAuthToken(req.PendingOAuthToken)
+	email, username, pendingAuthToken, err := h.resolveLinuxDoRegistrationIdentity(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "INVALID_TOKEN", "message": "invalid or expired registration token"})
 		return
 	}
 
-	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if pendingAuthToken != "" && user != nil {
+		if _, err := h.authService.CompletePendingAuthSessionBind(c.Request.Context(), pendingAuthToken, user.ID); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -276,6 +285,30 @@ func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
 		"expires_in":    tokenPair.ExpiresIn,
 		"token_type":    "Bearer",
 	})
+}
+
+func (h *AuthHandler) resolveLinuxDoRegistrationIdentity(ctx context.Context, req completeLinuxDoOAuthRequest) (email, username, pendingAuthToken string, err error) {
+	if pendingAuthToken = strings.TrimSpace(req.PendingAuthToken); pendingAuthToken != "" {
+		session, sessionErr := h.authService.GetPendingAuthSessionForProgress(ctx, pendingAuthToken, nil)
+		if sessionErr != nil {
+			return "", "", "", sessionErr
+		}
+
+		email = strings.TrimSpace(oauthMetadataString(session.Metadata, "compat_email"))
+		username = strings.TrimSpace(oauthMetadataString(session.Metadata, "compat_username"))
+		if email == "" || username == "" {
+			fallbackSubject := strings.TrimSpace(session.ProviderSubject)
+			if fallbackSubject == "" {
+				return "", "", "", service.ErrInvalidToken
+			}
+			email = linuxDoSyntheticEmail(fallbackSubject)
+			username = fallbackSubject
+		}
+		return email, username, pendingAuthToken, nil
+	}
+
+	email, username, err = h.authService.VerifyPendingOAuthToken(strings.TrimSpace(req.PendingOAuthToken))
+	return email, username, "", err
 }
 
 func (h *AuthHandler) getLinuxDoOAuthConfig(ctx context.Context) (config.LinuxDoConnectConfig, error) {
@@ -676,6 +709,38 @@ func readCookieDecoded(c *gin.Context, name string) (string, error) {
 	return decodeCookieValue(ck.Value)
 }
 
+func (h *AuthHandler) resolveOAuthBindTargetUserID(c *gin.Context) (*int64, error) {
+	if subject, ok := middleware2.GetAuthSubjectFromContext(c); ok && subject.UserID > 0 {
+		return &subject.UserID, nil
+	}
+	if h == nil || h.authService == nil || h.userService == nil {
+		return nil, service.ErrInvalidToken
+	}
+
+	ck, err := c.Request.Cookie(oauthBindAccessTokenCookieName)
+	clearOAuthBindAccessTokenCookie(c, isRequestHTTPS(c))
+	if err != nil {
+		return nil, err
+	}
+	tokenString := strings.TrimSpace(ck.Value)
+	if tokenString == "" {
+		return nil, service.ErrInvalidToken
+	}
+
+	claims, err := h.authService.ValidateToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	user, err := h.userService.GetByID(c.Request.Context(), claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil || !user.IsActive() || claims.TokenVersion != user.TokenVersion {
+		return nil, service.ErrInvalidToken
+	}
+	return &user.ID, nil
+}
+
 func setCookie(c *gin.Context, name string, value string, maxAgeSec int, secure bool) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     name,
@@ -695,6 +760,18 @@ func clearCookie(c *gin.Context, name string, secure bool) {
 		Path:     linuxDoOAuthCookiePath,
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearOAuthBindAccessTokenCookie(c *gin.Context, secure bool) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthBindAccessTokenCookieName,
+		Value:    "",
+		Path:     oauthBindAccessTokenCookiePath,
+		MaxAge:   -1,
+		HttpOnly: false,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -804,12 +881,12 @@ func (h *AuthHandler) completeOAuthCallback(c *gin.Context, frontendCallback, re
 	intent := normalizeOAuthIntent(identity.Intent)
 	var bindTargetUserID *int64
 	if intent == service.PendingAuthIntentBindCurrentUser {
-		subject, ok := middleware2.GetAuthSubjectFromContext(c)
-		if !ok || subject.UserID <= 0 {
+		resolvedUserID, err := h.resolveOAuthBindTargetUserID(c)
+		if err != nil || resolvedUserID == nil || *resolvedUserID <= 0 {
 			redirectOAuthError(c, frontendCallback, "auth_required", "missing authenticated subject", "")
 			return
 		}
-		bindTargetUserID = &subject.UserID
+		bindTargetUserID = resolvedUserID
 	}
 	boundUserID, err := h.lookupBoundOAuthUserID(c.Request.Context(), identity.ProviderType, identity.ProviderKey, identity.ProviderSubject, identity.Metadata)
 	if err != nil {
@@ -881,6 +958,23 @@ func (h *AuthHandler) redirectOAuthLoginSuccess(c *gin.Context, frontendCallback
 	}
 	if user == nil || !user.IsActive() {
 		redirectOAuthError(c, frontendCallback, "login_failed", "user_not_active", "")
+		return
+	}
+	if h.totpService != nil && h.settingSvc != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) && user.TotpEnabled {
+		tempToken, err := h.totpService.CreateLoginSession(c.Request.Context(), user.ID, user.Email)
+		if err != nil {
+			redirectOAuthError(c, frontendCallback, "login_failed", "service_error", "")
+			return
+		}
+
+		fragment := url.Values{}
+		fragment.Set("requires_2fa", "true")
+		fragment.Set("temp_token", tempToken)
+		fragment.Set("user_email_masked", service.MaskEmail(user.Email))
+		fragment.Set("provider", truncateFragmentValue(provider))
+		fragment.Set("intent", truncateFragmentValue(intent))
+		fragment.Set("redirect", truncateFragmentValue(redirectTo))
+		redirectWithFragment(c, frontendCallback, fragment)
 		return
 	}
 

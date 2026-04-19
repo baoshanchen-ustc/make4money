@@ -72,6 +72,9 @@ type UserIdentityState struct {
 }
 
 func BuildUserIdentityState(user *User, identities []UserExternalIdentity) UserIdentityState {
+	if len(identities) == 0 && user != nil && len(user.ExternalIdentities) > 0 {
+		identities = user.ExternalIdentities
+	}
 	normalized := make([]UserExternalIdentity, 0, len(identities))
 	for _, identity := range identities {
 		identity = normalizeUserExternalIdentity(identity)

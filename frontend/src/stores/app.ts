@@ -16,7 +16,9 @@ import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
 type PublicAuthSettings = PublicSettings & {
   third_party_first_login_require_email?: boolean
   wechat_login_open_enabled?: boolean
+  wechat_login_open_configured?: boolean
   wechat_login_mp_enabled?: boolean
+  wechat_login_mp_configured?: boolean
   wechat_login_unionid_health_status?: 'ok' | 'warning' | 'error'
 }
 

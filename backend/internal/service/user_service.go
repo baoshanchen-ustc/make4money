@@ -17,6 +17,9 @@ var (
 	ErrPasswordIncorrect       = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
 	ErrInsufficientPerms       = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
 	ErrNotifyCodeUserRateLimit = infraerrors.TooManyRequests("NOTIFY_CODE_USER_RATE_LIMIT", "too many verification codes requested, please try again later")
+	ErrAccountBindingNotFound  = infraerrors.NotFound("ACCOUNT_BINDING_NOT_FOUND", "account binding not found")
+	ErrAccountBindingProtected = infraerrors.Forbidden("ACCOUNT_BINDING_PROTECTED", "this login method cannot be disconnected")
+	ErrAccountBindingInvalid   = infraerrors.BadRequest("ACCOUNT_BINDING_INVALID", "invalid account binding provider")
 )
 
 const (
@@ -96,6 +99,11 @@ type UserService struct {
 	billingCache         BillingCache
 }
 
+type userExternalIdentityStore interface {
+	ListUserExternalIdentities(ctx context.Context, userID int64) ([]UserExternalIdentity, error)
+	DeleteUserExternalIdentity(ctx context.Context, userID int64, provider ExternalIdentityProvider) (bool, error)
+}
+
 // NewUserService 创建用户服务实例
 func NewUserService(userRepo UserRepository, settingRepo SettingRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCache BillingCache) *UserService {
 	return &UserService{
@@ -117,11 +125,7 @@ func (s *UserService) GetFirstAdmin(ctx context.Context) (*User, error) {
 
 // GetProfile 获取用户资料
 func (s *UserService) GetProfile(ctx context.Context, userID int64) (*User, error) {
-	user, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
-	}
-	return user, nil
+	return s.GetByID(ctx, userID)
 }
 
 // UpdateProfile 更新用户资料
@@ -208,7 +212,139 @@ func (s *UserService) GetByID(ctx context.Context, id int64) (*User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
+	s.attachExternalIdentities(ctx, user)
 	return user, nil
+}
+
+func (s *UserService) DeleteAccountBinding(ctx context.Context, userID int64, provider string) (*User, error) {
+	store, ok := s.userRepo.(userExternalIdentityStore)
+	if !ok {
+		return nil, fmt.Errorf("external identity store not configured")
+	}
+
+	normalizedProvider := NormalizeExternalIdentityProvider(ExternalIdentityProvider(provider))
+	switch normalizedProvider {
+	case ExternalIdentityProviderLinuxDo, ExternalIdentityProviderWeChat, ExternalIdentityProviderOIDC:
+	default:
+		return nil, ErrAccountBindingInvalid
+	}
+
+	user, err := s.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	identities, err := store.ListUserExternalIdentities(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	state := BuildUserIdentityState(user, identities)
+
+	found := false
+	for _, identity := range state.ExternalIdentities {
+		if identity.Provider == normalizedProvider {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, ErrAccountBindingNotFound
+	}
+
+	if !CanDisconnectExternalIdentity(state, normalizedProvider, s.externalIdentityAvailability(ctx)) {
+		return nil, ErrAccountBindingProtected
+	}
+
+	deleted, err := store.DeleteUserExternalIdentity(ctx, userID, normalizedProvider)
+	if err != nil {
+		return nil, err
+	}
+	if !deleted {
+		return nil, ErrAccountBindingNotFound
+	}
+
+	return s.GetByID(ctx, userID)
+}
+
+func (s *UserService) GetExternalIdentityAvailability(ctx context.Context) map[ExternalIdentityProvider]ProviderAvailability {
+	return s.externalIdentityAvailability(ctx)
+}
+
+func (s *UserService) attachExternalIdentities(ctx context.Context, user *User) {
+	if user == nil {
+		return
+	}
+	store, ok := s.userRepo.(userExternalIdentityStore)
+	if !ok {
+		return
+	}
+	identities, err := store.ListUserExternalIdentities(ctx, user.ID)
+	if err != nil {
+		return
+	}
+	user.ExternalIdentities = identities
+}
+
+func (s *UserService) externalIdentityAvailability(ctx context.Context) map[ExternalIdentityProvider]ProviderAvailability {
+	availability := map[ExternalIdentityProvider]ProviderAvailability{
+		ExternalIdentityProviderLinuxDo: {Enabled: true, ConfigValid: true},
+		ExternalIdentityProviderWeChat:  {Enabled: true, ConfigValid: true},
+		ExternalIdentityProviderOIDC:    {Enabled: true, ConfigValid: true},
+	}
+	if s.settingRepo == nil {
+		return availability
+	}
+
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyLinuxDoConnectEnabled,
+		SettingKeyLinuxDoConnectClientID,
+		SettingKeyLinuxDoConnectClientSecret,
+		SettingKeyWeChatLoginOpenEnabled,
+		SettingKeyWeChatLoginOpenAppID,
+		SettingKeyWeChatLoginOpenAppSecret,
+		SettingKeyWeChatLoginMPEnabled,
+		SettingKeyWeChatLoginMPAppID,
+		SettingKeyWeChatLoginMPAppSecret,
+		SettingKeyOIDCConnectEnabled,
+		SettingKeyOIDCConnectClientID,
+		SettingKeyOIDCConnectClientSecret,
+		SettingKeyOIDCConnectIssuerURL,
+		SettingKeyOIDCConnectDiscoveryURL,
+		SettingKeyOIDCConnectAuthorizeURL,
+		SettingKeyOIDCConnectTokenURL,
+	})
+	if err != nil {
+		return availability
+	}
+
+	linuxEnabled := strings.EqualFold(strings.TrimSpace(settings[SettingKeyLinuxDoConnectEnabled]), "true")
+	availability[ExternalIdentityProviderLinuxDo] = ProviderAvailability{
+		Enabled:     linuxEnabled,
+		ConfigValid: linuxEnabled && strings.TrimSpace(settings[SettingKeyLinuxDoConnectClientID]) != "" && strings.TrimSpace(settings[SettingKeyLinuxDoConnectClientSecret]) != "",
+	}
+
+	wechatOpenEnabled := strings.EqualFold(strings.TrimSpace(settings[SettingKeyWeChatLoginOpenEnabled]), "true")
+	wechatMPEnabled := strings.EqualFold(strings.TrimSpace(settings[SettingKeyWeChatLoginMPEnabled]), "true")
+	wechatOpenValid := wechatOpenEnabled && strings.TrimSpace(settings[SettingKeyWeChatLoginOpenAppID]) != "" && strings.TrimSpace(settings[SettingKeyWeChatLoginOpenAppSecret]) != ""
+	wechatMPValid := wechatMPEnabled && strings.TrimSpace(settings[SettingKeyWeChatLoginMPAppID]) != "" && strings.TrimSpace(settings[SettingKeyWeChatLoginMPAppSecret]) != ""
+	availability[ExternalIdentityProviderWeChat] = ProviderAvailability{
+		Enabled:     wechatOpenEnabled || wechatMPEnabled,
+		ConfigValid: wechatOpenValid || wechatMPValid,
+	}
+
+	oidcEnabled := strings.EqualFold(strings.TrimSpace(settings[SettingKeyOIDCConnectEnabled]), "true")
+	availability[ExternalIdentityProviderOIDC] = ProviderAvailability{
+		Enabled: oidcEnabled,
+		ConfigValid: oidcEnabled &&
+			strings.TrimSpace(settings[SettingKeyOIDCConnectClientID]) != "" &&
+			strings.TrimSpace(settings[SettingKeyOIDCConnectClientSecret]) != "" &&
+			(strings.TrimSpace(settings[SettingKeyOIDCConnectIssuerURL]) != "" ||
+				strings.TrimSpace(settings[SettingKeyOIDCConnectDiscoveryURL]) != "" ||
+				(strings.TrimSpace(settings[SettingKeyOIDCConnectAuthorizeURL]) != "" &&
+					strings.TrimSpace(settings[SettingKeyOIDCConnectTokenURL]) != "")),
+	}
+
+	return availability
 }
 
 // List 获取用户列表（管理员功能）

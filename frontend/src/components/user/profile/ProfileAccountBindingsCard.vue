@@ -59,7 +59,7 @@
             <button
               type="button"
               class="btn btn-secondary"
-              :disabled="isSendingEmailCode || isBindingEmail"
+              :disabled="isSendingEmailCode || isBindingEmail || (turnstileEnabled && !turnstileToken)"
               @click="handleSendEmailCode"
             >
               {{ isSendingEmailCode ? t('auth.sendingCode') : t('profile.balanceNotify.sendCode') }}
@@ -88,6 +88,18 @@
             >
               {{ isBindingEmail ? t('auth.verifying') : t('profile.balanceNotify.verify') }}
             </button>
+            <div v-if="turnstileEnabled && turnstileSiteKey" class="sm:col-span-2">
+              <TurnstileWidget
+                ref="turnstileRef"
+                :site-key="turnstileSiteKey"
+                @verify="onTurnstileVerify"
+                @expire="onTurnstileExpire"
+                @error="onTurnstileError"
+              />
+              <p v-if="turnstileError" class="input-error-text mt-2">
+                {{ turnstileError }}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -96,6 +108,7 @@
             v-if="binding.connectUrl && !binding.bound"
             :href="binding.connectUrl"
             class="btn btn-secondary"
+            @click.prevent="handleConnect(binding.connectUrl)"
           >
             {{ t('profile.bindings.actions.connect') }}
           </a>
@@ -106,6 +119,19 @@
             disabled
           >
             {{ t('profile.bindings.actions.connect') }}
+          </button>
+          <button
+            v-else-if="binding.bound && binding.canDisconnect"
+            type="button"
+            class="btn btn-secondary"
+            :disabled="disconnectingProvider === binding.provider"
+            @click="handleDisconnect(binding.provider)"
+          >
+            {{
+              disconnectingProvider === binding.provider
+                ? t('auth.verifying')
+                : t('profile.bindings.actions.disconnect')
+            }}
           </button>
           <span
             v-else-if="binding.bound"
@@ -123,9 +149,14 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { sendVerifyCode } from '@/api/auth'
+import { prepareOAuthBindAccessTokenCookie, sendVerifyCode } from '@/api/auth'
+import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { userAPI } from '@/api/user'
-import { resolveUserBinding, resolveUserBindings } from '@/components/user/profile/profileUser'
+import {
+  resolveUserBinding,
+  resolveUserBindings,
+  type UserAccountBindingProvider
+} from '@/components/user/profile/profileUser'
 import { useAppStore, useAuthStore } from '@/stores'
 
 const props = defineProps<{
@@ -143,9 +174,16 @@ const emailBindingForm = reactive({
 })
 const isSendingEmailCode = ref(false)
 const isBindingEmail = ref(false)
+const disconnectingProvider = ref<UserAccountBindingProvider | null>(null)
+const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const turnstileToken = ref('')
+const turnstileError = ref('')
 
 const userRecord = computed(() => (props.user ?? {}) as Record<string, unknown>)
 const emailBinding = computed(() => resolveUserBinding(userRecord.value, 'email'))
+const publicSettings = computed(() => appStore.cachedPublicSettings ?? null)
+const turnstileEnabled = computed(() => publicSettings.value?.turnstile_enabled === true)
+const turnstileSiteKey = computed(() => publicSettings.value?.turnstile_site_key ?? '')
 
 watch(emailBinding, (binding) => {
   if (binding.bound || emailBindingForm.email) {
@@ -187,10 +225,15 @@ async function handleSendEmailCode() {
 
   isSendingEmailCode.value = true
   try {
-    await sendVerifyCode({ email: emailBindingForm.email })
+    await sendVerifyCode({
+      email: emailBindingForm.email,
+      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
+    })
     appStore.showSuccess(t('profile.balanceNotify.codeSentTo', { email: emailBindingForm.email }))
+    resetTurnstile()
   } catch (error) {
     appStore.showError((error as { message?: string }).message || t('auth.sendCodeFailed'))
+    resetTurnstile()
   } finally {
     isSendingEmailCode.value = false
   }
@@ -216,6 +259,54 @@ async function handleBindEmail() {
     appStore.showError((error as { message?: string }).message || t('auth.verifyFailed'))
   } finally {
     isBindingEmail.value = false
+  }
+}
+
+function handleConnect(connectUrl: string) {
+  prepareOAuthBindAccessTokenCookie()
+  window.location.href = connectUrl
+}
+
+function onTurnstileVerify(token: string) {
+  turnstileToken.value = token
+  turnstileError.value = ''
+}
+
+function onTurnstileExpire() {
+  turnstileToken.value = ''
+  turnstileError.value = t('auth.turnstileExpired')
+}
+
+function onTurnstileError() {
+  turnstileToken.value = ''
+  turnstileError.value = t('auth.turnstileFailed')
+}
+
+function resetTurnstile() {
+  if (!turnstileEnabled.value) {
+    return
+  }
+  turnstileRef.value?.reset()
+  turnstileToken.value = ''
+}
+
+async function handleDisconnect(provider: UserAccountBindingProvider) {
+  if (provider === 'email') {
+    return
+  }
+  if (!window.confirm(t('profile.bindings.disconnectConfirm'))) {
+    return
+  }
+
+  disconnectingProvider.value = provider
+  try {
+    await userAPI.unbindAccount(provider)
+    await authStore.refreshUser()
+    appStore.showSuccess(t('profile.bindings.disconnectSuccess'))
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('profile.bindings.disconnectFailed'))
+  } finally {
+    disconnectingProvider.value = null
   }
 }
 </script>

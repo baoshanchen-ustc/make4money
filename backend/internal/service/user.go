@@ -50,6 +50,7 @@ type User struct {
 	AvatarURL                  string
 	AvatarUpdatedAt            *time.Time
 	HasCustomAvatar            bool
+	ExternalIdentities         []UserExternalIdentity
 
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription

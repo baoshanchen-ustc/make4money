@@ -302,6 +302,17 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		return
 	}
 
+	emailVerified := userInfoClaims.EmailVerified
+	if emailVerified == nil {
+		emailVerified = idClaims.EmailVerified
+	}
+	if cfg.RequireEmailVerified {
+		if emailVerified == nil || !*emailVerified {
+			redirectOAuthError(c, frontendCallback, "email_not_verified", "email is not verified", "")
+			return
+		}
+	}
+
 	identityKey := oidcIdentityKey(issuer, subject)
 	email := oidcSelectLoginEmail(identityKey)
 	username := firstNonEmpty(

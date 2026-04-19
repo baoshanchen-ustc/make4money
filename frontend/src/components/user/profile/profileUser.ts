@@ -18,7 +18,12 @@ type UserWithBindings = {
 
 type PublicAuthVisibilitySettings = Pick<
   PublicSettings,
-  'linuxdo_oauth_enabled' | 'oidc_oauth_enabled' | 'wechat_login_open_enabled' | 'wechat_login_mp_enabled'
+  | 'linuxdo_oauth_enabled'
+  | 'oidc_oauth_enabled'
+  | 'wechat_login_open_enabled'
+  | 'wechat_login_open_configured'
+  | 'wechat_login_mp_enabled'
+  | 'wechat_login_mp_configured'
 >
 
 export interface ResolvedUserBinding {
@@ -156,7 +161,10 @@ function isProviderEnabled(
     return settings?.oidc_oauth_enabled === true
   }
 
-  return settings?.wechat_login_open_enabled === true || settings?.wechat_login_mp_enabled === true
+  return (
+    (settings?.wechat_login_open_enabled === true && settings?.wechat_login_open_configured !== false)
+    || (settings?.wechat_login_mp_enabled === true && settings?.wechat_login_mp_configured !== false)
+  )
 }
 
 function buildConnectUrl(
@@ -174,7 +182,9 @@ function buildConnectUrl(
   if (provider === 'wechat') {
     return getOAuthStartUrl(provider, BIND_REDIRECT, 'bind', {
       wechatOpenEnabled: settings?.wechat_login_open_enabled === true,
-      wechatMpEnabled: settings?.wechat_login_mp_enabled === true
+      wechatOpenConfigured: settings?.wechat_login_open_configured !== false,
+      wechatMpEnabled: settings?.wechat_login_mp_enabled === true,
+      wechatMpConfigured: settings?.wechat_login_mp_configured !== false
     })
   }
 
@@ -192,7 +202,9 @@ function resolveAvailabilityHintKey(
 
   return getWechatOAuthAvailabilityHintKey({
     wechatOpenEnabled: settings?.wechat_login_open_enabled === true,
-    wechatMpEnabled: settings?.wechat_login_mp_enabled === true
+    wechatOpenConfigured: settings?.wechat_login_open_configured !== false,
+    wechatMpEnabled: settings?.wechat_login_mp_enabled === true,
+    wechatMpConfigured: settings?.wechat_login_mp_configured !== false
   })
 }
 

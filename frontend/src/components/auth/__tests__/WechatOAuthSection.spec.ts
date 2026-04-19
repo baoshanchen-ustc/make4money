@@ -60,7 +60,9 @@ describe('WechatOAuthSection', () => {
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()
     expect(getWechatOAuthAvailabilityHintKeyMock).toHaveBeenCalledWith({
       wechatOpenEnabled: false,
+      wechatOpenConfigured: true,
       wechatMpEnabled: false,
+      wechatMpConfigured: true,
       userAgent: defaultUserAgent
     })
   })
@@ -92,7 +94,9 @@ describe('WechatOAuthSection', () => {
 
     expect(getOAuthStartUrlMock).toHaveBeenCalledWith('wechat', '/dashboard', 'login', {
       wechatOpenEnabled: true,
+      wechatOpenConfigured: true,
       wechatMpEnabled: true,
+      wechatMpConfigured: true,
       userAgent: defaultUserAgent
     })
   })
@@ -133,7 +137,9 @@ describe('WechatOAuthSection', () => {
 
     expect(getOAuthStartUrlMock).toHaveBeenCalledWith('wechat', '/dashboard', 'login', {
       wechatOpenEnabled: true,
+      wechatOpenConfigured: true,
       wechatMpEnabled: true,
+      wechatMpConfigured: true,
       userAgent: 'Mozilla/5.0 MicroMessenger'
     })
   })
@@ -154,7 +160,9 @@ describe('WechatOAuthSection', () => {
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()
     expect(getOAuthStartUrlMock).toHaveBeenCalledWith('wechat', '/dashboard', 'login', {
       wechatOpenEnabled: false,
+      wechatOpenConfigured: true,
       wechatMpEnabled: true,
+      wechatMpConfigured: true,
       userAgent: defaultUserAgent
     })
   })

@@ -19,7 +19,9 @@
           v-if="wechatOAuthVisible"
           :disabled="isLoading"
           :open-enabled="wechatOpenEnabled"
+          :open-configured="wechatOpenConfigured"
           :mp-enabled="wechatMpEnabled"
+          :mp-configured="wechatMpConfigured"
           :show-divider="false"
         />
         <LinuxDoOAuthSection
@@ -260,7 +262,9 @@ const backendModeEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const wechatOpenEnabled = ref<boolean>(false)
+const wechatOpenConfigured = ref<boolean>(true)
 const wechatMpEnabled = ref<boolean>(false)
+const wechatMpConfigured = ref<boolean>(true)
 const passwordResetEnabled = ref<boolean>(false)
 
 // Turnstile
@@ -285,7 +289,10 @@ const errors = reactive({
   turnstile: ''
 })
 
-const wechatOAuthVisible = computed<boolean>(() => wechatOpenEnabled.value || wechatMpEnabled.value)
+const wechatOAuthVisible = computed<boolean>(() =>
+  (wechatOpenEnabled.value && wechatOpenConfigured.value)
+  || (wechatMpEnabled.value && wechatMpConfigured.value)
+)
 const pendingAuthSession = computed(() => authStore.pendingAuthSession)
 const activeRedirectPath = computed(() =>
   sanitizeAuthRedirectPath(
@@ -339,7 +346,9 @@ onMounted(async () => {
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     wechatOpenEnabled.value = settingsRecord.wechat_login_open_enabled === true
+    wechatOpenConfigured.value = settingsRecord.wechat_login_open_configured !== false
     wechatMpEnabled.value = settingsRecord.wechat_login_mp_enabled === true
+    wechatMpConfigured.value = settingsRecord.wechat_login_mp_configured !== false
     backendModeEnabled.value = settings.backend_mode_enabled
     passwordResetEnabled.value = settings.password_reset_enabled
   } catch (error) {

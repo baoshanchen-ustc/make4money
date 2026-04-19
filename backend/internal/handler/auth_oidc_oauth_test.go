@@ -216,7 +216,7 @@ func TestOIDCOAuthCallback_BoundLoginRedirectsWithTokenPair(t *testing.T) {
 		JWKSURL:              srv.URL + "/jwks",
 		AllowedSigningAlgs:   "RS256",
 		ValidateIDToken:      true,
-		RequireEmailVerified: true,
+		RequireEmailVerified: false,
 		RedirectURL:          "https://api.example.com/api/v1/auth/oauth/oidc/callback",
 		FrontendRedirectURL:  "/auth/oidc/callback",
 		Scopes:               "openid profile email",
@@ -297,7 +297,7 @@ func TestOIDCOAuthCallback_UnboundLoginRedirectsWithPendingSession(t *testing.T)
 		JWKSURL:              srv.URL + "/jwks",
 		AllowedSigningAlgs:   "RS256",
 		ValidateIDToken:      true,
-		RequireEmailVerified: true,
+		RequireEmailVerified: false,
 		RedirectURL:          "https://api.example.com/api/v1/auth/oauth/oidc/callback",
 		FrontendRedirectURL:  "/auth/oidc/callback",
 		Scopes:               "openid profile email",
@@ -335,6 +335,83 @@ func TestOIDCOAuthCallback_UnboundLoginRedirectsWithPendingSession(t *testing.T)
 	require.Equal(t, "Fresh User", session.Metadata["suggested_display_name"])
 	require.Equal(t, "https://example.com/oidc-avatar.png", session.Metadata["suggested_avatar_url"])
 	require.Len(t, repo.sessions, 1)
+}
+
+func TestOIDCOAuthCallback_RejectsUnverifiedEmailWhenRequired(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	priv := buildOIDCTestKey(t)
+	kid := "kid-oidc"
+	issuer := "https://issuer.example.com"
+	now := time.Now()
+	claims := oidcIDTokenClaims{
+		Nonce:             "nonce-verify",
+		PreferredUsername: "fresh-user",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   "subject-verify",
+			Audience:  jwt.ClaimStrings{"cid"},
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now.Add(-30 * time.Second)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
+		},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tok.Header["kid"] = kid
+	signed, err := tok.SignedString(priv)
+	require.NoError(t, err)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_, _ = w.Write([]byte(`{"access_token":"provider-token","token_type":"Bearer","expires_in":3600,"id_token":"` + signed + `"}`))
+		case "/userinfo":
+			_, _ = w.Write([]byte(`{"sub":"subject-verify","preferred_username":"fresh-user","email_verified":false}`))
+		case "/jwks":
+			require.NoError(t, json.NewEncoder(w).Encode(oidcJWKSet{Keys: []oidcJWK{buildRSAJWK(kid, &priv.PublicKey)}}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	handler, authSvc, repo := newOAuthCallbackHandlerForTest(t)
+	handler.cfg.OIDC = config.OIDCConnectConfig{
+		Enabled:              true,
+		ClientID:             "cid",
+		ClientSecret:         "secret",
+		IssuerURL:            issuer,
+		AuthorizeURL:         issuer + "/auth",
+		TokenURL:             srv.URL + "/token",
+		UserInfoURL:          srv.URL + "/userinfo",
+		JWKSURL:              srv.URL + "/jwks",
+		AllowedSigningAlgs:   "RS256",
+		ValidateIDToken:      true,
+		RequireEmailVerified: true,
+		RedirectURL:          "https://api.example.com/api/v1/auth/oauth/oidc/callback",
+		FrontendRedirectURL:  "/auth/oidc/callback",
+		Scopes:               "openid profile email",
+	}
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=ok&state=state-verify", nil)
+	req.AddCookie(&http.Cookie{Name: oidcOAuthStateCookieName, Value: encodeCookieValue("state-verify")})
+	req.AddCookie(&http.Cookie{Name: oidcOAuthRedirectCookie, Value: encodeCookieValue("/register")})
+	req.AddCookie(&http.Cookie{Name: oidcOAuthIntentCookieName, Value: encodeCookieValue(service.PendingAuthIntentLogin)})
+	req.AddCookie(&http.Cookie{Name: oidcOAuthNonceCookie, Value: encodeCookieValue("nonce-verify")})
+	ctx.Request = req
+
+	handler.OIDCOAuthCallback(ctx)
+
+	require.Equal(t, http.StatusFound, rec.Code)
+	fragment := parseRedirectFragment(t, rec.Header().Get("Location"))
+	require.Equal(t, "email_not_verified", fragment.Get("error"))
+	require.Empty(t, fragment.Get("pending_auth_token"))
+	require.Empty(t, fragment.Get("access_token"))
+	require.Empty(t, repo.sessions)
+	_, err = authSvc.GetPendingAuthSessionForProgress(context.Background(), fragment.Get("pending_auth_token"), nil)
+	require.Error(t, err)
 }
 
 func TestCompleteOIDCOAuthRegistration_AcceptsPendingAuthTokenAndBindsIdentity(t *testing.T) {

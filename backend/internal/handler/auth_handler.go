@@ -262,6 +262,22 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 		return
 	}
 
+	// Get the user before mutating any pending-auth state so backend mode / disabled
+	// checks cannot consume the session as a side effect of a denied login.
+	user, err := h.userService.GetByID(c.Request.Context(), session.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !user.IsActive() {
+		response.Forbidden(c, "User account is disabled")
+		return
+	}
+	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
+		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
+		return
+	}
+
 	if strings.TrimSpace(req.PendingAuthToken) != "" {
 		if _, err := h.authService.MarkPendingAuthSessionTOTPVerified(c.Request.Context(), req.PendingAuthToken, session.UserID); err != nil {
 			response.ErrorFrom(c, err)
@@ -271,19 +287,6 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 		}
-	}
-
-	// Get the user (before session deletion so we can check backend mode)
-	user, err := h.userService.GetByID(c.Request.Context(), session.UserID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	// Backend mode: only admin can login (check BEFORE deleting session)
-	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
-		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
-		return
 	}
 
 	// Delete the login session (only after all checks pass)
@@ -328,15 +331,23 @@ func (h *AuthHandler) ConfirmPendingAuthBind(c *gin.Context) {
 		response.ErrorFrom(c, service.ErrPendingAuthVerificationRequired)
 		return
 	}
+	user, err := h.userService.GetByID(c.Request.Context(), *result.TargetUserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !user.IsActive() {
+		response.Forbidden(c, "User account is disabled")
+		return
+	}
+	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
+		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
+		return
+	}
 
 	if result.Requires2FA {
 		if h.totpService == nil {
 			response.InternalError(c, "TOTP service not configured")
-			return
-		}
-		user, err := h.userService.GetByID(c.Request.Context(), *result.TargetUserID)
-		if err != nil {
-			response.ErrorFrom(c, err)
 			return
 		}
 		tempToken, err := h.totpService.CreateLoginSessionForPendingAuth(c.Request.Context(), user.ID, user.Email, req.PendingAuthToken)
@@ -383,6 +394,19 @@ func (h *AuthHandler) ConfirmPendingAuthBind2FA(c *gin.Context) {
 	}
 	if !pendingAuthTokenMatchesSession(session, req.PendingAuthToken) {
 		response.BadRequest(c, "Pending auth token does not match 2FA session")
+		return
+	}
+	user, err := h.userService.GetByID(c.Request.Context(), session.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !user.IsActive() {
+		response.Forbidden(c, "User account is disabled")
+		return
+	}
+	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
+		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
 		return
 	}
 	if _, err := h.authService.MarkPendingAuthSessionTOTPVerified(c.Request.Context(), req.PendingAuthToken, session.UserID); err != nil {

@@ -78,7 +78,10 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UserFromService(userData))
+	response.Success(c, dto.UserFromServiceWithBindingAvailability(
+		userData,
+		h.userService.GetExternalIdentityAvailability(c.Request.Context()),
+	))
 }
 
 // ChangePassword handles changing user password
@@ -135,7 +138,10 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UserFromService(updatedUser))
+	response.Success(c, dto.UserFromServiceWithBindingAvailability(
+		updatedUser,
+		h.userService.GetExternalIdentityAvailability(c.Request.Context()),
+	))
 }
 
 // ConfirmAccountBinding binds a validated third-party identity to the current user.
@@ -170,7 +176,10 @@ func (h *UserHandler) ConfirmAccountBinding(c *gin.Context) {
 			return
 		}
 
-		response.Success(c, gin.H{"user": dto.UserFromService(userData)})
+		response.Success(c, gin.H{"user": dto.UserFromServiceWithBindingAvailability(
+			userData,
+			h.userService.GetExternalIdentityAvailability(c.Request.Context()),
+		)})
 		return
 	}
 
@@ -189,6 +198,24 @@ func (h *UserHandler) ConfirmAccountBinding(c *gin.Context) {
 		return
 	}
 
+	session, err := h.authService.GetPendingAuthSessionForProgress(c.Request.Context(), pendingAuthToken, nil)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if session.Intent != service.PendingAuthIntentBindCurrentUser {
+		response.BadRequest(c, "Invalid pending auth session intent")
+		return
+	}
+	if session.TargetUserID != nil && *session.TargetUserID != subject.UserID {
+		response.ErrorFrom(c, service.ErrPendingAuthTargetMismatch)
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(session.ProviderType), strings.TrimSpace(c.Param("provider"))) {
+		response.BadRequest(c, "Pending auth session provider does not match route provider")
+		return
+	}
+
 	if _, err := h.authService.CompletePendingAuthSessionBind(c.Request.Context(), pendingAuthToken, subject.UserID); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -200,7 +227,10 @@ func (h *UserHandler) ConfirmAccountBinding(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"user": dto.UserFromService(userData)})
+	response.Success(c, gin.H{"user": dto.UserFromServiceWithBindingAvailability(
+		userData,
+		h.userService.GetExternalIdentityAvailability(c.Request.Context()),
+	)})
 }
 
 // CompleteIdentityAdoptionDecision stores the profile adoption choice for the current pending bind flow.
@@ -227,6 +257,14 @@ func (h *UserHandler) CompleteIdentityAdoptionDecision(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if session.Intent != service.PendingAuthIntentBindCurrentUser {
+		response.BadRequest(c, "Invalid pending auth session intent")
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(session.ProviderType), strings.TrimSpace(c.Param("provider"))) {
+		response.BadRequest(c, "Pending auth session provider does not match route provider")
+		return
+	}
 	if session.TargetUserID != nil && *session.TargetUserID != subject.UserID {
 		response.ErrorFrom(c, service.ErrPendingAuthTargetMismatch)
 		return
@@ -250,6 +288,27 @@ func (h *UserHandler) CompleteIdentityAdoptionDecision(c *gin.Context) {
 		"adopt_display_name": req.AdoptDisplayName,
 		"adopt_avatar":       req.AdoptAvatar,
 	})
+}
+
+// DeleteAccountBinding removes a third-party login binding from the current user.
+// DELETE /api/v1/user/account-bindings/:provider
+func (h *UserHandler) DeleteAccountBinding(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	updatedUser, err := h.userService.DeleteAccountBinding(c.Request.Context(), subject.UserID, c.Param("provider"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"user": dto.UserFromServiceWithBindingAvailability(
+		updatedUser,
+		h.userService.GetExternalIdentityAvailability(c.Request.Context()),
+	)})
 }
 
 // SendNotifyEmailCodeRequest represents the request to send notify email verification code

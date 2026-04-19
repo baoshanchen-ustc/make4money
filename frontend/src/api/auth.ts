@@ -645,7 +645,9 @@ export function consumePendingAuthSession(): PendingAuthSessionSummary | null {
 
 type OAuthStartUrlOptions = {
   wechatOpenEnabled?: boolean
+  wechatOpenConfigured?: boolean
   wechatMpEnabled?: boolean
+  wechatMpConfigured?: boolean
   wechatMode?: 'open' | 'mp' | null
   userAgent?: string
 }
@@ -662,23 +664,27 @@ function resolveWechatOAuthMode(options: OAuthStartUrlOptions | undefined): 'ope
   }
 
   const openEnabled = options?.wechatOpenEnabled === true
+  const openConfigured = options?.wechatOpenConfigured !== false
   const mpEnabled = options?.wechatMpEnabled === true
+  const mpConfigured = options?.wechatMpConfigured !== false
+  const openAvailable = openEnabled && openConfigured
+  const mpAvailable = mpEnabled && mpConfigured
   const inWechatBrowser = isWechatBrowser(options?.userAgent)
 
   if (inWechatBrowser) {
-    if (mpEnabled) {
+    if (mpAvailable) {
       return 'mp'
     }
-    if (openEnabled) {
+    if (openAvailable) {
       return 'open'
     }
     return null
   }
 
-  if (openEnabled) {
+  if (openAvailable) {
     return 'open'
   }
-  if (mpEnabled) {
+  if (mpAvailable) {
     return 'mp'
   }
   return null
@@ -694,8 +700,8 @@ function isWechatOAuthAvailable(options: OAuthStartUrlOptions | undefined): bool
     return true
   }
 
-  const openEnabled = options?.wechatOpenEnabled === true
-  const mpEnabled = options?.wechatMpEnabled === true
+  const openEnabled = options?.wechatOpenEnabled === true && options?.wechatOpenConfigured !== false
+  const mpEnabled = options?.wechatMpEnabled === true && options?.wechatMpConfigured !== false
   const inWechatBrowser = isWechatBrowser(options?.userAgent)
 
   if (!inWechatBrowser && !openEnabled && mpEnabled) {
@@ -710,8 +716,8 @@ function isWechatOAuthAvailable(options: OAuthStartUrlOptions | undefined): bool
 }
 
 export function getWechatOAuthAvailabilityHintKey(options: OAuthStartUrlOptions | undefined): string | null {
-  const openEnabled = options?.wechatOpenEnabled === true
-  const mpEnabled = options?.wechatMpEnabled === true
+  const openEnabled = options?.wechatOpenEnabled === true && options?.wechatOpenConfigured !== false
+  const mpEnabled = options?.wechatMpEnabled === true && options?.wechatMpConfigured !== false
   const inWechatBrowser = isWechatBrowser(options?.userAgent)
 
   if (!openEnabled && !mpEnabled) {
@@ -755,6 +761,23 @@ export function getOAuthStartUrl(
   }
 
   return `${normalized}/auth/oauth/${provider}/start?${searchParams.toString()}`
+}
+
+export function prepareOAuthBindAccessTokenCookie(): void {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return
+  }
+
+  const token = getAuthToken()
+  if (!token) {
+    return
+  }
+
+  const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
+  const normalized = apiBase.replace(/\/$/, '')
+  document.cookie =
+    `oauth_bind_access_token=${encodeURIComponent(token)}; Path=${normalized}/auth/oauth; Max-Age=600; SameSite=Lax${secure}`
 }
 
 export async function completePendingAuthSession(

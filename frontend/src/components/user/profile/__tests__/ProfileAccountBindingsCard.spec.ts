@@ -5,7 +5,16 @@ import ProfileAccountBindingsCard from '@/components/user/profile/ProfileAccount
 
 const { appStoreMock } = vi.hoisted(() => ({
   appStoreMock: {
-    cachedPublicSettings: null as null | Record<string, unknown>
+    cachedPublicSettings: null as null | Record<string, unknown>,
+    showSuccess: vi.fn(),
+    showError: vi.fn()
+  }
+}))
+
+const { userApiMock } = vi.hoisted(() => ({
+  userApiMock: {
+    bindAccount: vi.fn(),
+    unbindAccount: vi.fn(async () => null)
   }
 }))
 
@@ -49,9 +58,7 @@ vi.mock('@/api/auth', async (importOriginal) => {
 })
 
 vi.mock('@/api/user', () => ({
-  userAPI: {
-    bindAccount: vi.fn()
-  }
+  userAPI: userApiMock
 }))
 
 function mountCard(user: Record<string, unknown>) {
@@ -67,6 +74,11 @@ describe('ProfileAccountBindingsCard regressions', () => {
 
   beforeEach(() => {
     appStoreMock.cachedPublicSettings = null
+    appStoreMock.showSuccess.mockReset()
+    appStoreMock.showError.mockReset()
+    userApiMock.bindAccount.mockReset()
+    userApiMock.unbindAccount.mockReset()
+    userApiMock.unbindAccount.mockResolvedValue(null)
     Object.defineProperty(window.navigator, 'userAgent', {
       configurable: true,
       value: defaultUserAgent
@@ -159,5 +171,33 @@ describe('ProfileAccountBindingsCard regressions', () => {
     expect(wrapper.find('input[type="email"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('profile.balanceNotify.sendCode')
     expect(wrapper.text()).toContain('profile.balanceNotify.verify')
+  })
+
+  it('shows a disconnect action for removable third-party bindings and calls the unbind API', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mountCard({
+      email: 'owner@example.com',
+      account_bindings: {
+        email: {
+          provider: 'email',
+          bound: true,
+          display_name: 'owner@example.com'
+        },
+        wechat: {
+          provider: 'wechat',
+          bound: true,
+          provider_subject: 'union-1',
+          can_disconnect: true
+        }
+      }
+    })
+
+    await wrapper.find('button').trigger('click')
+
+    expect(confirmSpy).toHaveBeenCalledWith('profile.bindings.disconnectConfirm')
+    expect(userApiMock.unbindAccount).toHaveBeenCalledWith('wechat')
+    expect(appStoreMock.showSuccess).toHaveBeenCalledWith('profile.bindings.disconnectSuccess')
+    confirmSpy.mockRestore()
   })
 })

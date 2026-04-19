@@ -52,6 +52,7 @@ type pendingAuthHandlerUserRepoStub struct {
 	users       map[int64]*service.User
 	usersByMail map[string]*service.User
 	nextSession int
+	nextUserID  int64
 }
 
 func newPendingAuthHandlerUserRepoStub() *pendingAuthHandlerUserRepoStub {
@@ -59,11 +60,19 @@ func newPendingAuthHandlerUserRepoStub() *pendingAuthHandlerUserRepoStub {
 		sessions:    make(map[string]*service.PendingAuthSessionRecord),
 		users:       make(map[int64]*service.User),
 		usersByMail: make(map[string]*service.User),
+		nextUserID:  100,
 	}
 }
 
-func (s *pendingAuthHandlerUserRepoStub) Create(context.Context, *service.User) error {
-	panic("unexpected Create call")
+func (s *pendingAuthHandlerUserRepoStub) Create(_ context.Context, user *service.User) error {
+	s.nextUserID++
+	if user.ID == 0 {
+		user.ID = s.nextUserID
+	}
+	copied := *user
+	s.users[user.ID] = &copied
+	s.usersByMail[user.Email] = &copied
+	return nil
 }
 func (s *pendingAuthHandlerUserRepoStub) GetByID(_ context.Context, id int64) (*service.User, error) {
 	user, ok := s.users[id]
@@ -164,8 +173,55 @@ func (s *pendingAuthHandlerUserRepoStub) UpdatePendingAuthSession(_ context.Cont
 	return nil
 }
 
-func (s *pendingAuthHandlerUserRepoStub) BindPendingAuthIdentity(context.Context, *service.PendingAuthSessionRecord, int64) error {
+func (s *pendingAuthHandlerUserRepoStub) BindPendingAuthIdentity(_ context.Context, session *service.PendingAuthSessionRecord, userID int64) error {
+	user, ok := s.users[userID]
+	if !ok || session == nil {
+		return nil
+	}
+
+	provider := service.NormalizeExternalIdentityProvider(service.ExternalIdentityProvider(session.ProviderType))
+	if provider == "" {
+		return nil
+	}
+	for _, identity := range user.ExternalIdentities {
+		if identity.Provider == provider && identity.ProviderUserID == session.ProviderSubject {
+			return nil
+		}
+	}
+	user.ExternalIdentities = append(user.ExternalIdentities, service.UserExternalIdentity{
+		Provider:       provider,
+		ProviderUserID: session.ProviderSubject,
+	})
 	return nil
+}
+
+func (s *pendingAuthHandlerUserRepoStub) ListUserExternalIdentities(_ context.Context, userID int64) ([]service.UserExternalIdentity, error) {
+	user, ok := s.users[userID]
+	if !ok {
+		return nil, service.ErrUserNotFound
+	}
+	out := make([]service.UserExternalIdentity, len(user.ExternalIdentities))
+	copy(out, user.ExternalIdentities)
+	return out, nil
+}
+
+func (s *pendingAuthHandlerUserRepoStub) DeleteUserExternalIdentity(_ context.Context, userID int64, provider service.ExternalIdentityProvider) (bool, error) {
+	user, ok := s.users[userID]
+	if !ok {
+		return false, service.ErrUserNotFound
+	}
+	provider = service.NormalizeExternalIdentityProvider(provider)
+	filtered := make([]service.UserExternalIdentity, 0, len(user.ExternalIdentities))
+	deleted := false
+	for _, identity := range user.ExternalIdentities {
+		if identity.Provider == provider {
+			deleted = true
+			continue
+		}
+		filtered = append(filtered, identity)
+	}
+	user.ExternalIdentities = filtered
+	return deleted, nil
 }
 
 type pendingAuthRefreshCacheStub struct{}
@@ -554,4 +610,55 @@ func TestCompleteOAuthCallback_BindCurrentUserRequiresAuthenticatedSubject(t *te
 	require.Equal(t, "missing authenticated subject", fragment.Get("error_message"))
 	require.Empty(t, fragment.Get("pending_auth_token"))
 	require.Empty(t, repo.sessions)
+}
+
+func TestCompleteOAuthCallback_BindCurrentUserAcceptsBindCookieToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, authSvc, repo := newOAuthCallbackHandlerForTest(t)
+
+	user, err := repo.GetByID(context.Background(), 7)
+	require.NoError(t, err)
+	tokenPair, err := authSvc.GenerateTokenPair(context.Background(), user, "")
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/linuxdo/callback", nil)
+	req.AddCookie(&http.Cookie{Name: oauthBindAccessTokenCookieName, Value: tokenPair.AccessToken})
+	ctx.Request = req
+
+	handler.completeOAuthCallback(ctx, "/auth/linuxdo/callback", "/profile", oauthCallbackIdentity{
+		Provider:        "linuxdo",
+		Intent:          service.PendingAuthIntentBindCurrentUser,
+		ProviderType:    "linuxdo",
+		ProviderKey:     linuxDoOAuthProviderKey,
+		ProviderSubject: "subject-bind-cookie",
+	})
+
+	require.Equal(t, http.StatusFound, rec.Code)
+	fragment := parseRedirectFragment(t, rec.Header().Get("Location"))
+	require.Equal(t, "pending_session", fragment.Get("auth_result"))
+	require.NotEmpty(t, fragment.Get("pending_auth_token"))
+}
+
+func TestRedirectOAuthLoginSuccess_WithTotpEnabledReturnsTotpChallengeFragment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, totpCache, _ := newPendingAuthHandlerForTest(t)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/linuxdo/callback", nil)
+
+	handler.redirectOAuthLoginSuccess(ctx, "/auth/linuxdo/callback", "/profile", "linuxdo", service.PendingAuthIntentLogin, 7)
+
+	require.Equal(t, http.StatusFound, rec.Code)
+	fragment := parseRedirectFragment(t, rec.Header().Get("Location"))
+	require.Equal(t, "true", fragment.Get("requires_2fa"))
+	require.NotEmpty(t, fragment.Get("temp_token"))
+	require.Empty(t, fragment.Get("access_token"))
+
+	loginSession, err := totpCache.GetLoginSession(context.Background(), fragment.Get("temp_token"))
+	require.NoError(t, err)
+	require.NotNil(t, loginSession)
+	require.Equal(t, int64(7), loginSession.UserID)
 }

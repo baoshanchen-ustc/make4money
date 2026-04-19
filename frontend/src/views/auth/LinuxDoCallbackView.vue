@@ -5,10 +5,18 @@
       @success="handleSuccess"
       @error="handleError"
       @pending-session="handlePendingSession"
+      @totp-required="handleTotpRequired"
       @create-account="handleCreateAccount"
       @adopt-existing-user="handleAdoptExistingUser"
       @bind-current-user="handleBindCurrentUser"
       @adoption-decision="handleAdoptionDecision"
+    />
+    <TotpLoginModal
+      :show="show2FAModal"
+      :temp-token="totpTempToken"
+      :user-email-masked="totpUserEmailMasked"
+      @verify="handle2FAVerify"
+      @close="handle2FACancel"
     />
   </AuthLayout>
 </template>
@@ -19,6 +27,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import ThirdPartyAuthCallbackFlow from '@/components/auth/ThirdPartyAuthCallbackFlow.vue'
+import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import { AuthLayout } from '@/components/layout'
 import {
   createOAuthAccount,
@@ -56,6 +65,16 @@ interface CallbackSuccessPayload {
   suggestedAvatarUrl: string | null
 }
 
+interface CallbackTotpPayload {
+  requires2FA: true
+  tempToken: string
+  userEmailMasked: string | null
+  provider: OAuthProvider | null
+  intent: PendingAuthIntent | null
+  redirect: string
+  pendingAuthToken?: string | null
+}
+
 interface AdoptionDecisionPayload {
   adoptDisplayName: boolean
   adoptAvatar: boolean
@@ -70,6 +89,11 @@ const appStore = useAppStore()
 
 const isHandlingAction = ref(false)
 const deferredSuccessPayload = ref<CallbackSuccessPayload | null>(null)
+const show2FAModal = ref(false)
+const totpTempToken = ref('')
+const totpUserEmailMasked = ref('')
+const pendingAuthTokenFor2FA = ref('')
+const totpRedirectPath = ref('/dashboard')
 const providerLabel = computed(() => t('profile.bindings.providers.linuxdo'))
 
 function normalizePendingSession(summary: CallbackPendingSession): PendingAuthSessionSummary {
@@ -161,6 +185,14 @@ function handleError(message: string) {
 
 function handlePendingSession(summary: CallbackPendingSession) {
   authStore.setPendingAuthSession(persistPendingSession(summary))
+}
+
+function handleTotpRequired(payload: CallbackTotpPayload) {
+  totpTempToken.value = payload.tempToken
+  totpUserEmailMasked.value = payload.userEmailMasked || ''
+  pendingAuthTokenFor2FA.value = payload.pendingAuthToken || ''
+  totpRedirectPath.value = sanitizeAuthRedirectPath(payload.redirect)
+  show2FAModal.value = true
 }
 
 async function ensurePublicSettingsLoaded() {
@@ -289,5 +321,24 @@ async function handleAdoptionDecision({ adoptDisplayName, adoptAvatar, context }
       }
     )
   )
+}
+
+async function handle2FAVerify(code: string) {
+  try {
+    await authStore.login2FA(totpTempToken.value, code, pendingAuthTokenFor2FA.value || undefined)
+    show2FAModal.value = false
+    appStore.showSuccess(t('auth.loginSuccess'))
+    await router.replace(totpRedirectPath.value)
+  } catch (error: unknown) {
+    appStore.showError(resolveErrorMessage(error, t('profile.totp.loginFailed')))
+  }
+}
+
+function handle2FACancel() {
+  show2FAModal.value = false
+  totpTempToken.value = ''
+  totpUserEmailMasked.value = ''
+  pendingAuthTokenFor2FA.value = ''
+  totpRedirectPath.value = '/dashboard'
 }
 </script>

@@ -428,6 +428,77 @@ WHERE id = $1`,
 	return row.toRecord()
 }
 
+func (r *userRepository) ListUserExternalIdentities(ctx context.Context, userID int64) ([]service.UserExternalIdentity, error) {
+	if r == nil || r.sql == nil {
+		return nil, fmt.Errorf("nil sql executor")
+	}
+
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT provider_type, provider_subject
+FROM auth_identities
+WHERE user_id = $1
+ORDER BY provider_type ASC, created_at ASC, id ASC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	identities := make([]service.UserExternalIdentity, 0)
+	for rows.Next() {
+		var providerType string
+		var providerSubject string
+		if err := rows.Scan(&providerType, &providerSubject); err != nil {
+			return nil, err
+		}
+		identities = append(identities, service.UserExternalIdentity{
+			Provider:       service.NormalizeExternalIdentityProvider(service.ExternalIdentityProvider(providerType)),
+			ProviderUserID: strings.TrimSpace(providerSubject),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return identities, nil
+}
+
+func (r *userRepository) DeleteUserExternalIdentity(ctx context.Context, userID int64, provider service.ExternalIdentityProvider) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, fmt.Errorf("nil sql executor")
+	}
+
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT id
+FROM auth_identities
+WHERE user_id = $1 AND provider_type = $2
+ORDER BY id ASC`, userID, string(service.NormalizeExternalIdentityProvider(provider)))
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return false, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	if len(ids) == 0 {
+		return false, nil
+	}
+
+	for _, id := range ids {
+		if err := r.deleteAuthIdentityByID(ctx, id); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 func (r *userRepository) GetIdentityAdoptionDecision(
 	ctx context.Context,
 	userID int64,

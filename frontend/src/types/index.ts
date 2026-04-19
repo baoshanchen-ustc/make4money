@@ -253,7 +253,9 @@ export interface PublicSettings {
   wechat_login_mp_app_id?: string
   wechat_login_mp_app_secret?: string
   wechat_login_open_enabled?: boolean
+  wechat_login_open_configured?: boolean
   wechat_login_mp_enabled?: boolean
+  wechat_login_mp_configured?: boolean
   wechat_login_unionid_health_status?: 'ok' | 'warning' | 'error'
   backend_mode_enabled: boolean
   version: string

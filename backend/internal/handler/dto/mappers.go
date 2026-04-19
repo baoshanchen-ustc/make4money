@@ -10,6 +10,13 @@ import (
 )
 
 func UserFromServiceShallow(u *service.User) *User {
+	return userFromServiceShallowWithAvailability(u, nil)
+}
+
+func userFromServiceShallowWithAvailability(
+	u *service.User,
+	availability map[service.ExternalIdentityProvider]service.ProviderAvailability,
+) *User {
 	if u == nil {
 		return nil
 	}
@@ -40,15 +47,22 @@ func UserFromServiceShallow(u *service.User) *User {
 		AvatarMimeType:             avatarContentType(u.Avatar),
 		HasCustomAvatar:            u.HasCustomAvatar,
 		ExternalIdentities:         userExternalIdentitiesFromService(u),
-		AccountBindings:            userAccountBindingsFromService(u),
+		AccountBindings:            userAccountBindingsFromService(u, availability),
 	}
 }
 
 func UserFromService(u *service.User) *User {
+	return UserFromServiceWithBindingAvailability(u, nil)
+}
+
+func UserFromServiceWithBindingAvailability(
+	u *service.User,
+	availability map[service.ExternalIdentityProvider]service.ProviderAvailability,
+) *User {
 	if u == nil {
 		return nil
 	}
-	out := UserFromServiceShallow(u)
+	out := userFromServiceShallowWithAvailability(u, availability)
 	if len(u.APIKeys) > 0 {
 		out.APIKeys = make([]APIKey, 0, len(u.APIKeys))
 		for i := range u.APIKeys {
@@ -110,7 +124,10 @@ func avatarContentType(avatar *service.UserAvatar) string {
 	return strings.TrimSpace(avatar.ContentType)
 }
 
-func userAccountBindingsFromService(u *service.User) map[string]UserAccountBinding {
+func userAccountBindingsFromService(
+	u *service.User,
+	availability map[service.ExternalIdentityProvider]service.ProviderAvailability,
+) map[string]UserAccountBinding {
 	state := service.BuildUserIdentityState(u, nil)
 	hasLocalLogin := state.HasUsableLocalLogin()
 	bindings := map[string]UserAccountBinding{
@@ -133,10 +150,12 @@ func userAccountBindingsFromService(u *service.User) map[string]UserAccountBindi
 		},
 	}
 
-	availability := map[service.ExternalIdentityProvider]service.ProviderAvailability{
-		service.ExternalIdentityProviderLinuxDo: {Enabled: true, ConfigValid: true},
-		service.ExternalIdentityProviderWeChat:  {Enabled: true, ConfigValid: true},
-		service.ExternalIdentityProviderOIDC:    {Enabled: true, ConfigValid: true},
+	if len(availability) == 0 {
+		availability = map[service.ExternalIdentityProvider]service.ProviderAvailability{
+			service.ExternalIdentityProviderLinuxDo: {Enabled: true, ConfigValid: true},
+			service.ExternalIdentityProviderWeChat:  {Enabled: true, ConfigValid: true},
+			service.ExternalIdentityProviderOIDC:    {Enabled: true, ConfigValid: true},
+		}
 	}
 
 	for _, identity := range state.ExternalIdentities {

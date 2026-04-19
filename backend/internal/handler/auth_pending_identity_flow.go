@@ -3,6 +3,7 @@ package handler
 import (
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -60,10 +61,18 @@ func (h *AuthHandler) bindPendingOAuthLogin(c *gin.Context, provider string) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	_, user, err := h.authService.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if h.settingSvc != nil && h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
+		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
 		return
 	}
 	if _, err := h.authService.MarkPendingAuthSessionPasswordVerified(c.Request.Context(), req.PendingAuthToken, user.ID); err != nil {
@@ -115,8 +124,10 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	}
 
 	forceEmailBinding := true
+	emailVerifyEnabled := false
 	if h.settingSvc != nil {
 		forceEmailBinding = h.settingSvc.IsForceEmailOnThirdPartySignupEnabled(c.Request.Context())
+		emailVerifyEnabled = h.settingSvc.IsEmailVerifyEnabled(c.Request.Context())
 	}
 	if !forceEmailBinding &&
 		strings.TrimSpace(req.Email) == "" &&
@@ -148,7 +159,11 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		return
 	}
 
-	if strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Password) == "" || strings.TrimSpace(req.VerifyCode) == "" {
+	if strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Password) == "" {
+		response.BadRequest(c, "Email and password are required")
+		return
+	}
+	if emailVerifyEnabled && strings.TrimSpace(req.VerifyCode) == "" {
 		response.BadRequest(c, "Email, password, and verification code are required")
 		return
 	}
