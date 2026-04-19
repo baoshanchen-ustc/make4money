@@ -1,7 +1,10 @@
 package service
 
 import (
+	"context"
+	"strconv"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -273,6 +276,209 @@ func TestPcComputeGlobalRange(t *testing.T) {
 			t.Fatalf("global max = %v, want 100", gMax)
 		}
 	})
+}
+
+func TestFilterMethodLimitsByEnabledTypes(t *testing.T) {
+	t.Parallel()
+
+	methods := map[string]MethodLimits{
+		payment.TypeAlipay: {PaymentType: payment.TypeAlipay},
+		payment.TypeWxpay:  {PaymentType: payment.TypeWxpay},
+		payment.TypeStripe: {PaymentType: payment.TypeStripe},
+	}
+
+	t.Run("empty allowlist keeps all methods", func(t *testing.T) {
+		t.Parallel()
+
+		filtered := filterMethodLimitsByEnabledTypes(methods, &PaymentConfig{})
+		if len(filtered) != 3 {
+			t.Fatalf("len(filtered) = %d, want 3", len(filtered))
+		}
+	})
+
+	t.Run("visible allowlist keeps matching payment methods", func(t *testing.T) {
+		t.Parallel()
+
+		filtered := filterMethodLimitsByEnabledTypes(methods, &PaymentConfig{
+			EnabledTypes: []string{payment.TypeAlipay, payment.TypeWxpayDirect},
+		})
+		if len(filtered) != 2 {
+			t.Fatalf("len(filtered) = %d, want 2", len(filtered))
+		}
+		if _, ok := filtered[payment.TypeAlipay]; !ok {
+			t.Fatal("expected alipay to be preserved")
+		}
+		if _, ok := filtered[payment.TypeWxpay]; !ok {
+			t.Fatal("expected wxpay to be preserved")
+		}
+		if _, ok := filtered[payment.TypeStripe]; ok {
+			t.Fatal("expected stripe to be filtered out")
+		}
+	})
+}
+
+func TestComputeMethodUsageSnapshot(t *testing.T) {
+	t.Parallel()
+
+	t.Run("unlimited instance reports available", func(t *testing.T) {
+		t.Parallel()
+
+		inst := makeInstance(1, payment.TypeEasyPay, payment.TypeAlipay, "")
+		snapshot := computeMethodUsageSnapshot(payment.TypeAlipay, []*dbent.PaymentProviderInstance{inst}, map[int64]float64{1: 999})
+		if !snapshot.available {
+			t.Fatal("expected unlimited instance to be available")
+		}
+		if snapshot.dailyUsed != 0 || snapshot.dailyRemaining != 0 {
+			t.Fatalf("unexpected unlimited snapshot values: %+v", snapshot)
+		}
+	})
+
+	t.Run("exhausted limited instance reports unavailable", func(t *testing.T) {
+		t.Parallel()
+
+		inst := makeInstance(1, payment.TypeEasyPay, payment.TypeAlipay,
+			`{"alipay":{"dailyLimit":100}}`)
+		snapshot := computeMethodUsageSnapshot(payment.TypeAlipay, []*dbent.PaymentProviderInstance{inst}, map[int64]float64{1: 100})
+		if snapshot.available {
+			t.Fatal("expected exhausted instance to be unavailable")
+		}
+		if snapshot.dailyRemaining != 0 {
+			t.Fatalf("dailyRemaining = %v, want 0", snapshot.dailyRemaining)
+		}
+	})
+
+	t.Run("selects instance with best remaining capacity", func(t *testing.T) {
+		t.Parallel()
+
+		inst1 := makeInstance(1, payment.TypeEasyPay, payment.TypeAlipay,
+			`{"alipay":{"dailyLimit":100}}`)
+		inst2 := makeInstance(2, payment.TypeEasyPay, payment.TypeAlipay,
+			`{"alipay":{"dailyLimit":120}}`)
+		snapshot := computeMethodUsageSnapshot(payment.TypeAlipay,
+			[]*dbent.PaymentProviderInstance{inst1, inst2},
+			map[int64]float64{1: 80, 2: 30},
+		)
+		if !snapshot.available {
+			t.Fatal("expected at least one instance to remain available")
+		}
+		if snapshot.dailyUsed != 30 {
+			t.Fatalf("dailyUsed = %v, want 30", snapshot.dailyUsed)
+		}
+		if snapshot.dailyRemaining != 90 {
+			t.Fatalf("dailyRemaining = %v, want 90", snapshot.dailyRemaining)
+		}
+	})
+}
+
+func TestSelectRequestedMethodLimits(t *testing.T) {
+	t.Parallel()
+
+	methods := map[string]MethodLimits{
+		payment.TypeAlipay: {PaymentType: payment.TypeAlipay, Available: true},
+		payment.TypeStripe: {PaymentType: payment.TypeStripe, Available: true},
+	}
+
+	got := selectRequestedMethodLimits(methods, []string{" alipay_direct ", "card", "wxpay"})
+	if len(got) != 3 {
+		t.Fatalf("len(got) = %d, want 3", len(got))
+	}
+	if got[0].PaymentType != payment.TypeAlipay {
+		t.Fatalf("got[0].PaymentType = %q, want %q", got[0].PaymentType, payment.TypeAlipay)
+	}
+	if got[1].PaymentType != payment.TypeStripe {
+		t.Fatalf("got[1].PaymentType = %q, want %q", got[1].PaymentType, payment.TypeStripe)
+	}
+	if got[2].PaymentType != payment.TypeWxpay {
+		t.Fatalf("got[2].PaymentType = %q, want %q", got[2].PaymentType, payment.TypeWxpay)
+	}
+}
+
+func TestLoadMethodUsageMap_CountsYesterdayPendingAndTodayPaidOrders(t *testing.T) {
+	t.Parallel()
+
+	client := newPaymentOrderEntClient(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	yesterday := now.Add(-24 * time.Hour)
+	user := createPaymentOrderUserForTest(t, client, now, "usage@example.com")
+	inst := createPaymentProviderInstanceForTest(t, client, payment.TypeAlipay, payment.TypeAlipay, `{"alipay":{"dailyLimit":300}}`)
+	instanceID := strconv.FormatInt(int64(inst.ID), 10)
+
+	_, err := client.PaymentOrder.Create().
+		SetUserID(int64(user.ID)).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(40).
+		SetPayAmount(40).
+		SetFeeRate(0).
+		SetRechargeCode("PAY-USAGE-1").
+		SetOutTradeNo("trade-usage-1").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetProviderInstanceID(instanceID).
+		SetExpiresAt(now.Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("example.com").
+		SetCreatedAt(yesterday).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create pending order: %v", err)
+	}
+
+	paidAt := now
+	_, err = client.PaymentOrder.Create().
+		SetUserID(int64(user.ID)).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(50).
+		SetPayAmount(50).
+		SetFeeRate(0).
+		SetRechargeCode("PAY-USAGE-2").
+		SetOutTradeNo("trade-usage-2").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("gateway-2").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPaid).
+		SetProviderInstanceID(instanceID).
+		SetPaidAt(paidAt).
+		SetExpiresAt(now.Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("example.com").
+		SetCreatedAt(yesterday).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create paid order: %v", err)
+	}
+
+	svc := NewPaymentConfigService(client, paymentOrderResultSettingRepoStub{}, nil)
+	usageMap, err := svc.loadMethodUsageMap(ctx, []*dbent.PaymentProviderInstance{inst})
+	if err != nil {
+		t.Fatalf("loadMethodUsageMap() error = %v", err)
+	}
+	if usageMap[int64(inst.ID)] != 90 {
+		t.Fatalf("usageMap[%d] = %v, want 90", inst.ID, usageMap[int64(inst.ID)])
+	}
+}
+
+func TestGetAvailableMethodLimits_AppliesGlobalFeeRate(t *testing.T) {
+	t.Parallel()
+
+	client := newPaymentOrderEntClient(t)
+	ctx := context.Background()
+	createPaymentProviderInstanceForTest(t, client, payment.TypeAlipay, payment.TypeAlipay, `{"alipay":{"dailyLimit":300}}`)
+
+	svc := NewPaymentConfigService(client, paymentOrderResultSettingRepoStub{values: map[string]string{
+		SettingRechargeFeeRate: "0.03",
+	}}, nil)
+	resp, err := svc.GetAvailableMethodLimits(ctx)
+	if err != nil {
+		t.Fatalf("GetAvailableMethodLimits() error = %v", err)
+	}
+	if resp.Methods[payment.TypeAlipay].FeeRate != 0.03 {
+		t.Fatalf("alipay fee_rate = %v, want 0.03", resp.Methods[payment.TypeAlipay].FeeRate)
+	}
 }
 
 func TestPcInstanceTypeLimits(t *testing.T) {

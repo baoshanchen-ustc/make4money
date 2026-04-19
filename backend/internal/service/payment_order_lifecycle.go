@@ -237,21 +237,52 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 // Falls back to registry lookup if instance ID is missing (legacy orders).
 func (s *PaymentService) getOrderProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
 	if o.ProviderInstanceID != nil && *o.ProviderInstanceID != "" {
-		instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
+		p, err := s.getOrderProviderFromInstance(ctx, o)
 		if err == nil {
-			cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
-			if err == nil {
-				providerKey := s.registry.GetProviderKey(o.PaymentType)
-				if providerKey == "" {
-					providerKey = o.PaymentType
-				}
-				p, err := provider.CreateProvider(providerKey, *o.ProviderInstanceID, cfg)
-				if err == nil {
-					return p, nil
-				}
-			}
+			return p, nil
 		}
+		slog.Warn("order provider instance unavailable, falling back to registry provider", "orderID", o.ID, "instanceID", *o.ProviderInstanceID, "error", err)
+	}
+	return s.getFallbackOrderProvider(ctx, o)
+}
+
+func (s *PaymentService) getOrderProviderFromInstance(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
+	if o == nil {
+		return nil, fmt.Errorf("nil order")
+	}
+	if o.ProviderInstanceID == nil || *o.ProviderInstanceID == "" {
+		return nil, fmt.Errorf("order %d has no provider instance", o.ID)
+	}
+	instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse provider instance id %q: %w", *o.ProviderInstanceID, err)
+	}
+	cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
+	if err != nil {
+		return nil, fmt.Errorf("load provider instance %s config: %w", *o.ProviderInstanceID, err)
+	}
+	providerKey := s.expectedProviderKeyForOrder(o)
+	if providerKey == "" {
+		providerKey = o.PaymentType
+	}
+	p, err := provider.CreateProvider(providerKey, *o.ProviderInstanceID, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create provider %s for instance %s: %w", providerKey, *o.ProviderInstanceID, err)
+	}
+	return p, nil
+}
+
+func (s *PaymentService) getFallbackOrderProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
+	if o == nil {
+		return nil, fmt.Errorf("nil order")
 	}
 	s.EnsureProviders(ctx)
-	return s.registry.GetProvider(o.PaymentType)
+	if p, err := s.registry.GetProvider(o.PaymentType); err == nil {
+		return p, nil
+	}
+	providerKey := s.expectedProviderKeyForOrder(o)
+	if providerKey == "" {
+		return nil, payment.ErrProviderNotFound
+	}
+	return s.registry.GetProviderByKey(providerKey)
 }

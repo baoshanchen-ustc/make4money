@@ -3,9 +3,14 @@
 package provider
 
 import (
+	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/smartwalle/alipay/v3"
 )
 
 func TestIsTradeNotExist(t *testing.T) {
@@ -128,5 +133,205 @@ func TestNewAlipay(t *testing.T) {
 				t.Errorf("instanceID = %q, want %q", got.instanceID, "test-instance")
 			}
 		})
+	}
+}
+
+func TestAlipayCreatePaymentBranches(t *testing.T) {
+	req := payment.CreatePaymentRequest{
+		OrderID:   "order-123",
+		Amount:    "18.88",
+		Subject:   "Test Order",
+		NotifyURL: "https://override.example/notify",
+		ReturnURL: "https://override.example/return",
+	}
+	provider := &Alipay{
+		config: map[string]string{
+			"notifyUrl": "https://config.example/notify",
+			"returnUrl": "https://config.example/return",
+		},
+		client: &alipay.Client{},
+	}
+
+	origWap := alipayTradeWapPay
+	origPreCreate := alipayTradePreCreate
+	t.Cleanup(func() {
+		alipayTradeWapPay = origWap
+		alipayTradePreCreate = origPreCreate
+	})
+
+	tests := []struct {
+		name         string
+		req          payment.CreatePaymentRequest
+		wantTradeNo  string
+		wantPayURL   string
+		wantQRCode   string
+		wantWapCalls int
+		wantPreCalls int
+	}{
+		{
+			name: "mobile uses wap pay flow",
+			req: func() payment.CreatePaymentRequest {
+				mobileReq := req
+				mobileReq.IsMobile = true
+				return mobileReq
+			}(),
+			wantTradeNo:  req.OrderID,
+			wantPayURL:   "https://pay.example/wap",
+			wantQRCode:   "",
+			wantWapCalls: 1,
+			wantPreCalls: 0,
+		},
+		{
+			name:         "desktop uses precreate flow",
+			req:          req,
+			wantTradeNo:  req.OrderID,
+			wantPayURL:   "",
+			wantQRCode:   "qr-code-value",
+			wantWapCalls: 0,
+			wantPreCalls: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			wapCalls := 0
+			preCalls := 0
+
+			alipayTradeWapPay = func(client *alipay.Client, param alipay.TradeWapPay) (*url.URL, error) {
+				wapCalls++
+				if client != provider.client {
+					t.Fatalf("wap client mismatch")
+				}
+				if param.OutTradeNo != tt.req.OrderID {
+					t.Fatalf("wap OutTradeNo = %q, want %q", param.OutTradeNo, tt.req.OrderID)
+				}
+				if param.TotalAmount != tt.req.Amount {
+					t.Fatalf("wap TotalAmount = %q, want %q", param.TotalAmount, tt.req.Amount)
+				}
+				if param.Subject != tt.req.Subject {
+					t.Fatalf("wap Subject = %q, want %q", param.Subject, tt.req.Subject)
+				}
+				if param.ProductCode != alipayProductCodeWapPay {
+					t.Fatalf("wap ProductCode = %q, want %q", param.ProductCode, alipayProductCodeWapPay)
+				}
+				if param.NotifyURL != tt.req.NotifyURL {
+					t.Fatalf("wap NotifyURL = %q, want %q", param.NotifyURL, tt.req.NotifyURL)
+				}
+				if param.ReturnURL != tt.req.ReturnURL {
+					t.Fatalf("wap ReturnURL = %q, want %q", param.ReturnURL, tt.req.ReturnURL)
+				}
+				return url.Parse("https://pay.example/wap")
+			}
+
+			alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+				preCalls++
+				if ctx != context.Background() {
+					t.Fatalf("precreate ctx mismatch")
+				}
+				if client != provider.client {
+					t.Fatalf("precreate client mismatch")
+				}
+				if param.OutTradeNo != tt.req.OrderID {
+					t.Fatalf("precreate OutTradeNo = %q, want %q", param.OutTradeNo, tt.req.OrderID)
+				}
+				if param.TotalAmount != tt.req.Amount {
+					t.Fatalf("precreate TotalAmount = %q, want %q", param.TotalAmount, tt.req.Amount)
+				}
+				if param.Subject != tt.req.Subject {
+					t.Fatalf("precreate Subject = %q, want %q", param.Subject, tt.req.Subject)
+				}
+				if param.ProductCode != alipayProductCodePreCreate {
+					t.Fatalf("precreate ProductCode = %q, want %q", param.ProductCode, alipayProductCodePreCreate)
+				}
+				if param.NotifyURL != tt.req.NotifyURL {
+					t.Fatalf("precreate NotifyURL = %q, want %q", param.NotifyURL, tt.req.NotifyURL)
+				}
+				if param.ReturnURL != "" {
+					t.Fatalf("precreate ReturnURL = %q, want empty", param.ReturnURL)
+				}
+				return &alipay.TradePreCreateRsp{
+					Error:      alipay.Error{Code: alipay.CodeSuccess},
+					OutTradeNo: tt.req.OrderID,
+					QRCode:     "qr-code-value",
+				}, nil
+			}
+
+			resp, err := provider.CreatePayment(context.Background(), tt.req)
+			if err != nil {
+				t.Fatalf("CreatePayment() unexpected error: %v", err)
+			}
+			if resp == nil {
+				t.Fatal("CreatePayment() returned nil response")
+			}
+			if resp.TradeNo != tt.wantTradeNo {
+				t.Fatalf("TradeNo = %q, want %q", resp.TradeNo, tt.wantTradeNo)
+			}
+			if resp.PayURL != tt.wantPayURL {
+				t.Fatalf("PayURL = %q, want %q", resp.PayURL, tt.wantPayURL)
+			}
+			if resp.QRCode != tt.wantQRCode {
+				t.Fatalf("QRCode = %q, want %q", resp.QRCode, tt.wantQRCode)
+			}
+			if wapCalls != tt.wantWapCalls {
+				t.Fatalf("wap calls = %d, want %d", wapCalls, tt.wantWapCalls)
+			}
+			if preCalls != tt.wantPreCalls {
+				t.Fatalf("precreate calls = %d, want %d", preCalls, tt.wantPreCalls)
+			}
+		})
+	}
+}
+
+func TestParseAlipayAmount_UsesFirstValidFallbackField(t *testing.T) {
+	t.Parallel()
+
+	amount, err := parseAlipayAmount("", "18.88", "19.00")
+	if err != nil {
+		t.Fatalf("parseAlipayAmount() error = %v", err)
+	}
+	if amount != 18.88 {
+		t.Fatalf("amount = %v, want 18.88", amount)
+	}
+}
+
+func TestParseAlipayAmount_RejectsMissingAmounts(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseAlipayAmount("", " ", "")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestAlipayCreatePaymentDesktopPrecreateRequiresQRCode(t *testing.T) {
+	provider := &Alipay{
+		config: map[string]string{
+			"notifyUrl": "https://config.example/notify",
+		},
+		client: &alipay.Client{},
+	}
+
+	origPreCreate := alipayTradePreCreate
+	t.Cleanup(func() {
+		alipayTradePreCreate = origPreCreate
+	})
+
+	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+		return &alipay.TradePreCreateRsp{
+			Error: alipay.Error{Code: alipay.CodeSuccess},
+		}, nil
+	}
+
+	_, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID: "order-456",
+		Amount:  "9.99",
+		Subject: "Desktop Order",
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty qr_code") {
+		t.Fatalf("error = %q, want to contain %q", err.Error(), "empty qr_code")
 	}
 }

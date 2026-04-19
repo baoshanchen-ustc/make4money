@@ -74,6 +74,19 @@ var pendingOrderStatuses = []string{
 
 var sensitiveConfigPatterns = []string{"key", "pkey", "secret", "private", "password"}
 
+var providerHistoryLockStatuses = []string{
+	payment.OrderStatusPending,
+	payment.OrderStatusPaid,
+	payment.OrderStatusRecharging,
+	payment.OrderStatusCompleted,
+	payment.OrderStatusRefundRequested,
+	payment.OrderStatusRefunding,
+	payment.OrderStatusPartiallyRefunded,
+	payment.OrderStatusRefundFailed,
+}
+
+const maskedSensitiveConfigValue = "••••••••"
+
 func isSensitiveConfigField(fieldName string) bool {
 	lower := strings.ToLower(fieldName)
 	for _, p := range sensitiveConfigPatterns {
@@ -84,12 +97,52 @@ func isSensitiveConfigField(fieldName string) bool {
 	return false
 }
 
+func isMaskedSensitiveConfigValue(value string) bool {
+	return strings.TrimSpace(value) == maskedSensitiveConfigValue
+}
+
+func mergeProviderConfig(existing, newConfig map[string]string) map[string]string {
+	if len(existing) == 0 {
+		if len(newConfig) == 0 {
+			return nil
+		}
+		merged := make(map[string]string, len(newConfig))
+		for k, v := range newConfig {
+			if isSensitiveConfigField(k) && isMaskedSensitiveConfigValue(v) {
+				continue
+			}
+			merged[k] = v
+		}
+		return merged
+	}
+	merged := make(map[string]string, len(existing)+len(newConfig))
+	for k, v := range existing {
+		merged[k] = v
+	}
+	for k, v := range newConfig {
+		if isSensitiveConfigField(k) && isMaskedSensitiveConfigValue(v) {
+			continue
+		}
+		merged[k] = v
+	}
+	return merged
+}
+
 func (s *PaymentConfigService) countPendingOrders(ctx context.Context, providerInstanceID int64) (int, error) {
 	return s.entClient.PaymentOrder.Query().
 		Where(
 			paymentorder.ProviderInstanceIDEQ(strconv.FormatInt(providerInstanceID, 10)),
 			paymentorder.StatusIn(pendingOrderStatuses...),
 		).Count(ctx)
+}
+
+func (s *PaymentConfigService) countOrdersByInstance(ctx context.Context, providerInstanceID int64) (int, error) {
+	return s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.ProviderInstanceIDEQ(strconv.FormatInt(providerInstanceID, 10)),
+			paymentorder.StatusIn(providerHistoryLockStatuses...),
+		).
+		Count(ctx)
 }
 
 func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, planID int64) (int, error) {
@@ -138,6 +191,33 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 	return nil
 }
 
+func hasRequiredConfigValue(key, value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+	if isSensitiveConfigField(key) && isMaskedSensitiveConfigValue(trimmed) {
+		return false
+	}
+	return true
+}
+
+func validateProviderConfig(providerKey string, config map[string]string) error {
+	switch providerKey {
+	case payment.TypeAlipay:
+		if !hasRequiredConfigValue("appId", config["appId"]) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: appId")
+		}
+		if !hasRequiredConfigValue("privateKey", config["privateKey"]) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: privateKey")
+		}
+		if !hasRequiredConfigValue("publicKey", config["publicKey"]) && !hasRequiredConfigValue("alipayPublicKey", config["alipayPublicKey"]) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "alipay config missing required key: publicKey (or alipayPublicKey)")
+		}
+	}
+	return nil
+}
+
 // UpdateProviderInstance updates a provider instance by ID (patch semantics).
 // NOTE: This function exceeds 30 lines due to per-field nil-check patch update
 // boilerplate and pending-order safety checks.
@@ -164,18 +244,18 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 	if req.Config != nil {
 		hasSensitive := false
 		for k := range req.Config {
-			if isSensitiveConfigField(k) && req.Config[k] != "" {
+			if isSensitiveConfigField(k) && strings.TrimSpace(req.Config[k]) != "" && !isMaskedSensitiveConfigValue(req.Config[k]) {
 				hasSensitive = true
 				break
 			}
 		}
 		if hasSensitive {
-			count, err := s.countPendingOrders(ctx, id)
+			count, err := s.countOrdersByInstance(ctx, id)
 			if err != nil {
-				return nil, fmt.Errorf("check pending orders: %w", err)
+				return nil, fmt.Errorf("check provider order history: %w", err)
 			}
 			if count > 0 {
-				return nil, infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
+				return nil, infraerrors.Conflict("ORDER_HISTORY_EXISTS", "instance has settled or in-progress orders and cannot change sensitive merchant credentials").
 					WithMetadata(map[string]string{"count": strconv.Itoa(count)})
 			}
 		}
@@ -195,8 +275,11 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetName(*req.Name)
 	}
 	if req.Config != nil {
-		merged, err := s.mergeConfig(ctx, id, req.Config)
+		inst, merged, err := s.loadMergedProviderConfig(ctx, id, req.Config)
 		if err != nil {
+			return nil, err
+		}
+		if err := validateProviderConfig(inst.ProviderKey, merged); err != nil {
 			return nil, err
 		}
 		enc, err := s.encryptConfig(merged)
@@ -417,7 +500,27 @@ func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id in
 		return infraerrors.Conflict("PENDING_ORDERS",
 			fmt.Sprintf("this instance has %d in-progress orders and cannot be deleted — wait for orders to complete or disable the instance first", count))
 	}
+	totalOrders, err := s.countOrdersByInstance(ctx, id)
+	if err != nil {
+		return fmt.Errorf("check historical orders: %w", err)
+	}
+	if totalOrders > 0 {
+		return infraerrors.Conflict("ORDER_HISTORY_EXISTS",
+			fmt.Sprintf("this instance has %d historical orders and cannot be deleted because refunds and reconciliation must keep the original merchant binding", totalOrders))
+	}
 	return s.entClient.PaymentProviderInstance.DeleteOneID(id).Exec(ctx)
+}
+
+func (s *PaymentConfigService) loadMergedProviderConfig(ctx context.Context, id int64, newConfig map[string]string) (*dbent.PaymentProviderInstance, map[string]string, error) {
+	inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load existing provider: %w", err)
+	}
+	existing, err := s.decryptConfig(inst.Config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decrypt existing config for instance %d: %w", id, err)
+	}
+	return inst, mergeProviderConfig(existing, newConfig), nil
 }
 
 func (s *PaymentConfigService) encryptConfig(cfg map[string]string) (string, error) {

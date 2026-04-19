@@ -101,7 +101,7 @@
       <div class="card p-6">
         <div class="flex flex-col items-center space-y-4 py-4">
           <div class="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ waitingTitle }}</p>
           <button v-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
             {{ t('payment.qr.openPayWindow') }}
           </button>
@@ -109,7 +109,7 @@
       </div>
       <div class="card p-4 text-center">
         <p class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ countdownDisplay }}</p>
-        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ t('payment.qr.waitingPayment') }}</p>
+        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ waitingHint }}</p>
       </div>
       <button class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
         {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
@@ -139,11 +139,12 @@ const props = defineProps<{
   paymentType: string
   payUrl?: string
   orderType?: string
+  statusMode?: 'popup' | 'jsapi'
 }>()
 
 const emit = defineEmits<{ done: []; success: [] }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const paymentStore = usePaymentStore()
 const appStore = useAppStore()
 
@@ -200,6 +201,24 @@ const scanHint = computed(() => {
   if (isWxpay.value) return t('payment.qr.scanWxpayHint')
   return ''
 })
+
+function textWithFallback(key: string, zh: string, en: string): string {
+  const translated = t(key)
+  if (translated !== key) return translated
+  return String(locale.value).toLowerCase().startsWith('zh') ? zh : en
+}
+
+const waitingTitle = computed(() => (
+  props.statusMode === 'jsapi'
+    ? textWithFallback('payment.wechat.jsapiWaiting', '请在微信内完成支付', 'Complete the payment inside WeChat')
+    : t('payment.qr.payInNewWindowHint')
+))
+
+const waitingHint = computed(() => (
+  props.statusMode === 'jsapi'
+    ? textWithFallback('payment.wechat.jsapiPendingHint', '支付发起后请留在当前页面，系统会自动确认结果。', 'Stay on this page after launching WeChat Pay and the result will update automatically.')
+    : t('payment.qr.waitingPayment')
+))
 
 const countdownDisplay = computed(() => {
   const m = Math.floor(remainingSeconds.value / 60)

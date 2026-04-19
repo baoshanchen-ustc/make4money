@@ -204,6 +204,7 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 type CreateOrderRequest struct {
 	Amount      float64 `json:"amount"`
 	PaymentType string  `json:"payment_type" binding:"required"`
+	OpenID      string  `json:"openid"`
 	OrderType   string  `json:"order_type"`
 	PlanID      int64   `json:"plan_id"`
 }
@@ -223,15 +224,17 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	}
 
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:      subject.UserID,
-		Amount:      req.Amount,
-		PaymentType: req.PaymentType,
-		ClientIP:    c.ClientIP(),
-		IsMobile:    isMobile(c),
-		SrcHost:     c.Request.Host,
-		SrcURL:      c.Request.Referer(),
-		OrderType:   req.OrderType,
-		PlanID:      req.PlanID,
+		UserID:          subject.UserID,
+		Amount:          req.Amount,
+		PaymentType:     req.PaymentType,
+		OpenID:          req.OpenID,
+		ClientIP:        c.ClientIP(),
+		IsMobile:        isMobile(c),
+		IsWeChatBrowser: isWeChatBrowser(c),
+		SrcHost:         c.Request.Host,
+		SrcURL:          c.Request.Referer(),
+		OrderType:       req.OrderType,
+		PlanID:          req.PlanID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -384,6 +387,7 @@ type PublicOrderResult struct {
 	OutTradeNo  string  `json:"out_trade_no"`
 	Amount      float64 `json:"amount"`
 	PayAmount   float64 `json:"pay_amount"`
+	FeeRate     float64 `json:"fee_rate"`
 	PaymentType string  `json:"payment_type"`
 	OrderType   string  `json:"order_type"`
 	Status      string  `json:"status"`
@@ -408,6 +412,7 @@ func (h *PaymentHandler) VerifyOrderPublic(c *gin.Context) {
 		OutTradeNo:  order.OutTradeNo,
 		Amount:      order.Amount,
 		PayAmount:   order.PayAmount,
+		FeeRate:     order.FeeRate,
 		PaymentType: order.PaymentType,
 		OrderType:   order.OrderType,
 		Status:      order.Status,
@@ -434,4 +439,8 @@ func isMobile(c *gin.Context) bool {
 		}
 	}
 	return false
+}
+
+func isWeChatBrowser(c *gin.Context) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(c.GetHeader("User-Agent"))), "micromessenger")
 }

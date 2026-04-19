@@ -3,11 +3,20 @@
 package payment
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/enttest"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestInstanceSupportsType(t *testing.T) {
@@ -507,6 +516,241 @@ func TestValidateCapabilitySelection(t *testing.T) {
 			t.Fatalf("validateCapabilitySelection() unexpected stripe error: %v", err)
 		}
 	})
+}
+
+func TestSelectInstance_FailsClosedWhenAllCandidatesExceedLimits(t *testing.T) {
+	t.Parallel()
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_fk=1", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
+
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	key := []byte("0123456789abcdef0123456789abcdef")
+	encryptedConfig, err := Encrypt(`{"pid":"merchant-1"}`, key)
+	if err != nil {
+		t.Fatalf("Encrypt() error = %v", err)
+	}
+
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(string(TypeEasyPay)).
+		SetName("EasyPay A").
+		SetConfig(encryptedConfig).
+		SetSupportedTypes("alipay").
+		SetLimits(`{"alipay":{"singleMax":5}}`).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create provider A: %v", err)
+	}
+
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(string(TypeEasyPay)).
+		SetName("EasyPay B").
+		SetConfig(encryptedConfig).
+		SetSupportedTypes("alipay").
+		SetLimits(`{"alipay":{"singleMax":6}}`).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create provider B: %v", err)
+	}
+
+	lb := NewDefaultLoadBalancer(client, key)
+	selection, err := lb.SelectInstance(context.Background(), "", TypeAlipay, StrategyRoundRobin, 10)
+	if err != nil {
+		t.Fatalf("SelectInstance() error = %v", err)
+	}
+	if selection != nil {
+		t.Fatalf("SelectInstance() = %+v, want nil when all candidates exceed limits", selection)
+	}
+}
+
+func TestSelectInstanceExcept_ExcludesRejectedInstance(t *testing.T) {
+	t.Parallel()
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_fk=1", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
+
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	key := []byte("0123456789abcdef0123456789abcdef")
+	encryptedConfig, err := Encrypt(`{"pid":"merchant-1"}`, key)
+	if err != nil {
+		t.Fatalf("Encrypt() error = %v", err)
+	}
+
+	first, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(string(TypeEasyPay)).
+		SetName("EasyPay Retry A").
+		SetConfig(encryptedConfig).
+		SetSupportedTypes("alipay").
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create provider A: %v", err)
+	}
+
+	second, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(string(TypeEasyPay)).
+		SetName("EasyPay Retry B").
+		SetConfig(encryptedConfig).
+		SetSupportedTypes("alipay").
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create provider B: %v", err)
+	}
+
+	lb := NewDefaultLoadBalancer(client, key)
+	selection, err := lb.SelectInstanceExcept(
+		context.Background(),
+		"",
+		TypeAlipay,
+		StrategyRoundRobin,
+		10,
+		[]string{fmt.Sprintf("%d", first.ID)},
+	)
+	if err != nil {
+		t.Fatalf("SelectInstanceExcept() error = %v", err)
+	}
+	if selection == nil {
+		t.Fatal("SelectInstanceExcept() = nil, want second provider")
+	}
+	if selection.InstanceID != fmt.Sprintf("%d", second.ID) {
+		t.Fatalf("instance_id = %q, want %d", selection.InstanceID, second.ID)
+	}
+}
+
+func TestAttachDailyUsage_CountsYesterdayPendingAndTodayPaidOrders(t *testing.T) {
+	t.Parallel()
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_fk=1", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
+
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	key := []byte("0123456789abcdef0123456789abcdef")
+	encryptedConfig, err := Encrypt(`{"pid":"merchant-1"}`, key)
+	if err != nil {
+		t.Fatalf("Encrypt() error = %v", err)
+	}
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(string(TypeEasyPay)).
+		SetName("EasyPay Usage").
+		SetConfig(encryptedConfig).
+		SetSupportedTypes("alipay").
+		SetLimits(`{"alipay":{"dailyLimit":300}}`).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	now := time.Now().UTC()
+	yesterday := now.Add(-24 * time.Hour)
+	instanceID := fmt.Sprintf("%d", inst.ID)
+
+	_, err = client.User.Create().
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		SetEmail("user@example.com").
+		SetPasswordHash("hashed-password").
+		SetSignupSource("email").
+		SetRole("user").
+		SetBalance(0).
+		SetConcurrency(1).
+		SetStatus("active").
+		SetUsername("user").
+		SetNotes("").
+		SetTotpEnabled(false).
+		SetBalanceNotifyEnabled(false).
+		SetBalanceNotifyThresholdType("").
+		SetBalanceNotifyExtraEmails("[]").
+		SetTotalRecharged(0).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	_, err = client.PaymentOrder.Create().
+		SetUserID(1).
+		SetUserEmail("user@example.com").
+		SetUserName("user").
+		SetAmount(40).
+		SetPayAmount(40).
+		SetFeeRate(0).
+		SetRechargeCode("PAY-USAGE-1").
+		SetOutTradeNo("trade-usage-1").
+		SetPaymentType(string(TypeAlipay)).
+		SetPaymentTradeNo("").
+		SetOrderType(OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetProviderInstanceID(instanceID).
+		SetExpiresAt(now.Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("example.com").
+		SetCreatedAt(yesterday).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create pending order: %v", err)
+	}
+
+	_, err = client.PaymentOrder.Create().
+		SetUserID(1).
+		SetUserEmail("user@example.com").
+		SetUserName("user").
+		SetAmount(50).
+		SetPayAmount(50).
+		SetFeeRate(0).
+		SetRechargeCode("PAY-USAGE-2").
+		SetOutTradeNo("trade-usage-2").
+		SetPaymentType(string(TypeAlipay)).
+		SetPaymentTradeNo("gateway-2").
+		SetOrderType(OrderTypeBalance).
+		SetStatus(OrderStatusPaid).
+		SetProviderInstanceID(instanceID).
+		SetPaidAt(now).
+		SetExpiresAt(now.Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("example.com").
+		SetCreatedAt(yesterday).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create paid order: %v", err)
+	}
+
+	lb := NewDefaultLoadBalancer(client, key)
+	candidates := lb.attachDailyUsage(context.Background(), []*dbent.PaymentProviderInstance{inst})
+	if len(candidates) != 1 {
+		t.Fatalf("len(candidates) = %d, want 1", len(candidates))
+	}
+	if candidates[0].dailyUsed != 90 {
+		t.Fatalf("dailyUsed = %v, want 90", candidates[0].dailyUsed)
+	}
 }
 
 // ---------------------------------------------------------------------------

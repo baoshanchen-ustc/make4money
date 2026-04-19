@@ -167,6 +167,8 @@ func RegisterAuthRoutes(
 		}, h.Auth, "CreateOIDCOAuthAccount", "CreateOIDCOAuthRegistration", "CompleteOIDCOAuthRegistration")
 		registerOptionalGetRoute(auth, "/oauth/wechat/start", nil, h.Auth, "WeChatOAuthStart", "WechatOAuthStart")
 		auth.GET("/oauth/wechat/callback", h.Auth.WeChatOAuthCallback)
+		registerOptionalGetRoute(auth, "/oauth/wechat/payment/start", nil, h.Auth, "WeChatPaymentOAuthStart", "WechatPaymentOAuthStart")
+		registerOptionalGetRoute(auth, "/oauth/wechat/payment/callback", nil, h.Auth, "WeChatPaymentOAuthCallback", "WechatPaymentOAuthCallback")
 		registerOptionalPostRoute(auth, "/oauth/wechat/bind-existing", []gin.HandlerFunc{
 			rateLimiter.LimitWithOptions("oauth-wechat-bind-existing", 20, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,

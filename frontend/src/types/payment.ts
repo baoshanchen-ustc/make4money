@@ -153,21 +153,80 @@ export interface ProviderInstance {
 export interface CreateOrderRequest {
   amount: number
   payment_type: string
+  openid?: string
   order_type: string
   plan_id?: number
 }
 
-export interface CreateOrderResult {
+export type PaymentResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'
+
+export interface WechatOAuthInfo {
+  authorize_url: string
+  appid?: string
+  openid?: string
+  scope?: string
+  state?: string
+  redirect_url?: string
+}
+
+export interface WechatJsapiPayload {
+  appId?: string
+  appid?: string
+  timeStamp?: string
+  nonceStr?: string
+  package?: string
+  signType?: string
+  paySign?: string
+  timestamp?: string
+  nonce_str?: string
+  sign_type?: string
+  pay_sign?: string
+  [key: string]: unknown
+}
+
+export interface CreateOrderBaseResult {
   order_id: number
   amount: number
   pay_url?: string
   qr_code?: string
+  out_trade_no?: string
+  payment_type?: string
   client_secret?: string
+  stripe_publishable_key?: string
   pay_amount: number
   fee_rate: number
   expires_at: string
   payment_mode?: string
+  return_url?: string
+  return_params?: Record<string, string | number | boolean | null | undefined>
+  redirect_url?: string
+  redirect_params?: Record<string, string | number | boolean | null | undefined>
+  result_type?: PaymentResultType
+  oauth?: WechatOAuthInfo
+  jsapi?: WechatJsapiPayload
+  jsapi_payload?: WechatJsapiPayload
+  wechat_h5?: {
+    url?: string
+    params?: Record<string, string | number | boolean | null | undefined>
+  }
+  [key: string]: unknown
 }
+
+export interface WechatOAuthRequiredResult extends CreateOrderBaseResult {
+  result_type: 'oauth_required'
+  oauth: WechatOAuthInfo
+}
+
+export interface WechatJsapiReadyResult extends CreateOrderBaseResult {
+  result_type: 'jsapi_ready'
+  jsapi?: WechatJsapiPayload
+  jsapi_payload?: WechatJsapiPayload
+}
+
+export type CreateOrderResult =
+  | CreateOrderBaseResult
+  | WechatOAuthRequiredResult
+  | WechatJsapiReadyResult
 
 export interface DashboardStats {
   today_amount: number

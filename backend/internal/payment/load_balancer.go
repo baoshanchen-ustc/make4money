@@ -37,6 +37,7 @@ type InstanceLimits map[string]ChannelLimits
 type LoadBalancer interface {
 	GetInstanceConfig(ctx context.Context, instanceID int64) (map[string]string, error)
 	SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy, orderAmount float64) (*InstanceSelection, error)
+	SelectInstanceExcept(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy, orderAmount float64, excludedInstanceIDs []string) (*InstanceSelection, error)
 }
 
 // DefaultLoadBalancer implements LoadBalancer using database queries.
@@ -64,7 +65,7 @@ type instanceCandidate struct {
 //  2. Batch-query daily usage (PENDING + PAID + COMPLETED + RECHARGING) for all candidates
 //  3. Filter out instances where: single-min/max violated OR daily remaining < orderAmount
 //  4. Pick from survivors using the configured strategy (round-robin / least-amount)
-//  5. If all filtered out, fall back to full list (let the provider itself reject)
+//  5. If all filtered out, fail closed instead of routing to an over-limit instance
 func (lb *DefaultLoadBalancer) SelectInstance(
 	ctx context.Context,
 	providerKey string,
@@ -72,10 +73,25 @@ func (lb *DefaultLoadBalancer) SelectInstance(
 	strategy Strategy,
 	orderAmount float64,
 ) (*InstanceSelection, error) {
+	return lb.SelectInstanceExcept(ctx, providerKey, paymentType, strategy, orderAmount, nil)
+}
+
+func (lb *DefaultLoadBalancer) SelectInstanceExcept(
+	ctx context.Context,
+	providerKey string,
+	paymentType PaymentType,
+	strategy Strategy,
+	orderAmount float64,
+	excludedInstanceIDs []string,
+) (*InstanceSelection, error) {
 	// Step 1: query enabled instances matching payment type.
 	instances, err := lb.queryEnabledInstances(ctx, providerKey, paymentType)
 	if err != nil {
 		return nil, err
+	}
+	instances = excludeInstances(instances, excludedInstanceIDs)
+	if len(instances) == 0 {
+		return nil, nil
 	}
 
 	// Step 2: batch-fetch daily usage for all candidates.
@@ -84,15 +100,43 @@ func (lb *DefaultLoadBalancer) SelectInstance(
 	// Step 3: filter by limits.
 	available := filterByLimits(candidates, paymentType, orderAmount)
 	if len(available) == 0 {
-		slog.Warn("all instances exceeded limits, using full candidate list",
+		slog.Warn("all instances exceeded limits; refusing selection",
 			"provider", providerKey, "payment_type", paymentType,
 			"order_amount", orderAmount, "count", len(candidates))
-		available = candidates
+		return nil, nil
 	}
 
 	// Step 4: pick by strategy.
 	selected := lb.pickByStrategy(available, strategy)
 	return lb.buildSelection(selected.inst)
+}
+
+func excludeInstances(instances []*dbent.PaymentProviderInstance, excludedInstanceIDs []string) []*dbent.PaymentProviderInstance {
+	if len(excludedInstanceIDs) == 0 {
+		return instances
+	}
+	excluded := make(map[string]struct{}, len(excludedInstanceIDs))
+	for _, id := range excludedInstanceIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		excluded[id] = struct{}{}
+	}
+	if len(excluded) == 0 {
+		return instances
+	}
+	filtered := make([]*dbent.PaymentProviderInstance, 0, len(instances))
+	for _, inst := range instances {
+		if inst == nil {
+			continue
+		}
+		if _, blocked := excluded[fmt.Sprintf("%d", inst.ID)]; blocked {
+			continue
+		}
+		filtered = append(filtered, inst)
+	}
+	return filtered
 }
 
 // queryEnabledInstances returns enabled instances that support paymentType.
@@ -139,39 +183,34 @@ func (lb *DefaultLoadBalancer) attachDailyUsage(
 	ctx context.Context,
 	instances []*dbent.PaymentProviderInstance,
 ) []instanceCandidate {
-	todayStart := startOfDay(time.Now())
-
 	// Collect instance IDs.
 	ids := make([]string, len(instances))
 	for i, inst := range instances {
 		ids[i] = fmt.Sprintf("%d", inst.ID)
 	}
 
-	// Batch query: sum pay_amount grouped by provider_instance_id.
-	type row struct {
-		InstanceID string  `json:"provider_instance_id"`
-		Sum        float64 `json:"sum"`
-	}
-	var rows []row
-	err := lb.db.PaymentOrder.Query().
+	orders, err := lb.db.PaymentOrder.Query().
 		Where(
 			paymentorder.ProviderInstanceIDIn(ids...),
 			paymentorder.StatusIn(
 				OrderStatusPending, OrderStatusPaid,
 				OrderStatusCompleted, OrderStatusRecharging,
 			),
-			paymentorder.CreatedAtGTE(todayStart),
 		).
-		GroupBy(paymentorder.FieldProviderInstanceID).
-		Aggregate(dbent.Sum(paymentorder.FieldPayAmount)).
-		Scan(ctx, &rows)
+		All(ctx)
 	if err != nil {
 		slog.Warn("batch daily usage query failed, treating all as zero", "error", err)
 	}
-
-	usageMap := make(map[string]float64, len(rows))
-	for _, r := range rows {
-		usageMap[r.InstanceID] = r.Sum
+	todayStart := startOfDay(time.Now().UTC())
+	usageMap := make(map[string]float64, len(orders))
+	for _, order := range orders {
+		if !lbOrderCountsForProviderDailyUsage(order, todayStart) {
+			continue
+		}
+		if order.ProviderInstanceID == nil || strings.TrimSpace(*order.ProviderInstanceID) == "" {
+			continue
+		}
+		usageMap[*order.ProviderInstanceID] += order.PayAmount
 	}
 
 	candidates := make([]instanceCandidate, len(instances))
@@ -182,6 +221,19 @@ func (lb *DefaultLoadBalancer) attachDailyUsage(
 		}
 	}
 	return candidates
+}
+
+func lbOrderCountsForProviderDailyUsage(order *dbent.PaymentOrder, todayStart time.Time) bool {
+	if order == nil {
+		return false
+	}
+	if order.Status == OrderStatusPending {
+		return true
+	}
+	if order.Status == OrderStatusPaid || order.Status == OrderStatusCompleted || order.Status == OrderStatusRecharging {
+		return order.PaidAt != nil && !order.PaidAt.Before(todayStart)
+	}
+	return false
 }
 
 // filterByLimits removes instances that cannot accommodate the order:

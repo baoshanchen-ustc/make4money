@@ -97,11 +97,14 @@ type UpdatePaymentConfigRequest struct {
 
 // MethodLimits holds per-payment-type limits.
 type MethodLimits struct {
-	PaymentType string  `json:"payment_type"`
-	FeeRate     float64 `json:"fee_rate"`
-	DailyLimit  float64 `json:"daily_limit"`
-	SingleMin   float64 `json:"single_min"`
-	SingleMax   float64 `json:"single_max"`
+	PaymentType    string  `json:"payment_type"`
+	FeeRate        float64 `json:"fee_rate"`
+	DailyLimit     float64 `json:"daily_limit"`
+	DailyUsed      float64 `json:"daily_used"`
+	DailyRemaining float64 `json:"daily_remaining"`
+	SingleMin      float64 `json:"single_min"`
+	SingleMax      float64 `json:"single_max"`
+	Available      bool    `json:"available"`
 }
 
 // MethodLimitsResponse is the full response for the user-facing /limits API.
@@ -239,6 +242,9 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 
 // getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
 func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) string {
+	if s == nil || s.entClient == nil {
+		return ""
+	}
 	instances, err := s.entClient.PaymentProviderInstance.Query().
 		Where(
 			paymentproviderinstance.EnabledEQ(true),

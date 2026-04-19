@@ -66,29 +66,36 @@ func generateRandomString(n int) string {
 }
 
 type CreateOrderRequest struct {
-	UserID      int64
-	Amount      float64
-	PaymentType string
-	ClientIP    string
-	IsMobile    bool
-	SrcHost     string
-	SrcURL      string
-	OrderType   string
-	PlanID      int64
+	UserID          int64
+	Amount          float64
+	PaymentType     string
+	OpenID          string
+	ClientIP        string
+	IsMobile        bool
+	IsWeChatBrowser bool
+	SrcHost         string
+	SrcURL          string
+	OrderType       string
+	PlanID          int64
 }
 
 type CreateOrderResponse struct {
-	OrderID      int64     `json:"order_id"`
-	Amount       float64   `json:"amount"`
-	PayAmount    float64   `json:"pay_amount"`
-	FeeRate      float64   `json:"fee_rate"`
-	Status       string    `json:"status"`
-	PaymentType  string    `json:"payment_type"`
-	PayURL       string    `json:"pay_url,omitempty"`
-	QRCode       string    `json:"qr_code,omitempty"`
-	ClientSecret string    `json:"client_secret,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	PaymentMode  string    `json:"payment_mode,omitempty"`
+	OrderID      int64                       `json:"order_id"`
+	Amount       float64                     `json:"amount"`
+	PayAmount    float64                     `json:"pay_amount"`
+	FeeRate      float64                     `json:"fee_rate"`
+	Status       string                      `json:"status"`
+	ResultType   string                      `json:"result_type"`
+	PaymentType  string                      `json:"payment_type"`
+	OutTradeNo   string                      `json:"out_trade_no"`
+	PayURL       string                      `json:"pay_url,omitempty"`
+	QRCode       string                      `json:"qr_code,omitempty"`
+	ClientSecret string                      `json:"client_secret,omitempty"`
+	OAuth        *payment.WechatOAuthInfo    `json:"oauth,omitempty"`
+	JSAPI        *payment.WechatJSAPIPayload `json:"jsapi,omitempty"`
+	JSAPIPayload *payment.WechatJSAPIPayload `json:"jsapi_payload,omitempty"`
+	ExpiresAt    time.Time                   `json:"expires_at"`
+	PaymentMode  string                      `json:"payment_mode,omitempty"`
 }
 
 type OrderListParams struct {
@@ -237,6 +244,16 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 	}
 	s.EnsureProviders(ctx)
 	return s.registry.GetProviderByKey(providerKey)
+}
+
+func (s *PaymentService) expectedProviderKeyForOrder(order *dbent.PaymentOrder) string {
+	if order == nil {
+		return ""
+	}
+	if key := s.registry.GetProviderKey(order.PaymentType); key != "" {
+		return key
+	}
+	return payment.GetBasePaymentType(order.PaymentType)
 }
 
 // --- Helpers ---

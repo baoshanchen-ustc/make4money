@@ -137,6 +137,8 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 	payURL := resp.PayURL
 	if req.IsMobile && resp.PayURL2 != "" {
 		payURL = resp.PayURL2
+	} else if req.IsMobile && req.PaymentType == payment.TypeAlipay && strings.TrimSpace(payURL) == "" {
+		payURL = strings.TrimSpace(resp.QRCode)
 	}
 	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: payURL, QRCode: resp.QRCode}, nil
 }

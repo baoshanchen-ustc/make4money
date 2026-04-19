@@ -1,7 +1,11 @@
 <template>
   <BaseDialog
     :show="show"
-    :title="editing ? t('admin.settings.payment.editProvider') : t('admin.settings.payment.createProvider')"
+    :title="
+      editing
+        ? t('admin.settings.payment.editProvider')
+        : t('admin.settings.payment.createProvider')
+    "
     width="wide"
     @close="emit('close')"
   >
@@ -10,28 +14,34 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="input-label">
-            {{ t('admin.settings.payment.providerName') }}
+            {{ t("admin.settings.payment.providerName") }}
             <span class="text-red-500">*</span>
           </label>
           <input v-model="form.name" type="text" class="input" required />
         </div>
         <div>
           <label class="input-label">
-            {{ t('admin.settings.payment.providerKey') }}
+            {{ t("admin.settings.payment.providerKey") }}
             <span class="text-red-500">*</span>
           </label>
           <Select
             v-model="form.provider_key"
-            :options="(!!editing ? allKeyOptions : enabledKeyOptions) as SelectOption[]"
+            :options="
+              (!!editing ? allKeyOptions : enabledKeyOptions) as SelectOption[]
+            "
             :disabled="!!editing"
             @change="onKeyChange"
           />
         </div>
       </div>
 
-      <div class="rounded-xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-800/60 dark:bg-amber-900/10">
-        <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-          {{ t('admin.settings.payment.frontendCapabilityLabel') }}
+      <div
+        class="rounded-xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-800/60 dark:bg-amber-900/10"
+      >
+        <p
+          class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300"
+        >
+          {{ t("admin.settings.payment.frontendCapabilityLabel") }}
         </p>
         <div class="mt-2 flex flex-wrap gap-2">
           <span
@@ -45,15 +55,48 @@
         <p class="mt-3 text-sm leading-6 text-amber-900 dark:text-amber-100">
           {{ providerIntro }}
         </p>
+        <div v-if="providerGuideLinks.length" class="mt-3 flex flex-wrap gap-2">
+          <a
+            v-for="link in providerGuideLinks"
+            :key="link.href"
+            :href="link.href"
+            target="_blank"
+            rel="noreferrer"
+            class="inline-flex items-center rounded border border-amber-300 bg-white px-2.5 py-1 text-xs text-amber-700 hover:bg-amber-100 dark:border-amber-700/70 dark:bg-dark-800 dark:text-amber-200 dark:hover:bg-dark-700"
+          >
+            {{ link.label }}
+          </a>
+        </div>
       </div>
 
       <!-- Toggles + Payment mode + Supported types (single row) -->
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
-        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
-        <ToggleSwitch v-if="form.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
-        <div v-if="form.provider_key === 'easypay'" class="flex items-center gap-2">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.paymentMode') }}</span>
+        <ToggleSwitch
+          :label="t('common.enabled')"
+          :checked="form.enabled"
+          @toggle="form.enabled = !form.enabled"
+        />
+        <ToggleSwitch
+          :label="t('admin.settings.payment.refundEnabled')"
+          :checked="form.refund_enabled"
+          @toggle="
+            form.refund_enabled = !form.refund_enabled;
+            if (!form.refund_enabled) form.allow_user_refund = false;
+          "
+        />
+        <ToggleSwitch
+          v-if="form.refund_enabled"
+          :label="t('admin.settings.payment.allowUserRefund')"
+          :checked="form.allow_user_refund"
+          @toggle="form.allow_user_refund = !form.allow_user_refund"
+        />
+        <div
+          v-if="form.provider_key === 'easypay'"
+          class="flex items-center gap-2"
+        >
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{
+            t("admin.settings.payment.paymentMode")
+          }}</span>
           <div class="flex gap-1.5">
             <button
               v-for="mode in paymentModeOptions"
@@ -66,11 +109,15 @@
                   ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
                   : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
               ]"
-            >{{ mode.label }}</button>
+            >
+              {{ mode.label }}
+            </button>
           </div>
         </div>
         <div v-if="showSupportedTypes" class="flex items-center gap-2">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.supportedTypes') }}</span>
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{
+            t("admin.settings.payment.supportedTypes")
+          }}</span>
           <div class="flex flex-wrap gap-1.5">
             <button
               v-for="pt in availableTypes"
@@ -83,27 +130,39 @@
                   ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
                   : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
               ]"
-            >{{ pt.label }}</button>
+            >
+              {{ pt.label }}
+            </button>
           </div>
         </div>
       </div>
 
-
       <!-- Config fields -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
         <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-          {{ t('admin.settings.payment.providerConfig') }}
+          {{ t("admin.settings.payment.providerConfig") }}
         </h4>
         <div class="space-y-3">
-          <div v-for="group in resolvedFieldGroups" :key="group.key" class="space-y-3">
+          <div
+            v-for="group in resolvedFieldGroups"
+            :key="group.key"
+            class="space-y-3"
+          >
             <div
               v-if="group.title"
               class="rounded-lg border border-gray-200 bg-gray-50/80 p-3 dark:border-dark-700 dark:bg-dark-800/50"
             >
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div
+                class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
+              >
                 <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ group.title }}</p>
-                  <p v-if="group.description" class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ group.title }}
+                  </p>
+                  <p
+                    v-if="group.description"
+                    class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400"
+                  >
                     {{ group.description }}
                   </p>
                 </div>
@@ -114,18 +173,24 @@
                   :disabled="syncingWechatMp"
                   @click="handleWechatMpSync"
                 >
-                  {{ t('admin.settings.payment.wxpayMpSyncAction') }}
+                  {{ t("admin.settings.payment.wxpayMpSyncAction") }}
                 </button>
               </div>
             </div>
             <div v-for="field in group.fields" :key="field.key">
               <label class="input-label">
                 {{ field.label }}
-                <span v-if="field.optional" class="text-xs text-gray-400">({{ t('common.optional') }})</span>
+                <span v-if="field.optional" class="text-xs text-gray-400"
+                  >({{ t("common.optional") }})</span
+                >
                 <span v-else class="text-red-500"> *</span>
               </label>
               <textarea
-                v-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'"
+                v-if="
+                  field.sensitive &&
+                  field.key.toLowerCase().includes('key') &&
+                  field.key !== 'pkey'
+                "
                 v-model="config[field.key]"
                 rows="3"
                 class="input font-mono text-xs"
@@ -143,8 +208,40 @@
                   @click="visibleFields[field.key] = !visibleFields[field.key]"
                   class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
-                  <svg v-if="visibleFields[field.key]" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" /></svg>
-                  <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  <svg
+                    v-if="visibleFields[field.key]"
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"
+                    />
+                  </svg>
+                  <svg
+                    v-else
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
                 </button>
               </div>
               <input
@@ -154,7 +251,10 @@
                 class="input"
                 :placeholder="field.defaultValue || ''"
               />
-              <p v-if="field.hint" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
+              <p
+                v-if="field.hint"
+                class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400"
+              >
                 {{ field.hint }}
               </p>
             </div>
@@ -164,39 +264,88 @@
         <!-- Callback URLs (each = editable URL + fixed path) -->
         <div v-if="callbackPaths" class="mt-4 space-y-3">
           <div v-if="callbackPaths.notifyUrl">
-            <label class="input-label">{{ t('admin.settings.payment.field_notifyUrl') }} <span class="text-red-500">*</span></label>
+            <label class="input-label"
+              >{{ t("admin.settings.payment.field_notifyUrl") }}
+              <span class="text-red-500">*</span></label
+            >
             <div class="flex">
-              <input v-model="notifyBaseUrl" type="text" class="input min-w-0 flex-1 !rounded-r-none !border-r-0" :placeholder="defaultBaseUrl" />
-              <span class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400">{{ callbackPaths.notifyUrl }}</span>
+              <input
+                v-model="notifyBaseUrl"
+                type="text"
+                class="input min-w-0 flex-1 !rounded-r-none !border-r-0"
+                :placeholder="defaultBaseUrl"
+              />
+              <span
+                class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400"
+                >{{ callbackPaths.notifyUrl }}</span
+              >
             </div>
           </div>
           <div v-if="callbackPaths.returnUrl">
-            <label class="input-label">{{ t('admin.settings.payment.field_returnUrl') }} <span class="text-red-500">*</span></label>
+            <label class="input-label"
+              >{{ t("admin.settings.payment.field_returnUrl") }}
+              <span class="text-red-500">*</span></label
+            >
             <div class="flex">
-              <input v-model="returnBaseUrl" type="text" class="input min-w-0 flex-1 !rounded-r-none !border-r-0" :placeholder="defaultBaseUrl" />
-              <span class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400">{{ callbackPaths.returnUrl }}</span>
+              <input
+                v-model="returnBaseUrl"
+                type="text"
+                class="input min-w-0 flex-1 !rounded-r-none !border-r-0"
+                :placeholder="defaultBaseUrl"
+              />
+              <span
+                class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400"
+                >{{ callbackPaths.returnUrl }}</span
+              >
             </div>
           </div>
         </div>
 
         <!-- Stripe webhook hint -->
-        <div v-if="stripeWebhookUrl" class="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20">
+        <div
+          v-if="stripeWebhookUrl"
+          class="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20"
+        >
           <p class="text-xs text-blue-700 dark:text-blue-300">
-            {{ t('admin.settings.payment.stripeWebhookHint') }}
+            {{ t("admin.settings.payment.stripeWebhookHint") }}
           </p>
-          <code class="mt-1 block break-all rounded bg-blue-100 px-2 py-1 text-xs text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+          <code
+            class="mt-1 block break-all rounded bg-blue-100 px-2 py-1 text-xs text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
+          >
             {{ stripeWebhookUrl }}
           </code>
         </div>
       </div>
 
       <!-- Per-type limits (collapsible) -->
-      <div v-if="limitableTypes.length" class="border-t border-gray-200 pt-4 dark:border-dark-700">
-        <button type="button" @click="limitsExpanded = !limitsExpanded" class="flex w-full items-center justify-between">
+      <div
+        v-if="limitableTypes.length"
+        class="border-t border-gray-200 pt-4 dark:border-dark-700"
+      >
+        <button
+          type="button"
+          @click="limitsExpanded = !limitsExpanded"
+          class="flex w-full items-center justify-between"
+        >
           <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-            {{ t('admin.settings.payment.limitsTitle') }}
+            {{ t("admin.settings.payment.limitsTitle") }}
           </h4>
-          <svg :class="['h-4 w-4 text-gray-400 transition-transform', limitsExpanded && 'rotate-180']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+          <svg
+            :class="[
+              'h-4 w-4 text-gray-400 transition-transform',
+              limitsExpanded && 'rotate-180',
+            ]"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
         </button>
         <div v-show="limitsExpanded" class="mt-3 space-y-3">
           <div
@@ -204,47 +353,93 @@
             :key="lt.value"
             class="rounded-lg border border-gray-100 p-3 dark:border-dark-700"
           >
-            <p class="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">{{ lt.label }}</p>
+            <p
+              class="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300"
+            >
+              {{ lt.label }}
+            </p>
             <div class="grid grid-cols-3 gap-3">
               <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.limitSingleMin') }}</label>
+                <label class="text-xs text-gray-500 dark:text-gray-400">{{
+                  t("admin.settings.payment.limitSingleMin")
+                }}</label>
                 <input
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMin')"
-                  @input="setLimitVal(lt.value, 'singleMin', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
+                  @input="
+                    setLimitVal(
+                      lt.value,
+                      'singleMin',
+                      ($event.target as HTMLInputElement).value,
+                    )
+                  "
+                  class="input mt-0.5"
+                  min="1"
+                  step="0.01"
+                  :placeholder="limitPlaceholder(lt.value)"
                 />
               </div>
               <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.limitSingleMax') }}</label>
+                <label class="text-xs text-gray-500 dark:text-gray-400">{{
+                  t("admin.settings.payment.limitSingleMax")
+                }}</label>
                 <input
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMax')"
-                  @input="setLimitVal(lt.value, 'singleMax', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
+                  @input="
+                    setLimitVal(
+                      lt.value,
+                      'singleMax',
+                      ($event.target as HTMLInputElement).value,
+                    )
+                  "
+                  class="input mt-0.5"
+                  min="1"
+                  step="0.01"
+                  :placeholder="limitPlaceholder(lt.value)"
                 />
               </div>
               <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.limitDaily') }}</label>
+                <label class="text-xs text-gray-500 dark:text-gray-400">{{
+                  t("admin.settings.payment.limitDaily")
+                }}</label>
                 <input
                   type="number"
                   :value="getLimitVal(lt.value, 'dailyLimit')"
-                  @input="setLimitVal(lt.value, 'dailyLimit', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
+                  @input="
+                    setLimitVal(
+                      lt.value,
+                      'dailyLimit',
+                      ($event.target as HTMLInputElement).value,
+                    )
+                  "
+                  class="input mt-0.5"
+                  min="1"
+                  step="0.01"
+                  :placeholder="limitPlaceholder(lt.value)"
                 />
               </div>
             </div>
           </div>
-          <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.settings.payment.limitsHint') }}</p>
+          <p class="text-xs text-gray-400 dark:text-gray-500">
+            {{ t("admin.settings.payment.limitsHint") }}
+          </p>
         </div>
       </div>
     </form>
 
     <template #footer>
       <div class="flex justify-end gap-3">
-        <button type="button" @click="emit('close')" class="btn btn-secondary">{{ t('common.cancel') }}</button>
-        <button type="submit" form="provider-form" :disabled="saving" class="btn btn-primary">
-          {{ saving ? t('common.saving') : t('common.save') }}
+        <button type="button" @click="emit('close')" class="btn btn-secondary">
+          {{ t("common.cancel") }}
+        </button>
+        <button
+          type="submit"
+          form="provider-form"
+          :disabled="saving"
+          class="btn btn-primary"
+        >
+          {{ saving ? t("common.saving") : t("common.save") }}
         </button>
       </div>
     </template>
@@ -252,16 +447,16 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { getSettings } from '@/api/admin/settings'
-import BaseDialog from '@/components/common/BaseDialog.vue'
-import Select from '@/components/common/Select.vue'
-import type { SelectOption } from '@/components/common/Select.vue'
-import { useAppStore } from '@/stores'
-import ToggleSwitch from './ToggleSwitch.vue'
-import type { PaymentProviderKey, ProviderInstance } from '@/types/payment'
-import type { TypeOption } from './providerConfig'
+import { reactive, computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { getSettings } from "@/api/admin/settings";
+import BaseDialog from "@/components/common/BaseDialog.vue";
+import Select from "@/components/common/Select.vue";
+import type { SelectOption } from "@/components/common/Select.vue";
+import { useAppStore } from "@/stores";
+import ToggleSwitch from "./ToggleSwitch.vue";
+import type { PaymentProviderKey, ProviderInstance } from "@/types/payment";
+import type { TypeOption } from "./providerConfig";
 import {
   PROVIDER_CAPABILITY_TYPES,
   PROVIDER_CONFIG_FIELDS,
@@ -270,343 +465,400 @@ import {
   WEBHOOK_PATHS,
   PAYMENT_MODE_QRCODE,
   PAYMENT_MODE_POPUP,
+  buildProviderGuideLinks,
   buildWechatPaymentMpSyncConfig,
   getAvailableTypes,
   extractBaseUrl,
-} from './providerConfig'
+} from "./providerConfig";
 
 const props = defineProps<{
-  show: boolean
-  saving: boolean
-  editing: ProviderInstance | null
-  allKeyOptions: TypeOption[]
-  enabledKeyOptions: TypeOption[]
-  allPaymentTypes: TypeOption[]
-  redirectLabel: string
-}>()
+  show: boolean;
+  saving: boolean;
+  editing: ProviderInstance | null;
+  allKeyOptions: TypeOption[];
+  enabledKeyOptions: TypeOption[];
+  allPaymentTypes: TypeOption[];
+  redirectLabel: string;
+}>();
 
 const emit = defineEmits<{
-  close: []
-  save: [payload: {
-    provider_key: PaymentProviderKey
-    name: string
-    supported_types: string[]
-    enabled: boolean
-    payment_mode: string
-    refund_enabled: boolean
-    allow_user_refund: boolean
-    config: Record<string, string>
-    limits: string
-  }]
-}>()
+  close: [];
+  save: [
+    payload: {
+      provider_key: PaymentProviderKey;
+      name: string;
+      supported_types: string[];
+      enabled: boolean;
+      payment_mode: string;
+      refund_enabled: boolean;
+      allow_user_refund: boolean;
+      config: Record<string, string>;
+      limits: string;
+    },
+  ];
+}>();
 
-const { t } = useI18n()
-const appStore = useAppStore()
+const { t } = useI18n();
+const appStore = useAppStore();
 
 // --- Form state ---
 const form = reactive({
-  name: '',
-  provider_key: 'easypay' as PaymentProviderKey,
+  name: "",
+  provider_key: "easypay" as PaymentProviderKey,
   supported_types: [] as string[],
   enabled: true,
   payment_mode: PAYMENT_MODE_QRCODE,
   refund_enabled: false,
   allow_user_refund: false,
-})
-const config = reactive<Record<string, string>>({})
-const limits = reactive<Record<string, Record<string, number>>>({})
-const notifyBaseUrl = ref('')
-const returnBaseUrl = ref('')
-const limitsExpanded = ref(false)
-const syncingWechatMp = ref(false)
-const visibleFields = reactive<Record<string, boolean>>({})
+});
+const config = reactive<Record<string, string>>({});
+const limits = reactive<Record<string, Record<string, number>>>({});
+const notifyBaseUrl = ref("");
+const returnBaseUrl = ref("");
+const limitsExpanded = ref(false);
+const syncingWechatMp = ref(false);
+const visibleFields = reactive<Record<string, boolean>>({});
 
 // --- Computed ---
-const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+const defaultBaseUrl =
+  typeof window !== "undefined" ? window.location.origin : "";
 
 const stripeWebhookUrl = computed(() =>
-  form.provider_key === 'stripe' ? defaultBaseUrl + WEBHOOK_PATHS.stripe : '',
-)
+  form.provider_key === "stripe" ? defaultBaseUrl + WEBHOOK_PATHS.stripe : "",
+);
 
-const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
+const callbackPaths = computed(
+  () => PROVIDER_CALLBACK_PATHS[form.provider_key] || null,
+);
 
 const paymentModeOptions = computed(() => {
   return [
-    { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
-    { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
-  ]
-})
+    {
+      value: PAYMENT_MODE_QRCODE,
+      label: t("admin.settings.payment.modeQRCode"),
+    },
+    { value: PAYMENT_MODE_POPUP, label: t("admin.settings.payment.modePopup") },
+  ];
+});
 
 const availableTypes = computed(() => {
-  const base = getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel)
+  const base = getAvailableTypes(
+    form.provider_key,
+    props.allPaymentTypes,
+    props.redirectLabel,
+  );
   // Resolve i18n labels for types not in allPaymentTypes (e.g. card, link inside stripe)
-  return base.map(opt =>
+  return base.map((opt) =>
     opt.label === opt.value
       ? { ...opt, label: t(`payment.methods.${opt.value}`, opt.value) }
       : opt,
-  )
-})
+  );
+});
 
-const showSupportedTypes = computed(() => form.provider_key !== 'stripe' && availableTypes.value.length > 1)
+const showSupportedTypes = computed(
+  () => form.provider_key !== "stripe" && availableTypes.value.length > 1,
+);
 
 const providerCapabilityLabels = computed(() =>
-  (PROVIDER_CAPABILITY_TYPES[form.provider_key] || []).map(type => t(`payment.methods.${type}`, type)),
-)
+  (PROVIDER_CAPABILITY_TYPES[form.provider_key] || []).map((type) =>
+    t(`payment.methods.${type}`, type),
+  ),
+);
 
-const providerIntro = computed(() => t(`admin.settings.payment.providerIntro_${form.provider_key}`))
+const providerIntro = computed(() =>
+  t(`admin.settings.payment.providerIntro_${form.provider_key}`),
+);
+const providerGuideLinks = computed(() =>
+  buildProviderGuideLinks(form.provider_key, t),
+);
 
 const resolvedFields = computed(() => {
-  const fields = PROVIDER_CONFIG_FIELDS[form.provider_key] || []
-  return fields.map(f => ({
+  const fields = PROVIDER_CONFIG_FIELDS[form.provider_key] || [];
+  return fields.map((f) => ({
     ...f,
-    label: f.label || (f.labelKey ? t(f.labelKey) : t(`admin.settings.payment.field_${f.key}`)),
-    hint: f.hintKey ? t(f.hintKey) : '',
-  }))
-})
+    label:
+      f.label ||
+      (f.labelKey ? t(f.labelKey) : t(`admin.settings.payment.field_${f.key}`)),
+    hint: f.hintKey ? t(f.hintKey) : "",
+  }));
+});
 
 const resolvedFieldGroups = computed(() => {
-  if (form.provider_key !== 'wxpay') {
-    return [{ key: 'default', title: '', description: '', fields: resolvedFields.value }]
+  if (form.provider_key !== "wxpay") {
+    return [
+      {
+        key: "default",
+        title: "",
+        description: "",
+        fields: resolvedFields.value,
+      },
+    ];
   }
 
-  const merchantFields = resolvedFields.value.filter(field => (field.section || 'default') !== 'wechatMp')
-  const wechatMpFields = resolvedFields.value.filter(field => field.section === 'wechatMp')
+  const merchantFields = resolvedFields.value.filter(
+    (field) => (field.section || "default") !== "wechatMp",
+  );
+  const wechatMpFields = resolvedFields.value.filter(
+    (field) => field.section === "wechatMp",
+  );
 
   return [
     {
-      key: 'merchant',
-      title: t('admin.settings.payment.wxpayMerchantSectionTitle'),
-      description: t('admin.settings.payment.wxpayMerchantSectionDesc'),
+      key: "merchant",
+      title: t("admin.settings.payment.wxpayMerchantSectionTitle"),
+      description: t("admin.settings.payment.wxpayMerchantSectionDesc"),
       fields: merchantFields,
     },
     {
-      key: 'wechatMp',
-      title: t('admin.settings.payment.wxpayMpSectionTitle'),
-      description: t('admin.settings.payment.wxpayMpSectionDesc'),
+      key: "wechatMp",
+      title: t("admin.settings.payment.wxpayMpSectionTitle"),
+      description: t("admin.settings.payment.wxpayMpSectionDesc"),
       fields: wechatMpFields,
     },
-  ]
-})
+  ];
+});
 
 const limitableTypes = computed(() => {
   // Stripe: single "stripe" entry (one set of shared limits)
-  if (form.provider_key === 'stripe') {
-    return [{ value: 'stripe', label: 'Stripe' }]
+  if (form.provider_key === "stripe") {
+    return [{ value: "stripe", label: "Stripe" }];
   }
-  const selected = form.supported_types.filter(t => t !== 'easypay')
-  return selected.map(v => {
-    const found = props.allPaymentTypes.find(pt => pt.value === v)
-    return found || { value: v, label: v }
-  })
-})
+  const selected = form.supported_types.filter((t) => t !== "easypay");
+  return selected.map((v) => {
+    const found = props.allPaymentTypes.find((pt) => pt.value === v);
+    return found || { value: v, label: v };
+  });
+});
 
 // --- Methods ---
 function isTypeSelected(type: string): boolean {
-  return form.supported_types.includes(type)
+  return form.supported_types.includes(type);
 }
 
 function toggleType(type: string) {
   if (form.supported_types.includes(type)) {
-    form.supported_types = form.supported_types.filter(t => t !== type)
+    form.supported_types = form.supported_types.filter((t) => t !== type);
   } else {
-    form.supported_types = [...form.supported_types, type]
+    form.supported_types = [...form.supported_types, type];
   }
 }
 
 function onKeyChange() {
-  form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
-  clearConfig()
-  applyDefaults()
+  form.supported_types = [
+    ...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || []),
+  ];
+  clearConfig();
+  applyDefaults();
 }
 
 function clearConfig() {
-  Object.keys(config).forEach(k => delete config[k])
-  Object.keys(limits).forEach(k => delete limits[k])
-  Object.keys(visibleFields).forEach(k => delete visibleFields[k])
-  notifyBaseUrl.value = ''
-  returnBaseUrl.value = ''
-  limitsExpanded.value = false
+  Object.keys(config).forEach((k) => delete config[k]);
+  Object.keys(limits).forEach((k) => delete limits[k]);
+  Object.keys(visibleFields).forEach((k) => delete visibleFields[k]);
+  notifyBaseUrl.value = "";
+  returnBaseUrl.value = "";
+  limitsExpanded.value = false;
 }
 
 function applyDefaults() {
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
-    if (f.defaultValue && !config[f.key]) config[f.key] = f.defaultValue
+    if (f.defaultValue && !config[f.key]) config[f.key] = f.defaultValue;
   }
 }
 
 function getLimitVal(paymentType: string, field: string): string {
-  const val = limits[paymentType]?.[field]
-  return val && val > 0 ? String(val) : ''
+  const val = limits[paymentType]?.[field];
+  return val && val > 0 ? String(val) : "";
 }
 
 /** Returns true if any limit field for this payment type has a value */
 function hasAnyLimit(paymentType: string): boolean {
-  const l = limits[paymentType]
-  if (!l) return false
-  return (l.singleMin > 0) || (l.singleMax > 0) || (l.dailyLimit > 0)
+  const l = limits[paymentType];
+  if (!l) return false;
+  return l.singleMin > 0 || l.singleMax > 0 || l.dailyLimit > 0;
 }
 
 /** Dynamic placeholder: "不限制" if sibling has value, "使用全局配置" if all empty */
 function limitPlaceholder(paymentType: string): string {
   return hasAnyLimit(paymentType)
-    ? t('admin.settings.payment.limitsNoLimit')
-    : t('admin.settings.payment.limitsUseGlobal')
+    ? t("admin.settings.payment.limitsNoLimit")
+    : t("admin.settings.payment.limitsUseGlobal");
 }
 
 function setLimitVal(paymentType: string, field: string, val: string) {
-  if (!limits[paymentType]) limits[paymentType] = {}
-  const num = Number(val)
+  if (!limits[paymentType]) limits[paymentType] = {};
+  const num = Number(val);
   // Empty → clear the field (use global); reject ≤0
-  if (val === '' || isNaN(num)) {
-    delete limits[paymentType][field]
-    return
+  if (val === "" || isNaN(num)) {
+    delete limits[paymentType][field];
+    return;
   }
-  if (num <= 0) return
-  limits[paymentType][field] = num
+  if (num <= 0) return;
+  limits[paymentType][field] = num;
 }
 
 function serializeLimits(): string {
-  const result: Record<string, Record<string, number>> = {}
+  const result: Record<string, Record<string, number>> = {};
   for (const [pt, fields] of Object.entries(limits)) {
-    const clean: Record<string, number> = {}
+    const clean: Record<string, number> = {};
     for (const [k, v] of Object.entries(fields)) {
-      if (v > 0) clean[k] = v
+      if (v > 0) clean[k] = v;
     }
-    if (Object.keys(clean).length > 0) result[pt] = clean
+    if (Object.keys(clean).length > 0) result[pt] = clean;
   }
-  return Object.keys(result).length > 0 ? JSON.stringify(result) : ''
+  return Object.keys(result).length > 0 ? JSON.stringify(result) : "";
 }
 
 function handleSave() {
   // Validate required fields
   if (!form.name.trim()) {
-    emitValidationError(t('admin.settings.payment.validationNameRequired'))
-    return
+    emitValidationError(t("admin.settings.payment.validationNameRequired"));
+    return;
   }
   // Validate required config fields — all non-optional fields must be filled
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
-    if (f.optional) continue
-    const val = (config[f.key] || '').trim()
+    if (f.optional) continue;
+    const val = (config[f.key] || "").trim();
     if (!val) {
-      const label = f.label || (f.labelKey ? t(f.labelKey) : t(`admin.settings.payment.field_${f.key}`))
-      emitValidationError(t('admin.settings.payment.validationFieldRequired', { field: label }))
-      return
+      const label =
+        f.label ||
+        (f.labelKey
+          ? t(f.labelKey)
+          : t(`admin.settings.payment.field_${f.key}`));
+      emitValidationError(
+        t("admin.settings.payment.validationFieldRequired", { field: label }),
+      );
+      return;
     }
   }
 
-  const filteredConfig: Record<string, string> = {}
+  const filteredConfig: Record<string, string> = {};
   for (const [k, v] of Object.entries(config)) {
-    if (!v || !v.trim()) continue
+    if (!v || !v.trim()) continue;
     // Skip masked values — backend keeps existing credentials
-    if (v === '••••••••') continue
-    filteredConfig[k] = v
+    if (v === "••••••••") continue;
+    filteredConfig[k] = v;
   }
 
   // Inject computed callback URLs (each URL = independent base + fixed path)
   // If base URL is empty, auto-fill with current domain
-  const paths = PROVIDER_CALLBACK_PATHS[form.provider_key]
+  const paths = PROVIDER_CALLBACK_PATHS[form.provider_key];
   if (paths) {
-    const notifyBase = notifyBaseUrl.value.trim() || defaultBaseUrl
-    const returnBase = returnBaseUrl.value.trim() || defaultBaseUrl
-    notifyBaseUrl.value = notifyBase
-    returnBaseUrl.value = returnBase
-    if (paths.notifyUrl) filteredConfig['notifyUrl'] = notifyBase + paths.notifyUrl
-    if (paths.returnUrl) filteredConfig['returnUrl'] = returnBase + paths.returnUrl
+    const notifyBase = notifyBaseUrl.value.trim() || defaultBaseUrl;
+    const returnBase = returnBaseUrl.value.trim() || defaultBaseUrl;
+    notifyBaseUrl.value = notifyBase;
+    returnBaseUrl.value = returnBase;
+    if (paths.notifyUrl)
+      filteredConfig["notifyUrl"] = notifyBase + paths.notifyUrl;
+    if (paths.returnUrl)
+      filteredConfig["returnUrl"] = returnBase + paths.returnUrl;
   }
 
-  emit('save', {
+  emit("save", {
     provider_key: form.provider_key,
     name: form.name,
     supported_types: form.supported_types,
     enabled: form.enabled,
-    payment_mode: form.provider_key === 'easypay' ? form.payment_mode : '',
+    payment_mode: form.provider_key === "easypay" ? form.payment_mode : "",
     refund_enabled: form.refund_enabled,
     allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
     config: filteredConfig,
     limits: serializeLimits(),
-  })
+  });
 }
 
 function emitValidationError(msg: string) {
-  appStore.showError(msg)
+  appStore.showError(msg);
 }
 
 async function handleWechatMpSync() {
-  if (syncingWechatMp.value) return
+  if (syncingWechatMp.value) return;
 
-  syncingWechatMp.value = true
+  syncingWechatMp.value = true;
   try {
-    const settings = await getSettings()
-    const syncedConfig = buildWechatPaymentMpSyncConfig(settings)
-    if (!syncedConfig.mpAppId && !syncedConfig.mpAppSecret) {
+    const settings = await getSettings();
+    const syncedConfig = buildWechatPaymentMpSyncConfig(settings);
+    if (!syncedConfig.mpAppId || !syncedConfig.mpAppSecret) {
       emitValidationError(
-        t('admin.settings.payment.validationFieldRequired', {
-          field: `${t('admin.settings.payment.field_mpAppId')} / ${t('admin.settings.payment.field_mpAppSecret')}`,
+        t("admin.settings.payment.validationFieldRequired", {
+          field: `${t("admin.settings.payment.field_mpAppId")} / ${t("admin.settings.payment.field_mpAppSecret")}`,
         }),
-      )
-      return
+      );
+      return;
     }
 
-    config.mpAppId = syncedConfig.mpAppId
-    config.mpAppSecret = syncedConfig.mpAppSecret
-    appStore.showSuccess(t('admin.settings.payment.wxpayMpSyncAction'))
+    config.mpAppId = syncedConfig.mpAppId;
+    config.mpAppSecret = syncedConfig.mpAppSecret;
+    appStore.showSuccess(t("admin.settings.payment.wxpayMpSyncAction"));
   } catch {
-    emitValidationError(t('common.error'))
+    emitValidationError(t("common.error"));
   } finally {
-    syncingWechatMp.value = false
+    syncingWechatMp.value = false;
   }
 }
 
 // --- Public API for parent to call ---
 function reset(defaultKey: PaymentProviderKey) {
-  form.name = ''
-  form.provider_key = defaultKey
-  form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
-  form.enabled = true
-  form.payment_mode = defaultKey === 'easypay' ? PAYMENT_MODE_QRCODE : ''
-  form.refund_enabled = false
-  form.allow_user_refund = false
-  clearConfig()
-  applyDefaults()
+  form.name = "";
+  form.provider_key = defaultKey;
+  form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])];
+  form.enabled = true;
+  form.payment_mode = defaultKey === "easypay" ? PAYMENT_MODE_QRCODE : "";
+  form.refund_enabled = false;
+  form.allow_user_refund = false;
+  clearConfig();
+  applyDefaults();
 }
 
 function loadProvider(provider: ProviderInstance) {
-  form.name = provider.name
-  form.provider_key = provider.provider_key
-  form.supported_types = provider.supported_types
-  form.enabled = provider.enabled
-  form.payment_mode = provider.payment_mode || (provider.provider_key === 'easypay' ? PAYMENT_MODE_QRCODE : '')
-  form.refund_enabled = provider.refund_enabled
-  form.allow_user_refund = provider.allow_user_refund
-  clearConfig()
+  form.name = provider.name;
+  form.provider_key = provider.provider_key;
+  form.supported_types = provider.supported_types;
+  form.enabled = provider.enabled;
+  form.payment_mode =
+    provider.payment_mode ||
+    (provider.provider_key === "easypay" ? PAYMENT_MODE_QRCODE : "");
+  form.refund_enabled = provider.refund_enabled;
+  form.allow_user_refund = provider.allow_user_refund;
+  clearConfig();
   // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked as ••••••••)
   if (provider.config) {
     for (const [k, v] of Object.entries(provider.config)) {
       // Skip notifyUrl/returnUrl — they are derived from callbackBaseUrl
-      if (k === 'notifyUrl' || k === 'returnUrl') continue
-      config[k] = v
+      if (k === "notifyUrl" || k === "returnUrl") continue;
+      config[k] = v;
     }
     // Extract base URLs from existing callback URLs
-    const paths = PROVIDER_CALLBACK_PATHS[provider.provider_key]
-    if (paths?.notifyUrl && provider.config['notifyUrl']) {
-      notifyBaseUrl.value = extractBaseUrl(provider.config['notifyUrl'], paths.notifyUrl)
+    const paths = PROVIDER_CALLBACK_PATHS[provider.provider_key];
+    if (paths?.notifyUrl && provider.config["notifyUrl"]) {
+      notifyBaseUrl.value = extractBaseUrl(
+        provider.config["notifyUrl"],
+        paths.notifyUrl,
+      );
     }
-    if (paths?.returnUrl && provider.config['returnUrl']) {
-      returnBaseUrl.value = extractBaseUrl(provider.config['returnUrl'], paths.returnUrl)
+    if (paths?.returnUrl && provider.config["returnUrl"]) {
+      returnBaseUrl.value = extractBaseUrl(
+        provider.config["returnUrl"],
+        paths.returnUrl,
+      );
     }
   }
-  applyDefaults()
+  applyDefaults();
   // Parse existing limits
   if (provider.limits) {
     try {
-      const parsed = JSON.parse(provider.limits)
-      for (const [pt, fields] of Object.entries(parsed as Record<string, Record<string, number>>)) {
-        limits[pt] = { ...fields }
+      const parsed = JSON.parse(provider.limits);
+      for (const [pt, fields] of Object.entries(
+        parsed as Record<string, Record<string, number>>,
+      )) {
+        limits[pt] = { ...fields };
       }
-      limitsExpanded.value = Object.keys(limits).length > 0
-    } catch { /* ignore */ }
+      limitsExpanded.value = Object.keys(limits).length > 0;
+    } catch {
+      /* ignore */
+    }
   }
 }
 
-defineExpose({ reset, loadProvider })
+defineExpose({ reset, loadProvider });
 </script>
