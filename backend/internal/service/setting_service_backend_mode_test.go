@@ -86,7 +86,7 @@ func (s *bmUpdateRepoStub) GetAll(ctx context.Context) (map[string]string, error
 }
 
 func (s *bmUpdateRepoStub) Delete(ctx context.Context, key string) error {
-	panic("unexpected Delete call")
+	return nil
 }
 
 func resetBackendModeTestCache(t *testing.T) {

@@ -102,6 +102,12 @@ const backendModeCacheTTL = 60 * time.Second
 const backendModeErrorTTL = 5 * time.Second
 const backendModeDBTimeout = 5 * time.Second
 
+// ResetBackendModeCacheForTest clears the in-process backend-mode cache.
+// It keeps tests deterministic when multiple cases toggle backend mode in one process.
+func ResetBackendModeCacheForTest() {
+	backendModeCache.Store((*cachedBackendMode)(nil))
+}
+
 // cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，60s TTL）
 type cachedGatewayForwardingSettings struct {
 	fingerprintUnification bool
@@ -246,6 +252,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	thirdPartyFirstLoginRequireEmail := getThirdPartyFirstLoginRequireEmailSetting(settings)
 	wechatLoginOpenEnabled := settings[SettingKeyWeChatLoginOpenEnabled] == "true"
 	wechatLoginMPEnabled := settings[SettingKeyWeChatLoginMPEnabled] == "true"
+	wechatLoginOpenConfigured := strings.TrimSpace(settings[SettingKeyWeChatLoginOpenAppID]) != "" &&
+		strings.TrimSpace(settings[SettingKeyWeChatLoginOpenAppSecret]) != ""
+	wechatLoginMPConfigured := strings.TrimSpace(settings[SettingKeyWeChatLoginMPAppID]) != "" &&
+		strings.TrimSpace(settings[SettingKeyWeChatLoginMPAppSecret]) != ""
 	wechatLoginUnionIDHealthStatus := deriveWeChatLoginUnionIDHealthStatus(
 		wechatLoginOpenEnabled,
 		settings[SettingKeyWeChatLoginOpenAppID],
@@ -298,7 +308,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		WeChatLoginOpenEnabled:           wechatLoginOpenEnabled,
+		WeChatLoginOpenConfigured:        wechatLoginOpenConfigured,
 		WeChatLoginMPEnabled:             wechatLoginMPEnabled,
+		WeChatLoginMPConfigured:          wechatLoginMPConfigured,
 		WeChatLoginUnionIDHealthStatus:   wechatLoginUnionIDHealthStatus,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
@@ -744,15 +756,21 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	}
 	updates[SettingKeyDefaultSubscriptions] = string(defaultSubsJSON)
 	providerDefaults := []struct {
+		enabled                                             bool
 		settings                                            ProviderDefaultUserSettings
 		applyOnBindKey, concurrencyKey, balanceKey, subsKey string
 	}{
-		{settings: settings.DefaultSettingsEmail, applyOnBindKey: SettingKeyDefaultApplyOnBindEmail, concurrencyKey: SettingKeyDefaultConcurrencyEmail, balanceKey: SettingKeyDefaultBalanceEmail, subsKey: SettingKeyDefaultSubscriptionsEmail},
-		{settings: settings.DefaultSettingsLinuxDo, applyOnBindKey: SettingKeyDefaultApplyOnBindLinuxDo, concurrencyKey: SettingKeyDefaultConcurrencyLinuxDo, balanceKey: SettingKeyDefaultBalanceLinuxDo, subsKey: SettingKeyDefaultSubscriptionsLinuxDo},
-		{settings: settings.DefaultSettingsWeChat, applyOnBindKey: SettingKeyDefaultApplyOnBindWeChat, concurrencyKey: SettingKeyDefaultConcurrencyWeChat, balanceKey: SettingKeyDefaultBalanceWeChat, subsKey: SettingKeyDefaultSubscriptionsWeChat},
-		{settings: settings.DefaultSettingsOIDC, applyOnBindKey: SettingKeyDefaultApplyOnBindOIDC, concurrencyKey: SettingKeyDefaultConcurrencyOIDC, balanceKey: SettingKeyDefaultBalanceOIDC, subsKey: SettingKeyDefaultSubscriptionsOIDC},
+		{enabled: true, settings: settings.DefaultSettingsEmail, applyOnBindKey: SettingKeyDefaultApplyOnBindEmail, concurrencyKey: SettingKeyDefaultConcurrencyEmail, balanceKey: SettingKeyDefaultBalanceEmail, subsKey: SettingKeyDefaultSubscriptionsEmail},
+		{enabled: settings.DefaultSettingsLinuxDoOverridden, settings: settings.DefaultSettingsLinuxDo, applyOnBindKey: SettingKeyDefaultApplyOnBindLinuxDo, concurrencyKey: SettingKeyDefaultConcurrencyLinuxDo, balanceKey: SettingKeyDefaultBalanceLinuxDo, subsKey: SettingKeyDefaultSubscriptionsLinuxDo},
+		{enabled: settings.DefaultSettingsWeChatOverridden, settings: settings.DefaultSettingsWeChat, applyOnBindKey: SettingKeyDefaultApplyOnBindWeChat, concurrencyKey: SettingKeyDefaultConcurrencyWeChat, balanceKey: SettingKeyDefaultBalanceWeChat, subsKey: SettingKeyDefaultSubscriptionsWeChat},
+		{enabled: settings.DefaultSettingsOIDCOverridden, settings: settings.DefaultSettingsOIDC, applyOnBindKey: SettingKeyDefaultApplyOnBindOIDC, concurrencyKey: SettingKeyDefaultConcurrencyOIDC, balanceKey: SettingKeyDefaultBalanceOIDC, subsKey: SettingKeyDefaultSubscriptionsOIDC},
 	}
+	deleteKeys := make([]string, 0, 12)
 	for _, item := range providerDefaults {
+		if !item.enabled {
+			deleteKeys = append(deleteKeys, item.applyOnBindKey, item.concurrencyKey, item.balanceKey, item.subsKey)
+			continue
+		}
 		updates[item.applyOnBindKey] = strconv.FormatBool(item.settings.ApplyOnBind)
 		updates[item.concurrencyKey] = strconv.Itoa(item.settings.Concurrency)
 		updates[item.balanceKey] = strconv.FormatFloat(item.settings.Balance, 'f', 8, 64)
@@ -806,6 +824,11 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
+		for _, key := range deleteKeys {
+			if deleteErr := s.settingRepo.Delete(ctx, key); deleteErr != nil {
+				return fmt.Errorf("delete overridden provider default setting %s: %w", key, deleteErr)
+			}
+		}
 		// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 		versionBoundsSF.Forget("version_bounds")
 		versionBoundsCache.Store(&cachedVersionBounds{
@@ -1293,8 +1316,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.DefaultSettingsEmail = s.parseProviderDefaultUserSettings(settings, SignupSourceEmail)
 	result.DefaultSettingsLinuxDo = s.parseProviderDefaultUserSettings(settings, SignupSourceLinuxDo)
+	result.DefaultSettingsLinuxDoOverridden = hasProviderDefaultSettingsOverride(settings, SignupSourceLinuxDo)
 	result.DefaultSettingsWeChat = s.parseProviderDefaultUserSettings(settings, SignupSourceWeChat)
+	result.DefaultSettingsWeChatOverridden = hasProviderDefaultSettingsOverride(settings, SignupSourceWeChat)
 	result.DefaultSettingsOIDC = s.parseProviderDefaultUserSettings(settings, SignupSourceOIDC)
+	result.DefaultSettingsOIDCOverridden = hasProviderDefaultSettingsOverride(settings, SignupSourceOIDC)
 	result.DefaultConcurrency = result.DefaultSettingsEmail.Concurrency
 	result.DefaultBalance = result.DefaultSettingsEmail.Balance
 	result.DefaultSubscriptions = cloneDefaultSubscriptionSettings(result.DefaultSettingsEmail.Subscriptions)
@@ -1338,9 +1364,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.WeChatLoginOpenEnabled = settings[SettingKeyWeChatLoginOpenEnabled] == "true"
 	result.WeChatLoginOpenAppID = strings.TrimSpace(settings[SettingKeyWeChatLoginOpenAppID])
 	result.WeChatLoginOpenAppSecret = strings.TrimSpace(settings[SettingKeyWeChatLoginOpenAppSecret])
+	result.WeChatLoginOpenAppSecretConfigured = result.WeChatLoginOpenAppSecret != ""
 	result.WeChatLoginMPEnabled = settings[SettingKeyWeChatLoginMPEnabled] == "true"
 	result.WeChatLoginMPAppID = strings.TrimSpace(settings[SettingKeyWeChatLoginMPAppID])
 	result.WeChatLoginMPAppSecret = strings.TrimSpace(settings[SettingKeyWeChatLoginMPAppSecret])
+	result.WeChatLoginMPAppSecretConfigured = result.WeChatLoginMPAppSecret != ""
 	result.WeChatLoginUnionIDHealthStatus = deriveWeChatLoginUnionIDHealthStatus(
 		result.WeChatLoginOpenEnabled,
 		result.WeChatLoginOpenAppID,
@@ -1692,6 +1720,28 @@ func defaultSubscriptionsSettingLookupChain(signupSource string) []string {
 	default:
 		return []string{SettingKeyDefaultSubscriptionsEmail, SettingKeyDefaultSubscriptions}
 	}
+}
+
+func providerDefaultSettingKeys(signupSource string) []string {
+	switch normalizeDefaultSettingsSignupSource(signupSource) {
+	case SignupSourceLinuxDo:
+		return []string{SettingKeyDefaultApplyOnBindLinuxDo, SettingKeyDefaultConcurrencyLinuxDo, SettingKeyDefaultBalanceLinuxDo, SettingKeyDefaultSubscriptionsLinuxDo}
+	case SignupSourceWeChat:
+		return []string{SettingKeyDefaultApplyOnBindWeChat, SettingKeyDefaultConcurrencyWeChat, SettingKeyDefaultBalanceWeChat, SettingKeyDefaultSubscriptionsWeChat}
+	case SignupSourceOIDC:
+		return []string{SettingKeyDefaultApplyOnBindOIDC, SettingKeyDefaultConcurrencyOIDC, SettingKeyDefaultBalanceOIDC, SettingKeyDefaultSubscriptionsOIDC}
+	default:
+		return []string{SettingKeyDefaultApplyOnBindEmail, SettingKeyDefaultConcurrencyEmail, SettingKeyDefaultBalanceEmail, SettingKeyDefaultSubscriptionsEmail}
+	}
+}
+
+func hasProviderDefaultSettingsOverride(settings map[string]string, signupSource string) bool {
+	for _, key := range providerDefaultSettingKeys(signupSource) {
+		if _, ok := settings[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func parseDefaultBalanceFromSettings(settings map[string]string, fallback float64, keys ...string) (float64, bool) {

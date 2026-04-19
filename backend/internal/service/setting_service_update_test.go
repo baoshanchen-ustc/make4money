@@ -14,6 +14,8 @@ import (
 
 type settingUpdateRepoStub struct {
 	updates map[string]string
+	deletes []string
+	values  map[string]string
 }
 
 func (s *settingUpdateRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
@@ -41,11 +43,16 @@ func (s *settingUpdateRepoStub) SetMultiple(ctx context.Context, settings map[st
 }
 
 func (s *settingUpdateRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
-	panic("unexpected GetAll call")
+	out := make(map[string]string, len(s.values))
+	for k, v := range s.values {
+		out[k] = v
+	}
+	return out, nil
 }
 
 func (s *settingUpdateRepoStub) Delete(ctx context.Context, key string) error {
-	panic("unexpected Delete call")
+	s.deletes = append(s.deletes, key)
+	return nil
 }
 
 type defaultSubGroupReaderStub struct {
@@ -222,4 +229,63 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1000", repo.updates[SettingKeyTableDefaultPageSize])
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
+}
+
+func TestSettingService_UpdateSettings_RemovesInheritedProviderDefaults(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		DefaultBalance:                   3.5,
+		DefaultConcurrency:               9,
+		DefaultSubscriptions:             []DefaultSubscriptionSetting{{GroupID: 11, ValidityDays: 30}},
+		DefaultSettingsEmail:             ProviderDefaultUserSettings{Balance: 3.5, Concurrency: 9, Subscriptions: []DefaultSubscriptionSetting{{GroupID: 11, ValidityDays: 30}}},
+		DefaultSettingsLinuxDo:           ProviderDefaultUserSettings{Balance: 3.5, Concurrency: 9, Subscriptions: []DefaultSubscriptionSetting{{GroupID: 11, ValidityDays: 30}}},
+		DefaultSettingsLinuxDoOverridden: false,
+		DefaultSettingsWeChat:            ProviderDefaultUserSettings{Balance: 3.5, Concurrency: 9},
+		DefaultSettingsWeChatOverridden:  false,
+		DefaultSettingsOIDC:              ProviderDefaultUserSettings{Balance: 3.5, Concurrency: 9},
+		DefaultSettingsOIDCOverridden:    false,
+	})
+	require.NoError(t, err)
+	require.Contains(t, repo.updates, SettingKeyDefaultBalanceEmail)
+	require.NotContains(t, repo.updates, SettingKeyDefaultBalanceLinuxDo)
+	require.ElementsMatch(t, []string{
+		SettingKeyDefaultApplyOnBindLinuxDo,
+		SettingKeyDefaultConcurrencyLinuxDo,
+		SettingKeyDefaultBalanceLinuxDo,
+		SettingKeyDefaultSubscriptionsLinuxDo,
+		SettingKeyDefaultApplyOnBindWeChat,
+		SettingKeyDefaultConcurrencyWeChat,
+		SettingKeyDefaultBalanceWeChat,
+		SettingKeyDefaultSubscriptionsWeChat,
+		SettingKeyDefaultApplyOnBindOIDC,
+		SettingKeyDefaultConcurrencyOIDC,
+		SettingKeyDefaultBalanceOIDC,
+		SettingKeyDefaultSubscriptionsOIDC,
+	}, repo.deletes)
+}
+
+func TestSettingService_GetAllSettings_TracksProviderOverrideFlags(t *testing.T) {
+	repo := &settingUpdateRepoStub{
+		values: map[string]string{
+			SettingKeyDefaultBalanceEmail:         "2.50",
+			SettingKeyDefaultConcurrencyEmail:     "4",
+			SettingKeyDefaultSubscriptionsEmail:   `[{"group_id":9,"validity_days":15}]`,
+			SettingKeyDefaultBalanceLinuxDo:       "7.00",
+			SettingKeyDefaultConcurrencyLinuxDo:   "8",
+			SettingKeyDefaultSubscriptionsLinuxDo: `[{"group_id":12,"validity_days":30}]`,
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetAllSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.DefaultSettingsLinuxDoOverridden)
+	require.False(t, settings.DefaultSettingsWeChatOverridden)
+	require.False(t, settings.DefaultSettingsOIDCOverridden)
+	require.Equal(t, 7.0, settings.DefaultSettingsLinuxDo.Balance)
+	require.Equal(t, 2.5, settings.DefaultSettingsWeChat.Balance)
+	require.Equal(t, 4, settings.DefaultSettingsWeChat.Concurrency)
+	require.Equal(t, []DefaultSubscriptionSetting{{GroupID: 9, ValidityDays: 15}}, settings.DefaultSettingsWeChat.Subscriptions)
 }

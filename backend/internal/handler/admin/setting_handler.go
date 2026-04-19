@@ -120,8 +120,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		LinuxDoConnectRedirectURL:            settings.LinuxDoConnectRedirectURL,
 		WeChatLoginOpenEnabled:               settings.WeChatLoginOpenEnabled,
 		WeChatLoginOpenAppID:                 settings.WeChatLoginOpenAppID,
+		WeChatLoginOpenAppSecretConfigured:   settings.WeChatLoginOpenAppSecretConfigured,
 		WeChatLoginMPEnabled:                 settings.WeChatLoginMPEnabled,
 		WeChatLoginMPAppID:                   settings.WeChatLoginMPAppID,
+		WeChatLoginMPAppSecretConfigured:     settings.WeChatLoginMPAppSecretConfigured,
+		WeChatLoginMPAppSecret:               settings.WeChatLoginMPAppSecret,
 		WeChatLoginUnionIDHealthStatus:       settings.WeChatLoginUnionIDHealthStatus,
 		OIDCConnectEnabled:                   settings.OIDCConnectEnabled,
 		OIDCConnectProviderName:              settings.OIDCConnectProviderName,
@@ -164,8 +167,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultSubscriptions:                 defaultSubscriptions,
 		DefaultSettingsEmail:                 providerDefaultSettingsToDTO(settings.DefaultSettingsEmail),
 		DefaultSettingsLinuxDo:               providerDefaultSettingsToDTO(settings.DefaultSettingsLinuxDo),
+		DefaultSettingsLinuxDoOverridden:     settings.DefaultSettingsLinuxDoOverridden,
 		DefaultSettingsWeChat:                providerDefaultSettingsToDTO(settings.DefaultSettingsWeChat),
+		DefaultSettingsWeChatOverridden:      settings.DefaultSettingsWeChatOverridden,
 		DefaultSettingsOIDC:                  providerDefaultSettingsToDTO(settings.DefaultSettingsOIDC),
+		DefaultSettingsOIDCOverridden:        settings.DefaultSettingsOIDCOverridden,
 		EnableModelFallback:                  settings.EnableModelFallback,
 		FallbackModelAnthropic:               settings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                  settings.FallbackModelOpenAI,
@@ -293,13 +299,16 @@ type UpdateSettingsRequest struct {
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
-	DefaultConcurrency     int                              `json:"default_concurrency"`
-	DefaultBalance         float64                          `json:"default_balance"`
-	DefaultSubscriptions   []dto.DefaultSubscriptionSetting `json:"default_subscriptions"`
-	DefaultSettingsEmail   *dto.ProviderDefaultUserSettings `json:"default_settings_email"`
-	DefaultSettingsLinuxDo *dto.ProviderDefaultUserSettings `json:"default_settings_linuxdo"`
-	DefaultSettingsWeChat  *dto.ProviderDefaultUserSettings `json:"default_settings_wechat"`
-	DefaultSettingsOIDC    *dto.ProviderDefaultUserSettings `json:"default_settings_oidc"`
+	DefaultConcurrency               int                              `json:"default_concurrency"`
+	DefaultBalance                   float64                          `json:"default_balance"`
+	DefaultSubscriptions             []dto.DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultSettingsEmail             *dto.ProviderDefaultUserSettings `json:"default_settings_email"`
+	DefaultSettingsLinuxDo           *dto.ProviderDefaultUserSettings `json:"default_settings_linuxdo"`
+	DefaultSettingsLinuxDoOverridden *bool                            `json:"default_settings_linuxdo_overridden"`
+	DefaultSettingsWeChat            *dto.ProviderDefaultUserSettings `json:"default_settings_wechat"`
+	DefaultSettingsWeChatOverridden  *bool                            `json:"default_settings_wechat_overridden"`
+	DefaultSettingsOIDC              *dto.ProviderDefaultUserSettings `json:"default_settings_oidc"`
+	DefaultSettingsOIDCOverridden    *bool                            `json:"default_settings_oidc_overridden"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -410,10 +419,31 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		Balance:       req.DefaultBalance,
 		Concurrency:   req.DefaultConcurrency,
 		Subscriptions: dtoDefaultSubscriptionsToService(req.DefaultSubscriptions),
-	}, previousSettings.DefaultSettingsEmail)
-	defaultSettingsLinuxDo := normalizeProviderDefaultUserSettingsRequest(req.DefaultSettingsLinuxDo, service.ProviderDefaultUserSettings{}, previousSettings.DefaultSettingsLinuxDo)
-	defaultSettingsWeChat := normalizeProviderDefaultUserSettingsRequest(req.DefaultSettingsWeChat, service.ProviderDefaultUserSettings{}, previousSettings.DefaultSettingsWeChat)
-	defaultSettingsOIDC := normalizeProviderDefaultUserSettingsRequest(req.DefaultSettingsOIDC, service.ProviderDefaultUserSettings{}, previousSettings.DefaultSettingsOIDC)
+	})
+	defaultSettingsLinuxDoOverridden := optionalBoolValue(req.DefaultSettingsLinuxDoOverridden, previousSettings.DefaultSettingsLinuxDoOverridden)
+	defaultSettingsWeChatOverridden := optionalBoolValue(req.DefaultSettingsWeChatOverridden, previousSettings.DefaultSettingsWeChatOverridden)
+	defaultSettingsOIDCOverridden := optionalBoolValue(req.DefaultSettingsOIDCOverridden, previousSettings.DefaultSettingsOIDCOverridden)
+	defaultSettingsLinuxDo := resolveProviderDefaultUserSettingsRequest(
+		req.DefaultSettingsLinuxDo,
+		defaultSettingsLinuxDoOverridden,
+		previousSettings.DefaultSettingsLinuxDo,
+		previousSettings.DefaultSettingsLinuxDoOverridden,
+		defaultSettingsEmail,
+	)
+	defaultSettingsWeChat := resolveProviderDefaultUserSettingsRequest(
+		req.DefaultSettingsWeChat,
+		defaultSettingsWeChatOverridden,
+		previousSettings.DefaultSettingsWeChat,
+		previousSettings.DefaultSettingsWeChatOverridden,
+		defaultSettingsEmail,
+	)
+	defaultSettingsOIDC := resolveProviderDefaultUserSettingsRequest(
+		req.DefaultSettingsOIDC,
+		defaultSettingsOIDCOverridden,
+		previousSettings.DefaultSettingsOIDC,
+		previousSettings.DefaultSettingsOIDCOverridden,
+		defaultSettingsEmail,
+	)
 	req.DefaultBalance = defaultSettingsEmail.Balance
 	req.DefaultConcurrency = defaultSettingsEmail.Concurrency
 	req.DefaultSubscriptions = serviceDefaultSubscriptionsToDTO(defaultSettingsEmail.Subscriptions)
@@ -917,8 +947,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultSubscriptions:             defaultSubscriptions,
 		DefaultSettingsEmail:             defaultSettingsEmail,
 		DefaultSettingsLinuxDo:           defaultSettingsLinuxDo,
+		DefaultSettingsLinuxDoOverridden: defaultSettingsLinuxDoOverridden,
 		DefaultSettingsWeChat:            defaultSettingsWeChat,
+		DefaultSettingsWeChatOverridden:  defaultSettingsWeChatOverridden,
 		DefaultSettingsOIDC:              defaultSettingsOIDC,
+		DefaultSettingsOIDCOverridden:    defaultSettingsOIDCOverridden,
 		EnableModelFallback:              req.EnableModelFallback,
 		FallbackModelAnthropic:           req.FallbackModelAnthropic,
 		FallbackModelOpenAI:              req.FallbackModelOpenAI,
@@ -1096,8 +1129,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectRedirectURL:            updatedSettings.LinuxDoConnectRedirectURL,
 		WeChatLoginOpenEnabled:               updatedSettings.WeChatLoginOpenEnabled,
 		WeChatLoginOpenAppID:                 updatedSettings.WeChatLoginOpenAppID,
+		WeChatLoginOpenAppSecretConfigured:   updatedSettings.WeChatLoginOpenAppSecretConfigured,
 		WeChatLoginMPEnabled:                 updatedSettings.WeChatLoginMPEnabled,
 		WeChatLoginMPAppID:                   updatedSettings.WeChatLoginMPAppID,
+		WeChatLoginMPAppSecretConfigured:     updatedSettings.WeChatLoginMPAppSecretConfigured,
+		WeChatLoginMPAppSecret:               updatedSettings.WeChatLoginMPAppSecret,
 		WeChatLoginUnionIDHealthStatus:       updatedSettings.WeChatLoginUnionIDHealthStatus,
 		OIDCConnectEnabled:                   updatedSettings.OIDCConnectEnabled,
 		OIDCConnectProviderName:              updatedSettings.OIDCConnectProviderName,
@@ -1140,8 +1176,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,
 		DefaultSettingsEmail:                 providerDefaultSettingsToDTO(updatedSettings.DefaultSettingsEmail),
 		DefaultSettingsLinuxDo:               providerDefaultSettingsToDTO(updatedSettings.DefaultSettingsLinuxDo),
+		DefaultSettingsLinuxDoOverridden:     updatedSettings.DefaultSettingsLinuxDoOverridden,
 		DefaultSettingsWeChat:                providerDefaultSettingsToDTO(updatedSettings.DefaultSettingsWeChat),
+		DefaultSettingsWeChatOverridden:      updatedSettings.DefaultSettingsWeChatOverridden,
 		DefaultSettingsOIDC:                  providerDefaultSettingsToDTO(updatedSettings.DefaultSettingsOIDC),
+		DefaultSettingsOIDCOverridden:        updatedSettings.DefaultSettingsOIDCOverridden,
 		EnableModelFallback:                  updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:               updatedSettings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                  updatedSettings.FallbackModelOpenAI,
@@ -1416,11 +1455,20 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if !equalProviderDefaultSettings(before.DefaultSettingsLinuxDo, after.DefaultSettingsLinuxDo) {
 		changed = append(changed, "default_settings_linuxdo")
 	}
+	if before.DefaultSettingsLinuxDoOverridden != after.DefaultSettingsLinuxDoOverridden {
+		changed = append(changed, "default_settings_linuxdo_overridden")
+	}
 	if !equalProviderDefaultSettings(before.DefaultSettingsWeChat, after.DefaultSettingsWeChat) {
 		changed = append(changed, "default_settings_wechat")
 	}
+	if before.DefaultSettingsWeChatOverridden != after.DefaultSettingsWeChatOverridden {
+		changed = append(changed, "default_settings_wechat_overridden")
+	}
 	if !equalProviderDefaultSettings(before.DefaultSettingsOIDC, after.DefaultSettingsOIDC) {
 		changed = append(changed, "default_settings_oidc")
+	}
+	if before.DefaultSettingsOIDCOverridden != after.DefaultSettingsOIDCOverridden {
+		changed = append(changed, "default_settings_oidc_overridden")
 	}
 	if before.EnableModelFallback != after.EnableModelFallback {
 		changed = append(changed, "enable_model_fallback")
@@ -1558,13 +1606,9 @@ func serviceDefaultSubscriptionsToDTO(input []service.DefaultSubscriptionSetting
 	return out
 }
 
-func normalizeProviderDefaultUserSettingsRequest(input *dto.ProviderDefaultUserSettings, legacy service.ProviderDefaultUserSettings, fallback service.ProviderDefaultUserSettings) service.ProviderDefaultUserSettings {
+func normalizeProviderDefaultUserSettingsRequest(input *dto.ProviderDefaultUserSettings, fallback service.ProviderDefaultUserSettings) service.ProviderDefaultUserSettings {
 	result := fallback
-	if input == nil {
-		if legacy.ApplyOnBind || legacy.Concurrency > 0 || legacy.Balance > 0 || len(legacy.Subscriptions) > 0 {
-			result = legacy
-		}
-	} else {
+	if input != nil {
 		result = service.ProviderDefaultUserSettings{
 			ApplyOnBind:   input.ApplyOnBind,
 			Balance:       input.Balance,
@@ -1580,6 +1624,43 @@ func normalizeProviderDefaultUserSettingsRequest(input *dto.ProviderDefaultUserS
 	}
 	result.Subscriptions = dtoDefaultSubscriptionsToService(normalizeDefaultSubscriptions(serviceDefaultSubscriptionsToDTO(result.Subscriptions)))
 	return result
+}
+
+func optionalBoolValue(input *bool, fallback bool) bool {
+	if input != nil {
+		return *input
+	}
+	return fallback
+}
+
+func cloneProviderDefaultSubscriptions(input []service.DefaultSubscriptionSetting) []service.DefaultSubscriptionSetting {
+	if len(input) == 0 {
+		return nil
+	}
+	cloned := make([]service.DefaultSubscriptionSetting, len(input))
+	copy(cloned, input)
+	return cloned
+}
+
+func inheritedProviderDefaultUserSettings(base service.ProviderDefaultUserSettings) service.ProviderDefaultUserSettings {
+	return service.ProviderDefaultUserSettings{
+		ApplyOnBind:   false,
+		Balance:       base.Balance,
+		Concurrency:   base.Concurrency,
+		Subscriptions: cloneProviderDefaultSubscriptions(base.Subscriptions),
+	}
+}
+
+func resolveProviderDefaultUserSettingsRequest(input *dto.ProviderDefaultUserSettings, overrideEnabled bool, previous service.ProviderDefaultUserSettings, previousOverridden bool, inheritedBase service.ProviderDefaultUserSettings) service.ProviderDefaultUserSettings {
+	inherited := inheritedProviderDefaultUserSettings(inheritedBase)
+	if !overrideEnabled {
+		return inherited
+	}
+	fallback := inherited
+	if previousOverridden {
+		fallback = previous
+	}
+	return normalizeProviderDefaultUserSettingsRequest(input, fallback)
 }
 
 func providerDefaultSettingsToDTO(input service.ProviderDefaultUserSettings) dto.ProviderDefaultUserSettings {

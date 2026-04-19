@@ -33,9 +33,11 @@ type SystemSettings struct {
 	LinuxDoConnectRedirectURL            string
 	WeChatLoginOpenEnabled               bool
 	WeChatLoginOpenAppID                 string
+	WeChatLoginOpenAppSecretConfigured   bool
 	WeChatLoginOpenAppSecret             string
 	WeChatLoginMPEnabled                 bool
 	WeChatLoginMPAppID                   string
+	WeChatLoginMPAppSecretConfigured     bool
 	WeChatLoginMPAppSecret               string
 	WeChatLoginUnionIDHealthStatus       string
 
@@ -79,13 +81,16 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency     int
-	DefaultBalance         float64
-	DefaultSubscriptions   []DefaultSubscriptionSetting
-	DefaultSettingsEmail   ProviderDefaultUserSettings
-	DefaultSettingsLinuxDo ProviderDefaultUserSettings
-	DefaultSettingsWeChat  ProviderDefaultUserSettings
-	DefaultSettingsOIDC    ProviderDefaultUserSettings
+	DefaultConcurrency               int
+	DefaultBalance                   float64
+	DefaultSubscriptions             []DefaultSubscriptionSetting
+	DefaultSettingsEmail             ProviderDefaultUserSettings
+	DefaultSettingsLinuxDo           ProviderDefaultUserSettings
+	DefaultSettingsLinuxDoOverridden bool
+	DefaultSettingsWeChat            ProviderDefaultUserSettings
+	DefaultSettingsWeChatOverridden  bool
+	DefaultSettingsOIDC              ProviderDefaultUserSettings
+	DefaultSettingsOIDCOverridden    bool
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -173,7 +178,9 @@ type PublicSettings struct {
 
 	LinuxDoOAuthEnabled            bool
 	WeChatLoginOpenEnabled         bool
+	WeChatLoginOpenConfigured      bool
 	WeChatLoginMPEnabled           bool
+	WeChatLoginMPConfigured        bool
 	WeChatLoginUnionIDHealthStatus string
 	BackendModeEnabled             bool
 	PaymentEnabled                 bool

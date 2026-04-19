@@ -577,8 +577,10 @@ func TestAPIContracts(t *testing.T) {
 						"linuxdo_connect_redirect_url": "",
 						"wechat_login_open_enabled": true,
 						"wechat_login_open_app_id": "wx-open-app",
+						"wechat_login_open_app_secret_configured": true,
 						"wechat_login_mp_enabled": false,
 						"wechat_login_mp_app_id": "",
+						"wechat_login_mp_app_secret_configured": false,
 						"wechat_login_unionid_health_status": "warning",
 						"oidc_connect_enabled": false,
 						"oidc_connect_provider_name": "OIDC",
@@ -615,6 +617,33 @@ func TestAPIContracts(t *testing.T) {
 					"default_concurrency": 5,
 					"default_balance": 1.25,
 					"default_subscriptions": [],
+					"default_settings_email": {
+						"apply_on_bind": false,
+						"balance": 1.25,
+						"concurrency": 5,
+						"subscriptions": null
+					},
+					"default_settings_linuxdo": {
+						"apply_on_bind": false,
+						"balance": 1.25,
+						"concurrency": 5,
+						"subscriptions": null
+					},
+					"default_settings_linuxdo_overridden": false,
+					"default_settings_wechat": {
+						"apply_on_bind": false,
+						"balance": 1.25,
+						"concurrency": 5,
+						"subscriptions": null
+					},
+					"default_settings_wechat_overridden": false,
+					"default_settings_oidc": {
+						"apply_on_bind": false,
+						"balance": 1.25,
+						"concurrency": 5,
+						"subscriptions": null
+					},
+					"default_settings_oidc_overridden": false,
 					"enable_model_fallback": false,
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
 					"fallback_model_antigravity": "gemini-2.5-pro",

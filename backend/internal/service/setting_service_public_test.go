@@ -93,7 +93,9 @@ func TestSettingService_GetPublicSettings_ExposesThirdPartyAndWeChatAuthFlags(t 
 	require.NoError(t, err)
 	require.True(t, settings.ThirdPartyFirstLoginRequireEmail)
 	require.True(t, settings.WeChatLoginOpenEnabled)
+	require.True(t, settings.WeChatLoginOpenConfigured)
 	require.False(t, settings.WeChatLoginMPEnabled)
+	require.False(t, settings.WeChatLoginMPConfigured)
 	require.Equal(t, WeChatLoginUnionIDHealthStatusWarning, settings.WeChatLoginUnionIDHealthStatus)
 }
 

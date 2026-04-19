@@ -53,8 +53,11 @@ type SystemSettings struct {
 	LinuxDoConnectRedirectURL            string `json:"linuxdo_connect_redirect_url"`
 	WeChatLoginOpenEnabled               bool   `json:"wechat_login_open_enabled"`
 	WeChatLoginOpenAppID                 string `json:"wechat_login_open_app_id"`
+	WeChatLoginOpenAppSecretConfigured   bool   `json:"wechat_login_open_app_secret_configured"`
 	WeChatLoginMPEnabled                 bool   `json:"wechat_login_mp_enabled"`
 	WeChatLoginMPAppID                   string `json:"wechat_login_mp_app_id"`
+	WeChatLoginMPAppSecretConfigured     bool   `json:"wechat_login_mp_app_secret_configured"`
+	WeChatLoginMPAppSecret               string `json:"wechat_login_mp_app_secret,omitempty"`
 	WeChatLoginUnionIDHealthStatus       string `json:"wechat_login_unionid_health_status"`
 
 	OIDCConnectEnabled                bool   `json:"oidc_connect_enabled"`
@@ -95,13 +98,16 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
-	DefaultConcurrency     int                          `json:"default_concurrency"`
-	DefaultBalance         float64                      `json:"default_balance"`
-	DefaultSubscriptions   []DefaultSubscriptionSetting `json:"default_subscriptions"`
-	DefaultSettingsEmail   ProviderDefaultUserSettings  `json:"default_settings_email"`
-	DefaultSettingsLinuxDo ProviderDefaultUserSettings  `json:"default_settings_linuxdo"`
-	DefaultSettingsWeChat  ProviderDefaultUserSettings  `json:"default_settings_wechat"`
-	DefaultSettingsOIDC    ProviderDefaultUserSettings  `json:"default_settings_oidc"`
+	DefaultConcurrency               int                          `json:"default_concurrency"`
+	DefaultBalance                   float64                      `json:"default_balance"`
+	DefaultSubscriptions             []DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultSettingsEmail             ProviderDefaultUserSettings  `json:"default_settings_email"`
+	DefaultSettingsLinuxDo           ProviderDefaultUserSettings  `json:"default_settings_linuxdo"`
+	DefaultSettingsLinuxDoOverridden bool                         `json:"default_settings_linuxdo_overridden"`
+	DefaultSettingsWeChat            ProviderDefaultUserSettings  `json:"default_settings_wechat"`
+	DefaultSettingsWeChatOverridden  bool                         `json:"default_settings_wechat_overridden"`
+	DefaultSettingsOIDC              ProviderDefaultUserSettings  `json:"default_settings_oidc"`
+	DefaultSettingsOIDCOverridden    bool                         `json:"default_settings_oidc_overridden"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -208,7 +214,9 @@ type PublicSettings struct {
 	CustomEndpoints                  []CustomEndpoint `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
 	WeChatLoginOpenEnabled           bool             `json:"wechat_login_open_enabled"`
+	WeChatLoginOpenConfigured        bool             `json:"wechat_login_open_configured"`
 	WeChatLoginMPEnabled             bool             `json:"wechat_login_mp_enabled"`
+	WeChatLoginMPConfigured          bool             `json:"wechat_login_mp_configured"`
 	WeChatLoginUnionIDHealthStatus   string           `json:"wechat_login_unionid_health_status"`
 	OIDCOAuthEnabled                 bool             `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string           `json:"oidc_oauth_provider_name"`
