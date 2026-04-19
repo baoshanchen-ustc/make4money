@@ -26,6 +26,7 @@ type CustomEndpoint struct {
 type SystemSettings struct {
 	RegistrationEnabled              bool     `json:"registration_enabled"`
 	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
+	ThirdPartyFirstLoginRequireEmail bool     `json:"third_party_first_login_require_email"`
 	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
 	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
 	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
@@ -50,6 +51,11 @@ type SystemSettings struct {
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`
 	LinuxDoConnectClientSecretConfigured bool   `json:"linuxdo_connect_client_secret_configured"`
 	LinuxDoConnectRedirectURL            string `json:"linuxdo_connect_redirect_url"`
+	WeChatLoginOpenEnabled               bool   `json:"wechat_login_open_enabled"`
+	WeChatLoginOpenAppID                 string `json:"wechat_login_open_app_id"`
+	WeChatLoginMPEnabled                 bool   `json:"wechat_login_mp_enabled"`
+	WeChatLoginMPAppID                   string `json:"wechat_login_mp_app_id"`
+	WeChatLoginUnionIDHealthStatus       string `json:"wechat_login_unionid_health_status"`
 
 	OIDCConnectEnabled                bool   `json:"oidc_connect_enabled"`
 	OIDCConnectProviderName           string `json:"oidc_connect_provider_name"`
@@ -89,9 +95,13 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
-	DefaultConcurrency   int                          `json:"default_concurrency"`
-	DefaultBalance       float64                      `json:"default_balance"`
-	DefaultSubscriptions []DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultConcurrency     int                          `json:"default_concurrency"`
+	DefaultBalance         float64                      `json:"default_balance"`
+	DefaultSubscriptions   []DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultSettingsEmail   ProviderDefaultUserSettings  `json:"default_settings_email"`
+	DefaultSettingsLinuxDo ProviderDefaultUserSettings  `json:"default_settings_linuxdo"`
+	DefaultSettingsWeChat  ProviderDefaultUserSettings  `json:"default_settings_wechat"`
+	DefaultSettingsOIDC    ProviderDefaultUserSettings  `json:"default_settings_oidc"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -164,9 +174,17 @@ type DefaultSubscriptionSetting struct {
 	ValidityDays int   `json:"validity_days"`
 }
 
+type ProviderDefaultUserSettings struct {
+	ApplyOnBind   bool                         `json:"apply_on_bind"`
+	Balance       float64                      `json:"balance"`
+	Concurrency   int                          `json:"concurrency"`
+	Subscriptions []DefaultSubscriptionSetting `json:"subscriptions"`
+}
+
 type PublicSettings struct {
 	RegistrationEnabled              bool             `json:"registration_enabled"`
 	EmailVerifyEnabled               bool             `json:"email_verify_enabled"`
+	ThirdPartyFirstLoginRequireEmail bool             `json:"third_party_first_login_require_email"`
 	RegistrationEmailSuffixWhitelist []string         `json:"registration_email_suffix_whitelist"`
 	PromoCodeEnabled                 bool             `json:"promo_code_enabled"`
 	PasswordResetEnabled             bool             `json:"password_reset_enabled"`
@@ -189,6 +207,9 @@ type PublicSettings struct {
 	CustomMenuItems                  []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints                  []CustomEndpoint `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
+	WeChatLoginOpenEnabled           bool             `json:"wechat_login_open_enabled"`
+	WeChatLoginMPEnabled             bool             `json:"wechat_login_mp_enabled"`
+	WeChatLoginUnionIDHealthStatus   string           `json:"wechat_login_unionid_health_status"`
 	OIDCOAuthEnabled                 bool             `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string           `json:"oidc_oauth_provider_name"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`

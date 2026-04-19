@@ -1125,6 +1125,141 @@
           </div>
         </div>
 
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">第三方登录补全与微信登录</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              统一控制第三方首次接入的邮箱补全策略，并拆分微信开放平台与公众号网页登录配置。
+            </p>
+          </div>
+          <div class="space-y-6 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">首次第三方登录强制补齐邮箱</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  开启后，LinuxDo、微信、OIDC 首次接入都必须完成邮箱验证码校验并设置密码。
+                </p>
+              </div>
+              <Toggle v-model="form.third_party_first_login_require_email" />
+            </div>
+
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 class="font-medium text-gray-900 dark:text-white">微信 UnionID 健康状态</h3>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    这是只读健康状态，用于提示 open/mp 配置是否满足同一 UnionID 归并前提。
+                  </p>
+                </div>
+                <span
+                  :class="[
+                    'inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-medium',
+                    wechatUnionidHealthBadgeClass
+                  ]"
+                >
+                  {{ wechatUnionidHealthLabel }}
+                </span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-medium text-gray-900 dark:text-white">开放平台网站应用</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      非微信环境优先走 open 登录。只配 open 时，微信内仍无法完成自动路由。
+                    </p>
+                  </div>
+                  <Toggle v-model="form.wechat_login_open_enabled" />
+                </div>
+
+                <div
+                  v-if="form.wechat_login_open_enabled"
+                  class="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Open AppID
+                    </label>
+                    <input
+                      v-model="form.wechat_login_open_app_id"
+                      type="text"
+                      class="input font-mono text-sm"
+                      placeholder="wx1234567890abcdef"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      该应用需要和公众号处于同一可稳定返回 UnionID 的开发者主体关系。
+                    </p>
+                  </div>
+
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Open AppSecret
+                    </label>
+                    <input
+                      v-model="form.wechat_login_open_app_secret"
+                      type="password"
+                      class="input font-mono text-sm"
+                      placeholder="输入开放平台网站应用密钥"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      只在站外网页登录使用，不会替代公众号网页登录能力。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-medium text-gray-900 dark:text-white">公众号网页授权</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      微信内优先走 mp 登录。只配 mp 时，站外入口应保持禁用并提示需在微信内打开。
+                    </p>
+                  </div>
+                  <Toggle v-model="form.wechat_login_mp_enabled" />
+                </div>
+
+                <div
+                  v-if="form.wechat_login_mp_enabled"
+                  class="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      MP AppID
+                    </label>
+                    <input
+                      v-model="form.wechat_login_mp_app_id"
+                      type="text"
+                      class="input font-mono text-sm"
+                      placeholder="wx1234567890abcdef"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      该公众号需要和开放平台网站应用保持同一 UnionID 体系，否则无法归并为同一站内微信身份。
+                    </p>
+                  </div>
+
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      MP AppSecret
+                    </label>
+                    <input
+                      v-model="form.wechat_login_mp_app_secret"
+                      type="password"
+                      class="input font-mono text-sm"
+                      placeholder="输入公众号网页授权密钥"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      只在微信内网页登录使用，不会让站外浏览器自动获得可用微信入口。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Generic OIDC OAuth 登录 -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -1375,7 +1510,7 @@
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
                   <div>
                     <label class="font-medium text-gray-900 dark:text-white">
@@ -1393,30 +1528,9 @@
                   </div>
                   <Toggle v-model="form.oidc_connect_validate_id_token" />
                 </div>
-
-                <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{ t('admin.settings.oidc.requireEmailVerified') }}
-                    </label>
-                  </div>
-                  <Toggle v-model="form.oidc_connect_require_email_verified" />
-                </div>
               </div>
 
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.userinfoEmailPath') }}
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_userinfo_email_path"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.userinfoEmailPathPlaceholder')"
-                  />
-                </div>
-
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div>
                   <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                     {{ t('admin.settings.oidc.userinfoIdPath') }}
@@ -1459,127 +1573,155 @@
             </p>
           </div>
           <div class="space-y-6 p-6">
-            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.defaults.defaultBalance') }}
-                </label>
-                <input
-                  v-model.number="form.default_balance"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  class="input"
-                  placeholder="0.00"
-                />
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.defaults.defaultBalanceHint') }}
-                </p>
-              </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.defaults.defaultConcurrency') }}
-                </label>
-                <input
-                  v-model.number="form.default_concurrency"
-                  type="number"
-                  min="1"
-                  class="input"
-                  placeholder="1"
-                />
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.defaults.defaultConcurrencyHint') }}
-                </p>
-              </div>
-            </div>
-
-            <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
-              <div class="mb-3 flex items-center justify-between">
-                <div>
-                  <label class="font-medium text-gray-900 dark:text-white">
-                    {{ t('admin.settings.defaults.defaultSubscriptions') }}
-                  </label>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.defaults.defaultSubscriptionsHint') }}
+            <div class="space-y-6">
+              <div
+                v-for="section in defaultSettingSections"
+                :key="section.key"
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+              >
+                <div class="border-b border-gray-100 pb-4 dark:border-dark-700">
+                  <h3 class="font-medium text-gray-900 dark:text-white">{{ section.title }}</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ section.description }}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  class="btn btn-secondary btn-sm"
-                  @click="addDefaultSubscription"
-                  :disabled="subscriptionGroups.length === 0"
-                >
-                  {{ t('admin.settings.defaults.addDefaultSubscription') }}
-                </button>
-              </div>
 
-              <div
-                v-if="form.default_subscriptions.length === 0"
-                class="rounded border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
-              >
-                {{ t('admin.settings.defaults.defaultSubscriptionsEmpty') }}
-              </div>
-
-              <div v-else class="space-y-3">
                 <div
-                  v-for="(item, index) in form.default_subscriptions"
-                  :key="`default-sub-${index}`"
-                  class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[1fr_160px_auto] dark:border-dark-600"
+                  v-if="section.supportsBindGrant"
+                  class="mt-4 flex items-start justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-700"
                 >
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                      {{ t('admin.settings.defaults.subscriptionGroup') }}
-                    </label>
-                    <Select
-                      v-model="item.group_id"
-                      class="default-sub-group-select"
-                      :options="defaultSubscriptionGroupOptions"
-                      :placeholder="t('admin.settings.defaults.subscriptionGroup')"
-                    >
-                      <template #selected="{ option }">
-                        <GroupBadge
-                          v-if="option"
-                          :name="(option as unknown as DefaultSubscriptionGroupOption).label"
-                          :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
-                          :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
-                          :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
-                        />
-                        <span v-else class="text-gray-400">
-                          {{ t('admin.settings.defaults.subscriptionGroup') }}
-                        </span>
-                      </template>
-                      <template #option="{ option, selected }">
-                        <GroupOptionItem
-                          :name="(option as unknown as DefaultSubscriptionGroupOption).label"
-                          :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
-                          :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
-                          :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
-                          :description="(option as unknown as DefaultSubscriptionGroupOption).description"
-                          :selected="selected"
-                        />
-                      </template>
-                    </Select>
+                    <p class="font-medium text-gray-900 dark:text-white">首次绑定该渠道时发放默认值</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      仅在同一用户首次绑定该渠道时生效一次；解绑后重新绑定不会重复发放。
+                    </p>
                   </div>
+                  <Toggle v-model="defaultSettingsBySource[section.key].apply_on_bind" />
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                      {{ t('admin.settings.defaults.subscriptionValidityDays') }}
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.defaults.defaultBalance') }}
                     </label>
                     <input
-                      v-model.number="item.validity_days"
+                      v-model.number="defaultSettingsBySource[section.key].balance"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="input"
+                      placeholder="0.00"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ section.title }}新账号创建完成后立即写入该余额。
+                    </p>
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.defaults.defaultConcurrency') }}
+                    </label>
+                    <input
+                      v-model.number="defaultSettingsBySource[section.key].concurrency"
                       type="number"
                       min="1"
-                      max="36500"
-                      class="input h-[42px]"
+                      class="input"
+                      placeholder="1"
                     />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ section.title }}新账号初始并发限制。
+                    </p>
                   </div>
-                  <div class="flex items-end">
+                </div>
+
+                <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <div class="mb-3 flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">
+                        {{ t('admin.settings.defaults.defaultSubscriptions') }}
+                      </label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        为 {{ section.title }} 新账号自动分配订阅组。
+                      </p>
+                    </div>
                     <button
                       type="button"
-                      class="btn btn-secondary default-sub-delete-btn w-full text-red-600 hover:text-red-700 dark:text-red-400"
-                      @click="removeDefaultSubscription(index)"
+                      class="btn btn-secondary btn-sm"
+                      @click="addDefaultSubscription(section.key)"
+                      :disabled="subscriptionGroups.length === 0"
                     >
-                      {{ t('common.delete') }}
+                      {{ t('admin.settings.defaults.addDefaultSubscription') }}
                     </button>
+                  </div>
+
+                  <div
+                    v-if="defaultSettingsBySource[section.key].subscriptions.length === 0"
+                    class="rounded border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                  >
+                    {{ t('admin.settings.defaults.defaultSubscriptionsEmpty') }}
+                  </div>
+
+                  <div v-else class="space-y-3">
+                    <div
+                      v-for="(item, index) in defaultSettingsBySource[section.key].subscriptions"
+                      :key="`${section.key}-default-sub-${index}`"
+                      class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[1fr_160px_auto] dark:border-dark-600"
+                    >
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t('admin.settings.defaults.subscriptionGroup') }}
+                        </label>
+                        <Select
+                          v-model="item.group_id"
+                          class="default-sub-group-select"
+                          :options="defaultSubscriptionGroupOptions"
+                          :placeholder="t('admin.settings.defaults.subscriptionGroup')"
+                        >
+                          <template #selected="{ option }">
+                            <GroupBadge
+                              v-if="option"
+                              :name="(option as unknown as DefaultSubscriptionGroupOption).label"
+                              :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
+                              :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
+                              :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
+                            />
+                            <span v-else class="text-gray-400">
+                              {{ t('admin.settings.defaults.subscriptionGroup') }}
+                            </span>
+                          </template>
+                          <template #option="{ option, selected }">
+                            <GroupOptionItem
+                              :name="(option as unknown as DefaultSubscriptionGroupOption).label"
+                              :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
+                              :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
+                              :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
+                              :description="(option as unknown as DefaultSubscriptionGroupOption).description"
+                              :selected="selected"
+                            />
+                          </template>
+                        </Select>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t('admin.settings.defaults.subscriptionValidityDays') }}
+                        </label>
+                        <input
+                          v-model.number="item.validity_days"
+                          type="number"
+                          min="1"
+                          max="36500"
+                          class="input h-[42px]"
+                        />
+                      </div>
+                      <div class="flex items-end">
+                        <button
+                          type="button"
+                          class="btn btn-secondary default-sub-delete-btn w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                          @click="removeDefaultSubscription(section.key, index)"
+                        >
+                          {{ t('common.delete') }}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2465,13 +2607,20 @@
           </div>
         </div>
 
+        <div
+          v-if="form.payment_enabled"
+          class="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-900/10 dark:text-amber-100"
+        >
+          {{ t('admin.settings.payment.providerUiCapabilityNotice') }}
+        </div>
+
         <!-- Provider Management -->
         <PaymentProviderList
           v-if="form.payment_enabled"
           :providers="providers"
           :loading="providersLoading"
           :can-create="hasAnyPaymentTypeEnabled"
-          :enabled-payment-types="form.payment_enabled_types"
+          :enabled-payment-types="enabledProviderKeys"
           :all-payment-types="allPaymentTypes"
           :redirect-label="t('admin.settings.payment.easypayRedirect')"
           @refresh="loadProviders"
@@ -2831,18 +2980,23 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  ProviderDefaultUserSettings,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
 } from '@/api/admin/settings'
 import type { AdminGroup, Proxy, NotifyEmailEntry } from '@/types'
-import type { ProviderInstance } from '@/types/payment'
+import type { PaymentProviderKey, ProviderInstance } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import PaymentProviderList from '@/components/payment/PaymentProviderList.vue'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
+import {
+  getEnabledProviderKeysForPaymentTypes,
+  shouldDisableProviderAfterPaymentTypeRemoved,
+} from '@/components/payment/providerConfig'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -2955,16 +3109,84 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown
 }
 
+type DefaultSettingsSource = 'email' | 'linuxdo' | 'wechat' | 'oidc'
+
+function createProviderDefaultSettings(
+  partial: Partial<ProviderDefaultUserSettings> = {}
+): ProviderDefaultUserSettings {
+  return {
+    apply_on_bind: partial.apply_on_bind ?? false,
+    balance: partial.balance ?? 0,
+    concurrency: Math.max(1, partial.concurrency ?? 1),
+    subscriptions: Array.isArray(partial.subscriptions)
+      ? partial.subscriptions
+          .filter((item) => item.group_id > 0 && item.validity_days > 0)
+          .map((item) => ({
+            group_id: item.group_id,
+            validity_days: item.validity_days
+          }))
+      : []
+  }
+}
+
+const defaultSettingsBySource = reactive<Record<DefaultSettingsSource, ProviderDefaultUserSettings>>({
+  email: createProviderDefaultSettings(),
+  linuxdo: createProviderDefaultSettings(),
+  wechat: createProviderDefaultSettings(),
+  oidc: createProviderDefaultSettings()
+})
+
+const defaultSettingSectionMap: Record<
+  DefaultSettingsSource,
+  { title: string; description: string; supportsBindGrant: boolean }
+> = {
+  email: {
+    title: '邮箱注册',
+    description: '本地邮箱注册，以及第三方补齐邮箱后直接创建的新账号，使用这组默认值。',
+    supportsBindGrant: false
+  },
+  linuxdo: {
+    title: 'LinuxDo 凭证',
+    description: 'LinuxDo 首次登录直接建号时使用这组默认值。',
+    supportsBindGrant: true
+  },
+  wechat: {
+    title: '微信凭证',
+    description: '微信开放平台网站应用与公众号网页授权首次建号统一使用这组默认值。',
+    supportsBindGrant: true
+  },
+  oidc: {
+    title: 'OIDC 凭证',
+    description: '通用 OIDC 首次登录直接建号时使用这组默认值。',
+    supportsBindGrant: true
+  }
+}
+
+const defaultSettingSections: Array<{
+  key: DefaultSettingsSource
+  title: string
+  description: string
+  supportsBindGrant: boolean
+}> = [
+  { key: 'email', ...defaultSettingSectionMap.email },
+  { key: 'linuxdo', ...defaultSettingSectionMap.linuxdo },
+  { key: 'wechat', ...defaultSettingSectionMap.wechat },
+  { key: 'oidc', ...defaultSettingSectionMap.oidc }
+]
+
 type SettingsForm = SystemSettings & {
   smtp_password: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
+  wechat_login_open_app_secret: string
+  wechat_login_mp_app_secret: string
   oidc_connect_client_secret: string
 }
 
 const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
+  third_party_first_login_require_email: false,
   registration_email_suffix_whitelist: [],
   promo_code_enabled: true,
   invitation_code_enabled: false,
@@ -2974,6 +3196,10 @@ const form = reactive<SettingsForm>({
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
+  default_settings_email: createProviderDefaultSettings(),
+  default_settings_linuxdo: createProviderDefaultSettings(),
+  default_settings_wechat: createProviderDefaultSettings(),
+  default_settings_oidc: createProviderDefaultSettings(),
   site_name: 'Sub2API',
   site_logo: '',
   site_subtitle: 'Subscription to API Conversion Platform',
@@ -3008,6 +3234,13 @@ const form = reactive<SettingsForm>({
   linuxdo_connect_client_secret: '',
   linuxdo_connect_client_secret_configured: false,
   linuxdo_connect_redirect_url: '',
+  wechat_login_open_enabled: false,
+  wechat_login_open_app_id: '',
+  wechat_login_open_app_secret: '',
+  wechat_login_mp_enabled: false,
+  wechat_login_mp_app_id: '',
+  wechat_login_mp_app_secret: '',
+  wechat_login_unionid_health_status: 'error',
   // Generic OIDC OAuth 登录
   oidc_connect_enabled: false,
   oidc_connect_provider_name: 'OIDC',
@@ -3028,8 +3261,6 @@ const form = reactive<SettingsForm>({
   oidc_connect_validate_id_token: true,
   oidc_connect_allowed_signing_algs: 'RS256,ES256,PS256',
   oidc_connect_clock_skew_seconds: 120,
-  oidc_connect_require_email_verified: false,
-  oidc_connect_userinfo_email_path: '',
   oidc_connect_userinfo_id_path: '',
   oidc_connect_userinfo_username_path: '',
   // Model fallback
@@ -3345,6 +3576,30 @@ async function setAndCopyOIDCRedirectUrl() {
   await copyToClipboard(url, t('admin.settings.oidc.redirectUrlSetAndCopied'))
 }
 
+const wechatUnionidHealthLabel = computed(() => {
+  switch (form.wechat_login_unionid_health_status) {
+    case 'ok':
+      return '正常'
+    case 'warning':
+      return '待确认'
+    case 'error':
+    default:
+      return '异常'
+  }
+})
+
+const wechatUnionidHealthBadgeClass = computed(() => {
+  switch (form.wechat_login_unionid_health_status) {
+    case 'ok':
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+    case 'warning':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+    case 'error':
+    default:
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  }
+})
+
 // Custom menu item management
 function addMenuItem() {
   form.custom_menu_items.push({
@@ -3391,6 +3646,22 @@ function formatTablePageSizeOptions(options: number[]): string {
   return options.join(', ')
 }
 
+function syncLegacyDefaultSettingsFromEmail() {
+  form.default_balance = defaultSettingsBySource.email.balance
+  form.default_concurrency = defaultSettingsBySource.email.concurrency
+  form.default_subscriptions = defaultSettingsBySource.email.subscriptions.map((item) => ({
+    group_id: item.group_id,
+    validity_days: item.validity_days
+  }))
+}
+
+function setProviderDefaultSettings(
+  source: DefaultSettingsSource,
+  settings?: ProviderDefaultUserSettings | null
+) {
+  Object.assign(defaultSettingsBySource[source], createProviderDefaultSettings(settings ?? {}))
+}
+
 function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   const tokens = raw
     .split(',')
@@ -3429,14 +3700,15 @@ async function loadSettings() {
       }
     }
     form.backend_mode_enabled = settings.backend_mode_enabled
-    form.default_subscriptions = Array.isArray(settings.default_subscriptions)
-      ? settings.default_subscriptions
-          .filter((item) => item.group_id > 0 && item.validity_days > 0)
-          .map((item) => ({
-            group_id: item.group_id,
-            validity_days: item.validity_days
-          }))
-      : []
+    setProviderDefaultSettings('email', settings.default_settings_email ?? {
+      balance: settings.default_balance,
+      concurrency: settings.default_concurrency,
+      subscriptions: settings.default_subscriptions
+    })
+    setProviderDefaultSettings('linuxdo', settings.default_settings_linuxdo)
+    setProviderDefaultSettings('wechat', settings.default_settings_wechat)
+    setProviderDefaultSettings('oidc', settings.default_settings_oidc)
+    syncLegacyDefaultSettingsFromEmail()
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       settings.registration_email_suffix_whitelist
     )
@@ -3448,6 +3720,8 @@ async function loadSettings() {
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
+    form.wechat_login_open_app_secret = ''
+    form.wechat_login_mp_app_secret = ''
     form.oidc_connect_client_secret = ''
 
     // Load web search emulation config separately
@@ -3471,19 +3745,26 @@ async function loadSubscriptionGroups() {
   }
 }
 
-function addDefaultSubscription() {
+function addDefaultSubscription(source: DefaultSettingsSource) {
   if (subscriptionGroups.value.length === 0) return
-  const existing = new Set(form.default_subscriptions.map((item) => item.group_id))
+  const target = defaultSettingsBySource[source]
+  const existing = new Set(target.subscriptions.map((item) => item.group_id))
   const candidate = subscriptionGroups.value.find((group) => !existing.has(group.id))
   if (!candidate) return
-  form.default_subscriptions.push({
+  target.subscriptions.push({
     group_id: candidate.id,
     validity_days: 30
   })
+  if (source === 'email') {
+    syncLegacyDefaultSettingsFromEmail()
+  }
 }
 
-function removeDefaultSubscription(index: number) {
-  form.default_subscriptions.splice(index, 1)
+function removeDefaultSubscription(source: DefaultSettingsSource, index: number) {
+  defaultSettingsBySource[source].subscriptions.splice(index, 1)
+  if (source === 'email') {
+    syncLegacyDefaultSettingsFromEmail()
+  }
 }
 
 async function saveSettings() {
@@ -3520,29 +3801,57 @@ async function saveSettings() {
     form.table_default_page_size = normalizedTableDefaultPageSize
     form.table_page_size_options = normalizedTablePageSizeOptions
 
-    const normalizedDefaultSubscriptions = form.default_subscriptions
-      .filter((item) => item.group_id > 0 && item.validity_days > 0)
-      .map((item: DefaultSubscriptionSetting) => ({
-        group_id: item.group_id,
-        validity_days: Math.min(36500, Math.max(1, Math.floor(item.validity_days)))
-      }))
+    const normalizeProviderDefaultSettingsForSave = (
+      source: DefaultSettingsSource
+    ): ProviderDefaultUserSettings | null => {
+      const current = defaultSettingsBySource[source]
+      const normalizedSubscriptions = current.subscriptions
+        .filter((item) => item.group_id > 0 && item.validity_days > 0)
+        .map((item: DefaultSubscriptionSetting) => ({
+          group_id: item.group_id,
+          validity_days: Math.min(36500, Math.max(1, Math.floor(item.validity_days)))
+        }))
 
-    const seenGroupIDs = new Set<number>()
-    const duplicateDefaultSubscription = normalizedDefaultSubscriptions.find((item) => {
-      if (seenGroupIDs.has(item.group_id)) {
-        return true
+      const seenGroupIDs = new Set<number>()
+      const duplicateDefaultSubscription = normalizedSubscriptions.find((item) => {
+        if (seenGroupIDs.has(item.group_id)) {
+          return true
+        }
+        seenGroupIDs.add(item.group_id)
+        return false
+      })
+      if (duplicateDefaultSubscription) {
+        appStore.showError(
+          `${defaultSettingSectionMap[source].title}存在重复默认订阅分组：${duplicateDefaultSubscription.group_id}`
+        )
+        return null
       }
-      seenGroupIDs.add(item.group_id)
-      return false
-    })
-    if (duplicateDefaultSubscription) {
-      appStore.showError(
-        t('admin.settings.defaults.defaultSubscriptionsDuplicate', {
-          groupId: duplicateDefaultSubscription.group_id
-        })
-      )
+
+      return {
+        apply_on_bind: Boolean(current.apply_on_bind),
+        balance: Math.max(0, Number(current.balance) || 0),
+        concurrency: Math.max(1, Math.floor(Number(current.concurrency) || 1)),
+        subscriptions: normalizedSubscriptions
+      }
+    }
+
+    const normalizedEmailDefaultSettings = normalizeProviderDefaultSettingsForSave('email')
+    const normalizedLinuxDoDefaultSettings = normalizeProviderDefaultSettingsForSave('linuxdo')
+    const normalizedWeChatDefaultSettings = normalizeProviderDefaultSettingsForSave('wechat')
+    const normalizedOIDCDefaultSettings = normalizeProviderDefaultSettingsForSave('oidc')
+    if (
+      !normalizedEmailDefaultSettings ||
+      !normalizedLinuxDoDefaultSettings ||
+      !normalizedWeChatDefaultSettings ||
+      !normalizedOIDCDefaultSettings
+    ) {
       return
     }
+    Object.assign(defaultSettingsBySource.email, normalizedEmailDefaultSettings)
+    Object.assign(defaultSettingsBySource.linuxdo, normalizedLinuxDoDefaultSettings)
+    Object.assign(defaultSettingsBySource.wechat, normalizedWeChatDefaultSettings)
+    Object.assign(defaultSettingsBySource.oidc, normalizedOIDCDefaultSettings)
+    syncLegacyDefaultSettingsFromEmail()
 
     // Validate URL fields — novalidate disables browser-native checks, so we validate here
     const isValidHttpUrl = (url: string): boolean => {
@@ -3561,6 +3870,7 @@ async function saveSettings() {
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
+      third_party_first_login_require_email: form.third_party_first_login_require_email,
       registration_email_suffix_whitelist: registrationEmailSuffixWhitelistTags.value.map(
         (suffix) => `@${suffix}`
       ),
@@ -3568,9 +3878,13 @@ async function saveSettings() {
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
-      default_balance: form.default_balance,
-      default_concurrency: form.default_concurrency,
-      default_subscriptions: normalizedDefaultSubscriptions,
+      default_balance: normalizedEmailDefaultSettings.balance,
+      default_concurrency: normalizedEmailDefaultSettings.concurrency,
+      default_subscriptions: normalizedEmailDefaultSettings.subscriptions,
+      default_settings_email: normalizedEmailDefaultSettings,
+      default_settings_linuxdo: normalizedLinuxDoDefaultSettings,
+      default_settings_wechat: normalizedWeChatDefaultSettings,
+      default_settings_oidc: normalizedOIDCDefaultSettings,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
@@ -3599,6 +3913,12 @@ async function saveSettings() {
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret: form.linuxdo_connect_client_secret || undefined,
       linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
+      wechat_login_open_enabled: form.wechat_login_open_enabled,
+      wechat_login_open_app_id: form.wechat_login_open_app_id,
+      wechat_login_open_app_secret: form.wechat_login_open_app_secret || undefined,
+      wechat_login_mp_enabled: form.wechat_login_mp_enabled,
+      wechat_login_mp_app_id: form.wechat_login_mp_app_id,
+      wechat_login_mp_app_secret: form.wechat_login_mp_app_secret || undefined,
       oidc_connect_enabled: form.oidc_connect_enabled,
       oidc_connect_provider_name: form.oidc_connect_provider_name,
       oidc_connect_client_id: form.oidc_connect_client_id,
@@ -3617,8 +3937,6 @@ async function saveSettings() {
       oidc_connect_validate_id_token: form.oidc_connect_validate_id_token,
       oidc_connect_allowed_signing_algs: form.oidc_connect_allowed_signing_algs,
       oidc_connect_clock_skew_seconds: form.oidc_connect_clock_skew_seconds,
-      oidc_connect_require_email_verified: form.oidc_connect_require_email_verified,
-      oidc_connect_userinfo_email_path: form.oidc_connect_userinfo_email_path,
       oidc_connect_userinfo_id_path: form.oidc_connect_userinfo_id_path,
       oidc_connect_userinfo_username_path: form.oidc_connect_userinfo_username_path,
       enable_model_fallback: form.enable_model_fallback,
@@ -4012,7 +4330,6 @@ async function saveBetaPolicySettings() {
 // ==================== Provider Management ====================
 
 const allPaymentTypes = computed(() => [
-  { value: 'easypay', label: t('payment.methods.easypay') },
   { value: 'alipay', label: t('payment.methods.alipay') },
   { value: 'wxpay', label: t('payment.methods.wxpay') },
   { value: 'stripe', label: t('payment.methods.stripe') },
@@ -4035,7 +4352,10 @@ function togglePaymentType(type: string) {
 }
 
 async function disableProvidersByType(type: string) {
-  const matching = providers.value.filter(p => p.provider_key === type && p.enabled)
+  const remainingEnabledTypes = form.payment_enabled_types
+  const matching = providers.value.filter(p =>
+    p.enabled && shouldDisableProviderAfterPaymentTypeRemoved(p, type, remainingEnabledTypes),
+  )
   for (const p of matching) {
     try {
       await adminAPI.payment.updateProvider(p.id, { enabled: false })
@@ -4064,9 +4384,10 @@ const providerKeyOptions = computed(() => [
   { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
 ])
 
+const enabledProviderKeys = computed(() => getEnabledProviderKeysForPaymentTypes(form.payment_enabled_types))
+
 const enabledProviderKeyOptions = computed(() => {
-  const enabled = form.payment_enabled_types
-  return providerKeyOptions.value.filter(opt => enabled.includes(opt.value))
+  return providerKeyOptions.value.filter(opt => enabledProviderKeys.value.includes(opt.value as PaymentProviderKey))
 })
 
 const loadBalanceOptions = computed(() => [
@@ -4098,7 +4419,7 @@ async function loadProviders() {
 
 function openCreateProvider() {
   editingProvider.value = null
-  providerDialogRef.value?.reset(enabledProviderKeyOptions.value[0]?.value || 'easypay')
+  providerDialogRef.value?.reset((enabledProviderKeyOptions.value[0]?.value || 'easypay') as PaymentProviderKey)
   showProviderDialog.value = true
 }
 

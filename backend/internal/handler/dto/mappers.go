@@ -3,6 +3,7 @@ package dto
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -12,11 +13,16 @@ func UserFromServiceShallow(u *service.User) *User {
 	if u == nil {
 		return nil
 	}
+	avatarURL := strings.TrimSpace(u.AvatarURL)
+	if avatarURL == "" {
+		avatarURL = service.ResolvePreferredUserAvatarURL(u.Avatar)
+	}
 	return &User{
 		ID:                         u.ID,
 		Email:                      u.Email,
 		Username:                   u.Username,
 		Role:                       u.Role,
+		SignupSource:               service.NormalizeSignupSource(u.SignupSource),
 		Balance:                    u.Balance,
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,
@@ -28,6 +34,13 @@ func UserFromServiceShallow(u *service.User) *User {
 		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,
 		BalanceNotifyExtraEmails:   NotifyEmailEntriesFromService(u.BalanceNotifyExtraEmails),
 		TotalRecharged:             u.TotalRecharged,
+		Avatar:                     userAvatarFromService(u.Avatar),
+		AvatarURL:                  avatarURL,
+		AvatarUpdatedAt:            u.AvatarUpdatedAt,
+		AvatarMimeType:             avatarContentType(u.Avatar),
+		HasCustomAvatar:            u.HasCustomAvatar,
+		ExternalIdentities:         userExternalIdentitiesFromService(u),
+		AccountBindings:            userAccountBindingsFromService(u),
 	}
 }
 
@@ -51,6 +64,107 @@ func UserFromService(u *service.User) *User {
 		}
 	}
 	return out
+}
+
+func userExternalIdentitiesFromService(u *service.User) []UserExternalIdentity {
+	state := service.BuildUserIdentityState(u, nil)
+	if len(state.ExternalIdentities) == 0 {
+		return nil
+	}
+
+	identities := make([]UserExternalIdentity, 0, len(state.ExternalIdentities))
+	for _, identity := range state.ExternalIdentities {
+		displayName := identity.ProviderUserID
+		if displayName == "" {
+			displayName = service.ExternalIdentityProviderDisplayName(identity.Provider)
+		}
+		identities = append(identities, UserExternalIdentity{
+			Provider:       string(identity.Provider),
+			ProviderUserID: identity.ProviderUserID,
+			DisplayName:    displayName,
+		})
+	}
+	return identities
+}
+
+func userAvatarFromService(avatar *service.UserAvatar) *UserAvatar {
+	if avatar == nil {
+		return nil
+	}
+	return &UserAvatar{
+		StorageProvider: avatar.StorageProvider,
+		StorageKey:      avatar.StorageKey,
+		URL:             avatar.URL,
+		ContentType:     avatar.ContentType,
+		ByteSize:        avatar.ByteSize,
+		SHA256:          avatar.SHA256,
+		CreatedAt:       avatar.CreatedAt,
+		UpdatedAt:       avatar.UpdatedAt,
+	}
+}
+
+func avatarContentType(avatar *service.UserAvatar) string {
+	if avatar == nil {
+		return ""
+	}
+	return strings.TrimSpace(avatar.ContentType)
+}
+
+func userAccountBindingsFromService(u *service.User) map[string]UserAccountBinding {
+	state := service.BuildUserIdentityState(u, nil)
+	hasLocalLogin := state.HasUsableLocalLogin()
+	bindings := map[string]UserAccountBinding{
+		"email": {
+			Provider:        "email",
+			ProviderSubject: localEmailBindingSubject(u),
+			DisplayName:     localEmailBindingSubject(u),
+			Bound:           hasLocalLogin,
+			Verified:        hasLocalLogin,
+			CanDisconnect:   false,
+		},
+		"linuxdo": {
+			Provider: "linuxdo",
+		},
+		"wechat": {
+			Provider: "wechat",
+		},
+		"oidc": {
+			Provider: "oidc",
+		},
+	}
+
+	availability := map[service.ExternalIdentityProvider]service.ProviderAvailability{
+		service.ExternalIdentityProviderLinuxDo: {Enabled: true, ConfigValid: true},
+		service.ExternalIdentityProviderWeChat:  {Enabled: true, ConfigValid: true},
+		service.ExternalIdentityProviderOIDC:    {Enabled: true, ConfigValid: true},
+	}
+
+	for _, identity := range state.ExternalIdentities {
+		provider := string(identity.Provider)
+		displayName := identity.ProviderUserID
+		if displayName == "" {
+			displayName = service.ExternalIdentityProviderDisplayName(identity.Provider)
+		}
+		bindings[provider] = UserAccountBinding{
+			Provider:        provider,
+			ProviderSubject: identity.ProviderUserID,
+			DisplayName:     displayName,
+			Bound:           true,
+			CanDisconnect:   service.CanDisconnectExternalIdentity(state, identity.Provider, availability),
+		}
+	}
+
+	return bindings
+}
+
+func localEmailBindingSubject(u *service.User) string {
+	if u == nil {
+		return ""
+	}
+	if !service.BuildUserIdentityState(u, nil).HasUsableLocalLogin() {
+		return ""
+	}
+	return u.Email
 }
 
 // UserFromServiceAdmin converts a service User to DTO for admin users.

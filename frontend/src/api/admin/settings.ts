@@ -11,6 +11,13 @@ export interface DefaultSubscriptionSetting {
   validity_days: number
 }
 
+export interface ProviderDefaultUserSettings {
+  apply_on_bind: boolean
+  balance: number
+  concurrency: number
+  subscriptions: DefaultSubscriptionSetting[]
+}
+
 /**
  * System settings interface
  */
@@ -18,6 +25,7 @@ export interface SystemSettings {
   // Registration settings
   registration_enabled: boolean
   email_verify_enabled: boolean
+  third_party_first_login_require_email: boolean
   registration_email_suffix_whitelist: string[]
   promo_code_enabled: boolean
   password_reset_enabled: boolean
@@ -29,6 +37,10 @@ export interface SystemSettings {
   default_balance: number
   default_concurrency: number
   default_subscriptions: DefaultSubscriptionSetting[]
+  default_settings_email: ProviderDefaultUserSettings
+  default_settings_linuxdo: ProviderDefaultUserSettings
+  default_settings_wechat: ProviderDefaultUserSettings
+  default_settings_oidc: ProviderDefaultUserSettings
   // OEM settings
   site_name: string
   site_logo: string
@@ -61,6 +73,11 @@ export interface SystemSettings {
   linuxdo_connect_client_id: string
   linuxdo_connect_client_secret_configured: boolean
   linuxdo_connect_redirect_url: string
+  wechat_login_open_enabled: boolean
+  wechat_login_open_app_id: string
+  wechat_login_mp_enabled: boolean
+  wechat_login_mp_app_id: string
+  wechat_login_unionid_health_status?: 'ok' | 'warning' | 'error'
 
   // Generic OIDC OAuth settings
   oidc_connect_enabled: boolean
@@ -81,8 +98,6 @@ export interface SystemSettings {
   oidc_connect_validate_id_token: boolean
   oidc_connect_allowed_signing_algs: string
   oidc_connect_clock_skew_seconds: number
-  oidc_connect_require_email_verified: boolean
-  oidc_connect_userinfo_email_path: string
   oidc_connect_userinfo_id_path: string
   oidc_connect_userinfo_username_path: string
 
@@ -149,6 +164,7 @@ export interface SystemSettings {
 export interface UpdateSettingsRequest {
   registration_enabled?: boolean
   email_verify_enabled?: boolean
+  third_party_first_login_require_email?: boolean
   registration_email_suffix_whitelist?: string[]
   promo_code_enabled?: boolean
   password_reset_enabled?: boolean
@@ -158,6 +174,10 @@ export interface UpdateSettingsRequest {
   default_balance?: number
   default_concurrency?: number
   default_subscriptions?: DefaultSubscriptionSetting[]
+  default_settings_email?: ProviderDefaultUserSettings
+  default_settings_linuxdo?: ProviderDefaultUserSettings
+  default_settings_wechat?: ProviderDefaultUserSettings
+  default_settings_oidc?: ProviderDefaultUserSettings
   site_name?: string
   site_logo?: string
   site_subtitle?: string
@@ -185,6 +205,12 @@ export interface UpdateSettingsRequest {
   linuxdo_connect_client_id?: string
   linuxdo_connect_client_secret?: string
   linuxdo_connect_redirect_url?: string
+  wechat_login_open_enabled?: boolean
+  wechat_login_open_app_id?: string
+  wechat_login_open_app_secret?: string
+  wechat_login_mp_enabled?: boolean
+  wechat_login_mp_app_id?: string
+  wechat_login_mp_app_secret?: string
   oidc_connect_enabled?: boolean
   oidc_connect_provider_name?: string
   oidc_connect_client_id?: string
@@ -203,8 +229,6 @@ export interface UpdateSettingsRequest {
   oidc_connect_validate_id_token?: boolean
   oidc_connect_allowed_signing_algs?: string
   oidc_connect_clock_skew_seconds?: number
-  oidc_connect_require_email_verified?: boolean
-  oidc_connect_userinfo_email_path?: string
   oidc_connect_userinfo_id_path?: string
   oidc_connect_userinfo_username_path?: string
   enable_model_fallback?: boolean

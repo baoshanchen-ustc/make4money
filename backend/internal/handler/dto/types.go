@@ -14,19 +14,53 @@ type User struct {
 	Balance       float64   `json:"balance"`
 	Concurrency   int       `json:"concurrency"`
 	Status        string    `json:"status"`
+	SignupSource  string    `json:"signup_source,omitempty"`
 	AllowedGroups []int64   `json:"allowed_groups"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 
 	// 余额不足通知
-	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
-	BalanceNotifyThresholdType string             `json:"balance_notify_threshold_type"`
-	BalanceNotifyThreshold     *float64           `json:"balance_notify_threshold"`
-	BalanceNotifyExtraEmails   []NotifyEmailEntry `json:"balance_notify_extra_emails"`
-	TotalRecharged             float64            `json:"total_recharged"`
+	BalanceNotifyEnabled       bool                          `json:"balance_notify_enabled"`
+	BalanceNotifyThresholdType string                        `json:"balance_notify_threshold_type"`
+	BalanceNotifyThreshold     *float64                      `json:"balance_notify_threshold"`
+	BalanceNotifyExtraEmails   []NotifyEmailEntry            `json:"balance_notify_extra_emails"`
+	TotalRecharged             float64                       `json:"total_recharged"`
+	Avatar                     *UserAvatar                   `json:"avatar,omitempty"`
+	AvatarURL                  string                        `json:"avatar_url,omitempty"`
+	AvatarUpdatedAt            *time.Time                    `json:"avatar_updated_at,omitempty"`
+	AvatarMimeType             string                        `json:"avatar_mime_type,omitempty"`
+	HasCustomAvatar            bool                          `json:"has_custom_avatar,omitempty"`
+	ExternalIdentities         []UserExternalIdentity        `json:"external_identities,omitempty"`
+	AccountBindings            map[string]UserAccountBinding `json:"account_bindings,omitempty"`
 
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
+}
+
+type UserExternalIdentity struct {
+	Provider       string `json:"provider"`
+	ProviderUserID string `json:"provider_user_id,omitempty"`
+	DisplayName    string `json:"display_name,omitempty"`
+}
+
+type UserAvatar struct {
+	StorageProvider string    `json:"storage_provider"`
+	StorageKey      string    `json:"storage_key"`
+	URL             string    `json:"url,omitempty"`
+	ContentType     string    `json:"content_type,omitempty"`
+	ByteSize        int64     `json:"byte_size,omitempty"`
+	SHA256          string    `json:"sha256,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type UserAccountBinding struct {
+	Provider        string `json:"provider"`
+	ProviderSubject string `json:"provider_subject,omitempty"`
+	DisplayName     string `json:"display_name,omitempty"`
+	Bound           bool   `json:"bound"`
+	CanDisconnect   bool   `json:"can_disconnect"`
+	Verified        bool   `json:"verified,omitempty"`
 }
 
 // AdminUser 是管理员接口使用的 user DTO（包含敏感/内部字段）。

@@ -96,6 +96,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  settings.RegistrationEnabled,
 		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
+		ThirdPartyFirstLoginRequireEmail:     settings.ThirdPartyFirstLoginRequireEmail,
 		RegistrationEmailSuffixWhitelist:     settings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                     settings.PromoCodeEnabled,
 		PasswordResetEnabled:                 settings.PasswordResetEnabled,
@@ -117,6 +118,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		LinuxDoConnectClientID:               settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured: settings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:            settings.LinuxDoConnectRedirectURL,
+		WeChatLoginOpenEnabled:               settings.WeChatLoginOpenEnabled,
+		WeChatLoginOpenAppID:                 settings.WeChatLoginOpenAppID,
+		WeChatLoginMPEnabled:                 settings.WeChatLoginMPEnabled,
+		WeChatLoginMPAppID:                   settings.WeChatLoginMPAppID,
+		WeChatLoginUnionIDHealthStatus:       settings.WeChatLoginUnionIDHealthStatus,
 		OIDCConnectEnabled:                   settings.OIDCConnectEnabled,
 		OIDCConnectProviderName:              settings.OIDCConnectProviderName,
 		OIDCConnectClientID:                  settings.OIDCConnectClientID,
@@ -156,6 +162,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
+		DefaultSettingsEmail:                 providerDefaultSettingsToDTO(settings.DefaultSettingsEmail),
+		DefaultSettingsLinuxDo:               providerDefaultSettingsToDTO(settings.DefaultSettingsLinuxDo),
+		DefaultSettingsWeChat:                providerDefaultSettingsToDTO(settings.DefaultSettingsWeChat),
+		DefaultSettingsOIDC:                  providerDefaultSettingsToDTO(settings.DefaultSettingsOIDC),
 		EnableModelFallback:                  settings.EnableModelFallback,
 		FallbackModelAnthropic:               settings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                  settings.FallbackModelOpenAI,
@@ -208,6 +218,7 @@ type UpdateSettingsRequest struct {
 	// 注册设置
 	RegistrationEnabled              bool     `json:"registration_enabled"`
 	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
+	ThirdPartyFirstLoginRequireEmail bool     `json:"third_party_first_login_require_email"`
 	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
 	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
 	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
@@ -234,6 +245,12 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectClientID     string `json:"linuxdo_connect_client_id"`
 	LinuxDoConnectClientSecret string `json:"linuxdo_connect_client_secret"`
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
+	WeChatLoginOpenEnabled     bool   `json:"wechat_login_open_enabled"`
+	WeChatLoginOpenAppID       string `json:"wechat_login_open_app_id"`
+	WeChatLoginOpenAppSecret   string `json:"wechat_login_open_app_secret"`
+	WeChatLoginMPEnabled       bool   `json:"wechat_login_mp_enabled"`
+	WeChatLoginMPAppID         string `json:"wechat_login_mp_app_id"`
+	WeChatLoginMPAppSecret     string `json:"wechat_login_mp_app_secret"`
 
 	// Generic OIDC OAuth 登录
 	OIDCConnectEnabled              bool   `json:"oidc_connect_enabled"`
@@ -276,9 +293,13 @@ type UpdateSettingsRequest struct {
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
-	DefaultConcurrency   int                              `json:"default_concurrency"`
-	DefaultBalance       float64                          `json:"default_balance"`
-	DefaultSubscriptions []dto.DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultConcurrency     int                              `json:"default_concurrency"`
+	DefaultBalance         float64                          `json:"default_balance"`
+	DefaultSubscriptions   []dto.DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultSettingsEmail   *dto.ProviderDefaultUserSettings `json:"default_settings_email"`
+	DefaultSettingsLinuxDo *dto.ProviderDefaultUserSettings `json:"default_settings_linuxdo"`
+	DefaultSettingsWeChat  *dto.ProviderDefaultUserSettings `json:"default_settings_wechat"`
+	DefaultSettingsOIDC    *dto.ProviderDefaultUserSettings `json:"default_settings_oidc"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -377,10 +398,25 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.SMTPPassword = strings.TrimSpace(req.SMTPPassword)
 	req.SMTPFrom = strings.TrimSpace(req.SMTPFrom)
 	req.SMTPFromName = strings.TrimSpace(req.SMTPFromName)
+	req.WeChatLoginOpenAppID = strings.TrimSpace(req.WeChatLoginOpenAppID)
+	req.WeChatLoginOpenAppSecret = strings.TrimSpace(req.WeChatLoginOpenAppSecret)
+	req.WeChatLoginMPAppID = strings.TrimSpace(req.WeChatLoginMPAppID)
+	req.WeChatLoginMPAppSecret = strings.TrimSpace(req.WeChatLoginMPAppSecret)
 	if req.SMTPPort <= 0 {
 		req.SMTPPort = 587
 	}
 	req.DefaultSubscriptions = normalizeDefaultSubscriptions(req.DefaultSubscriptions)
+	defaultSettingsEmail := normalizeProviderDefaultUserSettingsRequest(req.DefaultSettingsEmail, service.ProviderDefaultUserSettings{
+		Balance:       req.DefaultBalance,
+		Concurrency:   req.DefaultConcurrency,
+		Subscriptions: dtoDefaultSubscriptionsToService(req.DefaultSubscriptions),
+	}, previousSettings.DefaultSettingsEmail)
+	defaultSettingsLinuxDo := normalizeProviderDefaultUserSettingsRequest(req.DefaultSettingsLinuxDo, service.ProviderDefaultUserSettings{}, previousSettings.DefaultSettingsLinuxDo)
+	defaultSettingsWeChat := normalizeProviderDefaultUserSettingsRequest(req.DefaultSettingsWeChat, service.ProviderDefaultUserSettings{}, previousSettings.DefaultSettingsWeChat)
+	defaultSettingsOIDC := normalizeProviderDefaultUserSettingsRequest(req.DefaultSettingsOIDC, service.ProviderDefaultUserSettings{}, previousSettings.DefaultSettingsOIDC)
+	req.DefaultBalance = defaultSettingsEmail.Balance
+	req.DefaultConcurrency = defaultSettingsEmail.Concurrency
+	req.DefaultSubscriptions = serviceDefaultSubscriptionsToDTO(defaultSettingsEmail.Subscriptions)
 
 	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已有 SMTP 配置
 	// 防止前端加载设置失败时空表单覆盖已保存的 SMTP 配置
@@ -456,6 +492,34 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return
 			}
 			req.LinuxDoConnectClientSecret = previousSettings.LinuxDoConnectClientSecret
+		}
+	}
+
+	if req.WeChatLoginOpenEnabled {
+		if req.WeChatLoginOpenAppID == "" {
+			response.BadRequest(c, "WeChat Open AppID is required when enabled")
+			return
+		}
+		if req.WeChatLoginOpenAppSecret == "" {
+			if previousSettings.WeChatLoginOpenAppSecret == "" {
+				response.BadRequest(c, "WeChat Open AppSecret is required when enabled")
+				return
+			}
+			req.WeChatLoginOpenAppSecret = previousSettings.WeChatLoginOpenAppSecret
+		}
+	}
+
+	if req.WeChatLoginMPEnabled {
+		if req.WeChatLoginMPAppID == "" {
+			response.BadRequest(c, "WeChat MP AppID is required when enabled")
+			return
+		}
+		if req.WeChatLoginMPAppSecret == "" {
+			if previousSettings.WeChatLoginMPAppSecret == "" {
+				response.BadRequest(c, "WeChat MP AppSecret is required when enabled")
+				return
+			}
+			req.WeChatLoginMPAppSecret = previousSettings.WeChatLoginMPAppSecret
 		}
 	}
 
@@ -785,6 +849,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	settings := &service.SystemSettings{
 		RegistrationEnabled:              req.RegistrationEnabled,
 		EmailVerifyEnabled:               req.EmailVerifyEnabled,
+		ThirdPartyFirstLoginRequireEmail: req.ThirdPartyFirstLoginRequireEmail,
 		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                 req.PromoCodeEnabled,
 		PasswordResetEnabled:             req.PasswordResetEnabled,
@@ -805,6 +870,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientID:           req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:       req.LinuxDoConnectClientSecret,
 		LinuxDoConnectRedirectURL:        req.LinuxDoConnectRedirectURL,
+		WeChatLoginOpenEnabled:           req.WeChatLoginOpenEnabled,
+		WeChatLoginOpenAppID:             req.WeChatLoginOpenAppID,
+		WeChatLoginOpenAppSecret:         req.WeChatLoginOpenAppSecret,
+		WeChatLoginMPEnabled:             req.WeChatLoginMPEnabled,
+		WeChatLoginMPAppID:               req.WeChatLoginMPAppID,
+		WeChatLoginMPAppSecret:           req.WeChatLoginMPAppSecret,
 		OIDCConnectEnabled:               req.OIDCConnectEnabled,
 		OIDCConnectProviderName:          req.OIDCConnectProviderName,
 		OIDCConnectClientID:              req.OIDCConnectClientID,
@@ -844,6 +915,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
 		DefaultSubscriptions:             defaultSubscriptions,
+		DefaultSettingsEmail:             defaultSettingsEmail,
+		DefaultSettingsLinuxDo:           defaultSettingsLinuxDo,
+		DefaultSettingsWeChat:            defaultSettingsWeChat,
+		DefaultSettingsOIDC:              defaultSettingsOIDC,
 		EnableModelFallback:              req.EnableModelFallback,
 		FallbackModelAnthropic:           req.FallbackModelAnthropic,
 		FallbackModelOpenAI:              req.FallbackModelOpenAI,
@@ -997,6 +1072,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
+		ThirdPartyFirstLoginRequireEmail:     updatedSettings.ThirdPartyFirstLoginRequireEmail,
 		RegistrationEmailSuffixWhitelist:     updatedSettings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                     updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                 updatedSettings.PasswordResetEnabled,
@@ -1018,6 +1094,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientID:               updatedSettings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured: updatedSettings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:            updatedSettings.LinuxDoConnectRedirectURL,
+		WeChatLoginOpenEnabled:               updatedSettings.WeChatLoginOpenEnabled,
+		WeChatLoginOpenAppID:                 updatedSettings.WeChatLoginOpenAppID,
+		WeChatLoginMPEnabled:                 updatedSettings.WeChatLoginMPEnabled,
+		WeChatLoginMPAppID:                   updatedSettings.WeChatLoginMPAppID,
+		WeChatLoginUnionIDHealthStatus:       updatedSettings.WeChatLoginUnionIDHealthStatus,
 		OIDCConnectEnabled:                   updatedSettings.OIDCConnectEnabled,
 		OIDCConnectProviderName:              updatedSettings.OIDCConnectProviderName,
 		OIDCConnectClientID:                  updatedSettings.OIDCConnectClientID,
@@ -1057,6 +1138,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,
+		DefaultSettingsEmail:                 providerDefaultSettingsToDTO(updatedSettings.DefaultSettingsEmail),
+		DefaultSettingsLinuxDo:               providerDefaultSettingsToDTO(updatedSettings.DefaultSettingsLinuxDo),
+		DefaultSettingsWeChat:                providerDefaultSettingsToDTO(updatedSettings.DefaultSettingsWeChat),
+		DefaultSettingsOIDC:                  providerDefaultSettingsToDTO(updatedSettings.DefaultSettingsOIDC),
 		EnableModelFallback:                  updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:               updatedSettings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                  updatedSettings.FallbackModelOpenAI,
@@ -1145,6 +1230,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.EmailVerifyEnabled != after.EmailVerifyEnabled {
 		changed = append(changed, "email_verify_enabled")
 	}
+	if before.ThirdPartyFirstLoginRequireEmail != after.ThirdPartyFirstLoginRequireEmail {
+		changed = append(changed, "third_party_first_login_require_email")
+	}
 	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
 		changed = append(changed, "registration_email_suffix_whitelist")
 	}
@@ -1204,6 +1292,24 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.LinuxDoConnectRedirectURL != after.LinuxDoConnectRedirectURL {
 		changed = append(changed, "linuxdo_connect_redirect_url")
+	}
+	if before.WeChatLoginOpenEnabled != after.WeChatLoginOpenEnabled {
+		changed = append(changed, "wechat_login_open_enabled")
+	}
+	if before.WeChatLoginOpenAppID != after.WeChatLoginOpenAppID {
+		changed = append(changed, "wechat_login_open_app_id")
+	}
+	if req.WeChatLoginOpenAppSecret != "" {
+		changed = append(changed, "wechat_login_open_app_secret")
+	}
+	if before.WeChatLoginMPEnabled != after.WeChatLoginMPEnabled {
+		changed = append(changed, "wechat_login_mp_enabled")
+	}
+	if before.WeChatLoginMPAppID != after.WeChatLoginMPAppID {
+		changed = append(changed, "wechat_login_mp_app_id")
+	}
+	if req.WeChatLoginMPAppSecret != "" {
+		changed = append(changed, "wechat_login_mp_app_secret")
 	}
 	if before.OIDCConnectEnabled != after.OIDCConnectEnabled {
 		changed = append(changed, "oidc_connect_enabled")
@@ -1303,6 +1409,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")
+	}
+	if !equalProviderDefaultSettings(before.DefaultSettingsEmail, after.DefaultSettingsEmail) {
+		changed = append(changed, "default_settings_email")
+	}
+	if !equalProviderDefaultSettings(before.DefaultSettingsLinuxDo, after.DefaultSettingsLinuxDo) {
+		changed = append(changed, "default_settings_linuxdo")
+	}
+	if !equalProviderDefaultSettings(before.DefaultSettingsWeChat, after.DefaultSettingsWeChat) {
+		changed = append(changed, "default_settings_wechat")
+	}
+	if !equalProviderDefaultSettings(before.DefaultSettingsOIDC, after.DefaultSettingsOIDC) {
+		changed = append(changed, "default_settings_oidc")
 	}
 	if before.EnableModelFallback != after.EnableModelFallback {
 		changed = append(changed, "enable_model_fallback")
@@ -1412,6 +1530,67 @@ func normalizeDefaultSubscriptions(input []dto.DefaultSubscriptionSetting) []dto
 	return normalized
 }
 
+func dtoDefaultSubscriptionsToService(input []dto.DefaultSubscriptionSetting) []service.DefaultSubscriptionSetting {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make([]service.DefaultSubscriptionSetting, 0, len(input))
+	for _, item := range input {
+		out = append(out, service.DefaultSubscriptionSetting{
+			GroupID:      item.GroupID,
+			ValidityDays: item.ValidityDays,
+		})
+	}
+	return out
+}
+
+func serviceDefaultSubscriptionsToDTO(input []service.DefaultSubscriptionSetting) []dto.DefaultSubscriptionSetting {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make([]dto.DefaultSubscriptionSetting, 0, len(input))
+	for _, item := range input {
+		out = append(out, dto.DefaultSubscriptionSetting{
+			GroupID:      item.GroupID,
+			ValidityDays: item.ValidityDays,
+		})
+	}
+	return out
+}
+
+func normalizeProviderDefaultUserSettingsRequest(input *dto.ProviderDefaultUserSettings, legacy service.ProviderDefaultUserSettings, fallback service.ProviderDefaultUserSettings) service.ProviderDefaultUserSettings {
+	result := fallback
+	if input == nil {
+		if legacy.ApplyOnBind || legacy.Concurrency > 0 || legacy.Balance > 0 || len(legacy.Subscriptions) > 0 {
+			result = legacy
+		}
+	} else {
+		result = service.ProviderDefaultUserSettings{
+			ApplyOnBind:   input.ApplyOnBind,
+			Balance:       input.Balance,
+			Concurrency:   input.Concurrency,
+			Subscriptions: dtoDefaultSubscriptionsToService(input.Subscriptions),
+		}
+	}
+	if result.Concurrency < 1 {
+		result.Concurrency = 1
+	}
+	if result.Balance < 0 {
+		result.Balance = 0
+	}
+	result.Subscriptions = dtoDefaultSubscriptionsToService(normalizeDefaultSubscriptions(serviceDefaultSubscriptionsToDTO(result.Subscriptions)))
+	return result
+}
+
+func providerDefaultSettingsToDTO(input service.ProviderDefaultUserSettings) dto.ProviderDefaultUserSettings {
+	return dto.ProviderDefaultUserSettings{
+		ApplyOnBind:   input.ApplyOnBind,
+		Balance:       input.Balance,
+		Concurrency:   input.Concurrency,
+		Subscriptions: serviceDefaultSubscriptionsToDTO(input.Subscriptions),
+	}
+}
+
 func equalStringSlice(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -1434,6 +1613,13 @@ func equalDefaultSubscriptions(a, b []service.DefaultSubscriptionSetting) bool {
 		}
 	}
 	return true
+}
+
+func equalProviderDefaultSettings(a, b service.ProviderDefaultUserSettings) bool {
+	return a.ApplyOnBind == b.ApplyOnBind &&
+		a.Balance == b.Balance &&
+		a.Concurrency == b.Concurrency &&
+		equalDefaultSubscriptions(a.Subscriptions, b.Subscriptions)
 }
 
 func equalIntSlice(a, b []int) bool {
