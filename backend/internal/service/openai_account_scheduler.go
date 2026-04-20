@@ -830,6 +830,11 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	requiredTransport OpenAIUpstreamTransport,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	decision := OpenAIAccountScheduleDecision{}
+	if !s.openAIAdvancedSchedulerEnabled(ctx) {
+		selection, err := s.SelectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+		decision.Layer = openAIAccountScheduleLayerLoadBalance
+		return selection, decision, err
+	}
 	scheduler := s.getOpenAIAccountScheduler()
 	if scheduler == nil {
 		selection, err := s.SelectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs)
@@ -856,6 +861,9 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 }
 
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountID int64, success bool, firstTokenMs *int) {
+	if !s.openAIAdvancedSchedulerEnabled(context.Background()) {
+		return
+	}
 	scheduler := s.getOpenAIAccountScheduler()
 	if scheduler == nil {
 		return
@@ -864,6 +872,9 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountID int64
 }
 
 func (s *OpenAIGatewayService) RecordOpenAIAccountSwitch() {
+	if !s.openAIAdvancedSchedulerEnabled(context.Background()) {
+		return
+	}
 	scheduler := s.getOpenAIAccountScheduler()
 	if scheduler == nil {
 		return
@@ -872,11 +883,25 @@ func (s *OpenAIGatewayService) RecordOpenAIAccountSwitch() {
 }
 
 func (s *OpenAIGatewayService) SnapshotOpenAIAccountSchedulerMetrics() OpenAIAccountSchedulerMetricsSnapshot {
+	if !s.openAIAdvancedSchedulerEnabled(context.Background()) {
+		return OpenAIAccountSchedulerMetricsSnapshot{}
+	}
 	scheduler := s.getOpenAIAccountScheduler()
 	if scheduler == nil {
 		return OpenAIAccountSchedulerMetricsSnapshot{}
 	}
 	return scheduler.SnapshotMetrics()
+}
+
+func (s *OpenAIGatewayService) openAIAdvancedSchedulerEnabled(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	if s.settingService != nil {
+		return s.settingService.IsOpenAIAdvancedSchedulerEnabled(ctx)
+	}
+	// 兼容未接入 settingService 的旧构造路径，保持既有行为。
+	return true
 }
 
 func (s *OpenAIGatewayService) openAIWSSessionStickyTTL() time.Duration {

@@ -806,6 +806,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 
 	// 分组隔离
 	updates[SettingKeyAllowUngroupedKeyScheduling] = strconv.FormatBool(settings.AllowUngroupedKeyScheduling)
+	updates[SettingKeyOpenAIAdvancedSchedulerEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
 
 	// Backend Mode
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
@@ -1262,6 +1263,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling: "false",
+		// OpenAI 高级调度默认关闭，保持与其他平台一致
+		SettingKeyOpenAIAdvancedSchedulerEnabled: "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -1548,6 +1551,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 分组隔离
 	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
+	result.OpenAIAdvancedSchedulerEnabled = settings[SettingKeyOpenAIAdvancedSchedulerEnabled] == "true"
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false, cch_signing=false)
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -2449,6 +2453,18 @@ func (s *SettingService) IsUngroupedKeySchedulingAllowed(ctx context.Context) bo
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyAllowUngroupedKeyScheduling)
 	if err != nil {
 		return false // fail-closed: 查询失败时默认不允许
+	}
+	return value == "true"
+}
+
+// IsOpenAIAdvancedSchedulerEnabled 查询是否启用 OpenAI 网关高级调度算法。
+func (s *SettingService) IsOpenAIAdvancedSchedulerEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIAdvancedSchedulerEnabled)
+	if err != nil {
+		return false
 	}
 	return value == "true"
 }

@@ -115,6 +115,8 @@ type SystemSettings struct {
 
 	// 分组隔离：允许未分组 Key 调度（默认 false → 403）
 	AllowUngroupedKeyScheduling bool
+	// OpenAI 网关高级调度开关（默认 false）
+	OpenAIAdvancedSchedulerEnabled bool
 
 	// Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	BackendModeEnabled bool

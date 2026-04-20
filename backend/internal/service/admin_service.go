@@ -102,6 +102,10 @@ type AdminService interface {
 	ResetAccountQuota(ctx context.Context, id int64) error
 }
 
+type adminUserActivityGetter interface {
+	GetByIDWithActivity(ctx context.Context, id int64) (*User, error)
+}
+
 // CreateUserInput represents input for creating a new user via admin operations.
 type CreateUserInput struct {
 	Email         string
@@ -531,7 +535,15 @@ func (s *adminServiceImpl) loadUserGroupRatesOneByOne(ctx context.Context, users
 }
 
 func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error) {
-	user, err := s.userRepo.GetByID(ctx, id)
+	var (
+		user *User
+		err  error
+	)
+	if activityRepo, ok := s.userRepo.(adminUserActivityGetter); ok {
+		user, err = activityRepo.GetByIDWithActivity(ctx, id)
+	} else {
+		user, err = s.userRepo.GetByID(ctx, id)
+	}
 	if err != nil {
 		return nil, err
 	}

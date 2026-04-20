@@ -28,6 +28,8 @@ type User struct {
 	Status        string
 	AllowedGroups []int64
 	TokenVersion  int64 // Incremented on password change to invalidate existing tokens
+	LastLoginAt   *time.Time
+	LastUsedAt    *time.Time
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 
