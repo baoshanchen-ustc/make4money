@@ -123,8 +123,25 @@ func psIsEnabledPaymentType(requested string, enabledTypes []string) bool {
 	return false
 }
 
+func preferredProviderKeyForCreateOrder(req CreateOrderRequest) string {
+	if !req.IsMobile {
+		return ""
+	}
+	if payment.NormalizeVisiblePaymentType(req.PaymentType) == payment.TypeAlipay {
+		return payment.TypeAlipay
+	}
+	return ""
+}
+
 func (s *PaymentService) selectProviderInstance(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig, payAmount float64, excludedInstanceIDs []string) (*payment.InstanceSelection, error) {
 	s.EnsureProviders(ctx)
+	preferredProviderKey := preferredProviderKeyForCreateOrder(req)
+	if preferredProviderKey != "" {
+		sel, err := s.loadBalancer.SelectInstanceExcept(ctx, preferredProviderKey, req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount, excludedInstanceIDs)
+		if err == nil && sel != nil {
+			return sel, nil
+		}
+	}
 	sel, err := s.loadBalancer.SelectInstanceExcept(ctx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount, excludedInstanceIDs)
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment method (%s) is not configured", req.PaymentType))

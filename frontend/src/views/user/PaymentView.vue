@@ -1317,6 +1317,20 @@ function buildWechatH5PayUrl(
   }
 }
 
+function buildAlipayMobilePayUrl(result: CreateOrderResult): string {
+  const candidate = firstString(result.pay_url, result.qr_code);
+  if (!candidate) {
+    return "";
+  }
+  if (/^alipays?:\/\//i.test(candidate)) {
+    return candidate;
+  }
+  if (/^https?:\/\//i.test(candidate)) {
+    return `alipays://platformapi/startapp?appId=20000067&url=${encodeURIComponent(candidate)}`;
+  }
+  return candidate;
+}
+
 function isMobileWechatQrDeclined(
   result: Record<string, unknown>,
   requestType: string,
@@ -1962,7 +1976,9 @@ async function consumeOrderCreatedResult(
       displayType === "wxpay"
         ? buildWechatH5PayUrl(rawResult, orderType, requestType) ||
           result.pay_url
-        : result.pay_url;
+        : displayType === "alipay"
+          ? buildAlipayMobilePayUrl(result) || result.pay_url
+          : result.pay_url;
     createWaitingPaymentState(result, orderType, {
       paymentType: displayType,
       payUrl: mobilePayUrl,
@@ -1971,6 +1987,20 @@ async function consumeOrderCreatedResult(
     paymentPhase.value = "paying";
     window.location.href = mobilePayUrl;
     return;
+  }
+
+  if (isMobile.value && displayType === "alipay") {
+    const mobilePayUrl = buildAlipayMobilePayUrl(result);
+    if (mobilePayUrl) {
+      createWaitingPaymentState(result, orderType, {
+        paymentType: displayType,
+        payUrl: mobilePayUrl,
+        statusMode: "popup",
+      });
+      paymentPhase.value = "paying";
+      window.location.href = mobilePayUrl;
+      return;
+    }
   }
 
   if (result.qr_code) {
