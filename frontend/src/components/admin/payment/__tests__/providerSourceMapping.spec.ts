@@ -4,7 +4,6 @@ import type { ProviderInstance } from "@/types/payment";
 import {
   PROVIDER_CONFIG_FIELDS,
   buildProviderGuideLinks,
-  buildWechatPaymentMpSyncConfig,
   getEnabledProviderKeysForPaymentTypes,
   getUserFacingPaymentTypesForProviderInstance,
   providerInstanceSupportsEnabledPaymentTypes,
@@ -116,21 +115,6 @@ describe("provider source mapping", () => {
     expect(
       shouldDisableProviderAfterPaymentTypeRemoved(stripe, "stripe", []),
     ).toBe(true);
-  });
-
-  it("builds wxpay mp sync payload from login mp config only", () => {
-    expect(
-      buildWechatPaymentMpSyncConfig({
-        wechat_login_mp_app_id: " wx-login-app ",
-        wechat_login_mp_app_secret: " wx-login-secret ",
-        wechat_login_open_app_id: "ignored-open-app",
-        wechat_login_open_app_secret: "ignored-open-secret",
-        mchId: "ignored-merchant",
-      }),
-    ).toEqual({
-      mpAppId: "wx-login-app",
-      mpAppSecret: "wx-login-secret",
-    });
   });
 
   it("marks wxpay runtime-required merchant fields as required", () => {

@@ -9,7 +9,7 @@ const messages: Record<string, string> = {
   'payment.methods.wxpay': 'WeChat Pay',
   'payment.methods.stripe': 'Stripe',
   'payment.orders.orderId': 'Order ID',
-  'payment.orders.userId': 'User ID',
+  'payment.admin.colUser': 'User',
   'payment.orders.payAmount': 'Pay Amount',
   'payment.orders.paymentMethod': 'Payment Method',
   'payment.orders.status': 'Status',
@@ -60,6 +60,7 @@ const DataTableStub = {
 const baseOrder: PaymentOrder = {
   id: 1,
   user_id: 1,
+  user_email: 'user@example.com',
   amount: 10,
   pay_amount: 10,
   fee_rate: 0,
