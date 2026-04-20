@@ -223,6 +223,17 @@ describe('LinuxDoCallbackView pending auth flow', () => {
   it('submits the adoption decision before completing bind_current_user', async () => {
     authStore.token = 'active-token'
     bindAccountMock.mockResolvedValue({ id: 7, email: 'owner@example.com' })
+    refreshUserMock.mockResolvedValue({
+      id: 7,
+      email: 'owner@example.com',
+      account_bindings: {
+        linuxdo: {
+          provider: 'linuxdo',
+          bound: true,
+          provider_subject: 'linuxdo-user-1'
+        }
+      }
+    })
     setAccountBindingAdoptionDecisionMock.mockResolvedValue(undefined)
 
     const wrapper = mountView()
@@ -253,14 +264,32 @@ describe('LinuxDoCallbackView pending auth flow', () => {
       true
     )
     expect(bindAccountMock).toHaveBeenCalledWith('linuxdo', 'pending-bind-token')
-    expect(setCurrentUserMock).toHaveBeenCalledWith({ id: 7, email: 'owner@example.com' })
+    expect(refreshUserMock).toHaveBeenCalledTimes(1)
+    expect(setCurrentUserMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 7,
+      account_bindings: {
+        linuxdo: expect.objectContaining({
+          bound: true
+        })
+      }
+    }))
     expect(clearPendingAuthSessionMock).toHaveBeenCalled()
-    expect(refreshUserMock).not.toHaveBeenCalled()
   })
 
   it('auto-completes bind_current_user callbacks for an authenticated user', async () => {
     authStore.token = 'active-token'
     bindAccountMock.mockResolvedValue({ id: 7, email: 'owner@example.com' })
+    refreshUserMock.mockResolvedValue({
+      id: 7,
+      email: 'owner@example.com',
+      account_bindings: {
+        linuxdo: {
+          provider: 'linuxdo',
+          bound: true,
+          provider_subject: 'linuxdo-user-1'
+        }
+      }
+    })
 
     const wrapper = mountView()
     const flow = wrapper.findComponent(ThirdPartyAuthCallbackFlow)
@@ -280,8 +309,15 @@ describe('LinuxDoCallbackView pending auth flow', () => {
     await flushPromises()
 
     expect(bindAccountMock).toHaveBeenCalledWith('linuxdo', 'pending-auto-bind-token')
-    expect(setCurrentUserMock).toHaveBeenCalledWith({ id: 7, email: 'owner@example.com' })
-    expect(refreshUserMock).not.toHaveBeenCalled()
+    expect(refreshUserMock).toHaveBeenCalledTimes(1)
+    expect(setCurrentUserMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 7,
+      account_bindings: {
+        linuxdo: expect.objectContaining({
+          bound: true
+        })
+      }
+    }))
     expect(clearPendingAuthSessionMock).toHaveBeenCalled()
     expect(replaceMock).toHaveBeenCalledWith('/profile')
   })

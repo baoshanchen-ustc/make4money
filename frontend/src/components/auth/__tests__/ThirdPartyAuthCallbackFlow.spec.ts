@@ -44,6 +44,23 @@ describe("ThirdPartyAuthCallbackFlow", () => {
     ).toBe(true);
   });
 
+  it("recovers bind_current_user from the redirect when the callback omits intent", () => {
+    const wrapper = mount(ThirdPartyAuthCallbackFlow, {
+      props: {
+        hash: "#auth_result=pending_session&pending_auth_token=token-2b&provider=wechat&redirect=%2Fprofile%3Foauth_intent%3Dbind",
+      },
+    });
+
+    expect(wrapper.text()).toContain(
+      "auth.thirdParty.callback.pending.bindCurrent.title",
+    );
+    expect(wrapper.emitted("pending-session")?.[0]?.[0]).toMatchObject({
+      pendingAuthToken: "token-2b",
+      intent: "bind_current_user",
+      redirect: "/profile?oauth_intent=bind",
+    });
+  });
+
   it("renders adopt_existing_user_by_email state from the callback contract", () => {
     const wrapper = mount(ThirdPartyAuthCallbackFlow, {
       props: {

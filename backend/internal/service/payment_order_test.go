@@ -63,6 +63,32 @@ func TestValidateOrderInput_AllowsVisiblePaymentTypeWhenEnabledTypesEmpty(t *tes
 	require.NoError(t, err)
 }
 
+func TestPreferredProviderKeyForCreateOrder_PrefersDirectAlipayOnMobile(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, payment.TypeAlipay, preferredProviderKeyForCreateOrder(CreateOrderRequest{
+		PaymentType: payment.TypeAlipay,
+		IsMobile:    true,
+	}))
+	require.Equal(t, payment.TypeAlipay, preferredProviderKeyForCreateOrder(CreateOrderRequest{
+		PaymentType: payment.TypeAlipayDirect,
+		IsMobile:    true,
+	}))
+}
+
+func TestPreferredProviderKeyForCreateOrder_LeavesDesktopAndNonAlipayUnchanged(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, preferredProviderKeyForCreateOrder(CreateOrderRequest{
+		PaymentType: payment.TypeAlipay,
+		IsMobile:    false,
+	}))
+	require.Empty(t, preferredProviderKeyForCreateOrder(CreateOrderRequest{
+		PaymentType: payment.TypeWxpay,
+		IsMobile:    true,
+	}))
+}
+
 func TestPsDailyLimitAmount_UsesPayAmountForBalanceOrders(t *testing.T) {
 	t.Parallel()
 

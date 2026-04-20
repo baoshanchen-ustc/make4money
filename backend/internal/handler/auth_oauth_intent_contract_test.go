@@ -307,6 +307,34 @@ func TestOIDCOAuthStart_DefaultsIntentCookieToLogin(t *testing.T) {
 	require.Equal(t, service.PendingAuthIntentLogin, decoded)
 }
 
+func TestNormalizedOAuthIntentFromCookie_FallsBackToBindRedirect(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/linuxdo/callback", nil)
+
+	require.Equal(
+		t,
+		service.PendingAuthIntentBindCurrentUser,
+		normalizedOAuthIntentFromCookie(ctx, linuxDoOAuthIntentCookieName, "/profile?oauth_intent=bind"),
+	)
+}
+
+func TestNormalizedOAuthIntentFromCookie_DefaultsToLoginWithoutBindRedirect(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/linuxdo/callback", nil)
+
+	require.Equal(
+		t,
+		service.PendingAuthIntentLogin,
+		normalizedOAuthIntentFromCookie(ctx, linuxDoOAuthIntentCookieName, "/profile"),
+	)
+}
+
 func TestCompleteOAuthCallback_WeChatLateUnionIDRekeysChannelBoundIdentityOnBind(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, authSvc, repo := newOAuthCallbackHandlerForTest(t)
