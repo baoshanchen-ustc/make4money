@@ -203,6 +203,7 @@ type ResolvedCallbackState =
 
 const props = defineProps<{
   hash?: string;
+  provider?: ThirdPartyAuthProvider;
   providerLabel?: string;
 }>();
 const { t } = useI18n();
@@ -240,8 +241,13 @@ const rawHash = computed(() => {
   return window.location.hash || "";
 });
 
+const rawSearch = computed(() => {
+  if (typeof window === "undefined") return "";
+  return window.location.search || "";
+});
+
 const resolved = computed<ResolvedCallbackState>(() =>
-  parseCallbackHash(rawHash.value),
+  parseCallbackHash(rawHash.value, rawSearch.value, props.provider ?? null),
 );
 
 const errorMessage = computed(() =>
@@ -265,7 +271,7 @@ const resolvedProvider = computed(() => {
 });
 
 const providerHeading = computed(
-  () => props.providerLabel || formatProviderLabel(resolvedProvider.value),
+  () => resolveProviderHeading(resolvedProvider.value, props.provider ?? null, props.providerLabel),
 );
 
 const stateTitle = computed(() => {
@@ -416,25 +422,36 @@ function openAdoptionDialog(
   adoptionState.value.avatarUrl = context.suggestedAvatarUrl;
 }
 
-function parseCallbackHash(raw: string): ResolvedCallbackState {
-  const normalized = raw.startsWith("#") ? raw.slice(1) : raw;
-  if (!normalized) return { kind: "idle" };
+function parseCallbackHash(
+  rawHash: string,
+  rawSearch: string,
+  fallbackProvider: ThirdPartyAuthProvider | null,
+): ResolvedCallbackState {
+  const params = parseCallbackParams(rawHash, rawSearch);
+  if (!hasAnyCallbackParam(params)) return { kind: "idle" };
 
-  const params = new URLSearchParams(normalized);
+  const provider = parseProvider(params.get("provider")) ?? fallbackProvider;
+  const redirect = sanitizeRedirectPath(params.get("redirect"));
   const explicitError = params.get("error");
   const explicitErrorDescription =
     params.get("error_description") || params.get("error_message") || null;
 
   if (explicitError) {
+    const legacyPending = parseLegacyPendingState(params, provider, redirect);
+    if (legacyPending) {
+      return {
+        kind: "pending",
+        summary: legacyPending,
+      };
+    }
+
     return {
       kind: "error",
       message: explicitErrorDescription || explicitError,
     };
   }
 
-  const provider = parseProvider(params.get("provider"));
   const intent = parseIntent(params.get("intent"));
-  const redirect = sanitizeRedirectPath(params.get("redirect"));
   const adoptionRequired = parseBooleanFlag(params.get("adoption_required"));
   const suggestedDisplayName = params.get("suggested_display_name");
   const suggestedAvatarUrl = params.get("suggested_avatar_url");
@@ -546,6 +563,129 @@ function sanitizeRedirectPath(path: string | null | undefined): string {
   if (path.includes("://")) return "/dashboard";
   if (path.includes("\n") || path.includes("\r")) return "/dashboard";
   return path;
+}
+
+function parseCallbackParams(rawHash: string, rawSearch: string): URLSearchParams {
+  const params = new URLSearchParams();
+  const normalizedSearch = rawSearch.startsWith("?") ? rawSearch.slice(1) : rawSearch;
+  const normalizedHash = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
+
+  for (const [key, value] of new URLSearchParams(normalizedSearch).entries()) {
+    params.set(key, value);
+  }
+  for (const [key, value] of new URLSearchParams(normalizedHash).entries()) {
+    params.set(key, value);
+  }
+
+  return params;
+}
+
+function hasAnyCallbackParam(params: URLSearchParams): boolean {
+  return Array.from(params.keys()).length > 0;
+}
+
+function parseLegacyPendingState(
+  params: URLSearchParams,
+  provider: ThirdPartyAuthProvider | null,
+  redirect: string,
+): PendingAuthSessionSummary | null {
+  const error = (params.get("error") || "").trim();
+  const pendingAuthToken = (
+    params.get("pending_auth_token") ||
+    params.get("pending_oauth_token") ||
+    params.get("pending_login_token") ||
+    ""
+  ).trim();
+
+  if (!provider || !pendingAuthToken) {
+    return null;
+  }
+
+  if (
+    error !== "unbound_oauth_account" &&
+    error !== "account_binding_required" &&
+    error !== "binding_required" &&
+    error !== "oauth_account_not_bound" &&
+    error !== "oauth_binding_required" &&
+    error !== "oauth_not_bound" &&
+    error !== "oauth_invitation_required" &&
+    error !== "invitation_required"
+  ) {
+    return null;
+  }
+
+  const legacyBindingIntent =
+    (params.get("intent") || "").trim() === "bind" || hasLegacyBindingIntent(redirect);
+  const normalizedRedirect = legacyBindingIntent
+    ? stripLegacyBindingIntent(redirect)
+    : redirect;
+
+  return {
+    authResult: "pending_session",
+    pendingAuthToken,
+    provider,
+    intent: legacyBindingIntent ? "bind_current_user" : "login",
+    redirect: normalizedRedirect,
+    adoptionRequired: false,
+    suggestedDisplayName: null,
+    suggestedAvatarUrl: null,
+  };
+}
+
+function hasLegacyBindingIntent(path: string): boolean {
+  try {
+    const parsed = new URL(path, window.location.origin);
+    return parsed.searchParams.get("oauth_intent") === "bind";
+  } catch {
+    return path.includes("oauth_intent=bind");
+  }
+}
+
+function stripLegacyBindingIntent(path: string): string {
+  try {
+    const parsed = new URL(path, window.location.origin);
+    parsed.searchParams.delete("oauth_intent");
+    const query = parsed.searchParams.toString();
+    return `${parsed.pathname}${query ? `?${query}` : ""}${parsed.hash}`;
+  } catch {
+    return path.replace(/([?&])oauth_intent=bind&?/g, "$1").replace(/[?&]$/, "");
+  }
+}
+
+function resolveProviderHeading(
+  resolvedProvider: string,
+  fallbackProvider: ThirdPartyAuthProvider | null,
+  fallbackLabel?: string,
+): string {
+  if (resolvedProvider === "oidc" && fallbackProvider === "oidc" && fallbackLabel) {
+    return fallbackLabel;
+  }
+
+  if (resolvedProvider === "linuxdo") {
+    return t("profile.bindings.providers.linuxdo");
+  }
+  if (resolvedProvider === "wechat") {
+    return t("profile.bindings.providers.wechat");
+  }
+  if (resolvedProvider === "oidc") {
+    return t("profile.bindings.providers.oidc");
+  }
+
+  if (fallbackLabel) {
+    return fallbackLabel;
+  }
+
+  if (fallbackProvider === "linuxdo") {
+    return t("profile.bindings.providers.linuxdo");
+  }
+  if (fallbackProvider === "wechat") {
+    return t("profile.bindings.providers.wechat");
+  }
+  if (fallbackProvider === "oidc") {
+    return t("profile.bindings.providers.oidc");
+  }
+
+  return formatProviderLabel(resolvedProvider);
 }
 
 function formatProviderLabel(provider: string): string {

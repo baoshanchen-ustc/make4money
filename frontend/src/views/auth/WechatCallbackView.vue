@@ -1,6 +1,7 @@
 <template>
   <AuthLayout>
     <ThirdPartyAuthCallbackFlow
+      provider="wechat"
       :provider-label="providerLabel"
       @success="handleSuccess"
       @error="handleError"
@@ -197,6 +198,9 @@ function handleError(message: string) {
 
 function handlePendingSession(summary: CallbackPendingSession) {
   authStore.setPendingAuthSession(persistPendingSession(summary));
+  if (summary.intent === "bind_current_user" && !summary.adoptionRequired && authStore.token) {
+    void handleBindCurrentUser(summary);
+  }
 }
 
 function handleTotpRequired(payload: CallbackTotpPayload) {

@@ -520,6 +520,38 @@ func redirectOAuthError(c *gin.Context, frontendCallback string, code string, me
 	redirectWithFragment(c, frontendCallback, fragment)
 }
 
+func (h *AuthHandler) redirectLegacyPendingOAuth(
+	c *gin.Context,
+	frontendCallback string,
+	redirectTo string,
+	identity oauthCallbackIdentity,
+	intent string,
+) bool {
+	if h == nil || h.authService == nil {
+		return false
+	}
+
+	compatEmail := strings.TrimSpace(identity.CompatEmail)
+	compatUsername := strings.TrimSpace(identity.CompatUsername)
+	if compatEmail == "" || compatUsername == "" {
+		return false
+	}
+
+	pendingToken, err := h.authService.CreatePendingOAuthToken(compatEmail, compatUsername)
+	if err != nil {
+		return false
+	}
+
+	fragment := url.Values{}
+	fragment.Set("error", "unbound_oauth_account")
+	fragment.Set("pending_oauth_token", pendingToken)
+	fragment.Set("provider", truncateFragmentValue(identity.Provider))
+	fragment.Set("intent", truncateFragmentValue(intent))
+	fragment.Set("redirect", truncateFragmentValue(redirectTo))
+	redirectWithFragment(c, frontendCallback, fragment)
+	return true
+}
+
 func redirectWithFragment(c *gin.Context, frontendCallback string, fragment url.Values) {
 	u, err := url.Parse(frontendCallback)
 	if err != nil {
@@ -861,6 +893,10 @@ type authIdentityByIDGetter interface {
 	GetAuthIdentityByID(ctx context.Context, id int64) (*repository.AuthIdentityRecord, error)
 }
 
+type authUserByEmailGetter interface {
+	GetByEmail(ctx context.Context, email string) (*service.User, error)
+}
+
 func normalizeOAuthIntent(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "", "login", "sign_in", "signin", "register", "signup":
@@ -894,8 +930,26 @@ func (h *AuthHandler) completeOAuthCallback(c *gin.Context, frontendCallback, re
 		return
 	}
 
+	if intent == service.PendingAuthIntentBindCurrentUser && boundUserID != nil {
+		if bindTargetUserID != nil && *boundUserID == *bindTargetUserID {
+			if !strings.EqualFold(strings.TrimSpace(identity.ProviderType), "wechat") {
+				c.Header("Cache-Control", "no-store")
+				c.Header("Pragma", "no-cache")
+				c.Redirect(http.StatusFound, redirectTo)
+				return
+			}
+		} else {
+			redirectOAuthError(c, frontendCallback, "external_identity_already_bound", "this third-party account is already bound to another user; unbind it there first", "")
+			return
+		}
+	}
+
 	if intent == service.PendingAuthIntentLogin && boundUserID != nil {
 		h.redirectOAuthLoginSuccess(c, frontendCallback, redirectTo, identity.Provider, intent, *boundUserID)
+		return
+	}
+
+	if intent == service.PendingAuthIntentLogin && h.tryBindLegacyCompatUserAndLogin(c, frontendCallback, redirectTo, identity, intent) {
 		return
 	}
 
@@ -922,6 +976,9 @@ func (h *AuthHandler) completeOAuthCallback(c *gin.Context, frontendCallback, re
 	}
 	pendingAuthToken, err := h.authService.CreatePendingAuthSession(c.Request.Context(), pendingInput)
 	if err != nil {
+		if h.redirectLegacyPendingOAuth(c, frontendCallback, redirectTo, identity, intent) {
+			return
+		}
 		redirectOAuthError(c, frontendCallback, "login_failed", "service_error", "")
 		return
 	}
@@ -948,6 +1005,66 @@ func (h *AuthHandler) completeOAuthCallback(c *gin.Context, frontendCallback, re
 		fragment.Set("suggested_avatar_url", truncateFragmentValue(avatarURL))
 	}
 	redirectWithFragment(c, frontendCallback, fragment)
+}
+
+func (h *AuthHandler) tryBindLegacyCompatUserAndLogin(
+	c *gin.Context,
+	frontendCallback string,
+	redirectTo string,
+	identity oauthCallbackIdentity,
+	intent string,
+) bool {
+	if h == nil || h.authService == nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(identity.ProviderType), "linuxdo") {
+		return false
+	}
+
+	compatEmail := strings.TrimSpace(identity.CompatEmail)
+	if compatEmail == "" {
+		return false
+	}
+
+	repo := extractAuthServiceUserRepo(h.authService)
+	getter, ok := repo.(authUserByEmailGetter)
+	if !ok {
+		return false
+	}
+
+	user, err := getter.GetByEmail(c.Request.Context(), compatEmail)
+	if err != nil || user == nil || !user.IsActive() {
+		return false
+	}
+
+	pendingInput := service.PendingAuthSessionInput{
+		Intent:          intent,
+		ProviderType:    identity.ProviderType,
+		ProviderKey:     identity.ProviderKey,
+		ProviderSubject: strings.TrimSpace(identity.ProviderSubject),
+		RedirectTo:      redirectTo,
+		Metadata:        cloneOAuthMetadataMap(identity.Metadata),
+	}
+	if pendingInput.Metadata == nil {
+		pendingInput.Metadata = make(map[string]any, 2)
+	}
+	if displayName := strings.TrimSpace(identity.SuggestedDisplayName); displayName != "" {
+		pendingInput.Metadata["suggested_display_name"] = displayName
+	}
+	if avatarURL := strings.TrimSpace(identity.SuggestedAvatarURL); avatarURL != "" {
+		pendingInput.Metadata["suggested_avatar_url"] = avatarURL
+	}
+
+	pendingAuthToken, err := h.authService.CreatePendingAuthSession(c.Request.Context(), pendingInput)
+	if err != nil {
+		return false
+	}
+	if _, err := h.authService.CompletePendingAuthSessionBind(c.Request.Context(), pendingAuthToken, user.ID); err != nil {
+		return false
+	}
+
+	h.redirectOAuthLoginSuccess(c, frontendCallback, redirectTo, identity.Provider, intent, user.ID)
+	return true
 }
 
 func (h *AuthHandler) redirectOAuthLoginSuccess(c *gin.Context, frontendCallback, redirectTo, provider, intent string, userID int64) {
