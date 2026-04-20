@@ -128,4 +128,57 @@ describe('profileUser binding contract', () => {
     expect(bindings[1].connectDisabled).toBe(true)
     expect(bindings[1].availabilityHintKey).toBe('auth.wechat.disabledNeedWechatEnv')
   })
+
+  it('treats WeChat channel-specific binding records as one bound provider', () => {
+    const store = useAppStore()
+    store.cachedPublicSettings = {
+      linuxdo_oauth_enabled: false,
+      oidc_oauth_enabled: false,
+      wechat_login_open_enabled: true,
+      wechat_login_mp_enabled: true
+    } as any
+
+    const binding = resolveUserBinding({
+      account_bindings: {
+        wechat_open: {
+          provider: 'wechat',
+          provider_key: 'wechat-main',
+          bound: true,
+          channels: [
+            {
+              channel: 'open',
+              subject: 'open-user-1'
+            }
+          ]
+        }
+      }
+    } as any, 'wechat')
+
+    expect(binding.bound).toBe(true)
+    expect(binding.value).toBe('open-user-1')
+  })
+
+  it('prefers legacy WeChat compatibility fields when the structured binding is stale', () => {
+    const store = useAppStore()
+    store.cachedPublicSettings = {
+      linuxdo_oauth_enabled: false,
+      oidc_oauth_enabled: false,
+      wechat_login_open_enabled: true,
+      wechat_login_mp_enabled: true
+    } as any
+
+    const binding = resolveUserBinding({
+      account_bindings: {
+        wechat: {
+          provider: 'wechat',
+          bound: false
+        }
+      },
+      wechat_bound: true,
+      wechat_unionid: 'union-compat-1'
+    } as any, 'wechat')
+
+    expect(binding.bound).toBe(true)
+    expect(binding.value).toBe('union-compat-1')
+  })
 })

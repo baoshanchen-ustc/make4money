@@ -28,6 +28,9 @@ func newUserProfileIdentityTestRepo(t *testing.T) *userRepository {
 
 	_, err = db.Exec(`
 PRAGMA foreign_keys = ON;
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY
+);
 CREATE TABLE auth_identities (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_id INTEGER NOT NULL,
@@ -122,6 +125,11 @@ CREATE TABLE user_external_identities (
 	UNIQUE(provider, provider_user_id),
 	UNIQUE(user_id, provider)
 );
+INSERT INTO users (id) VALUES
+	(1), (2), (3), (4), (5),
+	(6), (7), (8), (9), (10),
+	(11), (12), (13), (14), (15),
+	(16), (17), (18), (19), (20);
 `)
 	require.NoError(t, err)
 
@@ -425,6 +433,33 @@ func TestBindPendingAuthIdentity_WechatOpenIDOnlyCreatesPrimaryIdentityAndChanne
 	channel, err := repo.FindAuthIdentityChannel(ctx, "wechat", "wechat-main", "open", "wx-open-app", "openid-only-1")
 	require.NoError(t, err)
 	require.Equal(t, identity.ID, channel.IdentityID)
+}
+
+func TestBindPendingAuthIdentity_ReclaimsIdentityOwnedByDeletedUser(t *testing.T) {
+	repo := newUserProfileIdentityTestRepo(t)
+	ctx := context.Background()
+
+	_, err := repo.UpsertAuthIdentity(ctx, 8, UpsertAuthIdentityInput{
+		ProviderType:    "linuxdo",
+		ProviderKey:     "linuxdo",
+		ProviderSubject: "deleted-user-identity",
+	})
+	require.NoError(t, err)
+
+	_, err = repo.sql.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, 8)
+	require.NoError(t, err)
+
+	err = repo.BindPendingAuthIdentity(ctx, &service.PendingAuthSessionRecord{
+		ProviderType:    "linuxdo",
+		ProviderKey:     "linuxdo",
+		ProviderSubject: "deleted-user-identity",
+	}, 7)
+	require.NoError(t, err)
+
+	identity, err := repo.FindAuthIdentity(ctx, "linuxdo", "linuxdo", "deleted-user-identity")
+	require.NoError(t, err)
+	require.NotNil(t, identity)
+	require.Equal(t, int64(7), identity.UserID)
 }
 
 func TestBindPendingAuthIdentity_WechatUnionIDUpgradesExistingOpenIDIdentity(t *testing.T) {

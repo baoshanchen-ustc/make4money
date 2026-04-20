@@ -324,6 +324,107 @@ func TestLinuxDoOAuthCallback_BindCurrentUserRejectsAlreadyBoundIdentity(t *test
 	require.Empty(t, repo.sessions)
 }
 
+func TestLinuxDoOAuthCallback_BindCurrentUserIgnoresDeletedBoundIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_, _ = w.Write([]byte(`{"access_token":"provider-token","token_type":"Bearer","expires_in":3600}`))
+		case "/userinfo":
+			_, _ = w.Write([]byte(`{"id":123,"username":"alice"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	handler, authSvc, repo := newOAuthCallbackHandlerForTest(t)
+	handler.cfg.LinuxDo = config.LinuxDoConnectConfig{
+		Enabled:             true,
+		ClientID:            "cid",
+		ClientSecret:        "secret",
+		AuthorizeURL:        srv.URL + "/authorize",
+		TokenURL:            srv.URL + "/token",
+		UserInfoURL:         srv.URL + "/userinfo",
+		RedirectURL:         "https://api.example.com/api/v1/auth/oauth/linuxdo/callback",
+		FrontendRedirectURL: "/auth/linuxdo/callback",
+	}
+	repo.bindIdentity(8, "linuxdo", "linuxdo", "123")
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/linuxdo/callback?code=ok&state=state-stale-bind", nil)
+	req.AddCookie(&http.Cookie{Name: linuxDoOAuthStateCookieName, Value: encodeCookieValue("state-stale-bind")})
+	req.AddCookie(&http.Cookie{Name: linuxDoOAuthRedirectCookie, Value: encodeCookieValue("/profile?oauth_intent=bind")})
+	req.AddCookie(&http.Cookie{Name: linuxDoOAuthIntentCookieName, Value: encodeCookieValue(service.PendingAuthIntentBindCurrentUser)})
+	req.AddCookie(&http.Cookie{Name: oauthBindAccessTokenCookieName, Value: mustAccessTokenForUser(t, authSvc, repo.users[7])})
+	ctx.Request = req
+
+	handler.LinuxDoOAuthCallback(ctx)
+
+	require.Equal(t, http.StatusFound, rec.Code)
+	fragment := parseRedirectFragment(t, rec.Header().Get("Location"))
+	require.Equal(t, "pending_session", fragment.Get("auth_result"))
+	require.Equal(t, service.PendingAuthIntentBindCurrentUser, fragment.Get("intent"))
+	require.Empty(t, fragment.Get("error"))
+
+	session, err := authSvc.GetPendingAuthSessionForProgress(context.Background(), fragment.Get("pending_auth_token"), nil)
+	require.NoError(t, err)
+	require.NotNil(t, session.TargetUserID)
+	require.Equal(t, int64(7), *session.TargetUserID)
+}
+
+func TestLinuxDoOAuthCallback_LoginIgnoresDeletedBoundIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_, _ = w.Write([]byte(`{"access_token":"provider-token","token_type":"Bearer","expires_in":3600}`))
+		case "/userinfo":
+			_, _ = w.Write([]byte(`{"id":123,"username":"alice"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	handler, authSvc, repo := newOAuthCallbackHandlerForTest(t)
+	handler.cfg.LinuxDo = config.LinuxDoConnectConfig{
+		Enabled:             true,
+		ClientID:            "cid",
+		ClientSecret:        "secret",
+		AuthorizeURL:        srv.URL + "/authorize",
+		TokenURL:            srv.URL + "/token",
+		UserInfoURL:         srv.URL + "/userinfo",
+		RedirectURL:         "https://api.example.com/api/v1/auth/oauth/linuxdo/callback",
+		FrontendRedirectURL: "/auth/linuxdo/callback",
+	}
+	repo.bindIdentity(8, "linuxdo", "linuxdo", "123")
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/linuxdo/callback?code=ok&state=state-stale-login", nil)
+	req.AddCookie(&http.Cookie{Name: linuxDoOAuthStateCookieName, Value: encodeCookieValue("state-stale-login")})
+	req.AddCookie(&http.Cookie{Name: linuxDoOAuthRedirectCookie, Value: encodeCookieValue("/welcome")})
+	req.AddCookie(&http.Cookie{Name: linuxDoOAuthIntentCookieName, Value: encodeCookieValue(service.PendingAuthIntentLogin)})
+	ctx.Request = req
+
+	handler.LinuxDoOAuthCallback(ctx)
+
+	require.Equal(t, http.StatusFound, rec.Code)
+	fragment := parseRedirectFragment(t, rec.Header().Get("Location"))
+	require.Equal(t, "pending_session", fragment.Get("auth_result"))
+	require.Equal(t, service.PendingAuthIntentLogin, fragment.Get("intent"))
+	require.Empty(t, fragment.Get("error"))
+
+	session, err := authSvc.GetPendingAuthSessionForProgress(context.Background(), fragment.Get("pending_auth_token"), nil)
+	require.NoError(t, err)
+	require.Equal(t, service.PendingAuthIntentLogin, session.Intent)
+	require.Nil(t, session.TargetUserID)
+}
+
 func TestLinuxDoOAuthCallback_LegacySyntheticUserAutoLogsInAndBindsIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -4,7 +4,8 @@ import ThirdPartyAuthCallbackFlow from "../ThirdPartyAuthCallbackFlow.vue";
 
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({
-    t: (key: string) => key,
+    t: (key: string, params?: { providerName?: string }) =>
+      params?.providerName ? `${key}:${params.providerName}` : key,
   }),
 }));
 
@@ -89,5 +90,45 @@ describe("ThirdPartyAuthCallbackFlow", () => {
       redirect: "/profile",
     });
     expect(wrapper.emitted("success")).toBeUndefined();
+  });
+
+  it("maps bound-account callback errors to localized copy and hides encoded artifacts", () => {
+    const wrapper = mount(ThirdPartyAuthCallbackFlow, {
+      props: {
+        hash: "#error=external_identity_already_bound&error_message=this%2520third-party%2520account%2520is%2520already%2520bound%2520to%2520another%2520user%253B%2520unbind%2520it%2520there%2520first&provider=linuxdo",
+      },
+    });
+
+    expect(wrapper.text()).toContain(
+      "auth.thirdParty.callback.error.externalIdentityAlreadyBound:profile.bindings.providers.linuxdo",
+    );
+    expect(wrapper.text()).not.toContain("%3B");
+    expect(wrapper.text()).not.toContain("this third-party account is already bound");
+    expect(wrapper.emitted("error")?.[0]?.[0]).toBe(
+      "auth.thirdParty.callback.error.externalIdentityAlreadyBound:profile.bindings.providers.linuxdo",
+    );
+  });
+
+  it("maps service_error to a friendly localized message", () => {
+    const wrapper = mount(ThirdPartyAuthCallbackFlow, {
+      props: {
+        hash: "#error=service_error&error_message=internal%2520server%2520error&provider=wechat",
+      },
+    });
+
+    expect(wrapper.text()).toContain("auth.thirdParty.callback.error.serviceError");
+    expect(wrapper.text()).not.toContain("internal server error");
+  });
+
+  it("maps missing authenticated subject variants to auth-required guidance", () => {
+    const wrapper = mount(ThirdPartyAuthCallbackFlow, {
+      props: {
+        hash: "#error=callback_failed&error_description=missing%2520authenticated%2520subject&provider=oidc",
+        providerLabel: "Example SSO",
+      },
+    });
+
+    expect(wrapper.text()).toContain("auth.thirdParty.callback.error.authRequired");
+    expect(wrapper.text()).not.toContain("missing authenticated subject");
   });
 });

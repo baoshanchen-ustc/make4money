@@ -9,6 +9,7 @@ const {
   setTokenMock,
   setPendingAuthSessionMock,
   clearPendingAuthSessionMock,
+  setCurrentUserMock,
   refreshUserMock,
   bindAccountMock,
   setAccountBindingAdoptionDecisionMock,
@@ -29,6 +30,7 @@ const {
   setTokenMock: vi.fn(),
   setPendingAuthSessionMock: vi.fn(),
   clearPendingAuthSessionMock: vi.fn(),
+  setCurrentUserMock: vi.fn(),
   refreshUserMock: vi.fn(),
   bindAccountMock: vi.fn(),
   setAccountBindingAdoptionDecisionMock: vi.fn(),
@@ -42,6 +44,7 @@ const authStore = {
   setToken: setTokenMock,
   setPendingAuthSession: setPendingAuthSessionMock,
   clearPendingAuthSession: clearPendingAuthSessionMock,
+  setCurrentUser: setCurrentUserMock,
   refreshUser: refreshUserMock
 }
 
@@ -113,6 +116,7 @@ describe('LinuxDoCallbackView pending auth flow', () => {
     setTokenMock.mockReset()
     setPendingAuthSessionMock.mockReset()
     clearPendingAuthSessionMock.mockReset()
+    setCurrentUserMock.mockReset()
     refreshUserMock.mockReset()
     bindAccountMock.mockReset()
     setAccountBindingAdoptionDecisionMock.mockReset()
@@ -218,9 +222,8 @@ describe('LinuxDoCallbackView pending auth flow', () => {
 
   it('submits the adoption decision before completing bind_current_user', async () => {
     authStore.token = 'active-token'
-    bindAccountMock.mockResolvedValue(undefined)
+    bindAccountMock.mockResolvedValue({ id: 7, email: 'owner@example.com' })
     setAccountBindingAdoptionDecisionMock.mockResolvedValue(undefined)
-    refreshUserMock.mockResolvedValue(undefined)
 
     const wrapper = mountView()
     const flow = wrapper.findComponent(ThirdPartyAuthCallbackFlow)
@@ -250,13 +253,14 @@ describe('LinuxDoCallbackView pending auth flow', () => {
       true
     )
     expect(bindAccountMock).toHaveBeenCalledWith('linuxdo', 'pending-bind-token')
+    expect(setCurrentUserMock).toHaveBeenCalledWith({ id: 7, email: 'owner@example.com' })
     expect(clearPendingAuthSessionMock).toHaveBeenCalled()
+    expect(refreshUserMock).not.toHaveBeenCalled()
   })
 
   it('auto-completes bind_current_user callbacks for an authenticated user', async () => {
     authStore.token = 'active-token'
-    bindAccountMock.mockResolvedValue(undefined)
-    refreshUserMock.mockResolvedValue(undefined)
+    bindAccountMock.mockResolvedValue({ id: 7, email: 'owner@example.com' })
 
     const wrapper = mountView()
     const flow = wrapper.findComponent(ThirdPartyAuthCallbackFlow)
@@ -276,7 +280,8 @@ describe('LinuxDoCallbackView pending auth flow', () => {
     await flushPromises()
 
     expect(bindAccountMock).toHaveBeenCalledWith('linuxdo', 'pending-auto-bind-token')
-    expect(refreshUserMock).toHaveBeenCalled()
+    expect(setCurrentUserMock).toHaveBeenCalledWith({ id: 7, email: 'owner@example.com' })
+    expect(refreshUserMock).not.toHaveBeenCalled()
     expect(clearPendingAuthSessionMock).toHaveBeenCalled()
     expect(replaceMock).toHaveBeenCalledWith('/profile')
   })
