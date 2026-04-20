@@ -168,7 +168,7 @@ function getBindingRecords(
     const matches: BindingRecord[] = []
     for (const item of bindings) {
       const record = toBindingRecord(item)
-      if (matchesProvider(record, provider)) {
+      if (record && matchesProvider(record, provider)) {
         matches.push(record)
       }
     }
@@ -203,7 +203,7 @@ function getExternalIdentityRecords(
   const matches: BindingRecord[] = []
   for (const item of identities) {
     const record = toBindingRecord(item)
-    if (matchesProvider(record, provider)) {
+    if (record && matchesProvider(record, provider)) {
       matches.push(record)
     }
   }
