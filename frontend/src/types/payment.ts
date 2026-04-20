@@ -76,6 +76,9 @@ export interface CheckoutInfoResponse {
 export interface PaymentOrder {
   id: number
   user_id: number
+  user_email?: string
+  user_name?: string
+  user_notes?: string
   amount: number
   pay_amount: number
   fee_rate: number
