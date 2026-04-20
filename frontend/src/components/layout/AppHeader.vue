@@ -74,7 +74,18 @@
             class="flex items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
             aria-label="User Menu"
           >
-            <UserAvatar :user="user" size="sm" shape="square" />
+            <div
+              class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-sm"
+            >
+              <img
+                v-if="avatarUrl && !avatarLoadFailed"
+                :src="avatarUrl"
+                alt="User avatar"
+                class="h-full w-full object-cover"
+                @error="avatarLoadFailed = true"
+              />
+              <span v-else class="text-xs font-semibold tracking-wide">{{ userInitials }}</span>
+            </div>
             <div class="hidden text-left md:block">
               <div class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ displayName }}
@@ -205,15 +216,18 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { defineAsyncComponent, ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
-import UserAvatar from '@/components/common/UserAvatar.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { getUserDisplayName } from '@/components/user/profile/profileUser'
+import {
+  getUserDisplayName,
+  getUserInitials,
+  resolveUserAvatarUrl
+} from '@/components/user/profile/profileUser'
 
 const SubscriptionProgressMini = defineAsyncComponent(
   () => import('@/components/common/SubscriptionProgressMini.vue')
@@ -231,6 +245,8 @@ const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
 
 const user = computed(() => authStore.user)
+const avatarUrl = computed(() => resolveUserAvatarUrl(user.value))
+const avatarLoadFailed = ref(false)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
@@ -241,8 +257,14 @@ const showOnboardingButton = computed(() => {
   return !authStore.isSimpleMode && user.value?.role === 'admin'
 })
 
+const userInitials = computed(() => getUserInitials(user.value))
+
 const displayName = computed(() => {
   return getUserDisplayName(user.value)
+})
+
+watch(avatarUrl, () => {
+  avatarLoadFailed.value = false
 })
 
 const pageTitle = computed(() => {
