@@ -536,6 +536,13 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
+	switch sortBy {
+	case "last_login_at":
+		return userTimestampOrder("last_login_at", sortOrder)
+	case "last_used_at":
+		return userLastUsedAtOrder(sortOrder)
+	}
+
 	var field string
 	defaultField := true
 	switch sortBy {
@@ -574,6 +581,45 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 		return []func(*entsql.Selector){dbent.Desc(dbuser.FieldID)}
 	}
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(dbuser.FieldID)}
+}
+
+func userTimestampOrder(column string, sortOrder string) []func(*entsql.Selector) {
+	direction := "DESC"
+	tie := dbent.Desc(dbuser.FieldID)
+	if sortOrder == pagination.SortOrderAsc {
+		direction = "ASC"
+		tie = dbent.Asc(dbuser.FieldID)
+	}
+	return []func(*entsql.Selector){
+		func(s *entsql.Selector) {
+			s.OrderExpr(entsql.Raw(s.C(column) + " " + direction + " NULLS LAST"))
+		},
+		tie,
+	}
+}
+
+func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
+	const usageAlias = "user_last_used_activity"
+	direction := "DESC"
+	tie := dbent.Desc(dbuser.FieldID)
+	if sortOrder == pagination.SortOrderAsc {
+		direction = "ASC"
+		tie = dbent.Asc(dbuser.FieldID)
+	}
+
+	return []func(*entsql.Selector){
+		func(s *entsql.Selector) {
+			usageSummary := entsql.
+				Select(usagelog.FieldUserID).
+				AppendSelectExprAs(entsql.Raw("MAX("+usagelog.FieldCreatedAt+")"), "last_used_at").
+				From(entsql.Table(usagelog.Table)).
+				GroupBy(usagelog.FieldUserID).
+				As(usageAlias)
+			s.LeftJoin(usageSummary).On(s.C(dbuser.FieldID), usageSummary.C(usagelog.FieldUserID))
+			s.OrderExpr(entsql.Raw(usageAlias + ".last_used_at " + direction + " NULLS LAST"))
+		},
+		tie,
+	}
 }
 
 // filterUsersByAttributes returns user IDs that match ALL the given attribute filters

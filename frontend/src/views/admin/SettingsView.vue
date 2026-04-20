@@ -1404,7 +1404,9 @@
               </p>
             </div>
             <div class="space-y-5 p-6">
-              <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+              <div
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+              >
                 <div class="flex items-center justify-between gap-4">
                   <div>
                     <h3 class="font-medium text-gray-900 dark:text-white">
@@ -1451,9 +1453,7 @@
                           : '输入开放平台网站应用密钥'
                       "
                     />
-                    <p
-                      class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
-                    >
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{
                         form.wechat_login_open_app_secret_configured
                           ? "当前已保存密钥；留空提交不会覆盖。"
@@ -1464,7 +1464,9 @@
                 </div>
               </div>
 
-              <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+              <div
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+              >
                 <div class="flex items-center justify-between gap-4">
                   <div>
                     <h3 class="font-medium text-gray-900 dark:text-white">
@@ -1511,9 +1513,7 @@
                           : '输入公众号网页授权密钥'
                       "
                     />
-                    <p
-                      class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
-                    >
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{
                         form.wechat_login_mp_app_secret_configured
                           ? "当前已保存密钥；留空提交不会覆盖。"
@@ -1530,7 +1530,8 @@
                 "
                 class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
               >
-                若同时启用 open/mp，需满足两个应用在同一个开发者名下，否则会冲突。
+                若同时启用
+                open/mp，需满足两个应用在同一个开发者名下，否则会冲突。
               </div>
             </div>
           </div>
@@ -1991,10 +1992,7 @@
                     </p>
                   </div>
 
-                  <div
-                    v-else
-                    class="flex items-start justify-between gap-4"
-                  >
+                  <div v-else class="flex items-start justify-between gap-4">
                     <div>
                       <h3 class="font-medium text-gray-900 dark:text-white">
                         {{ section.title }}
@@ -2008,7 +2006,9 @@
                       </p>
                     </div>
                     <Toggle
-                      :model-value="defaultSettingsOverrideBySource[section.key]"
+                      :model-value="
+                        defaultSettingsOverrideBySource[section.key]
+                      "
                       @update:model-value="
                         setProviderDefaultOverride(section.key, $event)
                       "
@@ -2032,7 +2032,9 @@
                         <p class="font-medium text-gray-900 dark:text-white">
                           首次绑定该渠道时发放默认值
                         </p>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        <p
+                          class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                        >
                           仅在同一用户首次绑定该渠道时生效一次；解绑后重新绑定不会重复发放。
                         </p>
                       </div>
@@ -2145,7 +2147,9 @@
                             <label
                               class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
                             >
-                              {{ t("admin.settings.defaults.subscriptionGroup") }}
+                              {{
+                                t("admin.settings.defaults.subscriptionGroup")
+                              }}
                             </label>
                             <Select
                               v-model="item.group_id"
@@ -2181,7 +2185,9 @@
                                 />
                                 <span v-else class="text-gray-400">
                                   {{
-                                    t("admin.settings.defaults.subscriptionGroup")
+                                    t(
+                                      "admin.settings.defaults.subscriptionGroup",
+                                    )
                                   }}
                                 </span>
                               </template>
@@ -2335,13 +2341,7 @@
                     {{ t("admin.settings.scheduling.allowUngroupedKeyHint") }}
                   </p>
                 </div>
-                <label class="toggle">
-                  <input
-                    v-model="form.allow_ungrouped_key_scheduling"
-                    type="checkbox"
-                  />
-                  <span class="toggle-slider"></span>
-                </label>
+                <Toggle v-model="form.allow_ungrouped_key_scheduling" />
               </div>
               <div class="mt-5 flex items-center justify-between">
                 <div>
@@ -2351,16 +2351,12 @@
                     {{ t("admin.settings.scheduling.openaiAdvancedScheduler") }}
                   </label>
                   <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.scheduling.openaiAdvancedSchedulerHint") }}
+                    {{
+                      t("admin.settings.scheduling.openaiAdvancedSchedulerHint")
+                    }}
                   </p>
                 </div>
-                <label class="toggle">
-                  <input
-                    v-model="form.openai_advanced_scheduler_enabled"
-                    type="checkbox"
-                  />
-                  <span class="toggle-slider"></span>
-                </label>
+                <Toggle v-model="form.openai_advanced_scheduler_enabled" />
               </div>
             </div>
           </div>
@@ -4375,9 +4371,7 @@ import Select from "@/components/common/Select.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
-import {
-  normalizeVisiblePaymentType,
-} from "@/components/payment/providerConfig";
+import { normalizeVisiblePaymentType } from "@/components/payment/providerConfig";
 import GroupBadge from "@/components/common/GroupBadge.vue";
 import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
@@ -5158,7 +5152,9 @@ function setProviderDefaultSettings(
   );
 }
 
-function isDefaultSettingsEditorVisible(source: DefaultSettingsSource): boolean {
+function isDefaultSettingsEditorVisible(
+  source: DefaultSettingsSource,
+): boolean {
   return (
     source === "email" ||
     defaultSettingsOverrideBySource[source as ProviderDefaultSettingsSource]
@@ -5533,8 +5529,7 @@ async function saveSettings() {
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
-      openai_advanced_scheduler_enabled:
-        form.openai_advanced_scheduler_enabled,
+      openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
@@ -5976,12 +5971,13 @@ async function saveBetaPolicySettings() {
 
 // ==================== Provider Management ====================
 
-const PROVIDER_VISIBLE_PAYMENT_TYPE_MAP: Record<PaymentProviderKey, string[]> = {
-  easypay: ["alipay", "wxpay"],
-  alipay: ["alipay"],
-  wxpay: ["wxpay"],
-  stripe: ["stripe"],
-};
+const PROVIDER_VISIBLE_PAYMENT_TYPE_MAP: Record<PaymentProviderKey, string[]> =
+  {
+    easypay: ["alipay", "wxpay"],
+    alipay: ["alipay"],
+    wxpay: ["wxpay"],
+    stripe: ["stripe"],
+  };
 
 const VISIBLE_PAYMENT_TYPE_ORDER = ["alipay", "wxpay", "stripe"];
 const enabledPaymentProviderKeys = ref<PaymentProviderKey[]>([]);
@@ -6050,10 +6046,7 @@ function inferEnabledProviderKeysFromPaymentTypes(
   }
 
   const fallback: PaymentProviderKey[] = [];
-  if (
-    normalizedTypes.includes("alipay") &&
-    normalizedTypes.includes("wxpay")
-  ) {
+  if (normalizedTypes.includes("alipay") && normalizedTypes.includes("wxpay")) {
     fallback.push("easypay");
   } else {
     if (normalizedTypes.includes("alipay")) {
