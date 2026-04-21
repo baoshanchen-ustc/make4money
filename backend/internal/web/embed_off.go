@@ -5,7 +5,6 @@ package web
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -20,9 +19,10 @@ type PublicSettingsProvider interface {
 // FrontendServer is a stub for non-embed builds
 type FrontendServer struct{}
 
-// NewFrontendServer returns an error when frontend is not embedded
+// NewFrontendServer returns a stub server when frontend is not embedded.
+// Callers should still gate on HasEmbeddedFrontend before wiring it.
 func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
-	return nil, errors.New("frontend not embedded")
+	return &FrontendServer{}, nil
 }
 
 // InvalidateCache is a no-op for non-embed builds

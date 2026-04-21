@@ -32,8 +32,33 @@
         </div>
       </div>
 
+      <!-- Passkey Login -->
+      <div v-if="passkeyEnabled" class="space-y-4">
+        <button
+          type="button"
+          data-testid="passkey-login-button"
+          @click="handlePasskeyLogin"
+          :disabled="isLoading"
+          class="btn btn-secondary w-full flex items-center justify-center gap-2"
+        >
+          <Icon name="key" size="md" />
+          {{ t('auth.continueWithPasskey') }}
+        </button>
+        
+        <div class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-gray-200 dark:border-dark-600"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="bg-white px-2 text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+              {{ t('auth.orContinueWithEmail') }}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <!-- Login Form -->
-      <form @submit.prevent="handleLogin" class="space-y-5">
+      <form @submit.prevent="handleLogin" class="space-y-5" data-testid="password-login-form">
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -123,6 +148,7 @@
         <transition name="fade">
           <div
             v-if="errorMessage"
+            data-testid="passkey-login-error"
             class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
           >
             <div class="flex items-start gap-3">
@@ -197,6 +223,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { startAuthentication } from '@simplewebauthn/browser'
 import { AuthLayout } from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
@@ -229,6 +256,7 @@ const backendModeEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const passwordResetEnabled = ref<boolean>(false)
+const passkeyEnabled = ref<boolean>(false)
 
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
@@ -272,6 +300,7 @@ onMounted(async () => {
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     backendModeEnabled.value = settings.backend_mode_enabled
     passwordResetEnabled.value = settings.password_reset_enabled
+    passkeyEnabled.value = settings.passkey_enabled || false
   } catch (error) {
     console.error('Failed to load public settings:', error)
   }
@@ -387,6 +416,32 @@ async function handleLogin(): Promise<void> {
     }
 
     // Also show error toast
+    appStore.showError(errorMessage.value)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// ==================== Passkey Handlers ====================
+
+async function handlePasskeyLogin(): Promise<void> {
+  errorMessage.value = ''
+  isLoading.value = true
+
+  try {
+    const beginResponse = await authStore.beginPasskeyLogin()
+    const asseResp = await startAuthentication({ optionsJSON: beginResponse.options.publicKey as any })
+    await authStore.loginWithPasskey(asseResp)
+
+    appStore.showSuccess(t('auth.loginSuccess'))
+    const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
+    await router.push(redirectTo)
+  } catch (error: any) {
+    if (error.name === 'NotAllowedError' || error.message?.includes('cancelled')) {
+      return
+    }
+
+    errorMessage.value = t('auth.passkeyLoginFailed')
     appStore.showError(errorMessage.value)
   } finally {
     isLoading.value = false

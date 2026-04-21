@@ -18,6 +18,14 @@ jobs:
           check-latest: false
           cache: true
           cache-dependency-path: backend/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Verify Go version
         run: |
           go version | grep -q 'go1.26.2'
@@ -27,6 +35,33 @@ jobs:
       - name: Integration tests
         working-directory: backend
         run: make test-integration
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Frontend lint
+        working-directory: frontend
+        run: pnpm run lint:check
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: pnpm run typecheck
+      - name: Frontend runtime tests
+        working-directory: frontend
+        run: pnpm run test:run
+      - name: Install Chromium for Playwright
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Chromium Playwright passkey E2E
+        working-directory: frontend
+        run: pnpm exec playwright test --project=chromium
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-artifacts
+          if-no-files-found: ignore
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
 
   golangci-lint:
     runs-on: ubuntu-latest

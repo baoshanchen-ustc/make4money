@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
+	"github.com/Wei-Shaw/sub2api/ent/passkeycredential"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -512,6 +513,67 @@ func init() {
 	idempotencyrecordDescErrorReason := idempotencyrecordFields[6].Descriptor()
 	// idempotencyrecord.ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
 	idempotencyrecord.ErrorReasonValidator = idempotencyrecordDescErrorReason.Validators[0].(func(string) error)
+	passkeycredentialMixin := schema.PasskeyCredential{}.Mixin()
+	passkeycredentialMixinFields0 := passkeycredentialMixin[0].Fields()
+	_ = passkeycredentialMixinFields0
+	passkeycredentialFields := schema.PasskeyCredential{}.Fields()
+	_ = passkeycredentialFields
+	// passkeycredentialDescCreatedAt is the schema descriptor for created_at field.
+	passkeycredentialDescCreatedAt := passkeycredentialMixinFields0[0].Descriptor()
+	// passkeycredential.DefaultCreatedAt holds the default value on creation for the created_at field.
+	passkeycredential.DefaultCreatedAt = passkeycredentialDescCreatedAt.Default.(func() time.Time)
+	// passkeycredentialDescUpdatedAt is the schema descriptor for updated_at field.
+	passkeycredentialDescUpdatedAt := passkeycredentialMixinFields0[1].Descriptor()
+	// passkeycredential.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	passkeycredential.DefaultUpdatedAt = passkeycredentialDescUpdatedAt.Default.(func() time.Time)
+	// passkeycredential.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	passkeycredential.UpdateDefaultUpdatedAt = passkeycredentialDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// passkeycredentialDescCredentialID is the schema descriptor for credential_id field.
+	passkeycredentialDescCredentialID := passkeycredentialFields[1].Descriptor()
+	// passkeycredential.CredentialIDValidator is a validator for the "credential_id" field. It is called by the builders before save.
+	passkeycredential.CredentialIDValidator = func() func(string) error {
+		validators := passkeycredentialDescCredentialID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(credential_id string) error {
+			for _, fn := range fns {
+				if err := fn(credential_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// passkeycredentialDescPublicKey is the schema descriptor for public_key field.
+	passkeycredentialDescPublicKey := passkeycredentialFields[2].Descriptor()
+	// passkeycredential.PublicKeyValidator is a validator for the "public_key" field. It is called by the builders before save.
+	passkeycredential.PublicKeyValidator = passkeycredentialDescPublicKey.Validators[0].(func(string) error)
+	// passkeycredentialDescSignCount is the schema descriptor for sign_count field.
+	passkeycredentialDescSignCount := passkeycredentialFields[3].Descriptor()
+	// passkeycredential.DefaultSignCount holds the default value on creation for the sign_count field.
+	passkeycredential.DefaultSignCount = passkeycredentialDescSignCount.Default.(int64)
+	// passkeycredentialDescAaguid is the schema descriptor for aaguid field.
+	passkeycredentialDescAaguid := passkeycredentialFields[5].Descriptor()
+	// passkeycredential.DefaultAaguid holds the default value on creation for the aaguid field.
+	passkeycredential.DefaultAaguid = passkeycredentialDescAaguid.Default.(string)
+	// passkeycredential.AaguidValidator is a validator for the "aaguid" field. It is called by the builders before save.
+	passkeycredential.AaguidValidator = passkeycredentialDescAaguid.Validators[0].(func(string) error)
+	// passkeycredentialDescBackupEligible is the schema descriptor for backup_eligible field.
+	passkeycredentialDescBackupEligible := passkeycredentialFields[6].Descriptor()
+	// passkeycredential.DefaultBackupEligible holds the default value on creation for the backup_eligible field.
+	passkeycredential.DefaultBackupEligible = passkeycredentialDescBackupEligible.Default.(bool)
+	// passkeycredentialDescBackupState is the schema descriptor for backup_state field.
+	passkeycredentialDescBackupState := passkeycredentialFields[7].Descriptor()
+	// passkeycredential.DefaultBackupState holds the default value on creation for the backup_state field.
+	passkeycredential.DefaultBackupState = passkeycredentialDescBackupState.Default.(bool)
+	// passkeycredentialDescFriendlyName is the schema descriptor for friendly_name field.
+	passkeycredentialDescFriendlyName := passkeycredentialFields[8].Descriptor()
+	// passkeycredential.DefaultFriendlyName holds the default value on creation for the friendly_name field.
+	passkeycredential.DefaultFriendlyName = passkeycredentialDescFriendlyName.Default.(string)
+	// passkeycredential.FriendlyNameValidator is a validator for the "friendly_name" field. It is called by the builders before save.
+	passkeycredential.FriendlyNameValidator = passkeycredentialDescFriendlyName.Validators[0].(func(string) error)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()
 	_ = paymentauditlogFields
 	// paymentauditlogDescOrderID is the schema descriptor for order_id field.

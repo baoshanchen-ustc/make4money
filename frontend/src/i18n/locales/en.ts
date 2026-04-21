@@ -251,6 +251,8 @@ export default {
     deleted: 'Deleted successfully',
     cancel: 'Cancel',
     delete: 'Delete',
+    rename: 'Rename',
+    revoke: 'Revoke',
     edit: 'Edit',
     create: 'Create',
     update: 'Update',
@@ -376,6 +378,8 @@ export default {
     signUp: 'Sign up',
     processing: 'Processing...',
     continue: 'Continue',
+    continueWithPasskey: 'Continue with passkey',
+    orContinueWithEmail: 'or continue with email',
     rememberMe: 'Remember me',
     dontHaveAccount: "Don't have an account?",
     alreadyHaveAccount: 'Already have an account?',
@@ -391,6 +395,7 @@ export default {
     passwordRequired: 'Password is required',
     passwordMinLength: 'Password must be at least 6 characters',
     loginFailed: 'Login failed. Please check your credentials and try again.',
+    passkeyLoginFailed: 'Passkey login failed. Please try again or use another method.',
     registrationFailed: 'Registration failed. Please try again.',
     emailSuffixNotAllowed: 'This email domain is not allowed for registration.',
     emailSuffixNotAllowedWithAllowed:
@@ -909,9 +914,9 @@ export default {
       codeSent: 'Verification code sent to your email',
       sendCodeFailed: 'Failed to send verification code'
     },
-    balanceNotify: {
-      title: 'Balance Low Notification',
-      description: 'Send email alert when account balance falls below threshold',
+	    balanceNotify: {
+	      title: 'Balance Low Notification',
+	      description: 'Send email alert when account balance falls below threshold',
       enabled: 'Enable Balance Low Notification',
       threshold: 'Custom Threshold',
       thresholdHint: 'Leave empty to use system default',
@@ -935,13 +940,40 @@ export default {
       emailRemoved: 'Email removed',
       verifySuccess: 'Email added successfully',
       removeEmail: 'Remove',
-      removeSuccess: 'Email removed',
-      emailDuplicate: 'This email already exists',
-      maxEmailsReached: 'Maximum number of notification emails reached',
-      unverified: 'Unverified',
-      verified: 'Verified',
-    }
-  },
+	      removeSuccess: 'Email removed',
+	      emailDuplicate: 'This email already exists',
+	      maxEmailsReached: 'Maximum number of notification emails reached',
+	      unverified: 'Unverified',
+	      verified: 'Verified',
+	    },
+	    passkey: {
+	      title: 'Passkeys',
+	      description: 'Sign in securely with your fingerprint, face, or screen lock',
+	      featureDisabled: 'Feature Unavailable',
+	      featureDisabledHint: 'Passkey authentication has not been enabled by the administrator',
+	      recentAuthRequired: 'Recent Authentication Required',
+	      recentAuthRequiredHint: 'Please sign out and sign in again to manage your passkeys',
+	      noPasskeys: 'No Passkeys',
+	      noPasskeysHint: 'Add a passkey to sign in without a password',
+	      addPasskey: 'Add Passkey',
+	      synced: 'Synced',
+	      backupEligible: 'Backup Eligible',
+	      createdAt: 'Created at',
+	      lastUsedAt: 'Last used at',
+	      renameTitle: 'Rename Passkey',
+	      friendlyName: 'Friendly Name',
+	      friendlyNamePlaceholder: 'e.g., My iPhone',
+	      renameSuccess: 'Passkey renamed successfully',
+	      renameFailed: 'Failed to rename passkey',
+	      revokeTitle: 'Revoke Passkey',
+	      revokeWarning: 'Are you sure you want to revoke the passkey "{name}"? You will no longer be able to use it to sign in.',
+	      confirmRevoke: 'Revoke Passkey',
+	      revokeSuccess: 'Passkey revoked successfully',
+	      revokeFailed: 'Failed to revoke passkey',
+	      enrollSuccess: 'Passkey added successfully',
+	      enrollFailed: 'Failed to add passkey'
+	    }
+	  },
 
   // Empty States
   empty: {
@@ -4299,6 +4331,22 @@ export default {
         totpHint: 'Allow users to use authenticator apps like Google Authenticator',
         totpKeyNotConfigured:
           'Please configure TOTP_ENCRYPTION_KEY in environment variables first. Generate a key with: openssl rand -hex 32'
+      },
+      passkey: {
+        title: 'Passkey Login',
+        description: 'Configure passkey sign-in using WebAuthn and the current site identity settings.',
+        enable: 'Passkey Login',
+        enableHint: 'Allow users to sign in with passkeys. WebAuthn settings are derived automatically from Frontend URL.',
+        configInvalidTitle: 'Passkey configuration needs attention',
+        configInvalidFallback: 'Passkey is enabled, but the current relying party configuration is invalid.',
+        derivedHint: 'Passkey relying party settings are read-only here and are derived automatically from Frontend URL.',
+        rpId: 'Relying Party ID',
+        rpIdHint: 'Derived from Frontend URL and used as the WebAuthn relying party identifier.',
+        rpName: 'Relying Party Name',
+        rpNameHint: 'Derived from Site Name and shown by the browser or authenticator during passkey flows.',
+        allowedOrigins: 'Allowed Origins',
+        allowedOriginsHint: 'Derived from Frontend URL. The browser origin must exactly match one of these values.',
+        unresolved: 'Not resolved'
       },
       turnstile: {
         title: 'Cloudflare Turnstile',

@@ -13,7 +13,8 @@ import (
 )
 
 type settingUpdateRepoStub struct {
-	updates map[string]string
+	updates     map[string]string
+	deletedKeys []string
 }
 
 func (s *settingUpdateRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
@@ -45,7 +46,8 @@ func (s *settingUpdateRepoStub) GetAll(ctx context.Context) (map[string]string, 
 }
 
 func (s *settingUpdateRepoStub) Delete(ctx context.Context, key string) error {
-	panic("unexpected Delete call")
+	s.deletedKeys = append(s.deletedKeys, key)
+	return nil
 }
 
 type defaultSubGroupReaderStub struct {
@@ -222,4 +224,29 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1000", repo.updates[SettingKeyTableDefaultPageSize])
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
+}
+
+func TestSettingService_UpdateSettings_DoesNotPersistFrontendURLWhenItMatchesConfigFallback(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{Server: config.ServerConfig{FrontendURL: "https://app.example.com"}})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		FrontendURL: "https://app.example.com",
+	})
+	require.NoError(t, err)
+	_, exists := repo.updates[SettingKeyFrontendURL]
+	require.False(t, exists)
+	require.Equal(t, []string{SettingKeyFrontendURL}, repo.deletedKeys)
+}
+
+func TestSettingService_UpdateSettings_PersistsFrontendURLWhenItOverridesConfigFallback(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{Server: config.ServerConfig{FrontendURL: "https://app.example.com"}})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		FrontendURL: "https://admin.example.com",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://admin.example.com", repo.updates[SettingKeyFrontendURL])
+	require.Empty(t, repo.deletedKeys)
 }

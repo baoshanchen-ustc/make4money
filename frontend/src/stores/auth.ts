@@ -6,7 +6,19 @@
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, type LoginResponse } from '@/api'
-import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'
+import type {
+  AuthResponse,
+  LoginRequest,
+  PasskeyAuthenticationCredentialJSON,
+  PasskeyCredentialSummary,
+  PasskeyEnrollmentBeginResponse,
+  PasskeyEnrollmentFinishResponse,
+  PasskeyLoginBeginResponse,
+  PasskeyRegistrationCredentialJSON,
+  PasskeyStatus,
+  RegisterRequest,
+  User
+} from '@/types'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const AUTH_USER_KEY = 'auth_user'
@@ -23,6 +35,10 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshTokenValue = ref<string | null>(null)
   const tokenExpiresAt = ref<number | null>(null) // 过期时间戳（毫秒）
   const runMode = ref<'standard' | 'simple'>('standard')
+  const passkeyLoginFlow = ref<PasskeyLoginBeginResponse | null>(null)
+  const passkeyEnrollmentFlow = ref<PasskeyEnrollmentBeginResponse | null>(null)
+  const passkeyStatus = ref<PasskeyStatus | null>(null)
+  const passkeys = ref<PasskeyCredentialSummary[]>([])
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
   let tokenRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null
 
@@ -175,6 +191,17 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  function clearPasskeyFlows(): void {
+    passkeyLoginFlow.value = null
+    passkeyEnrollmentFlow.value = null
+  }
+
+  function clearPasskeyState(): void {
+    clearPasskeyFlows()
+    passkeyStatus.value = null
+    passkeys.value = []
+  }
+
   /**
    * User login
    * @param credentials - Login credentials (email and password)
@@ -201,6 +228,31 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function beginPasskeyLogin(): Promise<PasskeyLoginBeginResponse> {
+    passkeyLoginFlow.value = null
+    const response = await authAPI.beginPasskeyLogin()
+    passkeyLoginFlow.value = response
+    return response
+  }
+
+  async function loginWithPasskey(credential: PasskeyAuthenticationCredentialJSON): Promise<User> {
+    const flow = passkeyLoginFlow.value
+    if (!flow) {
+      throw new Error('Passkey login has not been started')
+    }
+
+    try {
+      const response = await authAPI.finishPasskeyLogin(flow.flow_id, credential)
+      setAuthFromResponse(response)
+      return user.value!
+    } catch (error) {
+      clearAuth()
+      throw error
+    } finally {
+      passkeyLoginFlow.value = null
+    }
+  }
+
   /**
    * Complete login with 2FA code
    * @param tempToken - Temporary token from initial login
@@ -224,6 +276,8 @@ export const useAuthStore = defineStore('auth', () => {
    * Internal helper function
    */
   function setAuthFromResponse(response: AuthResponse): void {
+    clearPasskeyFlows()
+
     // Store token and user
     token.value = response.access_token
 
@@ -275,6 +329,60 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function beginPasskeyEnrollment(): Promise<PasskeyEnrollmentBeginResponse> {
+    passkeyEnrollmentFlow.value = null
+    const response = await authAPI.beginPasskeyEnrollment()
+    passkeyEnrollmentFlow.value = response
+    return response
+  }
+
+  async function finishPasskeyEnrollment(
+    credential: PasskeyRegistrationCredentialJSON,
+    friendlyName?: string
+  ): Promise<PasskeyEnrollmentFinishResponse> {
+    const flow = passkeyEnrollmentFlow.value
+    if (!flow) {
+      throw new Error('Passkey enrollment has not been started')
+    }
+
+    try {
+      const response = await authAPI.finishPasskeyEnrollment(flow.flow_id, credential, friendlyName)
+      await refreshPasskeyManagement().catch((error) => {
+        console.error('Failed to refresh passkey management after enrollment:', error)
+      })
+      return response
+    } finally {
+      passkeyEnrollmentFlow.value = null
+    }
+  }
+
+  async function refreshPasskeyStatus(): Promise<PasskeyStatus> {
+    const status = await authAPI.getPasskeyStatus()
+    passkeyStatus.value = status
+    return status
+  }
+
+  async function refreshPasskeys(): Promise<PasskeyCredentialSummary[]> {
+    const response = await authAPI.listPasskeys()
+    passkeys.value = response.items
+    return response.items
+  }
+
+  async function refreshPasskeyManagement(): Promise<{
+    status: PasskeyStatus
+    passkeys: PasskeyCredentialSummary[]
+  }> {
+    const status = await refreshPasskeyStatus()
+
+    if (!status.feature_enabled) {
+      passkeys.value = []
+      return { status, passkeys: [] }
+    }
+
+    const items = await refreshPasskeys()
+    return { status, passkeys: items }
+  }
+
   /**
    * 直接设置 token（用于 OAuth/SSO 回调），并加载当前用户信息。
    * 会自动读取 localStorage 中已设置的 refresh_token 和 token_expires_in
@@ -285,6 +393,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Note: Don't clear localStorage here as OAuth callback may have set refresh_token
     stopAutoRefresh()
     stopTokenRefresh()
+    clearPasskeyState()
     token.value = null
     user.value = null
 
@@ -377,6 +486,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshTokenValue.value = null
     tokenExpiresAt.value = null
     user.value = null
+    clearPasskeyState()
     localStorage.removeItem(AUTH_TOKEN_KEY)
     localStorage.removeItem(AUTH_USER_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
@@ -390,6 +500,8 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     token,
     runMode: readonly(runMode),
+    passkeyStatus: readonly(passkeyStatus),
+    passkeys: readonly(passkeys),
 
     // Computed
     isAuthenticated,
@@ -398,11 +510,18 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Actions
     login,
+    beginPasskeyLogin,
+    loginWithPasskey,
     login2FA,
+    beginPasskeyEnrollment,
+    finishPasskeyEnrollment,
     register,
     setToken,
     logout,
     checkAuth,
-    refreshUser
+    refreshUser,
+    refreshPasskeyStatus,
+    refreshPasskeys,
+    refreshPasskeyManagement
   }
 })

@@ -5,11 +5,13 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -126,8 +128,8 @@ func ensureDockerAvailable(t *testing.T) {
 }
 
 func dockerAvailable() bool {
-	if os.Getenv("DOCKER_HOST") != "" {
-		return true
+	if dockerHost := os.Getenv("DOCKER_HOST"); dockerHost != "" {
+		return dockerHostReachable(dockerHost)
 	}
 
 	socketCandidates := []string{
@@ -142,11 +144,34 @@ func dockerAvailable() bool {
 		if socket == "" {
 			continue
 		}
-		if _, err := os.Stat(socket); err == nil {
+		if _, err := os.Stat(socket); err == nil && dockerHostReachable("unix://"+socket) {
 			return true
 		}
 	}
 	return false
+}
+
+func dockerHostReachable(dockerHost string) bool {
+	const timeout = 200 * time.Millisecond
+
+	switch {
+	case strings.HasPrefix(dockerHost, "unix://"):
+		conn, err := net.DialTimeout("unix", strings.TrimPrefix(dockerHost, "unix://"), timeout)
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
+	case strings.HasPrefix(dockerHost, "tcp://"):
+		conn, err := net.DialTimeout("tcp", strings.TrimPrefix(dockerHost, "tcp://"), timeout)
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
+	default:
+		return false
+	}
 }
 
 func userHomeDir() string {

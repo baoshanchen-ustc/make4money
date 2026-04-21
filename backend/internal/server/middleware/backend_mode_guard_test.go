@@ -53,7 +53,7 @@ func (r *bmSettingRepo) GetAll(_ context.Context) (map[string]string, error) {
 }
 
 func (r *bmSettingRepo) Delete(_ context.Context, _ string) error {
-	panic("unexpected Delete call")
+	return nil
 }
 
 func newBackendModeSettingService(t *testing.T, enabled string) *service.SettingService {
@@ -184,6 +184,18 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			name:       "enabled_allows_login_2fa",
 			enabled:    "true",
 			path:       "/api/v1/auth/login/2fa",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "enabled_allows_passkey_login_begin",
+			enabled:    "true",
+			path:       "/api/v1/auth/passkeys/login/begin",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "enabled_allows_passkey_login_finish",
+			enabled:    "true",
+			path:       "/api/v1/auth/passkeys/login/finish",
 			wantStatus: http.StatusOK,
 		},
 		{

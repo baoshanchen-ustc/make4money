@@ -51,6 +51,7 @@ func (s *bmRepoStub) Delete(ctx context.Context, key string) error {
 
 type bmUpdateRepoStub struct {
 	updates    map[string]string
+	deletes    []string
 	getValueFn func(ctx context.Context, key string) (string, error)
 }
 
@@ -86,7 +87,8 @@ func (s *bmUpdateRepoStub) GetAll(ctx context.Context) (map[string]string, error
 }
 
 func (s *bmUpdateRepoStub) Delete(ctx context.Context, key string) error {
-	panic("unexpected Delete call")
+	s.deletes = append(s.deletes, key)
+	return nil
 }
 
 func resetBackendModeTestCache(t *testing.T) {
@@ -195,5 +197,6 @@ func TestUpdateSettings_InvalidatesBackendModeCache(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "false", repo.updates[SettingKeyBackendModeEnabled])
+	require.Contains(t, repo.deletes, SettingKeyFrontendURL)
 	require.False(t, svc.IsBackendModeEnabled(context.Background()))
 }

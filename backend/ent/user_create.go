@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/passkeycredential"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
@@ -429,6 +430,21 @@ func (_c *UserCreate) AddPaymentOrders(v ...*PaymentOrder) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddPaymentOrderIDs(ids...)
+}
+
+// AddPasskeyCredentialIDs adds the "passkey_credentials" edge to the PasskeyCredential entity by IDs.
+func (_c *UserCreate) AddPasskeyCredentialIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddPasskeyCredentialIDs(ids...)
+	return _c
+}
+
+// AddPasskeyCredentials adds the "passkey_credentials" edges to the PasskeyCredential entity.
+func (_c *UserCreate) AddPasskeyCredentials(v ...*PasskeyCredential) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddPasskeyCredentialIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -861,6 +877,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(paymentorder.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.PasskeyCredentialsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PasskeyCredentialsTable,
+			Columns: []string{user.PasskeyCredentialsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(passkeycredential.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

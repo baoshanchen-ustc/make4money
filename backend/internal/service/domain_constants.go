@@ -100,7 +100,8 @@ const (
 	SettingKeyTurnstileSecretKey = "turnstile_secret_key" // Turnstile Secret Key
 
 	// TOTP 双因素认证设置
-	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能
+	SettingKeyTotpEnabled    = "totp_enabled" // 是否启用 TOTP 2FA 功能
+	SettingKeyPasskeyEnabled = "passkey_enabled"
 
 	// LinuxDo Connect OAuth 登录设置
 	SettingKeyLinuxDoConnectEnabled      = "linuxdo_connect_enabled"

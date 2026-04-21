@@ -9,6 +9,10 @@ type SystemSettings struct {
 	FrontendURL                      string
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	PasskeyEnabled                   bool
+	PasskeyRPID                      string
+	PasskeyRPName                    string
+	PasskeyAllowedOrigins            []string
 
 	SMTPHost               string
 	SMTPPort               int
@@ -120,6 +124,11 @@ type SystemSettings struct {
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
 }
 
+type PasskeyConfigValidation struct {
+	Valid bool
+	Error string
+}
+
 type DefaultSubscriptionSetting struct {
 	GroupID      int64 `json:"group_id"`
 	ValidityDays int   `json:"validity_days"`
@@ -133,6 +142,7 @@ type PublicSettings struct {
 	PasswordResetEnabled             bool
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	PasskeyEnabled                   bool
 	TurnstileEnabled                 bool
 	TurnstileSiteKey                 string
 	SiteName                         string

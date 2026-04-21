@@ -73,6 +73,8 @@ const (
 	EdgePromoCodeUsages = "promo_code_usages"
 	// EdgePaymentOrders holds the string denoting the payment_orders edge name in mutations.
 	EdgePaymentOrders = "payment_orders"
+	// EdgePasskeyCredentials holds the string denoting the passkey_credentials edge name in mutations.
+	EdgePasskeyCredentials = "passkey_credentials"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -145,6 +147,13 @@ const (
 	PaymentOrdersInverseTable = "payment_orders"
 	// PaymentOrdersColumn is the table column denoting the payment_orders relation/edge.
 	PaymentOrdersColumn = "user_id"
+	// PasskeyCredentialsTable is the table that holds the passkey_credentials relation/edge.
+	PasskeyCredentialsTable = "passkey_credentials"
+	// PasskeyCredentialsInverseTable is the table name for the PasskeyCredential entity.
+	// It exists in this package in order to avoid circular dependency with the "passkeycredential" package.
+	PasskeyCredentialsInverseTable = "passkey_credentials"
+	// PasskeyCredentialsColumn is the table column denoting the passkey_credentials relation/edge.
+	PasskeyCredentialsColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -485,6 +494,20 @@ func ByPaymentOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByPasskeyCredentialsCount orders the results by passkey_credentials count.
+func ByPasskeyCredentialsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newPasskeyCredentialsStep(), opts...)
+	}
+}
+
+// ByPasskeyCredentials orders the results by passkey_credentials terms.
+func ByPasskeyCredentials(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPasskeyCredentialsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -566,6 +589,13 @@ func newPaymentOrdersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PaymentOrdersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PaymentOrdersTable, PaymentOrdersColumn),
+	)
+}
+func newPasskeyCredentialsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(PasskeyCredentialsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, PasskeyCredentialsTable, PasskeyCredentialsColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {

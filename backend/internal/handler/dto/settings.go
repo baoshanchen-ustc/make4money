@@ -33,6 +33,12 @@ type SystemSettings struct {
 	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
 	TotpEnabled                      bool     `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured      bool     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	PasskeyEnabled                   bool     `json:"passkey_enabled"`
+	PasskeyRPID                      string   `json:"passkey_rp_id"`
+	PasskeyRPName                    string   `json:"passkey_rp_name"`
+	PasskeyAllowedOrigins            []string `json:"passkey_allowed_origins"`
+	PasskeyConfigValid               bool     `json:"passkey_config_valid"`
+	PasskeyConfigError               string   `json:"passkey_config_error"`
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -172,6 +178,7 @@ type PublicSettings struct {
 	PasswordResetEnabled             bool             `json:"password_reset_enabled"`
 	InvitationCodeEnabled            bool             `json:"invitation_code_enabled"`
 	TotpEnabled                      bool             `json:"totp_enabled"` // TOTP 双因素认证
+	PasskeyEnabled                   bool             `json:"passkey_enabled"`
 	TurnstileEnabled                 bool             `json:"turnstile_enabled"`
 	TurnstileSiteKey                 string           `json:"turnstile_site_key"`
 	SiteName                         string           `json:"site_name"`

@@ -16,11 +16,11 @@ import (
 )
 
 var (
-	baseURL = getEnv("BASE_URL", "http://localhost:8080")
+	baseURL = e2eBackendBaseURL()
 	// ENDPOINT_PREFIX: 端点前缀，支持混合模式和非混合模式测试
 	// - "" (默认): 使用 /v1/messages, /v1beta/models（混合模式，可调度 antigravity 账户）
 	// - "/antigravity": 使用 /antigravity/v1/messages, /antigravity/v1beta/models（非混合模式，仅 antigravity 账户）
-	endpointPrefix = getEnv("ENDPOINT_PREFIX", "")
+	endpointPrefix = e2eEndpointPrefix()
 	testInterval   = 1 * time.Second // 测试间隔，防止限流
 )
 
@@ -32,13 +32,6 @@ const (
 	claudeAPIKeyEnv = "CLAUDE_API_KEY"
 	geminiAPIKeyEnv = "GEMINI_API_KEY"
 )
-
-func getEnv(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultVal
-}
 
 // Claude 模型列表
 var claudeModels = []string{

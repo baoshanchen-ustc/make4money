@@ -107,6 +107,7 @@ export interface PublicSettings {
   promo_code_enabled: boolean
   password_reset_enabled: boolean
   invitation_code_enabled: boolean
+  passkey_enabled: boolean
   turnstile_enabled: boolean
   turnstile_site_key: string
   site_name: string
@@ -142,6 +143,146 @@ export interface AuthResponse {
 
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
+}
+
+export interface PasskeyCredentialDescriptorJSON {
+  type: PublicKeyCredentialType
+  id: string
+  transports?: AuthenticatorTransport[]
+}
+
+export interface PasskeyCredentialParameterJSON {
+  type: PublicKeyCredentialType
+  alg: number
+}
+
+export interface PasskeyAuthenticatorSelectionJSON {
+  authenticatorAttachment?: AuthenticatorAttachment
+  residentKey?: ResidentKeyRequirement
+  requireResidentKey?: boolean
+  userVerification?: UserVerificationRequirement
+}
+
+export interface PasskeyCredentialCreationOptionsJSON {
+  rp: {
+    name: string
+    id?: string
+  }
+  user: {
+    id: string
+    name: string
+    displayName: string
+  }
+  challenge: string
+  pubKeyCredParams: PasskeyCredentialParameterJSON[]
+  timeout?: number
+  excludeCredentials?: PasskeyCredentialDescriptorJSON[]
+  authenticatorSelection?: PasskeyAuthenticatorSelectionJSON
+  attestation?: AttestationConveyancePreference | 'enterprise'
+  hints?: string[]
+  extensions?: AuthenticationExtensionsClientInputs
+}
+
+export interface PasskeyCredentialRequestOptionsJSON {
+  challenge: string
+  timeout?: number
+  rpId?: string
+  allowCredentials?: PasskeyCredentialDescriptorJSON[]
+  userVerification?: UserVerificationRequirement
+  hints?: string[]
+  extensions?: AuthenticationExtensionsClientInputs
+}
+
+export interface PasskeyEnrollmentOptions {
+  publicKey: PasskeyCredentialCreationOptionsJSON
+}
+
+export interface PasskeyLoginOptions {
+  publicKey: PasskeyCredentialRequestOptionsJSON
+  mediation?: CredentialMediationRequirement
+}
+
+export interface PasskeyEnrollmentBeginResponse {
+  flow_id: string
+  options: PasskeyEnrollmentOptions
+  countdown: number
+}
+
+export interface PasskeyLoginBeginResponse {
+  flow_id: string
+  options: PasskeyLoginOptions
+  countdown: number
+}
+
+export interface PasskeyAuthenticatorAttestationResponseJSON {
+  clientDataJSON: string
+  attestationObject: string
+  transports?: AuthenticatorTransport[]
+  authenticatorData?: string
+  publicKeyAlgorithm?: number
+  publicKey?: string
+}
+
+export interface PasskeyAuthenticatorAssertionResponseJSON {
+  clientDataJSON: string
+  authenticatorData: string
+  signature: string
+  userHandle?: string
+}
+
+export interface PasskeyRegistrationCredentialJSON {
+  id: string
+  rawId: string
+  type: PublicKeyCredentialType
+  authenticatorAttachment?: AuthenticatorAttachment | null
+  clientExtensionResults: AuthenticationExtensionsClientOutputs
+  response: PasskeyAuthenticatorAttestationResponseJSON
+}
+
+export interface PasskeyAuthenticationCredentialJSON {
+  id: string
+  rawId: string
+  type: PublicKeyCredentialType
+  authenticatorAttachment?: AuthenticatorAttachment | null
+  clientExtensionResults: AuthenticationExtensionsClientOutputs
+  response: PasskeyAuthenticatorAssertionResponseJSON
+}
+
+export interface PasskeyEnrollmentFinishResponse {
+  credential_id: string
+  friendly_name: string
+}
+
+export interface PasskeyStatus {
+  feature_enabled: boolean
+  can_manage: boolean
+  has_passkeys: boolean
+  active_count: number
+  password_fallback_available: boolean
+}
+
+export interface PasskeyCredentialSummary {
+  credential_id: string
+  friendly_name: string
+  created_at: number
+  last_used_at?: number
+  backup_eligible: boolean
+  synced: boolean
+}
+
+export interface PasskeyListResponse {
+  items: PasskeyCredentialSummary[]
+}
+
+export interface PasskeyRenameResponse {
+  credential: PasskeyCredentialSummary
+}
+
+export interface PasskeyRevokeResponse {
+  success: boolean
+  credential_id: string
+  revoked_at: number
+  password_fallback_available: boolean
 }
 
 // ==================== Subscription Types ====================

@@ -135,3 +135,6 @@ frontend/coverage/
 aicodex
 output/
 
+.sisyphus/
+playwright-report/
+test-results/

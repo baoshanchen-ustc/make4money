@@ -193,7 +193,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2000)
+    expect(getUsage).toHaveBeenCalledWith(2000, undefined)
     expect(wrapper.text()).toContain('5h|15|300')
     expect(wrapper.text()).toContain('7d|77|300')
   })
@@ -254,7 +254,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2001)
+    expect(getUsage).toHaveBeenCalledWith(2001, undefined)
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
@@ -325,7 +325,7 @@ describe('AccountUsageCell', () => {
 
     // 手动刷新再拉一次
     expect(getUsage).toHaveBeenCalledTimes(2)
-    expect(getUsage).toHaveBeenCalledWith(2010)
+    expect(getUsage).toHaveBeenCalledWith(2010, undefined)
     // 单一数据源：始终使用 /usage API 值
     expect(wrapper.text()).toContain('5h|18|900')
   })
@@ -380,12 +380,14 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-	expect(getUsage).toHaveBeenCalledWith(2002)
+	expect(getUsage).toHaveBeenCalledWith(2002, undefined)
 	expect(wrapper.text()).toContain('5h|0|27700')
 	expect(wrapper.text()).toContain('7d|0|27700')
   })
 
   it('OpenAI OAuth 在行数据刷新但仍无 codex 快照时会重新拉取 usage', async () => {
+	vi.useFakeTimers()
+
 	getUsage
 	  .mockResolvedValueOnce({
 	    five_hour: {
@@ -443,6 +445,9 @@ describe('AccountUsageCell', () => {
 	expect(wrapper.text()).toContain('5h|0|100')
 	expect(getUsage).toHaveBeenCalledTimes(1)
 
+	// Advance past the 5-minute cache TTL so the next loadUsage call bypasses cache
+	vi.advanceTimersByTime(5 * 60 * 1000 + 1)
+
 	await wrapper.setProps({
 	  account: {
 	    id: 2003,
@@ -456,6 +461,8 @@ describe('AccountUsageCell', () => {
 	await flushPromises()
 	expect(getUsage).toHaveBeenCalledTimes(2)
 	expect(wrapper.text()).toContain('5h|0|200')
+
+	vi.useRealTimers()
   })
 
   it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {
@@ -512,7 +519,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-  expect(getUsage).toHaveBeenCalledWith(2004)
+  expect(getUsage).toHaveBeenCalledWith(2004, undefined)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
   })

@@ -24,6 +24,7 @@
       />
       <ProfilePasswordForm />
       <ProfileTotpCard />
+      <ProfilePasskeyCard />
     </div>
   </AppLayout>
 </template>
@@ -38,6 +39,7 @@ import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
+import ProfilePasskeyCard from '@/components/user/profile/ProfilePasskeyCard.vue'
 import { Icon } from '@/components/icons'
 
 const { t } = useI18n(); const authStore = useAuthStore(); const user = computed(() => authStore.user)

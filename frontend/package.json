@@ -12,11 +12,14 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test --project=chromium",
+    "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@lobehub/icons": "^4.0.2",
     "@stripe/stripe-js": "^9.0.1",
+    "@simplewebauthn/browser": "^13.3.0",
     "@tanstack/vue-virtual": "^3.13.23",
     "@vueuse/core": "^10.7.0",
     "axios": "^1.15.0",
@@ -35,6 +38,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/dompurify": "^3.0.5",
     "@types/file-saver": "^2.0.7",
     "@types/mdx": "^2.0.13",

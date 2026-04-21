@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore } from '../auth'
 
 // Mock authAPI
 const mockLogin = vi.fn()
 const mockLogin2FA = vi.fn()
+const mockBeginPasskeyLogin = vi.fn()
+const mockFinishPasskeyLogin = vi.fn()
+const mockBeginPasskeyEnrollment = vi.fn()
+const mockFinishPasskeyEnrollment = vi.fn()
+const mockGetPasskeyStatus = vi.fn()
+const mockListPasskeys = vi.fn()
 const mockLogout = vi.fn()
 const mockGetCurrentUser = vi.fn()
 const mockRegister = vi.fn()
@@ -14,6 +20,12 @@ vi.mock('@/api', () => ({
   authAPI: {
     login: (...args: any[]) => mockLogin(...args),
     login2FA: (...args: any[]) => mockLogin2FA(...args),
+    beginPasskeyLogin: (...args: any[]) => mockBeginPasskeyLogin(...args),
+    finishPasskeyLogin: (...args: any[]) => mockFinishPasskeyLogin(...args),
+    beginPasskeyEnrollment: (...args: any[]) => mockBeginPasskeyEnrollment(...args),
+    finishPasskeyEnrollment: (...args: any[]) => mockFinishPasskeyEnrollment(...args),
+    getPasskeyStatus: (...args: any[]) => mockGetPasskeyStatus(...args),
+    listPasskeys: (...args: any[]) => mockListPasskeys(...args),
     logout: (...args: any[]) => mockLogout(...args),
     getCurrentUser: (...args: any[]) => mockGetCurrentUser(...args),
     register: (...args: any[]) => mockRegister(...args),
@@ -49,6 +61,95 @@ const fakeAuthResponse = {
   expires_in: 3600,
   token_type: 'Bearer',
   user: { ...fakeUser },
+}
+
+const authStorageKeys = ['auth_token', 'auth_user', 'refresh_token', 'token_expires_at']
+
+const fakePasskeyLoginBeginResponse = {
+  flow_id: 'passkey-login-flow',
+  countdown: 300,
+  options: {
+    publicKey: {
+      challenge: 'login-challenge',
+      userVerification: 'required' as const,
+    },
+  },
+}
+
+const fakePasskeyEnrollmentBeginResponse = {
+  flow_id: 'passkey-enrollment-flow',
+  countdown: 300,
+  options: {
+    publicKey: {
+      challenge: 'enrollment-challenge',
+      rp: {
+        id: 'example.com',
+        name: 'Example',
+      },
+      user: {
+        id: 'user-1',
+        name: 'test@example.com',
+        displayName: 'testuser',
+      },
+      pubKeyCredParams: [{ type: 'public-key' as const, alg: -7 }],
+      authenticatorSelection: {
+        residentKey: 'required' as const,
+        userVerification: 'required' as const,
+      },
+    },
+  },
+}
+
+const fakePasskeyAssertion = {
+  id: 'credential-login',
+  rawId: 'credential-login',
+  type: 'public-key' as const,
+  authenticatorAttachment: 'platform' as const,
+  clientExtensionResults: {},
+  response: {
+    clientDataJSON: 'client-data-json',
+    authenticatorData: 'authenticator-data',
+    signature: 'signature',
+    userHandle: 'user-handle',
+  },
+}
+
+const fakePasskeyRegistration = {
+  id: 'credential-register',
+  rawId: 'credential-register',
+  type: 'public-key' as const,
+  authenticatorAttachment: 'platform' as const,
+  clientExtensionResults: {},
+  response: {
+    clientDataJSON: 'client-data-json',
+    attestationObject: 'attestation-object',
+    transports: ['internal' as const],
+  },
+}
+
+const fakePasskeyStatus = {
+  feature_enabled: true,
+  can_manage: true,
+  has_passkeys: true,
+  active_count: 1,
+  password_fallback_available: true,
+}
+
+const fakePasskeyCredential = {
+  credential_id: 'credential-register',
+  friendly_name: 'MacBook Pro',
+  created_at: 1_711_111_111,
+  last_used_at: 1_711_111_222,
+  backup_eligible: true,
+  synced: true,
+}
+
+function getPersistedStorageKeys(): string[] {
+  const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+    .filter((key): key is string => key !== null)
+    .sort()
+
+  return keys
 }
 
 describe('useAuthStore', () => {
@@ -130,6 +231,113 @@ describe('useAuthStore', () => {
       await expect(store.login2FA('temp-123', '000000')).rejects.toThrow('Invalid TOTP')
       expect(store.token).toBeNull()
       expect(store.isAuthenticated).toBe(false)
+    })
+  })
+
+  describe('passkey login', () => {
+    it('成功后复用相同的认证持久化和刷新调度', async () => {
+      vi.setSystemTime(new Date('2024-01-01T00:00:00Z'))
+      mockBeginPasskeyLogin.mockResolvedValue(fakePasskeyLoginBeginResponse)
+      mockFinishPasskeyLogin.mockResolvedValue({
+        ...fakeAuthResponse,
+        expires_in: 121,
+      })
+      mockRefreshToken.mockResolvedValue({
+        access_token: 'refreshed-token',
+        refresh_token: 'refreshed-refresh-token',
+        expires_in: 3600,
+      })
+
+      const store = useAuthStore()
+
+      await store.beginPasskeyLogin()
+      expect(getPersistedStorageKeys()).toEqual([])
+
+      const user = await store.loginWithPasskey(fakePasskeyAssertion)
+
+      expect(user).toEqual(fakeUser)
+      expect(store.token).toBe('test-token-123')
+      expect(store.user).toEqual(fakeUser)
+      expect(store.isAuthenticated).toBe(true)
+      expect(mockFinishPasskeyLogin).toHaveBeenCalledWith('passkey-login-flow', fakePasskeyAssertion)
+      expect(getPersistedStorageKeys()).toEqual(authStorageKeys)
+      expect(localStorage.getItem('auth_token')).toBe('test-token-123')
+      expect(localStorage.getItem('refresh_token')).toBe('refresh-token-456')
+      expect(localStorage.getItem('auth_user')).toBe(JSON.stringify(fakeUser))
+      expect(localStorage.getItem('token_expires_at')).not.toBeNull()
+
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(mockRefreshToken).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('passkey enrollment', () => {
+    it('flow 状态只保存在内存中，不新增本地存储键', async () => {
+      mockBeginPasskeyLogin.mockResolvedValue(fakePasskeyLoginBeginResponse)
+      mockBeginPasskeyEnrollment.mockResolvedValue(fakePasskeyEnrollmentBeginResponse)
+      mockFinishPasskeyEnrollment.mockResolvedValue({
+        credential_id: 'credential-register',
+        friendly_name: 'MacBook Pro',
+      })
+      mockGetPasskeyStatus.mockResolvedValue(fakePasskeyStatus)
+      mockListPasskeys.mockResolvedValue({ items: [fakePasskeyCredential] })
+
+      const store = useAuthStore()
+
+      await store.beginPasskeyLogin()
+      expect(getPersistedStorageKeys()).toEqual([])
+
+      await store.beginPasskeyEnrollment()
+      expect(getPersistedStorageKeys()).toEqual([])
+
+      const result = await store.finishPasskeyEnrollment(fakePasskeyRegistration, 'MacBook Pro')
+
+      expect(result).toEqual({
+        credential_id: 'credential-register',
+        friendly_name: 'MacBook Pro',
+      })
+      expect(mockFinishPasskeyEnrollment).toHaveBeenCalledWith(
+        'passkey-enrollment-flow',
+        fakePasskeyRegistration,
+        'MacBook Pro'
+      )
+      expect(store.passkeyStatus).toEqual(fakePasskeyStatus)
+      expect(store.passkeys).toEqual([fakePasskeyCredential])
+      expect(getPersistedStorageKeys()).toEqual([])
+    })
+  })
+
+  describe('passkey management refresh', () => {
+    it('使用 status 接口中的 can_manage 作为 recent-auth 结果并刷新列表', async () => {
+      const status = {
+        ...fakePasskeyStatus,
+        can_manage: false,
+        active_count: 2,
+      }
+      const credentials = [
+        fakePasskeyCredential,
+        {
+          ...fakePasskeyCredential,
+          credential_id: 'credential-2',
+          friendly_name: 'iPhone',
+        },
+      ]
+      mockGetPasskeyStatus.mockResolvedValue(status)
+      mockListPasskeys.mockResolvedValue({ items: credentials })
+
+      const store = useAuthStore()
+      const result = await store.refreshPasskeyManagement()
+
+      expect(mockGetPasskeyStatus).toHaveBeenCalledTimes(1)
+      expect(mockListPasskeys).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({
+        status,
+        passkeys: credentials,
+      })
+      expect(store.passkeyStatus).toEqual(status)
+      expect(store.passkeys).toEqual(credentials)
+      expect(store.passkeyStatus?.can_manage).toBe(false)
     })
   })
 

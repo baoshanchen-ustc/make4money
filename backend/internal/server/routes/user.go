@@ -35,6 +35,20 @@ func RegisterUserRoutes(
 				notifyEmail.DELETE("", h.User.RemoveNotifyEmail)
 			}
 
+			passkeys := user.Group("/passkeys")
+			{
+				passkeys.GET("/status", h.Passkey.GetStatus)
+				passkeys.GET("", h.Passkey.List)
+				passkeys.PUT("/:credentialId", h.Passkey.Rename)
+				passkeys.DELETE("/:credentialId", h.Passkey.Revoke)
+
+				register := passkeys.Group("/register")
+				{
+					register.POST("/begin", h.Auth.BeginPasskeyRegistration)
+					register.POST("/finish", h.Auth.FinishPasskeyRegistration)
+				}
+			}
+
 			// TOTP 双因素认证
 			totp := user.Group("/totp")
 			{

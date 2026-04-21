@@ -17,9 +17,10 @@ import (
 // 测试完整的用户操作链路：注册 → 登录 → 创建 API Key → 调用网关 → 查询用量
 
 var (
-	testUserEmail    = "e2e-test-" + fmt.Sprintf("%d", time.Now().UnixMilli()) + "@test.local"
-	testUserPassword = "E2eTest@12345"
-	testUserName     = "e2e-test-user"
+	seededTestUser   = e2eSeedUserCredentials()
+	testUserEmail    = seededTestUser.Email
+	testUserPassword = seededTestUser.Password
+	testUserName     = seededTestUser.Username
 )
 
 // TestUserRegistrationAndLogin 测试用户注册和登录流程
@@ -263,19 +264,16 @@ func doRequest(t *testing.T, method, path string, body []byte, token string) (*h
 func loginTestUser(t *testing.T) string {
 	t.Helper()
 
-	// 先尝试用管理员账户登录
-	adminEmail := getEnv("ADMIN_EMAIL", "admin@sub2api.local")
-	adminPassword := getEnv("ADMIN_PASSWORD", "")
+	admin := e2eAdminCredentials()
 
-	if adminPassword == "" {
+	if admin.Password == "" {
 		// 尝试用测试用户
-		adminEmail = testUserEmail
-		adminPassword = testUserPassword
+		admin = seededTestUser
 	}
 
 	payload := map[string]string{
-		"email":    adminEmail,
-		"password": adminPassword,
+		"email":    admin.Email,
+		"password": admin.Password,
 	}
 	body, _ := json.Marshal(payload)
 

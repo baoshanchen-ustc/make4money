@@ -76,6 +76,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 	// Check if ops monitoring is enabled (respects config.ops.enabled)
 	opsEnabled := h.opsService != nil && h.opsService.IsMonitoringEnabled(c.Request.Context())
+	passkeyConfig := h.settingService.GetPasskeyConfigValidation(settings)
 	defaultSubscriptions := make([]dto.DefaultSubscriptionSetting, 0, len(settings.DefaultSubscriptions))
 	for _, sub := range settings.DefaultSubscriptions {
 		defaultSubscriptions = append(defaultSubscriptions, dto.DefaultSubscriptionSetting{
@@ -103,6 +104,12 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		InvitationCodeEnabled:                settings.InvitationCodeEnabled,
 		TotpEnabled:                          settings.TotpEnabled,
 		TotpEncryptionKeyConfigured:          h.settingService.IsTotpEncryptionKeyConfigured(),
+		PasskeyEnabled:                       settings.PasskeyEnabled,
+		PasskeyRPID:                          settings.PasskeyRPID,
+		PasskeyRPName:                        settings.PasskeyRPName,
+		PasskeyAllowedOrigins:                settings.PasskeyAllowedOrigins,
+		PasskeyConfigValid:                   passkeyConfig.Valid,
+		PasskeyConfigError:                   passkeyConfig.Error,
 		SMTPHost:                             settings.SMTPHost,
 		SMTPPort:                             settings.SMTPPort,
 		SMTPUsername:                         settings.SMTPUsername,
@@ -214,6 +221,7 @@ type UpdateSettingsRequest struct {
 	FrontendURL                      string   `json:"frontend_url"`
 	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
 	TotpEnabled                      bool     `json:"totp_enabled"` // TOTP 双因素认证
+	PasskeyEnabled                   *bool    `json:"passkey_enabled"`
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -758,6 +766,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		})
 	}
 
+	passkeyEnabled := previousSettings.PasskeyEnabled
+	if req.PasskeyEnabled != nil {
+		passkeyEnabled = *req.PasskeyEnabled
+	}
+
 	// 验证最低版本号格式（空字符串=禁用，或合法 semver）
 	if req.MinClaudeCodeVersion != "" {
 		if !semverPattern.MatchString(req.MinClaudeCodeVersion) {
@@ -791,6 +804,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FrontendURL:                      req.FrontendURL,
 		InvitationCodeEnabled:            req.InvitationCodeEnabled,
 		TotpEnabled:                      req.TotpEnabled,
+		PasskeyEnabled:                   passkeyEnabled,
 		SMTPHost:                         req.SMTPHost,
 		SMTPPort:                         req.SMTPPort,
 		SMTPUsername:                     req.SMTPUsername,
@@ -993,6 +1007,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if updatedPaymentCfg == nil {
 		updatedPaymentCfg = &service.PaymentConfig{}
 	}
+	updatedPasskeyConfig := h.settingService.GetPasskeyConfigValidation(updatedSettings)
 
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
@@ -1004,6 +1019,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		InvitationCodeEnabled:                updatedSettings.InvitationCodeEnabled,
 		TotpEnabled:                          updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:          h.settingService.IsTotpEncryptionKeyConfigured(),
+		PasskeyEnabled:                       updatedSettings.PasskeyEnabled,
+		PasskeyRPID:                          updatedSettings.PasskeyRPID,
+		PasskeyRPName:                        updatedSettings.PasskeyRPName,
+		PasskeyAllowedOrigins:                updatedSettings.PasskeyAllowedOrigins,
+		PasskeyConfigValid:                   updatedPasskeyConfig.Valid,
+		PasskeyConfigError:                   updatedPasskeyConfig.Error,
 		SMTPHost:                             updatedSettings.SMTPHost,
 		SMTPPort:                             updatedSettings.SMTPPort,
 		SMTPUsername:                         updatedSettings.SMTPUsername,
@@ -1138,7 +1159,7 @@ func (h *SettingHandler) auditSettingsUpdate(c *gin.Context, before *service.Sys
 }
 
 func diffSettings(before *service.SystemSettings, after *service.SystemSettings, req UpdateSettingsRequest) []string {
-	changed := make([]string, 0, 20)
+	changed := make([]string, 0, 24)
 	if before.RegistrationEnabled != after.RegistrationEnabled {
 		changed = append(changed, "registration_enabled")
 	}
@@ -1162,6 +1183,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.TotpEnabled != after.TotpEnabled {
 		changed = append(changed, "totp_enabled")
+	}
+	if before.PasskeyEnabled != after.PasskeyEnabled {
+		changed = append(changed, "passkey_enabled")
 	}
 	if before.SMTPHost != after.SMTPHost {
 		changed = append(changed, "smtp_host")

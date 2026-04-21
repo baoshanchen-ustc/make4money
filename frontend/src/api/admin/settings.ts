@@ -25,6 +25,12 @@ export interface SystemSettings {
   invitation_code_enabled: boolean
   totp_enabled: boolean // TOTP 双因素认证
   totp_encryption_key_configured: boolean // TOTP 加密密钥是否已配置
+  passkey_enabled: boolean
+  passkey_rp_id: string
+  passkey_rp_name: string
+  passkey_allowed_origins: string[]
+  passkey_config_valid: boolean
+  passkey_config_error: string
   // Default settings
   default_balance: number
   default_concurrency: number
@@ -155,6 +161,7 @@ export interface UpdateSettingsRequest {
   frontend_url?: string
   invitation_code_enabled?: boolean
   totp_enabled?: boolean // TOTP 双因素认证
+  passkey_enabled?: boolean
   default_balance?: number
   default_concurrency?: number
   default_subscriptions?: DefaultSubscriptionSetting[]

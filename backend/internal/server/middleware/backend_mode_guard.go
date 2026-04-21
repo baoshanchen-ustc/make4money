@@ -28,7 +28,7 @@ func BackendModeUserGuard(settingService *service.SettingService) gin.HandlerFun
 }
 
 // BackendModeAuthGuard selectively blocks auth endpoints when backend mode is enabled.
-// Allows: login, login/2fa, logout, refresh (admin needs these).
+// Allows: login, login/2fa, passkey login, logout, refresh (admin needs these).
 // Blocks: register, forgot-password, reset-password, OAuth, etc.
 func BackendModeAuthGuard(settingService *service.SettingService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -37,8 +37,7 @@ func BackendModeAuthGuard(settingService *service.SettingService) gin.HandlerFun
 			return
 		}
 		path := c.Request.URL.Path
-		// Allow login, 2FA, logout, refresh, public settings
-		allowedSuffixes := []string{"/auth/login", "/auth/login/2fa", "/auth/logout", "/auth/refresh"}
+		allowedSuffixes := []string{"/auth/login", "/auth/login/2fa", "/auth/passkeys/login/begin", "/auth/passkeys/login/finish", "/auth/logout", "/auth/refresh"}
 		for _, suffix := range allowedSuffixes {
 			if strings.HasSuffix(path, suffix) {
 				c.Next()

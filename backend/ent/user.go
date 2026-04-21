@@ -83,11 +83,13 @@ type UserEdges struct {
 	PromoCodeUsages []*PromoCodeUsage `json:"promo_code_usages,omitempty"`
 	// PaymentOrders holds the value of the payment_orders edge.
 	PaymentOrders []*PaymentOrder `json:"payment_orders,omitempty"`
+	// PasskeyCredentials holds the value of the passkey_credentials edge.
+	PasskeyCredentials []*PasskeyCredential `json:"passkey_credentials,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [11]bool
+	loadedTypes [12]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -180,10 +182,19 @@ func (e UserEdges) PaymentOrdersOrErr() ([]*PaymentOrder, error) {
 	return nil, &NotLoadedError{edge: "payment_orders"}
 }
 
+// PasskeyCredentialsOrErr returns the PasskeyCredentials value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) PasskeyCredentialsOrErr() ([]*PasskeyCredential, error) {
+	if e.loadedTypes[10] {
+		return e.PasskeyCredentials, nil
+	}
+	return nil, &NotLoadedError{edge: "passkey_credentials"}
+}
+
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[10] {
+	if e.loadedTypes[11] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
@@ -404,6 +415,11 @@ func (_m *User) QueryPromoCodeUsages() *PromoCodeUsageQuery {
 // QueryPaymentOrders queries the "payment_orders" edge of the User entity.
 func (_m *User) QueryPaymentOrders() *PaymentOrderQuery {
 	return NewUserClient(_m.config).QueryPaymentOrders(_m)
+}
+
+// QueryPasskeyCredentials queries the "passkey_credentials" edge of the User entity.
+func (_m *User) QueryPasskeyCredentials() *PasskeyCredentialQuery {
+	return NewUserClient(_m.config).QueryPasskeyCredentials(_m)
 }
 
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the User entity.

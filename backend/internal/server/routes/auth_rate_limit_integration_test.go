@@ -5,6 +5,7 @@ package routes
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
@@ -25,9 +27,29 @@ func TestAuthRegisterRateLimitThresholdHitReturns429(t *testing.T) {
 	rdb := startAuthRouteRedis(t, ctx)
 
 	router := newAuthRoutesTestRouter(rdb)
-	const path = "/api/v1/auth/register"
+	assertAuthRouteRateLimitThreshold(t, router, "/api/v1/auth/register", 5, http.StatusBadRequest)
+}
 
-	for i := 1; i <= 6; i++ {
+func TestAuthPasskeyLoginBeginRateLimitThresholdHitReturns429(t *testing.T) {
+	ctx := context.Background()
+	rdb := startAuthRouteRedis(t, ctx)
+
+	router := newAuthRoutesTestRouter(rdb)
+	assertAuthRouteRateLimitThreshold(t, router, "/api/v1/auth/passkeys/login/begin", 20, http.StatusInternalServerError)
+}
+
+func TestAuthPasskeyLoginFinishRateLimitThresholdHitReturns429(t *testing.T) {
+	ctx := context.Background()
+	rdb := startAuthRouteRedis(t, ctx)
+
+	router := newAuthRoutesTestRouter(rdb)
+	assertAuthRouteRateLimitThreshold(t, router, "/api/v1/auth/passkeys/login/finish?flow_id=test-flow", 20, http.StatusInternalServerError)
+}
+
+func assertAuthRouteRateLimitThreshold(t *testing.T, router http.Handler, path string, allowed int, allowedStatus int) {
+	t.Helper()
+
+	for i := 1; i <= allowed+1; i++ {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.RemoteAddr = "198.51.100.10:23456"
@@ -35,11 +57,11 @@ func TestAuthRegisterRateLimitThresholdHitReturns429(t *testing.T) {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
-		if i <= 5 {
-			require.Equal(t, http.StatusBadRequest, w.Code, "第 %d 次请求应先进入业务校验", i)
+		if i <= allowed {
+			require.Equal(t, allowedStatus, w.Code, "request %d should reach handler before rate limit", i)
 			continue
 		}
-		require.Equal(t, http.StatusTooManyRequests, w.Code, "第 6 次请求应命中限流")
+		require.Equal(t, http.StatusTooManyRequests, w.Code, "request %d should hit rate limit", i)
 		require.Contains(t, w.Body.String(), "rate limit exceeded")
 	}
 }
@@ -79,8 +101,8 @@ func ensureAuthRouteDockerAvailable(t *testing.T) {
 }
 
 func authRouteDockerAvailable() bool {
-	if os.Getenv("DOCKER_HOST") != "" {
-		return true
+	if dockerHost := os.Getenv("DOCKER_HOST"); dockerHost != "" {
+		return authRouteDockerHostReachable(dockerHost)
 	}
 
 	socketCandidates := []string{
@@ -95,11 +117,34 @@ func authRouteDockerAvailable() bool {
 		if socket == "" {
 			continue
 		}
-		if _, err := os.Stat(socket); err == nil {
+		if _, err := os.Stat(socket); err == nil && authRouteDockerHostReachable("unix://"+socket) {
 			return true
 		}
 	}
 	return false
+}
+
+func authRouteDockerHostReachable(dockerHost string) bool {
+	const timeout = 200 * time.Millisecond
+
+	switch {
+	case strings.HasPrefix(dockerHost, "unix://"):
+		conn, err := net.DialTimeout("unix", strings.TrimPrefix(dockerHost, "unix://"), timeout)
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
+	case strings.HasPrefix(dockerHost, "tcp://"):
+		conn, err := net.DialTimeout("tcp", strings.TrimPrefix(dockerHost, "tcp://"), timeout)
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
+	default:
+		return false
+	}
 }
 
 func authRouteUserHomeDir() string {

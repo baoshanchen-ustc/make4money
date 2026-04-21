@@ -9,6 +9,16 @@ import type {
   RegisterRequest,
   AuthResponse,
   CurrentUserResponse,
+  PasskeyAuthenticationCredentialJSON,
+  PasskeyCredentialSummary,
+  PasskeyEnrollmentBeginResponse,
+  PasskeyEnrollmentFinishResponse,
+  PasskeyListResponse,
+  PasskeyLoginBeginResponse,
+  PasskeyRegistrationCredentialJSON,
+  PasskeyRenameResponse,
+  PasskeyRevokeResponse,
+  PasskeyStatus,
   SendVerifyCodeRequest,
   SendVerifyCodeResponse,
   PublicSettings,
@@ -124,6 +134,72 @@ export async function login2FA(request: TotpLogin2FARequest): Promise<AuthRespon
   }
   localStorage.setItem('auth_user', JSON.stringify(data.user))
 
+  return data
+}
+
+export async function beginPasskeyLogin(): Promise<PasskeyLoginBeginResponse> {
+  const { data } = await apiClient.post<PasskeyLoginBeginResponse>('/auth/passkeys/login/begin')
+  return data
+}
+
+export async function finishPasskeyLogin(
+  flowId: string,
+  credential: PasskeyAuthenticationCredentialJSON
+): Promise<AuthResponse> {
+  const { data } = await apiClient.post<AuthResponse>('/auth/passkeys/login/finish', credential, {
+    params: { flow_id: flowId }
+  })
+  return data
+}
+
+export async function beginPasskeyEnrollment(): Promise<PasskeyEnrollmentBeginResponse> {
+  const { data } = await apiClient.post<PasskeyEnrollmentBeginResponse>('/user/passkeys/register/begin')
+  return data
+}
+
+export async function finishPasskeyEnrollment(
+  flowId: string,
+  credential: PasskeyRegistrationCredentialJSON,
+  friendlyName?: string
+): Promise<PasskeyEnrollmentFinishResponse> {
+  const { data } = await apiClient.post<PasskeyEnrollmentFinishResponse>(
+    '/user/passkeys/register/finish',
+    credential,
+    {
+      params: {
+        flow_id: flowId,
+        ...(friendlyName ? { friendly_name: friendlyName } : {})
+      }
+    }
+  )
+  return data
+}
+
+export async function getPasskeyStatus(): Promise<PasskeyStatus> {
+  const { data } = await apiClient.get<PasskeyStatus>('/user/passkeys/status')
+  return data
+}
+
+export async function listPasskeys(): Promise<PasskeyListResponse> {
+  const { data } = await apiClient.get<PasskeyListResponse>('/user/passkeys')
+  return data
+}
+
+export async function renamePasskey(
+  credentialId: string,
+  friendlyName: string
+): Promise<PasskeyCredentialSummary> {
+  const { data } = await apiClient.put<PasskeyRenameResponse>(
+    `/user/passkeys/${encodeURIComponent(credentialId)}`,
+    { friendly_name: friendlyName }
+  )
+  return data.credential
+}
+
+export async function revokePasskey(credentialId: string): Promise<PasskeyRevokeResponse> {
+  const { data } = await apiClient.delete<PasskeyRevokeResponse>(
+    `/user/passkeys/${encodeURIComponent(credentialId)}`
+  )
   return data
 }
 
@@ -382,6 +458,14 @@ export async function completeOIDCOAuthRegistration(
 export const authAPI = {
   login,
   login2FA,
+  beginPasskeyLogin,
+  finishPasskeyLogin,
+  beginPasskeyEnrollment,
+  finishPasskeyEnrollment,
+  getPasskeyStatus,
+  listPasskeys,
+  renamePasskey,
+  revokePasskey,
   isTotp2FARequired,
   register,
   getCurrentUser,

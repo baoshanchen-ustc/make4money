@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
+	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -14,27 +16,44 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type passkeyAuthService interface {
+	BeginRegistration(ctx context.Context, userID int64) (*service.PasskeyRegistrationBeginResult, error)
+	FinishRegistration(ctx context.Context, userID int64, flowID, friendlyName string, request *http.Request) (*service.PasskeyRegistrationFinishResult, error)
+	BeginAuthentication(ctx context.Context) (*service.PasskeyAuthenticationBeginResult, error)
+	FinishAuthentication(ctx context.Context, flowID string, request *http.Request) (*service.User, error)
+}
+
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
-	cfg           *config.Config
-	authService   *service.AuthService
-	userService   *service.UserService
-	settingSvc    *service.SettingService
-	promoService  *service.PromoService
-	redeemService *service.RedeemService
-	totpService   *service.TotpService
+	cfg               *config.Config
+	authService       *service.AuthService
+	userService       *service.UserService
+	settingSvc        *service.SettingService
+	promoService      *service.PromoService
+	redeemService     *service.RedeemService
+	totpService       *service.TotpService
+	passkeyService    passkeyAuthService
+	recentAuthService *service.RecentAuthService
 }
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService) *AuthHandler {
+
+func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService, recentAuthService *service.RecentAuthService, passkeyServices ...*service.PasskeyService) *AuthHandler {
+	var passkeySvc *service.PasskeyService
+	if len(passkeyServices) > 0 {
+		passkeySvc = passkeyServices[0]
+	}
+
 	return &AuthHandler{
-		cfg:           cfg,
-		authService:   authService,
-		userService:   userService,
-		settingSvc:    settingService,
-		promoService:  promoService,
-		redeemService: redeemService,
-		totpService:   totpService,
+		cfg:               cfg,
+		authService:       authService,
+		userService:       userService,
+		settingSvc:        settingService,
+		promoService:      promoService,
+		redeemService:     redeemService,
+		totpService:       totpService,
+		passkeyService:    passkeySvc,
+		recentAuthService: recentAuthService,
 	}
 }
 
@@ -199,6 +218,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
 		return
 	}
+	if h.recentAuthService != nil {
+		if err := h.recentAuthService.IssueRecentAuth(c.Request.Context(), user.ID, service.RecentAuthMethodPassword); err != nil {
+			response.InternalError(c, "Failed to issue recent auth marker")
+			return
+		}
+	}
 
 	h.respondWithTokenPair(c, user)
 }
@@ -271,6 +296,12 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 
 	// Delete the login session (only after all checks pass)
 	_ = h.totpService.DeleteLoginSession(c.Request.Context(), req.TempToken)
+	if h.recentAuthService != nil {
+		if err := h.recentAuthService.IssueRecentAuth(c.Request.Context(), user.ID, service.RecentAuthMethodPasswordTOTP); err != nil {
+			response.InternalError(c, "Failed to issue recent auth marker")
+			return
+		}
+	}
 
 	h.respondWithTokenPair(c, user)
 }
@@ -301,6 +332,103 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	}
 
 	response.Success(c, UserResponse{User: dto.UserFromService(user), RunMode: runMode})
+}
+
+func (h *AuthHandler) BeginPasskeyRegistration(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if h.passkeyService == nil {
+		response.InternalError(c, "Passkey service is not configured")
+		return
+	}
+
+	result, err := h.passkeyService.BeginRegistration(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, result)
+}
+
+func (h *AuthHandler) FinishPasskeyRegistration(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if h.passkeyService == nil {
+		response.InternalError(c, "Passkey service is not configured")
+		return
+	}
+
+	result, err := h.passkeyService.FinishRegistration(
+		c.Request.Context(),
+		subject.UserID,
+		c.Query("flow_id"),
+		c.Query("friendly_name"),
+		c.Request,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, result)
+}
+
+func (h *AuthHandler) BeginPasskeyAuthentication(c *gin.Context) {
+	if h.passkeyService == nil {
+		response.InternalError(c, "Passkey service is not configured")
+		return
+	}
+
+	result, err := h.passkeyService.BeginAuthentication(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, result)
+}
+
+func (h *AuthHandler) FinishPasskeyAuthentication(c *gin.Context) {
+	if h.passkeyService == nil {
+		response.InternalError(c, "Passkey service is not configured")
+		return
+	}
+
+	user, err := h.passkeyService.FinishAuthentication(
+		c.Request.Context(),
+		c.Query("flow_id"),
+		c.Request,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if user == nil {
+		response.Unauthorized(c, "invalid credentials")
+		return
+	}
+
+	// Backend mode: only admin can login
+	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
+		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
+		return
+	}
+
+	if h.recentAuthService != nil {
+		if err := h.recentAuthService.IssueRecentAuth(c.Request.Context(), user.ID, service.RecentAuthMethodPasskey); err != nil {
+			response.InternalError(c, "Failed to issue recent auth marker")
+			return
+		}
+	}
+
+	h.respondWithTokenPair(c, user)
 }
 
 // ValidatePromoCodeRequest 验证优惠码请求

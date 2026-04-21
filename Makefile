@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-datamanagementd secret-scan
+.PHONY: build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-runtime test-frontend-e2e test-datamanagementd secret-scan
 
 # 一键编译前后端
 build: build-backend build-frontend
@@ -21,9 +21,16 @@ test: test-backend test-frontend
 test-backend:
 	@$(MAKE) -C backend test
 
-test-frontend:
+test-frontend: test-frontend-runtime test-frontend-e2e
+
+test-frontend-runtime:
 	@pnpm --dir frontend run lint:check
 	@pnpm --dir frontend run typecheck
+	@pnpm --dir frontend run test:run
+
+test-frontend-e2e:
+	@pnpm --dir frontend run test:e2e:install
+	@pnpm --dir frontend run test:e2e
 
 test-datamanagementd:
 	@cd datamanagement && go test ./...

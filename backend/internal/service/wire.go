@@ -381,12 +381,20 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
+func ProvidePasskeyService(settingService *SettingService, cache AuthStateCache, userRepo UserRepository, entClient *dbent.Client, recentAuthService *RecentAuthService) *PasskeyService {
+	svc := NewPasskeyService(settingService, cache)
+	svc.userRepo = userRepo
+	svc.recentAuthService = recentAuthService
+	svc.credentialStore = newPasskeyCredentialStore(entClient)
+	svc.SetPasskeyAAGUIDMetadataCache(loadOptionalPasskeyAAGUIDMetadataCacheFromEnv())
+	return svc
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
 	NewAuthService,
 	NewUserService,
-	NewAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
 	NewGroupService,
 	NewAccountService,
@@ -403,13 +411,12 @@ var ProviderSet = wire.NewSet(
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	NewOAuthService,
-	NewOpenAIOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
 	NewAntigravityOAuthService,
-	NewOAuthRefreshAPI,
+	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
@@ -452,6 +459,8 @@ var ProviderSet = wire.NewSet(
 	NewUserAttributeService,
 	NewUsageCache,
 	NewTotpService,
+	ProvidePasskeyService,
+	NewRecentAuthService,
 	NewErrorPassthroughService,
 	NewTLSFingerprintProfileService,
 	NewDigestSessionStore,
@@ -468,6 +477,12 @@ var ProviderSet = wire.NewSet(
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 )
+
+// ProvideOAuthRefreshAPI wraps NewOAuthRefreshAPI without the optional TTL override so Wire
+// does not need to resolve a variadic []time.Duration dependency.
+func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
+	return NewOAuthRefreshAPI(accountRepo, tokenCache)
+}
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
 // payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.

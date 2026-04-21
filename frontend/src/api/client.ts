@@ -37,7 +37,9 @@ function subscribeTokenRefresh(callback: (token: string) => void): void {
  * Notify all subscribers that token has been refreshed
  */
 function onTokenRefreshed(token: string): void {
-  refreshSubscribers.forEach((callback) => callback(token))
+  refreshSubscribers.forEach((callback) => {
+    callback(token)
+  })
   refreshSubscribers = []
 }
 
@@ -92,13 +94,14 @@ apiClient.interceptors.response.use(
         response.data = apiResponse.data
       } else {
         // API error
-        const resp = apiResponse as unknown as Record<string, unknown>
+        const reason = 'reason' in apiResponse ? apiResponse.reason : undefined
+        const metadata = 'metadata' in apiResponse ? apiResponse.metadata : undefined
         return Promise.reject({
           status: response.status,
           code: apiResponse.code,
           message: apiResponse.message || 'Unknown error',
-          reason: resp.reason,
-          metadata: resp.metadata,
+          reason,
+          metadata,
         })
       }
     }

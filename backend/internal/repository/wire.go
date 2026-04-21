@@ -111,6 +111,7 @@ var ProviderSet = wire.NewSet(
 	NewSchedulerOutboxRepository,
 	NewProxyLatencyCache,
 	NewTotpCache,
+	NewAuthStateCache,
 	NewRefreshTokenCache,
 	NewErrorPassthroughCache,
 	NewTLSFingerprintProfileCache,

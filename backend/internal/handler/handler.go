@@ -43,6 +43,7 @@ type Handlers struct {
 	Redeem         *RedeemHandler
 	Subscription   *SubscriptionHandler
 	Announcement   *AnnouncementHandler
+	Passkey        *PasskeyHandler
 	Admin          *AdminHandlers
 	Gateway        *GatewayHandler
 	OpenAIGateway  *OpenAIGatewayHandler

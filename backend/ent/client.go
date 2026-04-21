@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
+	"github.com/Wei-Shaw/sub2api/ent/passkeycredential"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -66,6 +67,8 @@ type Client struct {
 	Group *GroupClient
 	// IdempotencyRecord is the client for interacting with the IdempotencyRecord builders.
 	IdempotencyRecord *IdempotencyRecordClient
+	// PasskeyCredential is the client for interacting with the PasskeyCredential builders.
+	PasskeyCredential *PasskeyCredentialClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -121,6 +124,7 @@ func (c *Client) init() {
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
+	c.PasskeyCredential = NewPasskeyCredentialClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
 	c.PaymentOrder = NewPaymentOrderClient(c.config)
 	c.PaymentProviderInstance = NewPaymentProviderInstanceClient(c.config)
@@ -239,6 +243,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ErrorPassthroughRule:    NewErrorPassthroughRuleClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
+		PasskeyCredential:       NewPasskeyCredentialClient(cfg),
 		PaymentAuditLog:         NewPaymentAuditLogClient(cfg),
 		PaymentOrder:            NewPaymentOrderClient(cfg),
 		PaymentProviderInstance: NewPaymentProviderInstanceClient(cfg),
@@ -284,6 +289,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ErrorPassthroughRule:    NewErrorPassthroughRuleClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
+		PasskeyCredential:       NewPasskeyCredentialClient(cfg),
 		PaymentAuditLog:         NewPaymentAuditLogClient(cfg),
 		PaymentOrder:            NewPaymentOrderClient(cfg),
 		PaymentProviderInstance: NewPaymentProviderInstanceClient(cfg),
@@ -332,11 +338,11 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PasskeyCredential,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -348,11 +354,11 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PasskeyCredential,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -378,6 +384,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Group.mutate(ctx, m)
 	case *IdempotencyRecordMutation:
 		return c.IdempotencyRecord.mutate(ctx, m)
+	case *PasskeyCredentialMutation:
+		return c.PasskeyCredential.mutate(ctx, m)
 	case *PaymentAuditLogMutation:
 		return c.PaymentAuditLog.mutate(ctx, m)
 	case *PaymentOrderMutation:
@@ -1757,6 +1765,155 @@ func (c *IdempotencyRecordClient) mutate(ctx context.Context, m *IdempotencyReco
 		return (&IdempotencyRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown IdempotencyRecord mutation op: %q", m.Op())
+	}
+}
+
+// PasskeyCredentialClient is a client for the PasskeyCredential schema.
+type PasskeyCredentialClient struct {
+	config
+}
+
+// NewPasskeyCredentialClient returns a client for the PasskeyCredential from the given config.
+func NewPasskeyCredentialClient(c config) *PasskeyCredentialClient {
+	return &PasskeyCredentialClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `passkeycredential.Hooks(f(g(h())))`.
+func (c *PasskeyCredentialClient) Use(hooks ...Hook) {
+	c.hooks.PasskeyCredential = append(c.hooks.PasskeyCredential, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `passkeycredential.Intercept(f(g(h())))`.
+func (c *PasskeyCredentialClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PasskeyCredential = append(c.inters.PasskeyCredential, interceptors...)
+}
+
+// Create returns a builder for creating a PasskeyCredential entity.
+func (c *PasskeyCredentialClient) Create() *PasskeyCredentialCreate {
+	mutation := newPasskeyCredentialMutation(c.config, OpCreate)
+	return &PasskeyCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PasskeyCredential entities.
+func (c *PasskeyCredentialClient) CreateBulk(builders ...*PasskeyCredentialCreate) *PasskeyCredentialCreateBulk {
+	return &PasskeyCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PasskeyCredentialClient) MapCreateBulk(slice any, setFunc func(*PasskeyCredentialCreate, int)) *PasskeyCredentialCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PasskeyCredentialCreateBulk{err: fmt.Errorf("calling to PasskeyCredentialClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PasskeyCredentialCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PasskeyCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PasskeyCredential.
+func (c *PasskeyCredentialClient) Update() *PasskeyCredentialUpdate {
+	mutation := newPasskeyCredentialMutation(c.config, OpUpdate)
+	return &PasskeyCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PasskeyCredentialClient) UpdateOne(_m *PasskeyCredential) *PasskeyCredentialUpdateOne {
+	mutation := newPasskeyCredentialMutation(c.config, OpUpdateOne, withPasskeyCredential(_m))
+	return &PasskeyCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PasskeyCredentialClient) UpdateOneID(id int64) *PasskeyCredentialUpdateOne {
+	mutation := newPasskeyCredentialMutation(c.config, OpUpdateOne, withPasskeyCredentialID(id))
+	return &PasskeyCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PasskeyCredential.
+func (c *PasskeyCredentialClient) Delete() *PasskeyCredentialDelete {
+	mutation := newPasskeyCredentialMutation(c.config, OpDelete)
+	return &PasskeyCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PasskeyCredentialClient) DeleteOne(_m *PasskeyCredential) *PasskeyCredentialDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PasskeyCredentialClient) DeleteOneID(id int64) *PasskeyCredentialDeleteOne {
+	builder := c.Delete().Where(passkeycredential.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PasskeyCredentialDeleteOne{builder}
+}
+
+// Query returns a query builder for PasskeyCredential.
+func (c *PasskeyCredentialClient) Query() *PasskeyCredentialQuery {
+	return &PasskeyCredentialQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePasskeyCredential},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PasskeyCredential entity by its id.
+func (c *PasskeyCredentialClient) Get(ctx context.Context, id int64) (*PasskeyCredential, error) {
+	return c.Query().Where(passkeycredential.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PasskeyCredentialClient) GetX(ctx context.Context, id int64) *PasskeyCredential {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a PasskeyCredential.
+func (c *PasskeyCredentialClient) QueryUser(_m *PasskeyCredential) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(passkeycredential.Table, passkeycredential.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, passkeycredential.UserTable, passkeycredential.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PasskeyCredentialClient) Hooks() []Hook {
+	return c.hooks.PasskeyCredential
+}
+
+// Interceptors returns the client interceptors.
+func (c *PasskeyCredentialClient) Interceptors() []Interceptor {
+	return c.inters.PasskeyCredential
+}
+
+func (c *PasskeyCredentialClient) mutate(ctx context.Context, m *PasskeyCredentialMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PasskeyCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PasskeyCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PasskeyCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PasskeyCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PasskeyCredential mutation op: %q", m.Op())
 	}
 }
 
@@ -3951,6 +4108,22 @@ func (c *UserClient) QueryPaymentOrders(_m *User) *PaymentOrderQuery {
 	return query
 }
 
+// QueryPasskeyCredentials queries the passkey_credentials edge of a User.
+func (c *UserClient) QueryPasskeyCredentials(_m *User) *PasskeyCredentialQuery {
+	query := (&PasskeyCredentialClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(passkeycredential.Table, passkeycredential.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.PasskeyCredentialsTable, user.PasskeyCredentialsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUserAllowedGroups queries the user_allowed_groups edge of a User.
 func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 	query := (&UserAllowedGroupClient{config: c.config}).Query()
@@ -4629,19 +4802,19 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
-		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
-		SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Hook
+		ErrorPassthroughRule, Group, IdempotencyRecord, PasskeyCredential,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
-		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
-		SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Interceptor
+		ErrorPassthroughRule, Group, IdempotencyRecord, PasskeyCredential,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

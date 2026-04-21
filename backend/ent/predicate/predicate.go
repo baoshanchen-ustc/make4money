@@ -30,6 +30,9 @@ type Group func(*sql.Selector)
 // IdempotencyRecord is the predicate function for idempotencyrecord builders.
 type IdempotencyRecord func(*sql.Selector)
 
+// PasskeyCredential is the predicate function for passkeycredential builders.
+type PasskeyCredential func(*sql.Selector)
+
 // PaymentAuditLog is the predicate function for paymentauditlog builders.
 type PaymentAuditLog func(*sql.Selector)
 

@@ -145,10 +145,10 @@ func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, e
 // GetFrontendURL 获取前端基础URL（数据库优先，fallback 到配置文件）
 func (s *SettingService) GetFrontendURL(ctx context.Context) string {
 	val, err := s.settingRepo.GetValue(ctx, SettingKeyFrontendURL)
-	if err == nil && strings.TrimSpace(val) != "" {
-		return strings.TrimSpace(val)
+	if err == nil {
+		return s.resolveEffectiveFrontendURL(map[string]string{SettingKeyFrontendURL: val})
 	}
-	return s.cfg.Server.FrontendURL
+	return s.resolveEffectiveFrontendURL(nil)
 }
 
 // GetPublicSettings 获取公开设置（无需登录）
@@ -159,8 +159,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyRegistrationEmailSuffixWhitelist,
 		SettingKeyPromoCodeEnabled,
 		SettingKeyPasswordResetEnabled,
+		SettingKeyFrontendURL,
 		SettingKeyInvitationCodeEnabled,
 		SettingKeyTotpEnabled,
+		SettingKeyPasskeyEnabled,
 		SettingKeyTurnstileEnabled,
 		SettingKeyTurnstileSiteKey,
 		SettingKeySiteName,
@@ -192,6 +194,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if err != nil {
 		return nil, fmt.Errorf("get public settings: %w", err)
 	}
+	effectiveSettings := s.parseSettings(settings)
+	passkeyPublicEnabled := effectiveSettings.PasskeyEnabled && s.GetPasskeyConfigValidation(effectiveSettings).Valid
 
 	linuxDoEnabled := false
 	if raw, ok := settings[SettingKeyLinuxDoConnectEnabled]; ok {
@@ -237,6 +241,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PasswordResetEnabled:             passwordResetEnabled,
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		PasskeyEnabled:                   passkeyPublicEnabled,
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
@@ -293,6 +298,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PasswordResetEnabled             bool            `json:"password_reset_enabled"`
 		InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
 		TotpEnabled                      bool            `json:"totp_enabled"`
+		PasskeyEnabled                   bool            `json:"passkey_enabled"`
 		TurnstileEnabled                 bool            `json:"turnstile_enabled"`
 		TurnstileSiteKey                 string          `json:"turnstile_site_key,omitempty"`
 		SiteName                         string          `json:"site_name"`
@@ -327,6 +333,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PasswordResetEnabled:             settings.PasswordResetEnabled,
 		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
 		TotpEnabled:                      settings.TotpEnabled,
+		PasskeyEnabled:                   settings.PasskeyEnabled,
 		TurnstileEnabled:                 settings.TurnstileEnabled,
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
 		SiteName:                         settings.SiteName,
@@ -491,7 +498,12 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 		normalizedWhitelist = []string{}
 	}
 	settings.RegistrationEmailSuffixWhitelist = normalizedWhitelist
-
+	frontendURL := strings.TrimSpace(settings.FrontendURL)
+	configFrontendURL := ""
+	if s != nil && s.cfg != nil {
+		configFrontendURL = strings.TrimSpace(s.cfg.Server.FrontendURL)
+	}
+	deleteFrontendURLOverride := frontendURL == "" || (configFrontendURL != "" && frontendURL == configFrontendURL)
 	updates := make(map[string]string)
 
 	// 注册设置
@@ -504,9 +516,12 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyRegistrationEmailSuffixWhitelist] = string(registrationEmailSuffixWhitelistJSON)
 	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
-	updates[SettingKeyFrontendURL] = settings.FrontendURL
+	if !deleteFrontendURLOverride {
+		updates[SettingKeyFrontendURL] = frontendURL
+	}
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
+	updates[SettingKeyPasskeyEnabled] = strconv.FormatBool(settings.PasskeyEnabled)
 
 	// 邮件服务设置（只有非空才更新密码）
 	updates[SettingKeySMTPHost] = settings.SMTPHost
@@ -635,6 +650,11 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
+	if err == nil && deleteFrontendURLOverride {
+		if deleteErr := s.settingRepo.Delete(ctx, SettingKeyFrontendURL); deleteErr != nil && !errors.Is(deleteErr, ErrSettingNotFound) {
+			return deleteErr
+		}
+	}
 	if err == nil {
 		// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 		versionBoundsSF.Forget("version_bounds")
@@ -871,6 +891,14 @@ func (s *SettingService) IsTotpEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+func (s *SettingService) IsPasskeyEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyPasskeyEnabled)
+	if err != nil {
+		return false // 默认关闭
+	}
+	return value == "true"
+}
+
 // IsTotpEncryptionKeyConfigured 检查 TOTP 加密密钥是否已手动配置
 // 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
 func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
@@ -937,6 +965,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyEmailVerifyEnabled:               "false",
 		SettingKeyRegistrationEmailSuffixWhitelist: "[]",
 		SettingKeyPromoCodeEnabled:                 "true", // 默认启用优惠码功能
+		SettingKeyPasskeyEnabled:                   "true",
 		SettingKeySiteName:                         "Sub2API",
 		SettingKeySiteLogo:                         "",
 		SettingKeyPurchaseSubscriptionEnabled:      "false",
@@ -982,15 +1011,21 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
+	frontendURL := s.resolveEffectiveFrontendURL(settings)
+	passkeyRPID, passkeyRPName, passkeyAllowedOrigins := s.resolvePasskeyRPConfig(settings)
 	result := &SystemSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist: ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
 		PromoCodeEnabled:                 settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
 		PasswordResetEnabled:             emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
-		FrontendURL:                      settings[SettingKeyFrontendURL],
+		FrontendURL:                      frontendURL,
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		PasskeyEnabled:                   settings[SettingKeyPasskeyEnabled] == "true",
+		PasskeyRPID:                      passkeyRPID,
+		PasskeyRPName:                    passkeyRPName,
+		PasskeyAllowedOrigins:            passkeyAllowedOrigins,
 		SMTPHost:                         settings[SettingKeySMTPHost],
 		SMTPUsername:                     settings[SettingKeySMTPUsername],
 		SMTPFrom:                         settings[SettingKeySMTPFrom],
@@ -1290,6 +1325,102 @@ func isFalseSettingValue(value string) bool {
 	default:
 		return false
 	}
+}
+
+func (s *SettingService) resolvePasskeyRPConfig(settings map[string]string) (string, string, []string) {
+	frontendURL := s.resolveEffectiveFrontendURL(settings)
+
+	rpID := ""
+	rpName := s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API")
+	allowedOrigins := []string{}
+
+	derivedRPID, derivedOrigin := derivePasskeyRPIDAndOrigin(frontendURL)
+	rpID = derivedRPID
+	if len(allowedOrigins) == 0 && derivedOrigin != "" {
+		allowedOrigins = []string{derivedOrigin}
+	}
+
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = []string{}
+	}
+
+	return rpID, rpName, allowedOrigins
+}
+
+func (s *SettingService) GetPasskeyConfigValidation(settings *SystemSettings) PasskeyConfigValidation {
+	if settings == nil || !settings.PasskeyEnabled {
+		return PasskeyConfigValidation{Valid: true}
+	}
+
+	if strings.TrimSpace(settings.PasskeyRPID) == "" {
+		return PasskeyConfigValidation{
+			Valid: false,
+			Error: "Passkey is enabled but Frontend URL could not be used to derive a relying party ID. Set Frontend URL to your site origin.",
+		}
+	}
+
+	if len(settings.PasskeyAllowedOrigins) == 0 {
+		return PasskeyConfigValidation{
+			Valid: false,
+			Error: "Passkey is enabled but Frontend URL could not be used to derive an allowed origin. Set Frontend URL to a valid site URL.",
+		}
+	}
+
+	if err := validatePasskeyWebAuthnOrigins(settings.PasskeyAllowedOrigins); err != nil {
+		appErr := infraerrors.FromError(err)
+		if appErr != nil && appErr.Metadata != nil {
+			if origin := strings.TrimSpace(appErr.Metadata["origin"]); origin != "" {
+				return PasskeyConfigValidation{
+					Valid: false,
+					Error: fmt.Sprintf("Passkey origin %q is invalid. Check Frontend URL and use https://, or http://localhost/127.0.0.1 only for local development.", origin),
+				}
+			}
+		}
+
+		return PasskeyConfigValidation{
+			Valid: false,
+			Error: "Passkey is enabled but its relying party configuration is invalid.",
+		}
+	}
+
+	return PasskeyConfigValidation{Valid: true}
+}
+
+func (s *SettingService) resolveEffectiveFrontendURL(settings map[string]string) string {
+	if settings != nil {
+		if value := strings.TrimSpace(settings[SettingKeyFrontendURL]); value != "" {
+			return value
+		}
+	}
+	if s != nil && s.cfg != nil {
+		return strings.TrimSpace(s.cfg.Server.FrontendURL)
+	}
+	return ""
+}
+
+func derivePasskeyRPIDAndOrigin(frontendURL string) (string, string) {
+	frontendURL = strings.TrimSpace(frontendURL)
+	if frontendURL == "" {
+		return "", ""
+	}
+
+	u, err := url.Parse(frontendURL)
+	if err != nil || u.Host == "" {
+		return "", ""
+	}
+
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return "", ""
+	}
+
+	rpID := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(u.Hostname())), ".")
+	if rpID == "" {
+		return "", ""
+	}
+
+	origin := scheme + "://" + strings.ToLower(u.Host)
+	return rpID, origin
 }
 
 func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {

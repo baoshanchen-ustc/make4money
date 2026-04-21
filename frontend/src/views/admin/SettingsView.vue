@@ -15,6 +15,7 @@
               v-for="tab in settingsTabs"
               :key="tab.key"
               type="button"
+              :data-testid="`settings-tab-${tab.key}`"
               :class="['settings-tab', activeTab === tab.key && 'settings-tab-active']"
               @click="activeTab = tab.key"
             >
@@ -906,20 +907,18 @@
               </div>
               <Toggle v-model="form.password_reset_enabled" />
             </div>
-            <!-- Frontend URL - Only show when password reset is enabled -->
-            <div
-              v-if="form.email_verify_enabled && form.password_reset_enabled"
-              class="border-t border-gray-100 pt-4 dark:border-dark-700"
-            >
+            <!-- Frontend URL - Used by password reset and passkey auto-derivation -->
+            <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.registration.frontendUrl') }}
               </label>
-              <input
-                v-model="form.frontend_url"
-                type="url"
-                class="input"
-                :placeholder="t('admin.settings.registration.frontendUrlPlaceholder')"
-              />
+                  <input
+                    v-model="form.frontend_url"
+                    data-testid="frontend-url-input"
+                    type="url"
+                    class="input"
+                    :placeholder="t('admin.settings.registration.frontendUrlPlaceholder')"
+                  />
               <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.settings.registration.frontendUrlHint') }}
               </p>
@@ -948,6 +947,119 @@
                 v-model="form.totp_enabled"
                 :disabled="!form.totp_encryption_key_configured"
               />
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Passkey Login -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.passkey.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.passkey.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.passkey.enable')
+                }}</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.passkey.enableHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.passkey_enabled" data-testid="passkey-enabled-toggle" />
+            </div>
+
+            <div
+              v-if="form.passkey_enabled"
+              class="space-y-6 border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div
+                v-if="!form.passkey_config_valid"
+                data-testid="passkey-config-warning"
+                class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+              >
+                <div class="flex items-start gap-3">
+                  <Icon
+                    name="exclamationTriangle"
+                    size="md"
+                    class="mt-0.5 flex-shrink-0 text-amber-500"
+                  />
+                  <div class="space-y-1">
+                    <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      {{ t('admin.settings.passkey.configInvalidTitle') }}
+                    </p>
+                    <p class="text-sm text-amber-700 dark:text-amber-300">
+                      {{ form.passkey_config_error || t('admin.settings.passkey.configInvalidFallback') }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-2" data-testid="passkey-config-summary">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.passkey.rpId') }}
+                  </label>
+                  <div
+                    class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-sm text-gray-900 dark:border-dark-700 dark:bg-dark-800/60 dark:text-gray-100"
+                  >
+                    {{ form.passkey_rp_id || t('admin.settings.passkey.unresolved') }}
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.passkey.rpIdHint') }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.passkey.rpName') }}
+                  </label>
+                  <div
+                    class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 dark:border-dark-700 dark:bg-dark-800/60 dark:text-gray-100"
+                  >
+                    {{ form.passkey_rp_name || t('admin.settings.passkey.unresolved') }}
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.passkey.rpNameHint') }}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.passkey.allowedOrigins') }}
+                </label>
+                <div
+                  class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-800/60"
+                >
+                  <div
+                    v-if="form.passkey_allowed_origins.length > 0"
+                    class="space-y-1 font-mono text-sm text-gray-900 dark:text-gray-100"
+                  >
+                    <div v-for="origin in form.passkey_allowed_origins" :key="origin" class="break-all">
+                      {{ origin }}
+                    </div>
+                  </div>
+                  <div v-else class="font-mono text-sm text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.passkey.unresolved') }}
+                  </div>
+                </div>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.passkey.allowedOriginsHint') }}
+                </p>
+              </div>
+
+              <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                <p class="text-sm text-gray-600 dark:text-gray-300">
+                  {{ t('admin.settings.passkey.derivedHint') }}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -2784,7 +2896,7 @@
 
         <!-- Save Button -->
         <div v-show="activeTab !== 'backup'" class="flex justify-end">
-          <button type="submit" :disabled="saving || loadFailed" class="btn btn-primary">
+          <button type="submit" data-testid="settings-save-button" :disabled="saving || loadFailed" class="btn btn-primary">
             <svg v-if="saving" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle
                 class="opacity-25"
@@ -2971,6 +3083,12 @@ const form = reactive<SettingsForm>({
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
+  passkey_enabled: false,
+  passkey_rp_id: '',
+  passkey_rp_name: '',
+  passkey_allowed_origins: [],
+  passkey_config_valid: true,
+  passkey_config_error: '',
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
@@ -3516,7 +3634,7 @@ async function saveSettings() {
       )
       return
     }
-
+    
     form.table_default_page_size = normalizedTableDefaultPageSize
     form.table_page_size_options = normalizedTablePageSizeOptions
 
@@ -3568,6 +3686,7 @@ async function saveSettings() {
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
+      passkey_enabled: form.passkey_enabled,
       default_balance: form.default_balance,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,

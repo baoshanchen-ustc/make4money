@@ -521,6 +521,12 @@ func TestAPIContracts(t *testing.T) {
 					"frontend_url": "",
 					"totp_enabled": false,
 					"totp_encryption_key_configured": false,
+					"passkey_enabled": false,
+					"passkey_rp_id": "",
+					"passkey_rp_name": "Sub2API",
+					"passkey_allowed_origins": [],
+					"passkey_config_valid": true,
+					"passkey_config_error": "",
 					"smtp_host": "smtp.example.com",
 					"smtp_port": 587,
 					"smtp_username": "user",
@@ -726,8 +732,8 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, settingService, subscriptionService, userSubRepo, nil)
+	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil)

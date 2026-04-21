@@ -51,6 +51,8 @@ func TestAuthRoutesRateLimitFailCloseWhenRedisUnavailable(t *testing.T) {
 		"/api/v1/auth/register",
 		"/api/v1/auth/login",
 		"/api/v1/auth/login/2fa",
+		"/api/v1/auth/passkeys/login/begin",
+		"/api/v1/auth/passkeys/login/finish?flow_id=test-flow",
 		"/api/v1/auth/send-verify-code",
 	}
 

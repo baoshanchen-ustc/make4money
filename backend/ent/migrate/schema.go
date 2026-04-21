@@ -485,6 +485,49 @@ var (
 			},
 		},
 	}
+	// PasskeyCredentialsColumns holds the columns for the "passkey_credentials" table.
+	PasskeyCredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "credential_id", Type: field.TypeString, Unique: true, Size: 512},
+		{Name: "public_key", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "sign_count", Type: field.TypeInt64, Default: 0},
+		{Name: "transports", Type: field.TypeJSON, Nullable: true},
+		{Name: "aaguid", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "backup_eligible", Type: field.TypeBool, Default: false},
+		{Name: "backup_state", Type: field.TypeBool, Default: false},
+		{Name: "friendly_name", Type: field.TypeString, Size: 100, Default: ""},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// PasskeyCredentialsTable holds the schema information for the "passkey_credentials" table.
+	PasskeyCredentialsTable = &schema.Table{
+		Name:       "passkey_credentials",
+		Columns:    PasskeyCredentialsColumns,
+		PrimaryKey: []*schema.Column{PasskeyCredentialsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "passkey_credentials_users_passkey_credentials",
+				Columns:    []*schema.Column{PasskeyCredentialsColumns[13]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "passkeycredential_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{PasskeyCredentialsColumns[13]},
+			},
+			{
+				Name:    "passkeycredential_user_id_revoked_at",
+				Unique:  false,
+				Columns: []*schema.Column{PasskeyCredentialsColumns[13], PasskeyCredentialsColumns[12]},
+			},
+		},
+	}
 	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
 	PaymentAuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1321,6 +1364,7 @@ var (
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
+		PasskeyCredentialsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -1373,6 +1417,10 @@ func init() {
 	}
 	IdempotencyRecordsTable.Annotation = &entsql.Annotation{
 		Table: "idempotency_records",
+	}
+	PasskeyCredentialsTable.ForeignKeys[0].RefTable = UsersTable
+	PasskeyCredentialsTable.Annotation = &entsql.Annotation{
+		Table: "passkey_credentials",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",
