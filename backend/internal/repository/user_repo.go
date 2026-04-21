@@ -174,7 +174,8 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 }
 
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
-	affected, err := r.client.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
+	client := clientFromContext(ctx, r.client)
+	affected, err := client.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}

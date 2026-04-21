@@ -150,6 +150,22 @@ func (s *UserRepoSuite) TestDelete() {
 	s.Require().Error(err, "expected error after delete")
 }
 
+func (s *UserRepoSuite) TestDelete_UsesTransactionContext() {
+	user := s.mustCreateUser(&service.User{Email: "delete-tx@test.com"})
+
+	tx, err := s.client.Tx(s.ctx)
+	s.Require().NoError(err, "begin transaction")
+	txCtx := dbent.NewTxContext(s.ctx, tx)
+
+	err = s.repo.Delete(txCtx, user.ID)
+	s.Require().NoError(err, "Delete inside transaction")
+	s.Require().NoError(tx.Rollback(), "rollback transaction")
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err, "user should still exist after rollback")
+	s.Require().Equal(user.ID, got.ID)
+}
+
 // --- List / ListWithFilters ---
 
 func (s *UserRepoSuite) TestList() {
