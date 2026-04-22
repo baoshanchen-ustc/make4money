@@ -335,6 +335,7 @@ export default {
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
+    models: '可用模型',
     usage: '使用记录',
     redeem: '兑换',
     profile: '个人资料',
@@ -5810,6 +5811,30 @@ export default {
         revoked: '已撤销',
       },
     },
+  },
+
+  // Models
+  models: {
+    title: '可用模型',
+    description: '查看您可以使用的 AI 模型列表和使用说明',
+    selectApiKey: '选择 API 密钥',
+    selectApiKeyHint: '选择一个 API 密钥来查看可用的模型列表',
+    selectApiKeyPlaceholder: '请选择 API 密钥',
+    noApiKeys: '暂无 API 密钥',
+    noApiKeysDesc: '您还没有创建任何 API 密钥，请先创建一个密钥来查看可用模型',
+    createApiKey: '创建 API 密钥',
+    usageGuide: '使用指南',
+    apiEndpoint: 'API 端点',
+    yourApiKey: '您的 API 密钥',
+    exampleRequest: '请求示例',
+    availableModels: '可用模型',
+    modelCount: '共 {count} 个模型',
+    modelId: '模型 ID',
+    displayName: '显示名称',
+    actions: '操作',
+    noModels: '暂无可用模型',
+    noModelsDesc: '当前 API 密钥没有可用的模型',
+    loadFailed: '加载模型列表失败',
   },
 
 }

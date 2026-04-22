@@ -335,6 +335,7 @@ export default {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
+    models: 'Models',
     usage: 'Usage',
     redeem: 'Redeem',
     profile: 'Profile',
@@ -5623,6 +5624,30 @@ export default {
         revoked: 'Revoked',
       },
     },
+  },
+
+  // Models
+  models: {
+    title: 'Available Models',
+    description: 'View the list of AI models you can use and usage instructions',
+    selectApiKey: 'Select API Key',
+    selectApiKeyHint: 'Select an API key to view available models',
+    selectApiKeyPlaceholder: 'Please select an API key',
+    noApiKeys: 'No API Keys',
+    noApiKeysDesc: 'You have not created any API keys yet. Please create one to view available models',
+    createApiKey: 'Create API Key',
+    usageGuide: 'Usage Guide',
+    apiEndpoint: 'API Endpoint',
+    yourApiKey: 'Your API Key',
+    exampleRequest: 'Example Request',
+    availableModels: 'Available Models',
+    modelCount: '{count} models available',
+    modelId: 'Model ID',
+    displayName: 'Display Name',
+    actions: 'Actions',
+    noModels: 'No Models Available',
+    noModelsDesc: 'No models are available for the selected API key',
+    loadFailed: 'Failed to load models',
   },
 
 }
