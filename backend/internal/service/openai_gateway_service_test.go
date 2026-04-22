@@ -1927,3 +1927,99 @@ func TestHandleSSEToJSON_ResponseFailedReturnsProtocolError(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "upstream rejected request")
 	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 }
+
+func TestExtractOpenAIUsageFromJSONBytes(t *testing.T) {
+	tests := []struct {
+		name          string
+		body          string
+		wantInput     int
+		wantOutput    int
+		wantCacheRead int
+		wantOK        bool
+	}{
+		{
+			name:      "Anthropic/Responses API format (input_tokens/output_tokens)",
+			body:      `{"usage":{"input_tokens":100,"output_tokens":50,"input_tokens_details":{"cached_tokens":10}}}`,
+			wantInput: 100, wantOutput: 50, wantCacheRead: 10, wantOK: true,
+		},
+		{
+			name:      "Standard OpenAI chat completions format (prompt_tokens/completion_tokens)",
+			body:      `{"usage":{"prompt_tokens":200,"completion_tokens":80,"total_tokens":280}}`,
+			wantInput: 200, wantOutput: 80, wantCacheRead: 0, wantOK: true,
+		},
+		{
+			name:      "Standard OpenAI format with cached tokens",
+			body:      `{"usage":{"prompt_tokens":300,"completion_tokens":60,"prompt_tokens_details":{"cached_tokens":20}}}`,
+			wantInput: 300, wantOutput: 60, wantCacheRead: 20, wantOK: true,
+		},
+		{
+			name:      "Anthropic format takes precedence over OpenAI format when both present",
+			body:      `{"usage":{"input_tokens":10,"output_tokens":5,"prompt_tokens":200,"completion_tokens":80}}`,
+			wantInput: 10, wantOutput: 5, wantCacheRead: 0, wantOK: true,
+		},
+		{
+			name: "empty body", body: "", wantOK: false,
+		},
+		{
+			name: "invalid json", body: "{not json}", wantOK: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := extractOpenAIUsageFromJSONBytes([]byte(tt.body))
+			require.Equal(t, tt.wantOK, ok)
+			if tt.wantOK {
+				require.Equal(t, tt.wantInput, got.InputTokens)
+				require.Equal(t, tt.wantOutput, got.OutputTokens)
+				require.Equal(t, tt.wantCacheRead, got.CacheReadInputTokens)
+			}
+		})
+	}
+}
+
+func TestParseSSEUsageBytesStandardChatCompletions(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	tests := []struct {
+		name          string
+		data          string
+		wantInput     int
+		wantOutput    int
+		wantCacheRead int
+	}{
+		{
+			name:          "OpenAI Responses API terminal event",
+			data:          `{"type":"response.completed","response":{"usage":{"input_tokens":100,"output_tokens":50,"input_tokens_details":{"cached_tokens":10}}}}`,
+			wantInput:     100,
+			wantOutput:    50,
+			wantCacheRead: 10,
+		},
+		{
+			name:       "Standard chat completions last chunk with prompt_tokens/completion_tokens",
+			data:       `{"object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":200,"completion_tokens":80,"total_tokens":280}}`,
+			wantInput:  200,
+			wantOutput: 80,
+		},
+		{
+			name:          "Standard chat completions chunk with cached tokens",
+			data:          `{"object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":300,"completion_tokens":60,"prompt_tokens_details":{"cached_tokens":20}}}`,
+			wantInput:     300,
+			wantOutput:    60,
+			wantCacheRead: 20,
+		},
+		{
+			name:       "Non-terminal chunk (no usage) should not update",
+			data:       `{"object":"chat.completion.chunk","choices":[{"delta":{"content":"hello"}}]}`,
+			wantInput:  0,
+			wantOutput: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usage := &OpenAIUsage{}
+			svc.parseSSEUsageBytes([]byte(tt.data), usage)
+			require.Equal(t, tt.wantInput, usage.InputTokens)
+			require.Equal(t, tt.wantOutput, usage.OutputTokens)
+			require.Equal(t, tt.wantCacheRead, usage.CacheReadInputTokens)
+		})
+	}
+}

@@ -3882,13 +3882,25 @@ func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsag
 		return
 	}
 	eventType := gjson.GetBytes(data, "type").String()
-	if eventType != "response.completed" && eventType != "response.done" {
+	if eventType == "response.completed" || eventType == "response.done" {
+		// OpenAI Responses API (/v1/responses) streaming format
+		usage.InputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens").Int())
+		usage.OutputTokens = int(gjson.GetBytes(data, "response.usage.output_tokens").Int())
+		usage.CacheReadInputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens_details.cached_tokens").Int())
 		return
 	}
 
-	usage.InputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens").Int())
-	usage.OutputTokens = int(gjson.GetBytes(data, "response.usage.output_tokens").Int())
-	usage.CacheReadInputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens_details.cached_tokens").Int())
+	// Standard OpenAI chat completions (/v1/chat/completions) streaming format:
+	// the last chunk may carry usage with prompt_tokens/completion_tokens.
+	if gjson.GetBytes(data, "object").String() == "chat.completion.chunk" {
+		promptTokens := gjson.GetBytes(data, "usage.prompt_tokens").Int()
+		completionTokens := gjson.GetBytes(data, "usage.completion_tokens").Int()
+		if promptTokens > 0 || completionTokens > 0 {
+			usage.InputTokens = int(promptTokens)
+			usage.OutputTokens = int(completionTokens)
+			usage.CacheReadInputTokens = int(gjson.GetBytes(data, "usage.prompt_tokens_details.cached_tokens").Int())
+		}
+	}
 }
 
 func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
@@ -3900,11 +3912,27 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 		"usage.input_tokens",
 		"usage.output_tokens",
 		"usage.input_tokens_details.cached_tokens",
+		"usage.prompt_tokens",
+		"usage.completion_tokens",
+		"usage.prompt_tokens_details.cached_tokens",
 	)
+	inputTokens := int(values[0].Int())
+	outputTokens := int(values[1].Int())
+	cachedTokens := int(values[2].Int())
+	// Fall back to standard OpenAI chat completions field names
+	if inputTokens == 0 {
+		inputTokens = int(values[3].Int())
+	}
+	if outputTokens == 0 {
+		outputTokens = int(values[4].Int())
+	}
+	if cachedTokens == 0 {
+		cachedTokens = int(values[5].Int())
+	}
 	return OpenAIUsage{
-		InputTokens:          int(values[0].Int()),
-		OutputTokens:         int(values[1].Int()),
-		CacheReadInputTokens: int(values[2].Int()),
+		InputTokens:          inputTokens,
+		OutputTokens:         outputTokens,
+		CacheReadInputTokens: cachedTokens,
 	}, true
 }
 
