@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,6 +32,17 @@ func TestCommonRoutesInternalHealthRequiresToken(t *testing.T) {
 }
 
 func TestCommonRoutesInternalExecutePathIsRegistered(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/responses", r.URL.Path)
+		require.Equal(t, "Bearer worker-local-key", r.Header.Get("Authorization"))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "resp_worker",
+			"object": "response",
+		})
+	}))
+	defer upstream.Close()
+	t.Setenv("SUB2API_WORKER_PUBLIC_BASE_URL", upstream.URL)
+	t.Setenv("SUB2API_WORKER_EXECUTION_API_KEY", "worker-local-key")
 	router := newCommonRoutesTestRouter(t, "secret")
 
 	req := httptest.NewRequest(http.MethodPost, "/internal/jobs/execute", strings.NewReader(`{"job_id":"job-1","capability":"text.basic","input":{"prompt":"hello"}}`))
