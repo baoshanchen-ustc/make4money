@@ -58,6 +58,23 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 
 ---
 
+## OpenAI OAuth Troubleshooting
+
+### Failed to exchange OpenAI auth code
+
+If you see this error when adding an OpenAI account, the auth code itself may not be the problem.
+
+After the browser completes authorization, the Sub2API backend still needs to exchange that auth code with OpenAI. If the browser uses a proxy but the server does not, or the server cannot reach OpenAI, the exchange can fail.
+
+Recommended checks:
+
+- Verify that the machine running Sub2API can reach OpenAI.
+- Configure a server-side proxy if needed. The critical path is the backend exchange request, not just the browser-side authorization page.
+- After changing network or proxy settings, generate a new authorization link and try again.
+- The browser and server do not need to be in the same region. The key requirement is that the server-side network path to OpenAI works.
+
+---
+
 ## Deployment
 
 ### Method 1: Script Installation (Recommended)

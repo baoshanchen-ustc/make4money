@@ -62,6 +62,21 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（
 - 当请求包含 `function_call_output` 时，需要携带 `previous_response_id`，或在 `input` 中包含带 `call_id` 的 `tool_call`/`function_call`，或带非空 `id` 且与 `function_call_output.call_id` 匹配的 `item_reference`。
 - 若依赖上游历史记录，网关会强制 `store=true` 并需要复用 `previous_response_id`，以避免出现 “No tool call found for function call output” 错误。
 
+## OpenAI OAuth 常见问题
+
+### Failed to exchange OpenAI auth code
+
+如果在添加 OpenAI 账号时出现该错误，不一定是授权码本身有问题。
+
+浏览器完成授权后，Sub2API 后端仍需要使用该 auth code 与 OpenAI 交换令牌。如果浏览器侧走了代理，但服务端没有走代理，或者服务端无法访问 OpenAI，就可能导致交换失败。
+
+建议优先排查：
+
+- 确认运行 Sub2API 的服务端机器可以访问 OpenAI。
+- 必要时为服务端配置代理。关键路径是后端发起的交换请求，不只是浏览器侧能打开授权页面。
+- 修改网络或代理配置后，重新生成授权链接再试。
+- 浏览器与服务端不在同一地区通常不是根因，关键是服务端到 OpenAI 的网络链路可用。
+
 ## 部署方式
 
 ### 方式一：脚本安装（推荐）

@@ -555,6 +555,15 @@ sudo systemctl status redis
 3. **Redis connection failed**: Check Redis is running and password is correct
 4. **Permission denied**: Ensure proper file ownership for binary install
 
+### OpenAI OAuth
+
+If you see `Failed to exchange OpenAI auth code` when adding an OpenAI account, the problem is often that the Sub2API server cannot reach OpenAI during the backend auth-code exchange.
+
+- Verify the server can reach OpenAI.
+- Configure a server-side proxy if needed.
+- After changing network or proxy settings, generate a new authorization link and try again.
+- The browser and server do not need to be in the same region. The key requirement is that the server-side network path works.
+
 ---
 
 ## TLS Fingerprint Configuration
