@@ -785,6 +785,33 @@ export async function updateOverloadCooldownSettings(
   return data;
 }
 
+// ==================== Rate Limit Cooldown Settings ====================
+
+/**
+ * Rate limit cooldown settings interface (429 handling)
+ */
+export interface RateLimitCooldownSettings {
+  enabled: boolean;
+  cooldown_minutes: number;
+}
+
+export async function getRateLimitCooldownSettings(): Promise<RateLimitCooldownSettings> {
+  const { data } = await apiClient.get<RateLimitCooldownSettings>(
+    "/admin/settings/rate-limit-cooldown",
+  );
+  return data;
+}
+
+export async function updateRateLimitCooldownSettings(
+  settings: RateLimitCooldownSettings,
+): Promise<RateLimitCooldownSettings> {
+  const { data } = await apiClient.put<RateLimitCooldownSettings>(
+    "/admin/settings/rate-limit-cooldown",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Stream Timeout Settings ====================
 
 /**
@@ -981,6 +1008,8 @@ export const settingsAPI = {
   deleteAdminApiKey,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
+  getRateLimitCooldownSettings,
+  updateRateLimitCooldownSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,

@@ -817,6 +817,12 @@ func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *A
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
+	settings := s.rateLimitCooldownSettings(ctx, account)
+	if !settings.Enabled {
+		slog.Info("account_429_ignored", "account_id", account.ID, "reason", "rate_limit_cooldown_disabled")
+		return
+	}
+
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
@@ -891,9 +897,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 			return
 		}
 
-		// 其他平台：没有重置时间，使用默认5分钟
-		resetAt := time.Now().Add(5 * time.Minute)
-		slog.Warn("rate_limit_no_reset_time", "account_id", account.ID, "platform", account.Platform, "using_default", "5m")
+		// 其他平台：没有重置时间，使用配置的兜底冷却时间
+		resetAt := time.Now().Add(time.Duration(settings.CooldownMinutes) * time.Minute)
+		slog.Warn("rate_limit_no_reset_time", "account_id", account.ID, "platform", account.Platform, "using_default_minutes", settings.CooldownMinutes)
 		if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
 			slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 		}
@@ -904,7 +910,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	ts, err := strconv.ParseInt(resetTimestamp, 10, 64)
 	if err != nil {
 		slog.Warn("rate_limit_reset_parse_failed", "reset_timestamp", resetTimestamp, "error", err)
-		resetAt := time.Now().Add(5 * time.Minute)
+		resetAt := time.Now().Add(time.Duration(settings.CooldownMinutes) * time.Minute)
 		if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
 			slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 		}
@@ -927,6 +933,29 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	}
 
 	slog.Info("account_rate_limited", "account_id", account.ID, "reset_at", resetAt)
+}
+
+func (s *RateLimitService) rateLimitCooldownSettings(ctx context.Context, account *Account) *RateLimitCooldownSettings {
+	var settings *RateLimitCooldownSettings
+	if s.settingService != nil {
+		var err error
+		settings, err = s.settingService.GetRateLimitCooldownSettings(ctx)
+		if err != nil {
+			slog.Warn("rate_limit_settings_read_failed", "account_id", account.ID, "error", err)
+			settings = nil
+		}
+	}
+	if settings == nil {
+		cooldown := 5
+		if s.cfg != nil && s.cfg.RateLimit.RateLimitCooldownMinutes > 0 {
+			cooldown = s.cfg.RateLimit.RateLimitCooldownMinutes
+		}
+		settings = &RateLimitCooldownSettings{Enabled: true, CooldownMinutes: cooldown}
+	}
+	if settings.CooldownMinutes <= 0 {
+		settings.CooldownMinutes = 5
+	}
+	return settings
 }
 
 // calculateOpenAI429ResetTime 从 OpenAI 429 响应头计算正确的重置时间

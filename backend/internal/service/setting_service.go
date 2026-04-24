@@ -2626,6 +2626,55 @@ func (s *SettingService) SetOverloadCooldownSettings(ctx context.Context, settin
 	return s.settingRepo.Set(ctx, SettingKeyOverloadCooldownSettings, string(data))
 }
 
+// GetRateLimitCooldownSettings 获取429限流冷却配置
+func (s *SettingService) GetRateLimitCooldownSettings(ctx context.Context) (*RateLimitCooldownSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRateLimitCooldownSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultRateLimitCooldownSettings(), nil
+		}
+		return nil, fmt.Errorf("get rate limit cooldown settings: %w", err)
+	}
+	if value == "" {
+		return DefaultRateLimitCooldownSettings(), nil
+	}
+
+	var settings RateLimitCooldownSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultRateLimitCooldownSettings(), nil
+	}
+
+	if settings.CooldownMinutes < 1 {
+		settings.CooldownMinutes = 1
+	}
+	if settings.CooldownMinutes > 120 {
+		settings.CooldownMinutes = 120
+	}
+
+	return &settings, nil
+}
+
+// SetRateLimitCooldownSettings 设置429限流冷却配置
+func (s *SettingService) SetRateLimitCooldownSettings(ctx context.Context, settings *RateLimitCooldownSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+
+	if settings.CooldownMinutes < 1 || settings.CooldownMinutes > 120 {
+		if settings.Enabled {
+			return fmt.Errorf("cooldown_minutes must be between 1-120")
+		}
+		settings.CooldownMinutes = 5
+	}
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal rate limit cooldown settings: %w", err)
+	}
+
+	return s.settingRepo.Set(ctx, SettingKeyRateLimitCooldownSettings, string(data))
+}
+
 // GetOIDCConnectOAuthConfig 返回用于登录的“最终生效” OIDC 配置。
 //
 // 优先级：

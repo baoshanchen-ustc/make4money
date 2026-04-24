@@ -5387,6 +5387,16 @@ export default {
         saved: 'Overload cooldown settings saved',
         saveFailed: 'Failed to save overload cooldown settings'
       },
+      rateLimitCooldown: {
+        title: '429 Rate Limit Cooldown',
+        description: 'Configure account scheduling pause strategy when upstream returns 429 (rate limited)',
+        enabled: 'Enable Rate Limit Cooldown',
+        enabledHint: 'Pause account scheduling on 429 errors, auto-recover after the reset time or fallback cooldown',
+        cooldownMinutes: 'Fallback Cooldown Duration (minutes)',
+        cooldownMinutesHint: 'Used when upstream does not provide a reset time (1-120 minutes)',
+        saved: 'Rate limit cooldown settings saved',
+        saveFailed: 'Failed to save rate limit cooldown settings'
+      },
       streamTimeout: {
         title: 'Stream Timeout Handling',
         description: 'Configure account handling strategy when upstream response times out',

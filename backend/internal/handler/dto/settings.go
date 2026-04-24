@@ -252,6 +252,12 @@ type OverloadCooldownSettings struct {
 	CooldownMinutes int  `json:"cooldown_minutes"`
 }
 
+// RateLimitCooldownSettings 429限流冷却配置 DTO
+type RateLimitCooldownSettings struct {
+	Enabled         bool `json:"enabled"`
+	CooldownMinutes int  `json:"cooldown_minutes"`
+}
+
 // StreamTimeoutSettings 流超时处理配置 DTO
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`

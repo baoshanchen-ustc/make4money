@@ -275,6 +275,9 @@ const (
 	// SettingKeyOverloadCooldownSettings stores JSON config for 529 overload cooldown handling.
 	SettingKeyOverloadCooldownSettings = "overload_cooldown_settings"
 
+	// SettingKeyRateLimitCooldownSettings stores JSON config for 429 rate-limit cooldown handling.
+	SettingKeyRateLimitCooldownSettings = "rate_limit_cooldown_settings"
+
 	// =========================
 	// Stream Timeout Handling
 	// =========================

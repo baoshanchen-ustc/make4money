@@ -5547,6 +5547,16 @@ export default {
         saved: '过载冷却设置保存成功',
         saveFailed: '保存过载冷却设置失败'
       },
+      rateLimitCooldown: {
+        title: '429 限流冷却',
+        description: '配置上游返回 429（限流）时的账号调度暂停策略',
+        enabled: '启用限流冷却',
+        enabledHint: '收到 429 错误时暂停该账号的调度，按上游重置时间或兜底冷却后自动恢复',
+        cooldownMinutes: '兜底冷却时长（分钟）',
+        cooldownMinutesHint: '当上游没有提供重置时间时使用（1-120 分钟）',
+        saved: '限流冷却设置保存成功',
+        saveFailed: '保存限流冷却设置失败'
+      },
       streamTimeout: {
         title: '流超时处理',
         description: '配置上游响应超时时的账户处理策略，避免问题账户持续被选中',
