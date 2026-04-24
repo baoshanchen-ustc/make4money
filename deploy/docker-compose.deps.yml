@@ -1,0 +1,72 @@
+# =============================================================================
+# Sub2API Dev Dependencies Only (Postgres + Redis)
+# =============================================================================
+# 只跑后端依赖：PostgreSQL 和 Redis。backend / frontend 本地 `go run` / `pnpm dev`
+# 直接连对应 host:port 即可。端口默认暴露到所有网络接口（便于跨机器连接）。
+#
+# Usage:
+#   cd deploy
+#   docker compose -f docker-compose.deps.yml up -d
+#   docker compose -f docker-compose.deps.yml logs -f         # 可选
+#   docker compose -f docker-compose.deps.yml down            # 停止
+#   docker compose -f docker-compose.deps.yml down -v         # 停止并清数据
+#
+# 连接参数（硬编码，改端口/密码直接改此文件）:
+#   Postgres  <host>:55432  user=sub2api  password=sub2api  db=sub2api
+#   Redis     <host>:56379  (no password)
+#
+# 注意：不指定 IP 前缀 = 绑定 0.0.0.0（所有接口），仅在可信内网使用。
+#      如果只想本机 loopback 访问，把 "55432:5432" 改成 "127.0.0.1:55432:5432"。
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sub2api-postgres-deps
+    restart: unless-stopped
+    ports:
+      - "55432:5432"
+    environment:
+      POSTGRES_USER: sub2api
+      POSTGRES_PASSWORD: sub2api
+      POSTGRES_DB: sub2api
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Asia/Shanghai
+    volumes:
+      - sub2api_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sub2api -d sub2api"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: sub2api-redis-deps
+    restart: unless-stopped
+    ports:
+      - "56379:6379"
+    command:
+      - redis-server
+      - --save
+      - "60"
+      - "1"
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - sub2api_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  sub2api_postgres_data:
+  sub2api_redis_data:

@@ -198,7 +198,10 @@ const (
 	SettingKeyForceEmailOnThirdPartySignup             = "force_email_on_third_party_signup"
 
 	// 管理员 API Key
-	SettingKeyAdminAPIKey = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）
+	SettingKeyAdminAPIKey                = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）
+	SettingKeyCardsIssueEnabled          = "cards_issue_enabled"
+	SettingKeyCardsIssueBearerKey        = "cards_issue_bearer_key"
+	SettingKeyCardsIssueResponseTemplate = "cards_issue_response_template"
 
 	// Gemini 配额策略（JSON）
 	SettingKeyGeminiQuotaPolicy = "gemini_quota_policy"
@@ -309,3 +312,28 @@ const (
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
 const AdminAPIKeyPrefix = "admin-"
+
+const (
+	// CardsIssueBearerKeyPrefix is the prefix for the dedicated cards issue integration key.
+	CardsIssueBearerKeyPrefix = "cards-issue-"
+	// CardsIssueSignupSource marks users created via the dedicated cards issue integration.
+	CardsIssueSignupSource = "cards_issue"
+	// CardsIssueBuyerIDAttributeKey stores the external buyer identifier in user attributes.
+	CardsIssueBuyerIDAttributeKey = "cards_issue_buyer_id"
+	// CardsIssueBuyerIDAttributeName is the admin-facing label for the reserved buyer mapping field.
+	CardsIssueBuyerIDAttributeName = "Cards Issue Buyer ID"
+	// CardsIssueLoginEmailDomain is the reserved domain for deterministic login emails.
+	CardsIssueLoginEmailDomain = "cards-sync.invalid"
+)
+
+// Cards issue integration input limits. Reject obviously abusive or malformed
+// inputs early so an operator never accidentally credits a user with a giant
+// balance because an upstream field contained `1e308` or similar.
+const (
+	// CardsIssueMaxOrderAmount is the maximum order_amount accepted per unit.
+	CardsIssueMaxOrderAmount = 1_000_000.0
+	// CardsIssueMaxOrderQuantity is the maximum order_quantity accepted per call.
+	CardsIssueMaxOrderQuantity = 10_000
+	// CardsIssueMaxRechargeAmount caps the total recharge (amount * quantity).
+	CardsIssueMaxRechargeAmount = 1_000_000.0
+)

@@ -98,6 +98,7 @@ export interface User {
 }
 
 export interface AdminUser extends User {
+  signup_source?: string | null
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null

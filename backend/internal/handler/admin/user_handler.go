@@ -101,11 +101,12 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	filters := service.UserListFilters{
-		Status:     c.Query("status"),
-		Role:       c.Query("role"),
-		Search:     search,
-		GroupName:  strings.TrimSpace(c.Query("group_name")),
-		Attributes: parseAttributeFilters(c),
+		Status:       c.Query("status"),
+		Role:         c.Query("role"),
+		Search:       search,
+		SignupSource: strings.TrimSpace(c.Query("signup_source")),
+		GroupName:    strings.TrimSpace(c.Query("group_name")),
+		Attributes:   parseAttributeFilters(c),
 	}
 	sortBy := c.DefaultQuery("sort_by", "created_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")

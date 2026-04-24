@@ -346,6 +346,7 @@ export default {
     accounts: '账号管理',
     proxies: 'IP管理',
     redeemCodes: '兑换码',
+    cardsIssue: '卡券接口',
     ops: '运维监控',
     promoCodes: '优惠码',
     settings: '系统设置',
@@ -1488,6 +1489,7 @@ export default {
       roleFilter: '角色筛选',
       allRoles: '全部角色',
       allStatus: '全部状态',
+      allSources: '全部来源',
       allGroups: '全部分组',
       searchGroups: '搜索分组...',
       fuzzySearch: '模糊搜索',
@@ -1670,7 +1672,11 @@ export default {
       // Settings Dropdowns
       filterSettings: '筛选设置',
       columnSettings: '列设置',
+      sourceFilter: '来源筛选',
       filterValue: '输入值',
+      cardsIssueTag: '第三方卡券',
+      cardsIssueDetail: '该用户由第三方卡券接口创建',
+      cardsIssueDetailHelp: 'buyer_id 映射与充值由独立接口维护，修改登录邮箱不会影响 buyer_id 绑定。',
       // User Attributes
       attributes: {
         title: '用户属性配置',
@@ -1730,6 +1736,40 @@ export default {
         keyExists: '属性键已存在',
         dragToReorder: '拖拽排序'
       }
+    },
+
+    cardsIssue: {
+      eyebrow: '第三方发货',
+      title: '卡券接口配置',
+      description: '为外部卡券/订单系统生成独立 Bearer Key，并配置返回模板。该接口会按 buyer_id 自动创建用户并按订单金额充值。',
+      endpointLabel: '接口地址',
+      configTitle: '接口配置',
+      configDescription: '启用后，外部系统可调用独立接口，不会影响现有管理员 API。',
+      enabledLabel: '启用卡券接口',
+      enabledHelp: '关闭后，外部系统请求会直接被拒绝。',
+      templateLabel: '返回模板',
+      templateHint: '支持占位符',
+      templatePlaceholders: '可用占位符：{buyer_id} {buyer_name} {order_id} {order_amount} {order_quantity} {recharge_amount} {balance_after} {login_email} {password} {user_status} {account_notice}',
+      keyTitle: '专用 Bearer Key',
+      keyDescription: '仅用于 /api/custom/cards/issue，不具备管理员接口权限。',
+      keyConfigured: '已配置',
+      keyMissing: '未配置',
+      maskedKey: '当前密钥',
+      notConfigured: '尚未生成密钥',
+      regenerateKey: '重新生成密钥',
+      deleteKey: '删除密钥',
+      deleteKeyConfirm: '确定要删除当前 Bearer Key 吗？删除后外部系统将无法继续调用接口。',
+      newKeyReady: '新密钥已生成，请立即复制并妥善保存。',
+      quickStartTitle: '快速接入',
+      quickStartDescription: '将下面的 curl 样例配置到你的外部卡券系统回调地址中。',
+      loadFailed: '加载卡券接口配置失败',
+      saveSuccess: '卡券接口配置已保存',
+      saveFailed: '保存卡券接口配置失败',
+      keyRegenerated: '卡券接口密钥已重新生成',
+      keyFailed: '生成卡券接口密钥失败',
+      keyDeleted: '卡券接口密钥已删除',
+      keyDeleteFailed: '删除卡券接口密钥失败',
+      copyKeySuccess: '密钥已复制'
     },
 
     // Groups Management

@@ -88,6 +88,9 @@ func RegisterAdminRoutes(
 
 		// 渠道管理
 		registerChannelRoutes(admin, h)
+
+		// 第三方卡券发货接口配置
+		registerCardsIssueRoutes(admin, h)
 	}
 }
 
@@ -413,6 +416,19 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.PUT("/web-search-emulation", h.Admin.Setting.UpdateWebSearchEmulationConfig)
 		adminSettings.POST("/web-search-emulation/test", h.Admin.Setting.TestWebSearchEmulation)
 		adminSettings.POST("/web-search-emulation/reset-usage", h.Admin.Setting.ResetWebSearchUsage)
+	}
+}
+
+func registerCardsIssueRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Admin == nil || h.Admin.CardsIssue == nil {
+		return
+	}
+	cardsIssue := admin.Group("/cards-issue")
+	{
+		cardsIssue.GET("/config", h.Admin.CardsIssue.GetConfig)
+		cardsIssue.PUT("/config", h.Admin.CardsIssue.UpdateConfig)
+		cardsIssue.POST("/key/regenerate", h.Admin.CardsIssue.RegenerateKey)
+		cardsIssue.DELETE("/key", h.Admin.CardsIssue.DeleteKey)
 	}
 }
 

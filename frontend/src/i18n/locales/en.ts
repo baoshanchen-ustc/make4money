@@ -346,6 +346,7 @@ export default {
     accounts: 'Accounts',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
+    cardsIssue: 'Cards Issue',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
     settings: 'Settings',
@@ -1464,6 +1465,7 @@ export default {
       searchUsers: 'Search by email, username, notes, or API key...',
       allRoles: 'All Roles',
       allStatus: 'All Status',
+      allSources: 'All Sources',
       allGroups: 'All Groups',
       searchGroups: 'Search groups...',
       fuzzySearch: 'Fuzzy search',
@@ -1615,7 +1617,11 @@ export default {
       // Settings Dropdowns
       filterSettings: 'Filter Settings',
       columnSettings: 'Column Settings',
+      sourceFilter: 'Source Filter',
       filterValue: 'Enter value',
+      cardsIssueTag: 'Third-party Cards',
+      cardsIssueDetail: 'This user was created by the cards issue integration.',
+      cardsIssueDetailHelp: 'buyer_id mapping and recharges are managed by the dedicated endpoint. Changing the login email does not break the buyer binding.',
       // User Attributes
       attributes: {
         title: 'User Attributes',
@@ -1675,6 +1681,40 @@ export default {
         keyExists: 'Attribute key already exists',
         dragToReorder: 'Drag to reorder'
       }
+    },
+
+    cardsIssue: {
+      eyebrow: 'External Fulfillment',
+      title: 'Cards Issue Configuration',
+      description: 'Generate a dedicated Bearer key for external card/order systems and configure the response template. The endpoint will create users by buyer_id and recharge them from order amounts.',
+      endpointLabel: 'Endpoint URL',
+      configTitle: 'Endpoint Configuration',
+      configDescription: 'Once enabled, external systems can call the isolated endpoint without touching existing admin APIs.',
+      enabledLabel: 'Enable cards issue endpoint',
+      enabledHelp: 'When disabled, external requests are rejected immediately.',
+      templateLabel: 'Response Template',
+      templateHint: 'Placeholders supported',
+      templatePlaceholders: 'Available placeholders: {buyer_id} {buyer_name} {order_id} {order_amount} {order_quantity} {recharge_amount} {balance_after} {login_email} {password} {user_status} {account_notice}',
+      keyTitle: 'Dedicated Bearer Key',
+      keyDescription: 'Only valid for /api/custom/cards/issue and does not grant admin API access.',
+      keyConfigured: 'Configured',
+      keyMissing: 'Missing',
+      maskedKey: 'Current key',
+      notConfigured: 'No key generated yet',
+      regenerateKey: 'Regenerate key',
+      deleteKey: 'Delete key',
+      deleteKeyConfirm: 'Delete the current Bearer key? External systems will stop working until a new key is configured.',
+      newKeyReady: 'A new key has been generated. Copy it now and store it safely.',
+      quickStartTitle: 'Quick Start',
+      quickStartDescription: 'Paste the curl example below into your external card or order system callback configuration.',
+      loadFailed: 'Failed to load cards issue configuration',
+      saveSuccess: 'Cards issue configuration saved',
+      saveFailed: 'Failed to save cards issue configuration',
+      keyRegenerated: 'Cards issue key regenerated',
+      keyFailed: 'Failed to generate cards issue key',
+      keyDeleted: 'Cards issue key deleted',
+      keyDeleteFailed: 'Failed to delete cards issue key',
+      copyKeySuccess: 'Key copied'
     },
 
     // Groups

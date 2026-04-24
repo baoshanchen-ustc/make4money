@@ -44,6 +44,7 @@ export async function list(
   filters?: {
     status?: 'active' | 'disabled'
     role?: 'admin' | 'user'
+    signup_source?: string
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
     attributes?: Record<number, string>  // attributeId -> value
@@ -61,6 +62,7 @@ export async function list(
     page_size: pageSize,
     status: filters?.status,
     role: filters?.role,
+    signup_source: filters?.signup_source,
     search: filters?.search,
     group_name: filters?.group_name,
     include_subscriptions: filters?.include_subscriptions,

@@ -48,6 +48,17 @@
               />
             </div>
 
+            <div v-if="visibleFilters.has('signup_source')" class="w-full sm:w-40">
+              <Select
+                v-model="filters.signupSource"
+                :options="[
+                  { value: '', label: t('admin.users.allSources') },
+                  { value: 'cards_issue', label: t('admin.users.cardsIssueTag') }
+                ]"
+                @change="applyFilter"
+              />
+            </div>
+
             <!-- Group Filter (visible when enabled) -->
             <div v-if="visibleFilters.has('group')" class="w-full sm:w-44">
               <Select
@@ -246,7 +257,7 @@
           :sort-storage-key="USER_SORT_STORAGE_KEY"
           @sort="handleSort"
         >
-          <template #cell-email="{ value }">
+          <template #cell-email="{ value, row }">
             <div class="flex items-center gap-2">
               <div
                 class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
@@ -255,7 +266,12 @@
                   {{ value.charAt(0).toUpperCase() }}
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <div class="min-w-0">
+                <div class="truncate font-medium text-gray-900 dark:text-white">{{ value }}</div>
+                <div v-if="row.signup_source === 'cards_issue'" class="mt-1">
+                  <span class="badge badge-primary text-[11px]">{{ t('admin.users.cardsIssueTag') }}</span>
+                </div>
+              </div>
             </div>
           </template>
 
@@ -865,6 +881,7 @@ const groupFilterOptions = computed(() => {
 const filters = reactive({
   role: '',
   status: '',
+  signupSource: '',
   group: ''  // group name for fuzzy match, '' = all
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
@@ -894,6 +911,7 @@ const filterableAttributes = computed(() =>
 const builtInFilters = computed(() => [
   { key: 'role', name: t('admin.users.columns.role'), type: 'select' as const },
   { key: 'status', name: t('admin.users.columns.status'), type: 'select' as const },
+  { key: 'signup_source', name: t('admin.users.sourceFilter'), type: 'select' as const },
   { key: 'group', name: t('admin.users.columns.groups'), type: 'select' as const }
 ])
 
@@ -912,6 +930,7 @@ const loadSavedFilters = () => {
       const parsed = JSON.parse(savedValues)
       if (parsed.role) filters.role = parsed.role
       if (parsed.status) filters.status = parsed.status
+      if (parsed.signupSource) filters.signupSource = parsed.signupSource
       if (parsed.group) filters.group = parsed.group
       if (parsed.attributes) {
         Object.assign(activeAttributeFilters, parsed.attributes)
@@ -931,6 +950,7 @@ const saveFiltersToStorage = () => {
     const values = {
       role: filters.role,
       status: filters.status,
+      signupSource: filters.signupSource,
       group: filters.group,
       attributes: activeAttributeFilters
     }
@@ -1169,6 +1189,7 @@ const loadUsers = async () => {
       {
         role: filters.role as any,
         status: filters.status as any,
+        signup_source: filters.signupSource || undefined,
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
@@ -1252,6 +1273,7 @@ const toggleBuiltInFilter = (key: string) => {
     visibleFilters.delete(key)
     if (key === 'role') filters.role = ''
     if (key === 'status') filters.status = ''
+    if (key === 'signup_source') filters.signupSource = ''
     if (key === 'group') filters.group = ''
   } else {
     visibleFilters.add(key)

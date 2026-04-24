@@ -443,6 +443,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/cards-issue',
+    name: 'AdminCardsIssue',
+    component: () => import('@/views/admin/CardsIssueView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Cards Issue',
+      titleKey: 'admin.cardsIssue.title',
+      descriptionKey: 'admin.cardsIssue.description'
+    }
+  },
+  {
     path: '/admin/settings',
     name: 'AdminSettings',
     component: () => import('@/views/admin/SettingsView.vue'),

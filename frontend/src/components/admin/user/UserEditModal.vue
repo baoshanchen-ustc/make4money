@@ -6,6 +6,16 @@
     @close="$emit('close')"
   >
     <form v-if="user" id="edit-user-form" @submit.prevent="handleUpdateUser" class="space-y-5">
+      <div
+        v-if="user.signup_source === 'cards_issue'"
+        class="rounded-xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-700 dark:border-primary-900/40 dark:bg-primary-900/10 dark:text-primary-300"
+      >
+        <div class="mb-1 flex items-center gap-2">
+          <span class="badge badge-primary text-[11px]">{{ t('admin.users.cardsIssueTag') }}</span>
+          <span class="font-medium">{{ t('admin.users.cardsIssueDetail') }}</span>
+        </div>
+        <p>{{ t('admin.users.cardsIssueDetailHelp') }}</p>
+      </div>
       <div>
         <label class="input-label">{{ t('admin.users.email') }}</label>
         <input v-model="form.email" type="email" class="input" />
