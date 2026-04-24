@@ -2024,6 +2024,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	// 上游可识别的 Codex/GPT 系列。API Key 账号则应保留原始/映射后的模型名，
 	// 以兼容自定义 base_url 的 OpenAI-compatible 上游。
 	if model, ok := reqBody["model"].(string); ok {
+		if account.Type == AccountTypeOAuth && isCodexSparkModel(model) {
+			if normalizeCodexSparkReasoningForUpstream(reqBody, model) {
+				bodyModified = true
+				disablePatch()
+			}
+		}
 		upstreamModel = normalizeOpenAIModelForUpstream(account, model)
 		if upstreamModel != "" && upstreamModel != model {
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
@@ -2042,14 +2048,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	// 规范化 reasoning.effort 参数（minimal -> none），与上游允许值对齐。
-	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
-		if effort, ok := reasoning["effort"].(string); ok && effort == "minimal" {
-			reasoning["effort"] = "none"
-			bodyModified = true
-			markPatchSet("reasoning.effort", "none")
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
-		}
+	if normalizeCodexReasoningForUpstream(reqBody) {
+		bodyModified = true
+		disablePatch()
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Removed reasoning fields for upstream (account: %s)", account.Name)
 	}
 	if changed, deleted, normalizedTier := normalizeOpenAIServiceTierForUpstreamMap(reqBody, account); changed {
 		bodyModified = true
@@ -5069,6 +5071,12 @@ func deriveOpenAIReasoningEffortFromModel(model string) string {
 		parts := strings.Split(modelID, "/")
 		modelID = parts[len(parts)-1]
 	}
+	if start := strings.LastIndex(modelID, "("); start >= 0 && strings.HasSuffix(modelID, ")") {
+		if value := normalizeOpenAIReasoningEffort(modelID[start+1 : len(modelID)-1]); value != "" {
+			return value
+		}
+		modelID = strings.TrimSpace(modelID[:start])
+	}
 
 	parts := strings.FieldsFunc(strings.ToLower(modelID), func(r rune) bool {
 		switch r {
@@ -5169,7 +5177,45 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 		changed = true
 	}
 
+	var reqBody map[string]any
+	if err := json.Unmarshal(normalized, &reqBody); err == nil {
+		if normalizeCodexReasoningForUpstream(reqBody) {
+			next, marshalErr := json.Marshal(reqBody)
+			if marshalErr != nil {
+				return body, false, fmt.Errorf("normalize passthrough body reasoning: %w", marshalErr)
+			}
+			normalized = next
+			changed = true
+		}
+	}
+
 	return normalized, changed, nil
+}
+
+func normalizeResponsesRequestReasoningForUpstream(req *apicompat.ResponsesRequest) bool {
+	if req == nil || req.Reasoning == nil {
+		return false
+	}
+	req.Reasoning = nil
+	return true
+}
+
+func normalizeOpenAIReasoningForUpstreamBody(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 || (!bytesContainsJSONField(body, "reasoning") && !bytesContainsJSONField(body, "reasoning_effort")) {
+		return body, false, nil
+	}
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return body, false, err
+	}
+	if !normalizeCodexReasoningForUpstream(reqBody) {
+		return body, false, nil
+	}
+	normalized, err := json.Marshal(reqBody)
+	if err != nil {
+		return body, false, err
+	}
+	return normalized, true, nil
 }
 
 func normalizeOpenAIToolSchemasInBody(body []byte) ([]byte, bool, error) {
@@ -5503,6 +5549,8 @@ func normalizeOpenAIReasoningEffort(raw string) string {
 		return ""
 	case "low", "medium", "high":
 		return value
+	case "max":
+		return "xhigh"
 	case "xhigh", "extrahigh":
 		return "xhigh"
 	default:
