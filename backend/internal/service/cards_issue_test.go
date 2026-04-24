@@ -4,12 +4,54 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"testing"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCardsIssueRequest_UnmarshalJSON_AcceptsNumericAndStringFields(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload string
+		amount  float64
+		qty     int
+	}{
+		{"all numbers", `{"buyer_id":"b","order_id":"o","order_amount":9.9,"order_quantity":2}`, 9.9, 2},
+		{"amount string, qty number", `{"buyer_id":"b","order_id":"o","order_amount":"99.00","order_quantity":1}`, 99, 1},
+		{"both strings", `{"buyer_id":"b","order_id":"o","order_amount":"19.9","order_quantity":"3"}`, 19.9, 3},
+		{"integer amount as string", `{"buyer_id":"b","order_id":"o","order_amount":"100","order_quantity":"1"}`, 100, 1},
+		{"amount with whitespace", `{"buyer_id":"b","order_id":"o","order_amount":"  5.5 ","order_quantity":" 2 "}`, 5.5, 2},
+		{"absent numeric fields default to 0", `{"buyer_id":"b","order_id":"o"}`, 0, 0},
+		{"null numeric fields default to 0", `{"buyer_id":"b","order_id":"o","order_amount":null,"order_quantity":null}`, 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var req CardsIssueRequest
+			require.NoError(t, json.Unmarshal([]byte(tc.payload), &req))
+			require.InDelta(t, tc.amount, req.OrderAmount, 1e-9)
+			require.Equal(t, tc.qty, req.OrderQuantity)
+		})
+	}
+}
+
+func TestCardsIssueRequest_UnmarshalJSON_RejectsInvalidStrings(t *testing.T) {
+	cases := []string{
+		`{"buyer_id":"b","order_id":"o","order_amount":"abc","order_quantity":1}`,
+		`{"buyer_id":"b","order_id":"o","order_amount":9.9,"order_quantity":"xx"}`,
+		`{"buyer_id":"b","order_id":"o","order_amount":9.9,"order_quantity":1.5}`,
+		`{"buyer_id":"b","order_id":"o","order_amount":9.9,"order_quantity":"1.5"}`,
+		`{"buyer_id":"b","order_id":"o","order_amount":true,"order_quantity":1}`,
+	}
+	for _, payload := range cases {
+		t.Run(payload, func(t *testing.T) {
+			var req CardsIssueRequest
+			require.Error(t, json.Unmarshal([]byte(payload), &req))
+		})
+	}
+}
 
 type cardsIssueAdminServiceStub struct {
 	createInput      *CreateUserInput

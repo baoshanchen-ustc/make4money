@@ -342,6 +342,31 @@ func TestCardsIssueHandler_Issue_SucceedsForNewBuyer(t *testing.T) {
 	require.Equal(t, resp.Data.UserID, bindingRepo.bindings["buyer-ok"])
 }
 
+func TestCardsIssueHandler_Issue_AcceptsStringNumericFields(t *testing.T) {
+	h, adminSvc, _ := buildCardsIssueTestHandler(t, map[string]string{
+		service.SettingKeyCardsIssueEnabled:   "true",
+		service.SettingKeyCardsIssueBearerKey: "cards-issue-secret",
+	})
+
+	// Upstream callers that stringify all "params" entries should still work.
+	payload := `{"buyer_id":"TEST-BUYER","buyer_name":"","order_id":"TEST-ORDER","order_amount":"99.00","order_quantity":"1"}`
+	c, recorder := newCardsIssueTestContext(http.MethodPost, payload, "Bearer cards-issue-secret")
+	h.Issue(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code, "body=%s", recorder.Body.String())
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			RechargeAmount float64 `json:"recharge_amount"`
+			BalanceAfter   float64 `json:"balance_after"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.InDelta(t, 99.0, resp.Data.RechargeAmount, 1e-9)
+	require.InDelta(t, 99.0, adminSvc.updateBalance, 1e-9)
+}
+
 func TestCardsIssueHandler_Issue_PropagatesServiceBadRequest(t *testing.T) {
 	h, _, _ := buildCardsIssueTestHandler(t, map[string]string{
 		service.SettingKeyCardsIssueEnabled:   "true",

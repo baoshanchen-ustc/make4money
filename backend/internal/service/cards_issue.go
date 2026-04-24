@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -25,6 +26,99 @@ type CardsIssueRequest struct {
 	OrderAmount   float64        `json:"order_amount"`
 	OrderQuantity int            `json:"order_quantity"`
 	Extra         map[string]any `json:"-"`
+}
+
+// UnmarshalJSON lets callers send order_amount / order_quantity as either
+// JSON numbers (9.9, 2) or numeric strings ("9.9", "2"). Upstream 卡券 API
+// "params" maps stringify every value, so without this the endpoint would
+// reject their payloads outright.
+func (r *CardsIssueRequest) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		BuyerID       string          `json:"buyer_id"`
+		BuyerName     string          `json:"buyer_name"`
+		OrderID       string          `json:"order_id"`
+		OrderAmount   json.RawMessage `json:"order_amount"`
+		OrderQuantity json.RawMessage `json:"order_quantity"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	r.BuyerID = raw.BuyerID
+	r.BuyerName = raw.BuyerName
+	r.OrderID = raw.OrderID
+
+	amount, err := parseFlexibleFloat(raw.OrderAmount)
+	if err != nil {
+		return fmt.Errorf("order_amount %s", err)
+	}
+	r.OrderAmount = amount
+
+	qty, err := parseFlexibleInt(raw.OrderQuantity)
+	if err != nil {
+		return fmt.Errorf("order_quantity %s", err)
+	}
+	r.OrderQuantity = qty
+	return nil
+}
+
+// parseFlexibleFloat accepts JSON numbers, numeric strings, null, or absent
+// (empty RawMessage) and returns the corresponding float64. Anything else
+// yields a descriptive error.
+func parseFlexibleFloat(data json.RawMessage) (float64, error) {
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		return 0, nil
+	}
+	if data[0] != '"' {
+		var n float64
+		if err := json.Unmarshal(data, &n); err == nil {
+			return n, nil
+		}
+		return 0, fmt.Errorf("must be a number or numeric string")
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return 0, fmt.Errorf("must be a number or numeric string")
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, fmt.Errorf("string %q is not a valid number", s)
+	}
+	return n, nil
+}
+
+// parseFlexibleInt accepts JSON integers, numeric strings, null, or absent
+// (empty RawMessage). Non-integer floats are rejected.
+func parseFlexibleInt(data json.RawMessage) (int, error) {
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		return 0, nil
+	}
+	if data[0] != '"' {
+		var n float64
+		if err := json.Unmarshal(data, &n); err == nil {
+			if n != float64(int(n)) {
+				return 0, fmt.Errorf("must be an integer")
+			}
+			return int(n), nil
+		}
+		return 0, fmt.Errorf("must be an integer or numeric string")
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return 0, fmt.Errorf("must be an integer or numeric string")
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("string %q is not a valid integer", s)
+	}
+	return i, nil
 }
 
 type CardsIssueResult struct {
