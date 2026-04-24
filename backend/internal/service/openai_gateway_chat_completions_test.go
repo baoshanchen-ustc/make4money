@@ -42,3 +42,25 @@ func TestNormalizeResponsesBodyServiceTier(t *testing.T) {
 	require.Empty(t, tier)
 	require.False(t, gjson.GetBytes(body, "service_tier").Exists())
 }
+
+func TestNormalizeOpenAIServiceTierForUpstreamBody(t *testing.T) {
+	t.Parallel()
+
+	apikey := &Account{Type: AccountTypeAPIKey}
+	oauth := &Account{Type: AccountTypeOAuth}
+
+	body, changed, err := normalizeOpenAIServiceTierForUpstreamBody([]byte(`{"service_tier":"fast"}`), apikey)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "priority", gjson.GetBytes(body, "service_tier").String())
+
+	body, changed, err = normalizeOpenAIServiceTierForUpstreamBody([]byte(`{"service_tier":"auto"}`), apikey)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, "auto", gjson.GetBytes(body, "service_tier").String())
+
+	body, changed, err = normalizeOpenAIServiceTierForUpstreamBody([]byte(`{"service_tier":"flex"}`), oauth)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(body, "service_tier").Exists())
+}

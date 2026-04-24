@@ -2027,6 +2027,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
 		}
 	}
+	if changed, deleted, normalizedTier := normalizeOpenAIServiceTierForUpstreamMap(reqBody, account); changed {
+		bodyModified = true
+		if deleted {
+			markPatchDelete("service_tier")
+		} else {
+			markPatchSet("service_tier", normalizedTier)
+		}
+	}
 
 	if account.Type == AccountTypeOAuth {
 		codexResult := applyCodexOAuthTransform(reqBody, isCodexCLI, isOpenAIResponsesCompactPath(c))
@@ -2536,6 +2544,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			body = normalizedBody
 		}
 		reqStream = gjson.GetBytes(body, "stream").Bool()
+	}
+	bodyWithNormalizedTier, tierNormalized, err := normalizeOpenAIServiceTierForUpstreamBody(body, account)
+	if err != nil {
+		return nil, err
+	}
+	if tierNormalized {
+		body = bodyWithNormalizedTier
 	}
 
 	sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
@@ -5129,6 +5144,81 @@ func normalizeOpenAIServiceTier(raw string) *string {
 	default:
 		return nil
 	}
+}
+
+func normalizeOpenAIServiceTierForUpstreamValue(raw string, account *Account) (string, bool) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return "", false
+	}
+	if account != nil && account.Type == AccountTypeOAuth {
+		return "", false
+	}
+	if value == "fast" {
+		value = "priority"
+	}
+	switch value {
+	case "auto", "default", "priority", "flex":
+		return value, true
+	default:
+		return "", false
+	}
+}
+
+func normalizeOpenAIServiceTierForUpstreamMap(reqBody map[string]any, account *Account) (changed bool, deleted bool, normalized string) {
+	if reqBody == nil {
+		return false, false, ""
+	}
+
+	rawValue, exists := reqBody["service_tier"]
+	if !exists {
+		return false, false, ""
+	}
+
+	raw, ok := rawValue.(string)
+	if !ok {
+		delete(reqBody, "service_tier")
+		return true, true, ""
+	}
+
+	nextValue, keep := normalizeOpenAIServiceTierForUpstreamValue(raw, account)
+	if !keep {
+		delete(reqBody, "service_tier")
+		return true, true, ""
+	}
+	if nextValue == raw {
+		return false, false, nextValue
+	}
+
+	reqBody["service_tier"] = nextValue
+	return true, false, nextValue
+}
+
+func normalizeOpenAIServiceTierForUpstreamBody(body []byte, account *Account) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return body, false, nil
+	}
+
+	rawValue := gjson.GetBytes(body, "service_tier")
+	if !rawValue.Exists() {
+		return body, false, nil
+	}
+	if rawValue.Type != gjson.String {
+		trimmed, err := sjson.DeleteBytes(body, "service_tier")
+		return trimmed, true, err
+	}
+
+	nextValue, keep := normalizeOpenAIServiceTierForUpstreamValue(rawValue.String(), account)
+	if !keep {
+		trimmed, err := sjson.DeleteBytes(body, "service_tier")
+		return trimmed, true, err
+	}
+	if nextValue == rawValue.String() {
+		return body, false, nil
+	}
+
+	trimmed, err := sjson.SetBytes(body, "service_tier", nextValue)
+	return trimmed, true, err
 }
 
 func sanitizeEmptyBase64InputImagesInOpenAIBody(body []byte) ([]byte, bool, error) {
