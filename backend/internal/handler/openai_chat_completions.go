@@ -159,7 +159,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					}
 				}
 				if err != nil {
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+					h.handleStreamingAwareError(c, http.StatusNotFound, "invalid_request_error", "The model '"+reqModel+"' does not exist or you do not have access to it.", streamStarted)
 					return
 				}
 			} else {
@@ -172,7 +172,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+			h.handleStreamingAwareError(c, http.StatusNotFound, "invalid_request_error", "The model '"+reqModel+"' does not exist or you do not have access to it.", streamStarted)
 			return
 		}
 		account := selection.Account

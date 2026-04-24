@@ -1490,7 +1490,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
 	if err != nil {
 		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
+		h.errorResponse(c, http.StatusNotFound, "invalid_request_error", "The model '"+parsedReq.Model+"' does not exist or you do not have access to it.")
 		return
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)

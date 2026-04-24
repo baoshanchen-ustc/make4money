@@ -263,7 +263,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				h.handleStreamingAwareError(c, http.StatusNotFound, "invalid_request_error", "The model '"+reqModel+"' does not exist or you do not have access to it.", streamStarted)
 				return
 			}
 			if lastFailoverErr != nil {
@@ -274,7 +274,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+			h.handleStreamingAwareError(c, http.StatusNotFound, "invalid_request_error", "The model '"+reqModel+"' does not exist or you do not have access to it.", streamStarted)
 			return
 		}
 		if previousResponseID != "" && selection != nil && selection.Account != nil {
@@ -652,7 +652,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			)
 			if len(failedAccountIDs) == 0 {
 				if err != nil {
-					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+					h.anthropicStreamingAwareError(c, http.StatusNotFound, "invalid_request_error", "The model '"+routingModel+"' does not exist or you do not have access to it.", streamStarted)
 					return
 				}
 			} else {
@@ -665,7 +665,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
-			h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+			h.anthropicStreamingAwareError(c, http.StatusNotFound, "invalid_request_error", "The model '"+routingModel+"' does not exist or you do not have access to it.", streamStarted)
 			return
 		}
 		account := selection.Account
