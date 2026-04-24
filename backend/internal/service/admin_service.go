@@ -207,6 +207,12 @@ type CreateGroupInput struct {
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+	// 自定义展示
+	DisplayIcon           string
+	DisplayName           string
+	DisplayRateMultiplier *float64 // nil 表示与 RateMultiplier 一致
+	// Claude Code 人设伪装
+	ClaudeCodePersona bool
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -244,6 +250,12 @@ type UpdateGroupInput struct {
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+	// 自定义展示（指针表示是否在本次更新中提供该字段）
+	DisplayIcon           *string
+	DisplayName           *string
+	DisplayRateMultiplier *float64 // 此处沿用「指针 + 哨兵」语义：负数表示清空，nil 表示不变
+	// Claude Code 人设伪装
+	ClaudeCodePersona *bool
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -1429,6 +1441,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		RPMLimit:                        input.RPMLimit,
+		DisplayIcon:                     input.DisplayIcon,
+		DisplayName:                     input.DisplayName,
+		DisplayRateMultiplier:           input.DisplayRateMultiplier,
+		ClaudeCodePersona:               input.ClaudeCodePersona,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1667,6 +1683,26 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.RPMLimit = *input.RPMLimit
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+
+	// 自定义展示与人设
+	if input.DisplayIcon != nil {
+		group.DisplayIcon = *input.DisplayIcon
+	}
+	if input.DisplayName != nil {
+		group.DisplayName = *input.DisplayName
+	}
+	// DisplayRateMultiplier：约定负数视为清空（与 image_price 字段一致）
+	if input.DisplayRateMultiplier != nil {
+		if *input.DisplayRateMultiplier < 0 {
+			group.DisplayRateMultiplier = nil
+		} else {
+			v := *input.DisplayRateMultiplier
+			group.DisplayRateMultiplier = &v
+		}
+	}
+	if input.ClaudeCodePersona != nil {
+		group.ClaudeCodePersona = *input.ClaudeCodePersona
+	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err

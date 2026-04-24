@@ -440,7 +440,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'deepseek'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -478,6 +478,9 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+  // 自定义展示（普通用户也可见 — 后端在 dto.Group 中输出，未配置则为空字符串/空缺）
+  display_icon?: string
+  display_name?: string
   created_at: string
   updated_at: string
 }
@@ -504,6 +507,14 @@ export interface AdminGroup extends Group {
 
   // 分组排序
   sort_order: number
+
+  // 真实倍率（管理员视图独立字段；与父接口的 rate_multiplier 等价但语义明确）
+  real_rate_multiplier: number
+  // 外显倍率（管理员视图，nil 表示与真实倍率一致）
+  display_rate_multiplier?: number | null
+
+  // Claude Code 人设伪装开关（仅管理员可见）
+  claude_code_persona: boolean
 }
 
 export interface ApiKey {
@@ -614,7 +625,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'deepseek'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'

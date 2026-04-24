@@ -64,7 +64,19 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetRequirePrivacySet(groupIn.RequirePrivacySet).
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
-		SetRpmLimit(groupIn.RPMLimit)
+		SetRpmLimit(groupIn.RPMLimit).
+		SetClaudeCodePersona(groupIn.ClaudeCodePersona)
+
+	// 自定义展示字段：仅在非空时设置（保持 NULL 语义）
+	if groupIn.DisplayIcon != "" {
+		builder = builder.SetDisplayIcon(groupIn.DisplayIcon)
+	}
+	if groupIn.DisplayName != "" {
+		builder = builder.SetDisplayName(groupIn.DisplayName)
+	}
+	if groupIn.DisplayRateMultiplier != nil {
+		builder = builder.SetDisplayRateMultiplier(*groupIn.DisplayRateMultiplier)
+	}
 
 	// 设置模型路由配置
 	if groupIn.ModelRouting != nil {
@@ -132,7 +144,25 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetRequirePrivacySet(groupIn.RequirePrivacySet).
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
-		SetRpmLimit(groupIn.RPMLimit)
+		SetRpmLimit(groupIn.RPMLimit).
+		SetClaudeCodePersona(groupIn.ClaudeCodePersona)
+
+	// 自定义展示字段：空字符串视为清空
+	if groupIn.DisplayIcon != "" {
+		builder = builder.SetDisplayIcon(groupIn.DisplayIcon)
+	} else {
+		builder = builder.ClearDisplayIcon()
+	}
+	if groupIn.DisplayName != "" {
+		builder = builder.SetDisplayName(groupIn.DisplayName)
+	} else {
+		builder = builder.ClearDisplayName()
+	}
+	if groupIn.DisplayRateMultiplier != nil {
+		builder = builder.SetDisplayRateMultiplier(*groupIn.DisplayRateMultiplier)
+	} else {
+		builder = builder.ClearDisplayRateMultiplier()
+	}
 
 	// 显式处理可空字段：nil 需要 clear，非 nil 需要 set。
 	if groupIn.DailyLimitUSD != nil {

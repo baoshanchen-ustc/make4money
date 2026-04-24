@@ -78,6 +78,9 @@ type ParsedRequest struct {
 	// GroupID 请求所属分组 ID（来自 API Key）
 	GroupID *int64
 
+	// ClaudeCodePersona 来自分组配置：开启后 Forward 在转发前注入人设系统提示词
+	ClaudeCodePersona bool
+
 	// OnUpstreamAccepted 上游接受请求后立即调用（用于提前释放串行锁）
 	// 流式请求在收到 2xx 响应头后调用，避免持锁等流完成
 	OnUpstreamAccepted func()

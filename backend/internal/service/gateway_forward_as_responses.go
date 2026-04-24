@@ -93,7 +93,12 @@ func (s *GatewayService) ForwardAsResponses(
 		}
 	}
 
-	// 7. Enforce cache_control block limit
+	// 7. Claude Code 人设注入（分组开关；幂等）
+	if parsed != nil && parsed.ClaudeCodePersona {
+		anthropicBody = InjectClaudeCodePersonaAnthropic(anthropicBody)
+	}
+
+	// 8. Enforce cache_control block limit
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
 
 	// 8. Get access token

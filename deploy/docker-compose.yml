@@ -1,14 +1,16 @@
 # =============================================================================
 # Sub2API Docker Compose Configuration
 # =============================================================================
-# Quick Start:
-#   1. Copy .env.example to .env and configure
-#   2. docker-compose up -d
-#   3. Check logs: docker-compose logs -f sub2api
-#   4. Access: http://localhost:8080
+# 推荐使用一键脚本（自动生成所有 secrets）:
+#   cd deploy && ./quickstart.sh
 #
-# All configuration is done via environment variables.
-# No Setup Wizard needed - the system auto-initializes on first run.
+# 手动方式：
+#   1. cp .env.example .env  &&  填好 POSTGRES_PASSWORD / JWT_SECRET / TOTP_ENCRYPTION_KEY
+#   2. docker compose up -d
+#   3. docker compose logs -f sub2api
+#   4. 浏览器: http://<服务器 IP>:8080
+#
+# 所有配置通过环境变量；首次启动自动初始化 admin 账号 + 数据库。
 # =============================================================================
 
 services:
@@ -55,7 +57,7 @@ services:
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
       - DATABASE_USER=${POSTGRES_USER:-sub2api}
-      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (use deploy/quickstart.sh to auto-generate, or set in .env)}
       - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
       - DATABASE_SSLMODE=disable
       - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
@@ -185,7 +187,7 @@ services:
       # docker compose down/up 后会触发 initdb 重新初始化，导致用户/密码等数据丢失。
       - PGDATA=/var/lib/postgresql/data
       - POSTGRES_USER=${POSTGRES_USER:-sub2api}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (use deploy/quickstart.sh to auto-generate, or set in .env)}
       - POSTGRES_DB=${POSTGRES_DB:-sub2api}
       - TZ=${TZ:-Asia/Shanghai}
     networks:

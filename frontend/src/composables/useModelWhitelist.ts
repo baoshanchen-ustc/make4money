@@ -110,12 +110,15 @@ const qwenModels = [
 ]
 
 // DeepSeek
+// V4 系列（2026-04-24 发布，1M context，OpenAI/Anthropic 双协议）：
+//   - deepseek-v4-pro：1.6T MoE，对标 Claude Opus 4.5
+//   - deepseek-v4-flash：284B MoE，对标 Claude Sonnet 4.5
+// 旧 deepseek-chat / deepseek-reasoner 已路由到 v4-flash，2026-07-24 后下线，仅作兼容保留
 const deepseekModels = [
-  'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner',
+  'deepseek-v4-pro', 'deepseek-v4-flash',
+  'deepseek-chat', 'deepseek-reasoner',
   'deepseek-v3', 'deepseek-v3-0324',
-  'deepseek-r1', 'deepseek-r1-0528',
-  'deepseek-r1-distill-qwen-32b', 'deepseek-r1-distill-qwen-14b', 'deepseek-r1-distill-qwen-7b',
-  'deepseek-r1-distill-llama-70b', 'deepseek-r1-distill-llama-8b'
+  'deepseek-r1', 'deepseek-r1-0528'
 ]
 
 // Mistral
@@ -310,6 +313,30 @@ const antigravityPresetMappings = [
   { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'claude-opus-4-7', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' }
 ]
 
+// DeepSeek 预设映射（与后端 DefaultDeepSeekModelMapping 保持一致）
+// thinking 双模式当前由 model id 后缀承载（v4-pro/v4-flash），
+// 实际启用需后续在 transformer 层注入请求参数
+const deepseekPresetMappings = [
+  // Opus → V4 Pro
+  { label: 'Opus 4.7→V4 Pro', from: 'claude-opus-4-7', to: 'deepseek-v4-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Opus 4.6→V4 Pro', from: 'claude-opus-4-6', to: 'deepseek-v4-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Opus 4.6-thinking→V4 Pro', from: 'claude-opus-4-6-thinking', to: 'deepseek-v4-pro', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
+  { label: 'Opus 4.5→V4 Pro', from: 'claude-opus-4-5-20251101', to: 'deepseek-v4-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  // Sonnet → V4 Flash
+  { label: 'Sonnet 4.6→V4 Flash', from: 'claude-sonnet-4-6', to: 'deepseek-v4-flash', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Sonnet 4.5→V4 Flash', from: 'claude-sonnet-4-5', to: 'deepseek-v4-flash', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Sonnet 4.5-thinking→V4 Flash', from: 'claude-sonnet-4-5-thinking', to: 'deepseek-v4-flash', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
+  // Haiku → V4 Flash
+  { label: 'Haiku 4.5→V4 Flash', from: 'claude-haiku-4-5', to: 'deepseek-v4-flash', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  // 通配符兜底
+  { label: 'Opus*→V4 Pro', from: 'claude-opus-*', to: 'deepseek-v4-pro', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
+  { label: 'Sonnet*→V4 Flash', from: 'claude-sonnet-*', to: 'deepseek-v4-flash', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
+  { label: 'Haiku*→V4 Flash', from: 'claude-haiku-*', to: 'deepseek-v4-flash', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
+  // V4 透传
+  { label: 'V4 Pro 透传', from: 'deepseek-v4-pro', to: 'deepseek-v4-pro', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'V4 Flash 透传', from: 'deepseek-v4-flash', to: 'deepseek-v4-flash', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' }
+]
+
 // Bedrock 预设映射（与后端 DefaultBedrockModelMapping 保持一致）
 const bedrockPresetMappings = [
   { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'us.anthropic.claude-opus-4-6-v1', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
@@ -391,6 +418,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
+  if (platform === 'deepseek') return deepseekPresetMappings
   return anthropicPresetMappings
 }
 

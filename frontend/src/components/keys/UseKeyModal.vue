@@ -147,6 +147,12 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
+  /**
+   * 自定义图标 key（来自分组 display_icon）。优先级高于 platform。
+   * 当分组管理员设置 display_icon=claude-code 时（即 persona 模式），
+   * 此 modal 只显示 Claude Code 客户端 tab，避免泄露真实上游为 OpenAI/Codex。
+   */
+  displayIcon?: string | null
 }
 
 interface Emits {
@@ -176,10 +182,35 @@ const copiedIndex = ref<number | null>(null)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
 
-// Reset tabs when platform changes
+// effectivePlatform：display_icon 优先映射为视觉/交互平台。
+// 当分组开启 persona 把自己伪装为 Claude Code 时，整套 modal 都按 anthropic 渲染：
+// - 不显示 Codex CLI / Codex WS / OpenCode 等会出现 model_providers.OpenAI / OPENAI_API_KEY 字样的 tab
+// - 配置示例统一为 Claude Code 模板（无 gpt-* / openai 字样）
+const ICON_TO_PLATFORM: Record<string, GroupPlatform> = {
+  anthropic: 'anthropic',
+  claude: 'anthropic',
+  'claude-code': 'anthropic',
+  bedrock: 'anthropic',
+  openai: 'openai',
+  chatgpt: 'openai',
+  codex: 'openai',
+  gemini: 'gemini',
+  'gemini-cli': 'gemini',
+  antigravity: 'antigravity',
+  deepseek: 'deepseek'
+}
+const effectivePlatform = computed<GroupPlatform | null>(() => {
+  if (props.displayIcon && ICON_TO_PLATFORM[props.displayIcon]) {
+    return ICON_TO_PLATFORM[props.displayIcon]
+  }
+  return props.platform
+})
+
+// Reset tabs when effective platform changes
 const defaultClientTab = computed(() => {
-  switch (props.platform) {
+  switch (effectivePlatform.value) {
     case 'openai':
+    case 'deepseek':
       return 'codex'
     case 'gemini':
       return 'gemini'
@@ -190,7 +221,7 @@ const defaultClientTab = computed(() => {
   }
 })
 
-watch(() => props.platform, () => {
+watch(effectivePlatform, () => {
   activeTab.value = 'unix'
   activeClientTab.value = defaultClientTab.value
 }, { immediate: true })
@@ -264,9 +295,10 @@ const SparkleIcon = {
 }
 
 const clientTabs = computed((): TabConfig[] => {
-  if (!props.platform) return []
-  switch (props.platform) {
-    case 'openai': {
+  if (!effectivePlatform.value) return []
+  switch (effectivePlatform.value) {
+    case 'openai':
+    case 'deepseek': {
       const tabs: TabConfig[] = [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon },
@@ -289,9 +321,9 @@ const clientTabs = computed((): TabConfig[] => {
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
     default:
+      // anthropic / claude / claude-code persona —— 只显示 Claude Code，不暴露 OpenCode/其他
       return [
-        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon }
       ]
   }
 })
@@ -320,8 +352,9 @@ const currentTabs = computed(() => {
 })
 
 const platformDescription = computed(() => {
-  switch (props.platform) {
+  switch (effectivePlatform.value) {
     case 'openai':
+    case 'deepseek':
       if (activeClientTab.value === 'claude') {
         return t('keys.useKeyModal.description')
       }
@@ -336,8 +369,9 @@ const platformDescription = computed(() => {
 })
 
 const platformNote = computed(() => {
-  switch (props.platform) {
+  switch (effectivePlatform.value) {
     case 'openai':
+    case 'deepseek':
       if (activeClientTab.value === 'claude') {
         return t('keys.useKeyModal.note')
       }
@@ -395,7 +429,7 @@ const currentFiles = computed((): FileConfig[] => {
   })()
 
   if (activeClientTab.value === 'opencode') {
-    switch (props.platform) {
+    switch (effectivePlatform.value) {
       case 'anthropic':
         return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
       case 'openai':
@@ -408,11 +442,11 @@ const currentFiles = computed((): FileConfig[] => {
           generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
         ]
       default:
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+        return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
     }
   }
 
-  switch (props.platform) {
+  switch (effectivePlatform.value) {
     case 'openai':
       if (activeClientTab.value === 'claude') {
         return generateAnthropicFiles(baseUrl, apiKey)
@@ -434,51 +468,52 @@ const currentFiles = computed((): FileConfig[] => {
 })
 
 function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
-  let path: string
-  let content: string
+  // 两步式输出（参考成熟方案：每步独立块 + 各自复制按钮）：
+  //   步骤 1：仅 npm 安装命令（OS 通用，单行）
+  //   步骤 2：单行 shell 命令，按当前 OS tab 切换；复制按钮只复制该命令
+  // hint 用于展示说明，不会被复制；content 是「点复制按钮」实际写入剪贴板的内容。
 
+  // 紧凑单行 JSON，便于嵌入 shell 命令字符串
+  const jsonPayload = `{"env":{"ANTHROPIC_BASE_URL":"${baseUrl}","ANTHROPIC_AUTH_TOKEN":"${apiKey}","CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1","CLAUDE_CODE_ATTRIBUTION_HEADER":"0"}}`
+
+  // 步骤 1：所有 OS 通用
+  const installFile: FileConfig = {
+    path: '步骤 1 · 安装 Claude Code CLI',
+    hint: '已安装可跳过；需先有 Node.js（https://nodejs.org/）',
+    content: 'npm install -g @anthropic-ai/claude-code'
+  }
+
+  // 步骤 2：按 OS tab 切换
+  let configFile: FileConfig
   switch (activeTab.value) {
     case 'unix':
-      path = 'Terminal'
-      content = `export ANTHROPIC_BASE_URL="${baseUrl}"
-export ANTHROPIC_AUTH_TOKEN="${apiKey}"
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
+      configFile = {
+        path: '步骤 2 · 一键配置 + 启动（macOS / Linux）',
+        hint: '✨ 复制后粘贴到 Terminal 回车 — 自动绑定本网关并启动 claude',
+        content: `mkdir -p ~/.claude && printf '%s' '${jsonPayload}' > ~/.claude/settings.json && claude`
+      }
       break
     case 'cmd':
-      path = 'Command Prompt'
-      content = `set ANTHROPIC_BASE_URL=${baseUrl}
-set ANTHROPIC_AUTH_TOKEN=${apiKey}
-set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
+      configFile = {
+        path: '步骤 2 · 一键配置 + 启动（Windows CMD）',
+        hint: '✨ 复制后粘贴到 CMD 回车',
+        content: `if not exist "%USERPROFILE%\\.claude" mkdir "%USERPROFILE%\\.claude" & (echo ${jsonPayload}) > "%USERPROFILE%\\.claude\\settings.json" & claude`
+      }
       break
     case 'powershell':
-      path = 'PowerShell'
-      content = `$env:ANTHROPIC_BASE_URL="${baseUrl}"
-$env:ANTHROPIC_AUTH_TOKEN="${apiKey}"
-$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
+      configFile = {
+        path: '步骤 2 · 一键配置 + 启动（PowerShell）',
+        hint: '✨ 复制后粘贴到 PowerShell 回车',
+        content: `$d="$env:USERPROFILE\\.claude"; New-Item -ItemType Directory -Force -Path $d | Out-Null; '${jsonPayload}' | Out-File "$d\\settings.json" -Encoding utf8; claude`
+      }
       break
     default:
-      path = 'Terminal'
-      content = ''
+      configFile = { path: 'Terminal', content: '' }
   }
 
-  const vscodeSettingsPath = activeTab.value === 'unix'
-    ? '~/.claude/settings.json'
-    : '%userprofile%\\.claude\\settings.json'
-
-  const vscodeContent = `{
-  "env": {
-    "ANTHROPIC_BASE_URL": "${baseUrl}",
-    "ANTHROPIC_AUTH_TOKEN": "${apiKey}",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
-  }
-}`
-
-  return [
-    { path, content },
-    { path: vscodeSettingsPath, content: vscodeContent, hint: 'VSCode Claude Code' }
-  ]
+  return [installFile, configFile]
 }
+
 
 function generateGeminiCliContent(baseUrl: string, apiKey: string): FileConfig {
   const model = 'gemini-2.0-flash'

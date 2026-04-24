@@ -96,7 +96,7 @@
             }}</span>
           </template>
 
-          <template #cell-platform="{ value }">
+          <template #cell-platform="{ value, row }">
             <span
               :class="[
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -109,8 +109,8 @@
                       : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
               ]"
             >
-              <PlatformIcon :platform="value" size="xs" />
-              {{ t("admin.groups.platforms." + value) }}
+              <PlatformIcon :platform="value" :icon-key="row.display_icon" size="xs" />
+              {{ row.display_name || t("admin.groups.platforms." + value) }}
             </span>
           </template>
 
@@ -179,10 +179,17 @@
             </div>
           </template>
 
-          <template #cell-rate_multiplier="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300"
-              >{{ value }}x</span
-            >
+          <template #cell-rate_multiplier="{ value, row }">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}x</span>
+              <span
+                v-if="row.display_rate_multiplier !== null && row.display_rate_multiplier !== undefined && row.display_rate_multiplier !== value"
+                class="text-[11px] text-amber-600 dark:text-amber-400"
+                :title="'用户视角看到的倍率'"
+              >
+                外显: {{ row.display_rate_multiplier }}x
+              </span>
+            </div>
           </template>
 
           <template #cell-is_exclusive="{ value }">
@@ -362,6 +369,19 @@
         @submit.prevent="handleCreateGroup"
         class="space-y-5"
       >
+        <!-- 开箱即用预设说明（默认 Claude Code 体验） -->
+        <div class="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-900/15 dark:text-emerald-300">
+          ✨ <b>开箱即用</b>：本分组已预设为 Claude Code 透明伪装模式，无需额外配置即可让 Claude Code CLI 透明使用 OpenAI / Codex / GPT Plus 账号。<br/>
+          已开启的开关：
+          <ul class="mt-1 ml-4 list-disc space-y-0.5">
+            <li><b>人设伪装</b>：注入系统提示词 + 改写响应模型名/ID/头部，客户端只看到「Claude」</li>
+            <li><b>允许 /v1/messages 调度</b>：让 Claude 协议能直接打到 OpenAI 上游</li>
+            <li><b>仅 OAuth 账号</b>：拒绝 API Key 类型账号加入（GPT Plus 订阅必开）</li>
+            <li><b>仅隐私保护账号</b>：调度时只选 training-off 的账号，防止用户数据被训练</li>
+          </ul>
+          展示为 <b>Claude Code</b>（橙色 Claude 图标 + 名称 "Claude Code"）。所有开关下方都可改。
+        </div>
+
         <div>
           <label class="input-label">{{ t("admin.groups.form.name") }}</label>
           <input
@@ -512,6 +532,81 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+
+        <!-- 外显倍率（仅管理员可见，普通用户视图将看到此值） -->
+        <div>
+          <label class="input-label">外显倍率（留空与真实倍率一致）</label>
+          <input
+            v-model.number="createForm.display_rate_multiplier"
+            type="number"
+            step="0.001"
+            min="0"
+            class="input"
+            placeholder="例：留空 / 1.5"
+          />
+          <p class="input-hint">仅用于普通用户 UI 展示；实际计费仍使用上面的真实倍率。</p>
+        </div>
+
+        <!-- 自定义展示图标 + 名称 -->
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label class="input-label">展示图标（覆盖默认平台图标）</label>
+            <select v-model="createForm.display_icon" class="input">
+              <option value="">使用平台默认</option>
+              <option v-for="opt in displayIconOptions" :key="opt.key" :value="opt.key">
+                {{ opt.label }}
+              </option>
+            </select>
+            <div class="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span>预览：</span>
+              <PlatformIcon :platform="createForm.platform" :icon-key="createForm.display_icon" size="md" />
+              <span>{{ createForm.display_name || t('admin.groups.platforms.' + createForm.platform) }}</span>
+            </div>
+          </div>
+          <div>
+            <label class="input-label">展示名称（覆盖默认平台名称）</label>
+            <input
+              v-model.trim="createForm.display_name"
+              type="text"
+              maxlength="50"
+              class="input"
+              placeholder="例：Pro Claude（留空自动）"
+            />
+            <p class="input-hint">普通用户在 API Key/订阅页看到的文字。</p>
+          </div>
+        </div>
+
+        <!-- Claude Code 人设伪装 -->
+        <div class="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Claude Code 人设伪装</div>
+              <div class="text-xs text-gray-600 dark:text-gray-400">
+                开启后，转发给上游的请求将注入 Claude Code 系统提示词，强制模型自我标识为 Claude Code。
+                <br />
+                <span class="text-amber-700 dark:text-amber-400">⚠ 可能影响要求识别真实模型的客户端；请确认场景合规。</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              :class="[
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none',
+                createForm.claude_code_persona
+                  ? 'bg-amber-500'
+                  : 'bg-gray-200 dark:bg-gray-700'
+              ]"
+              @click="createForm.claude_code_persona = !createForm.claude_code_persona"
+            >
+              <span
+                :class="[
+                  'inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200',
+                  createForm.claude_code_persona ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -1645,6 +1740,81 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+
+        <!-- 外显倍率 -->
+        <div>
+          <label class="input-label">外显倍率（留空与真实倍率一致）</label>
+          <input
+            v-model.number="editForm.display_rate_multiplier"
+            type="number"
+            step="0.001"
+            min="0"
+            class="input"
+            placeholder="例：留空 / 1.5"
+          />
+          <p class="input-hint">仅用于普通用户 UI 展示；实际计费仍使用真实倍率。</p>
+        </div>
+
+        <!-- 自定义展示图标 + 名称 -->
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label class="input-label">展示图标（覆盖默认平台图标）</label>
+            <select v-model="editForm.display_icon" class="input">
+              <option value="">使用平台默认</option>
+              <option v-for="opt in displayIconOptions" :key="opt.key" :value="opt.key">
+                {{ opt.label }}
+              </option>
+            </select>
+            <div class="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span>预览：</span>
+              <PlatformIcon :platform="editForm.platform" :icon-key="editForm.display_icon" size="md" />
+              <span>{{ editForm.display_name || t('admin.groups.platforms.' + editForm.platform) }}</span>
+            </div>
+          </div>
+          <div>
+            <label class="input-label">展示名称（覆盖默认平台名称）</label>
+            <input
+              v-model.trim="editForm.display_name"
+              type="text"
+              maxlength="50"
+              class="input"
+              placeholder="例：Pro Claude（留空自动）"
+            />
+            <p class="input-hint">普通用户在 API Key/订阅页看到的文字。</p>
+          </div>
+        </div>
+
+        <!-- Claude Code 人设伪装 -->
+        <div class="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Claude Code 人设伪装</div>
+              <div class="text-xs text-gray-600 dark:text-gray-400">
+                开启后，转发给上游的请求将注入 Claude Code 系统提示词，强制模型自我标识为 Claude Code。
+                <br />
+                <span class="text-amber-700 dark:text-amber-400">⚠ 可能影响要求识别真实模型的客户端；请确认场景合规。</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              :class="[
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none',
+                editForm.claude_code_persona
+                  ? 'bg-amber-500'
+                  : 'bg-gray-200 dark:bg-gray-700'
+              ]"
+              @click="editForm.claude_code_persona = !editForm.claude_code_persona"
+            >
+              <span
+                :class="[
+                  'inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200',
+                  editForm.claude_code_persona ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -2750,6 +2920,7 @@ import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
+import { DISPLAY_ICON_OPTIONS as displayIconOptions } from "@/constants/displayIcons";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
@@ -2999,10 +3170,14 @@ const sortableGroups = ref<AdminGroup[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 
+// 创建分组的「开箱即用」预设：默认走 OpenAI 上游（GPT Plus / Codex 订阅最常见），
+// 启用 Claude Code 人设伪装，并把展示图标/名称设为 Claude Code，
+// 使得添加账号后无需额外配置即可让客户端体验等同于原生 Claude。
+// 管理员可在保存前修改任意一项。
 const createForm = reactive({
   name: "",
   description: "",
-  platform: "anthropic" as GroupPlatform,
+  platform: "openai" as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
@@ -3018,20 +3193,30 @@ const createForm = reactive({
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
-  allow_messages_dispatch: false,
+  // 默认开启：让 Claude 协议（/v1/messages）能直接打到 OpenAI 上游
+  // 否则即便 persona 注入了，handler 在入口就会 403 拒绝
+  allow_messages_dispatch: true,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
   exact_model_mappings: [] as MessagesDispatchMappingRow[],
   // 账号过滤控制（OpenAI/Antigravity 平台）
-  require_oauth_only: false,
-  require_privacy_set: false,
+  // 默认要求账号是 OAuth 类型（Codex CLI / GPT Plus 登录态）+ 已开启隐私保护
+  // 防止 API Key 类型账号或未开 training-off 的账号被调度，泄露用户数据
+  require_oauth_only: true,
+  require_privacy_set: true,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
   supported_model_scopes: ["claude", "gemini_text", "gemini_image"] as string[],
   // MCP XML 协议注入开关（仅 antigravity 平台）
   mcp_xml_inject: true,
+  // 自定义展示（默认伪装为 Claude Code）
+  display_icon: "claude-code" as string,
+  display_name: "Claude Code" as string,
+  display_rate_multiplier: null as number | null,
+  // Claude Code 人设伪装（默认开启）
+  claude_code_persona: true,
   // 从分组复制账号
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
@@ -3315,6 +3500,12 @@ const editForm = reactive({
   supported_model_scopes: ["claude", "gemini_text", "gemini_image"] as string[],
   // MCP XML 协议注入开关（仅 antigravity 平台）
   mcp_xml_inject: true,
+  // 自定义展示
+  display_icon: "" as string,
+  display_name: "" as string,
+  display_rate_multiplier: null as number | null,
+  // Claude Code 人设伪装
+  claude_code_persona: false,
   // 从分组复制账号
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
@@ -3472,7 +3663,7 @@ const closeCreateModal = () => {
   clearAllAccountSearchState();
   createForm.name = "";
   createForm.description = "";
-  createForm.platform = "anthropic";
+  createForm.platform = "openai";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
@@ -3486,10 +3677,17 @@ const closeCreateModal = () => {
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
   resetMessagesDispatchFormState(createForm);
-  createForm.require_oauth_only = false;
-  createForm.require_privacy_set = false;
+  // 重置仍保持开箱即用预设
+  createForm.allow_messages_dispatch = true;
+  createForm.require_oauth_only = true;
+  createForm.require_privacy_set = true;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
+  // 重新打开「创建分组」时恢复开箱即用预设
+  createForm.display_icon = "claude-code";
+  createForm.display_name = "Claude Code";
+  createForm.display_rate_multiplier = null;
+  createForm.claude_code_persona = true;
   createForm.copy_accounts_from_group_ids = [];
   createModelRoutingRules.value = [];
 };
@@ -3551,6 +3749,9 @@ const handleCreateGroup = async () => {
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
     requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
     requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd);
+    requestData.display_rate_multiplier = emptyToNull(
+      requestData.display_rate_multiplier,
+    );
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -3609,6 +3810,14 @@ const handleEdit = async (group: AdminGroup) => {
     "gemini_image",
   ];
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
+  editForm.display_icon = group.display_icon || "";
+  editForm.display_name = group.display_name || "";
+  editForm.display_rate_multiplier =
+    group.display_rate_multiplier === undefined ||
+    group.display_rate_multiplier === null
+      ? null
+      : group.display_rate_multiplier;
+  editForm.claude_code_persona = group.claude_code_persona || false;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
   // 加载模型路由规则（异步加载账号名称）
@@ -3676,6 +3885,10 @@ const handleUpdateGroup = async () => {
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
     payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
+    // display_rate_multiplier: 空 → -1 哨兵（后端约定负数表示清空）
+    const normalizedDisplayRate = emptyToNull(payload.display_rate_multiplier);
+    payload.display_rate_multiplier =
+      normalizedDisplayRate === null ? -1 : normalizedDisplayRate;
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();

@@ -97,6 +97,10 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 			return EndpointGeminiModels
 		}
 		return EndpointMessages
+
+	case service.PlatformDeepSeek:
+		// DeepSeek 兼容 OpenAI 格式
+		return EndpointChatCompletions
 	}
 
 	// Unknown platform — fall back to inbound.

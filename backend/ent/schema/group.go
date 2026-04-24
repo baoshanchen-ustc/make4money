@@ -127,6 +127,26 @@ func (Group) Fields() []ent.Field {
 			Default(0).
 			Comment("分组显示排序，数值越小越靠前"),
 
+		// 自定义展示图标 / 名称 / 外显倍率 / Claude Code 人设 (added by migration 108)
+		field.String("display_icon").
+			Optional().
+			Nillable().
+			MaxLen(32).
+			Comment("自定义展示图标 key（白名单受控）"),
+		field.String("display_name").
+			Optional().
+			Nillable().
+			MaxLen(50).
+			Comment("自定义展示名称（覆盖默认 platform 名称）"),
+		field.Float("display_rate_multiplier").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Comment("外显倍率（仅 UI 展示，NULL 表示与 rate_multiplier 一致）"),
+		field.Bool("claude_code_persona").
+			Default(false).
+			Comment("是否在转发时注入 Claude Code 人设系统提示词"),
+
 		// OpenAI Messages 调度配置 (added by migration 069)
 		field.Bool("allow_messages_dispatch").
 			Default(false).

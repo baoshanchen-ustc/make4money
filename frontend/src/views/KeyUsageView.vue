@@ -372,10 +372,11 @@ const appStore = useAppStore()
 
 // ==================== Site Settings (same as HomeView) ====================
 
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'CCAI')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
+// 默认不暴露任何上游 GitHub 仓库；管理员可在「设置 → 网站文档 URL」中配置自家文档地址。
+const githubUrl = computed(() => appStore.cachedPublicSettings?.doc_url || '')
 
 // ==================== Theme (same as HomeView) ====================
 

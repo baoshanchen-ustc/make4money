@@ -432,6 +432,10 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
 		}
+		// DeepSeek 平台使用默认映射（Claude → V4 Pro/Flash）
+		if a.Platform == domain.PlatformDeepSeek {
+			return domain.DefaultDeepSeekModelMapping
+		}
 		// Bedrock 默认映射由 forwardBedrock 统一处理（需配合 region prefix 调整）
 		return nil
 	}
@@ -439,6 +443,10 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		// Antigravity 平台使用默认映射
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
+		}
+		// DeepSeek 平台使用默认映射
+		if a.Platform == domain.PlatformDeepSeek {
+			return domain.DefaultDeepSeekModelMapping
 		}
 		return nil
 	}
@@ -463,6 +471,10 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	// Antigravity 平台使用默认映射
 	if a.Platform == domain.PlatformAntigravity {
 		return domain.DefaultAntigravityModelMapping
+	}
+	// DeepSeek 平台使用默认映射
+	if a.Platform == domain.PlatformDeepSeek {
+		return domain.DefaultDeepSeekModelMapping
 	}
 	return nil
 }
@@ -524,6 +536,11 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	if trimmed == "" {
 		return ""
 	}
+	// 通用规则：剥离 model id 末尾的 1M context 标记后缀（如 "[1m]"）以便匹配 mapping。
+	// 不同上游对 1M 的表达方式不同（Anthropic 用 beta header context-1m-2025-08-07，
+	// DeepSeek 等用 model id 后缀 [1m]），但 mapping 表的 key 一律使用基础 model name。
+	// 后缀是否拼回到 target 由 ResolveMappedModel 控制（命中时拼回，确保上游能识别 1M）。
+	trimmed = stripContextLengthSuffix(trimmed)
 	if platform != PlatformGemini && platform != PlatformAntigravity {
 		return trimmed
 	}
@@ -531,6 +548,40 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 		return "gemini-3.1-pro-preview"
 	}
 	return trimmed
+}
+
+// stripContextLengthSuffix 移除 model id 末尾的 context 长度标记后缀。
+// 当前识别 "[1m]" / "[1M]"，未匹配时原样返回。
+func stripContextLengthSuffix(model string) string {
+	for _, suffix := range []string{"[1m]", "[1M]"} {
+		if strings.HasSuffix(model, suffix) {
+			return strings.TrimSuffix(model, suffix)
+		}
+	}
+	return model
+}
+
+// extractContextLengthSuffix 提取 model id 末尾的 context 长度标记后缀。
+// 仅识别 "[1m]" / "[1M]"，未匹配时返回空字符串。
+// 与 stripContextLengthSuffix 配套：strip 用于 mapping 匹配，extract 用于把后缀
+// 拼回到映射结果，让 1M 模式标记透传到上游（DeepSeek 等平台依赖此后缀启用 1M）。
+func extractContextLengthSuffix(model string) string {
+	for _, suffix := range []string{"[1m]", "[1M]"} {
+		if strings.HasSuffix(model, suffix) {
+			return suffix
+		}
+	}
+	return ""
+}
+
+// modelMatchesIgnoringContextSuffix 比较两个 model 名是否实质等价：
+// 优先精确匹配；不等则在剥离 [1m]/[1M] 后再比一次。用于响应改写：
+// mappedModel 可能因 [1m] 拼回而带后缀，上游回声未必带，需要兼容两端形态。
+func modelMatchesIgnoringContextSuffix(actual, expected string) bool {
+	if actual == expected {
+		return true
+	}
+	return stripContextLengthSuffix(actual) == stripContextLengthSuffix(expected)
 }
 
 func mappingSupportsRequestedModel(mapping map[string]string, requestedModel string) bool {
@@ -581,6 +632,12 @@ func (a *Account) GetMappedModel(requestedModel string) string {
 
 // ResolveMappedModel 获取映射后的模型名，并返回是否命中了账号级映射。
 // matched=true 表示命中了精确映射或通配符映射，即使映射结果与原模型名相同。
+//
+// context 长度后缀（如 "[1m]"）的处理：
+//   - 第一遍精确查 mapping，尊重用户精确写的 key（如 "claude-opus-4-6[1m]" → 自定义 target）
+//   - 未命中时 normalize（剥离后缀）后再查
+//   - 命中后把原请求的后缀拼回到 target（避免上游丢失 1M 模式标记）
+//   - 如果 target 已带相同后缀，不重复拼接
 func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string, matched bool) {
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
@@ -592,6 +649,9 @@ func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string,
 	normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel)
 	if normalized != requestedModel {
 		if mappedModel, matched := resolveRequestedModelInMapping(mapping, normalized); matched {
+			if suffix := extractContextLengthSuffix(requestedModel); suffix != "" && !strings.HasSuffix(mappedModel, suffix) {
+				mappedModel += suffix
+			}
 			return mappedModel, true
 		}
 	}
@@ -604,7 +664,12 @@ func (a *Account) GetBaseURL() string {
 	}
 	baseURL := a.GetCredential("base_url")
 	if baseURL == "" {
-		return "https://api.anthropic.com"
+		switch a.Platform {
+		case PlatformDeepSeek:
+			return "https://api.deepseek.com"
+		default:
+			return "https://api.anthropic.com"
+		}
 	}
 	if a.Platform == PlatformAntigravity {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
@@ -848,6 +913,10 @@ func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
 }
 
+func (a *Account) IsDeepSeek() bool {
+	return a.Platform == PlatformDeepSeek
+}
+
 func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
 }
@@ -867,6 +936,17 @@ func (a *Account) GetOpenAIBaseURL() string {
 		}
 	}
 	return "https://api.openai.com"
+}
+
+func (a *Account) GetDeepSeekBaseURL() string {
+	if !a.IsDeepSeek() {
+		return ""
+	}
+	baseURL := a.GetCredential("base_url")
+	if baseURL != "" {
+		return baseURL
+	}
+	return "https://api.deepseek.com"
 }
 
 func (a *Account) GetOpenAIAccessToken() string {

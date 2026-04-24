@@ -3670,7 +3670,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 	}
 
-	needModelReplace := originalModel != mappedModel
+	forceModelRewrite := IsClaudeCodePersonaForced(ctx, c)
+	needModelReplace := originalModel != mappedModel || forceModelRewrite
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs}
 	}
@@ -3718,9 +3719,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 
 			// Replace model in response if needed.
-			// Fast path: most events do not contain model field values.
-			if needModelReplace && mappedModel != "" && strings.Contains(data, mappedModel) {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+			// Fast path: most events do not contain "model" field values; for the
+			// persona-forced case we cannot rely on string-containment of mappedModel
+			// (upstream may emit its own native name), so fall back to the parser.
+			if needModelReplace {
+				if forceModelRewrite || (mappedModel != "" && strings.Contains(data, mappedModel)) {
+					line = s.replaceModelInSSELine(line, mappedModel, originalModel, forceModelRewrite)
+				}
 			}
 
 			dataBytes := []byte(data)
@@ -3890,7 +3895,9 @@ func extractOpenAISSEDataLine(line string) (string, bool) {
 	return line[start:], true
 }
 
-func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
+// replaceModelInSSELine 将 SSE chunk 中的 model 字段改写为 toModel。
+// force=true 时（人设场景）只要字段存在就改写；否则仅当值等于 fromModel 才改写。
+func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string, force bool) string {
 	data, ok := extractOpenAISSEDataLine(line)
 	if !ok {
 		return line
@@ -3899,25 +3906,27 @@ func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel st
 		return line
 	}
 
-	// 使用 gjson 精确检查 model 字段，避免全量 JSON 反序列化
-	if m := gjson.Get(data, "model"); m.Exists() && m.Str == fromModel {
-		newData, err := sjson.Set(data, "model", toModel)
-		if err != nil {
-			return line
+	rewritten := false
+
+	if m := gjson.Get(data, "model"); m.Exists() && (force || modelMatchesIgnoringContextSuffix(m.Str, fromModel)) {
+		if newData, err := sjson.Set(data, "model", toModel); err == nil {
+			data = newData
+			rewritten = true
 		}
-		return "data: " + newData
 	}
 
-	// 检查嵌套的 response.model 字段
-	if m := gjson.Get(data, "response.model"); m.Exists() && m.Str == fromModel {
-		newData, err := sjson.Set(data, "response.model", toModel)
-		if err != nil {
-			return line
+	// 嵌套的 response.model 字段
+	if m := gjson.Get(data, "response.model"); m.Exists() && (force || modelMatchesIgnoringContextSuffix(m.Str, fromModel)) {
+		if newData, err := sjson.Set(data, "response.model", toModel); err == nil {
+			data = newData
+			rewritten = true
 		}
-		return "data: " + newData
 	}
 
-	return line
+	if !rewritten {
+		return line
+	}
+	return "data: " + data
 }
 
 // correctToolCallsInResponseBody 修正响应体中的工具调用
@@ -4006,8 +4015,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	usage := &usageValue
 
 	// Replace model in response if needed
-	if originalModel != mappedModel {
-		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	forceModelRewrite := IsClaudeCodePersonaForced(ctx, c)
+	if originalModel != mappedModel || forceModelRewrite {
+		body = s.replaceModelInResponseBody(body, mappedModel, originalModel, forceModelRewrite)
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -4032,6 +4042,7 @@ func isEventStreamResponse(header http.Header) bool {
 func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string) (*OpenAIUsage, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
+	forceModelRewrite := IsClaudeCodePersonaForced(nil, c)
 
 	usage := &OpenAIUsage{}
 	if ok {
@@ -4049,8 +4060,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			}
 		}
 		body = finalResponse
-		if originalModel != mappedModel {
-			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+		if originalModel != mappedModel || forceModelRewrite {
+			body = s.replaceModelInResponseBody(body, mappedModel, originalModel, forceModelRewrite)
 		}
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
@@ -4064,8 +4075,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
-		if originalModel != mappedModel {
-			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
+		if originalModel != mappedModel || forceModelRewrite {
+			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel, forceModelRewrite)
 		}
 		body = []byte(bodyText)
 	}
@@ -4237,13 +4248,13 @@ func (s *OpenAIGatewayService) parseSSEUsageFromBody(body string) *OpenAIUsage {
 	return usage
 }
 
-func (s *OpenAIGatewayService) replaceModelInSSEBody(body, fromModel, toModel string) string {
+func (s *OpenAIGatewayService) replaceModelInSSEBody(body, fromModel, toModel string, force bool) string {
 	lines := strings.Split(body, "\n")
 	for i, line := range lines {
 		if _, ok := extractOpenAISSEDataLine(line); !ok {
 			continue
 		}
-		lines[i] = s.replaceModelInSSELine(line, fromModel, toModel)
+		lines[i] = s.replaceModelInSSELine(line, fromModel, toModel, force)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -4474,16 +4485,21 @@ func appendOpenAIResponsesRequestPathSuffix(baseURL, suffix string) string {
 	return trimmedBase + trimmedSuffix
 }
 
-func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {
-	// 使用 gjson/sjson 精确替换 model 字段，避免全量 JSON 反序列化
-	if m := gjson.GetBytes(body, "model"); m.Exists() && m.Str == fromModel {
-		newBody, err := sjson.SetBytes(body, "model", toModel)
-		if err != nil {
-			return body
-		}
-		return newBody
+// replaceModelInResponseBody 改写非流式响应体的 model 字段。
+// force=true：只要存在就强制重写。
+func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string, force bool) []byte {
+	m := gjson.GetBytes(body, "model")
+	if !m.Exists() {
+		return body
 	}
-	return body
+	if !force && !modelMatchesIgnoringContextSuffix(m.Str, fromModel) {
+		return body
+	}
+	newBody, err := sjson.SetBytes(body, "model", toModel)
+	if err != nil {
+		return body
+	}
+	return newBody
 }
 
 // OpenAIRecordUsageInput input for recording usage

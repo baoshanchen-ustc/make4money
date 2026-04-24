@@ -4019,6 +4019,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
 	}
 
+	// Claude Code 人设注入（分组级开关，默认关闭；幂等）
+	if parsed != nil && parsed.ClaudeCodePersona {
+		body = InjectClaudeCodePersonaAnthropic(body)
+	}
+
 	// 强制执行 cache_control 块数量限制（最多 4 个）
 	body = enforceCacheControlLimit(body)
 
@@ -4476,8 +4481,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	var clientDisconnect bool
+	forceModelRewrite := parsed != nil && parsed.ClaudeCodePersona
 	if reqStream {
-		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
+		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode, forceModelRewrite)
 		if err != nil {
 			if err.Error() == "have error in stream" {
 				return nil, &UpstreamFailoverError{
@@ -4490,7 +4496,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
 	} else {
-		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
+		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel, forceModelRewrite)
 		if err != nil {
 			return nil, err
 		}
@@ -6375,6 +6381,9 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		"upstream_error",
 		"Upstream request failed",
 	); matched {
+		if IsClaudeCodePersonaForced(nil, c) {
+			errMsg = scrubVendorNames(errMsg)
+		}
 		c.JSON(status, gin.H{
 			"type": "error",
 			"error": gin.H{
@@ -6434,7 +6443,10 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		errMsg = "Upstream request failed"
 	}
 
-	// 返回自定义错误响应
+	// 返回自定义错误响应（人设场景脱敏）
+	if IsClaudeCodePersonaForced(nil, c) {
+		errMsg = scrubVendorNames(errMsg)
+	}
 	c.JSON(statusCode, gin.H{
 		"type": "error",
 		"error": gin.H{
@@ -6573,12 +6585,12 @@ type streamingResult struct {
 	clientDisconnect bool // 客户端是否在流式传输过程中断开
 }
 
-func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (*streamingResult, error) {
+func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool, forceModelRewrite bool) (*streamingResult, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
 	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		WritePersonaAwareFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter, forceModelRewrite)
 	}
 
 	// 设置SSE响应头
@@ -6587,9 +6599,13 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
-	// 透传其他响应头
+	// 透传其他响应头：人设场景下用 Anthropic 风格 request-id；否则用 x-request-id
 	if v := resp.Header.Get("x-request-id"); v != "" {
-		c.Header("x-request-id", v)
+		if forceModelRewrite {
+			c.Header("request-id", v)
+		} else {
+			c.Header("x-request-id", v)
+		}
 	}
 
 	w := c.Writer
@@ -6683,11 +6699,16 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		flusher.Flush()
 	}
 
-	needModelReplace := originalModel != mappedModel
+	needModelReplace := originalModel != mappedModel || forceModelRewrite
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
 	sawTerminalEvent := false
 
 	pendingEventLines := make([]string, 0, 4)
+
+	// 人设模式下，为每个 content_block 维持滚动 tail buffer，
+	// 在 content_block_stop 时对持有的尾部做 stripTrailingOffer 兜底（防 GPT 语气泄漏）。
+	// 非 persona 模式下 sseTailState == nil，所有 helper 都是 no-op，零开销。
+	sseTailState := NewPersonaSSETailState(forceModelRewrite)
 
 	processSSEEvent := func(lines []string) ([]string, string, *sseUsagePatch, error) {
 		if len(lines) == 0 {
@@ -6722,6 +6743,12 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				block = "event: " + eventName + "\n"
 			}
 			block += "data: " + dataLine + "\n\n"
+			// 人设兜底：上游若用 [DONE] 终止流，flush 所有未释放的 content_block tail buffer
+			if forceModelRewrite {
+				if helds := sseTailState.FlushAll(); len(helds) > 0 {
+					return append(helds, block), dataLine, nil, nil
+				}
+			}
 			return []string{block}, dataLine, nil, nil
 		}
 
@@ -6775,8 +6802,39 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 		if needModelReplace {
 			if msg, ok := event["message"].(map[string]any); ok {
-				if model, ok := msg["model"].(string); ok && model == mappedModel {
-					msg["model"] = originalModel
+				if model, ok := msg["model"].(string); ok && (model == mappedModel || forceModelRewrite) {
+					if model != originalModel {
+						msg["model"] = originalModel
+						eventChanged = true
+					}
+				}
+			}
+		}
+
+		// 人设：把 message_start.message.id 改写为 msg_ 前缀
+		if forceModelRewrite && eventType == "message_start" {
+			if msg, ok := event["message"].(map[string]any); ok {
+				if id, ok := msg["id"].(string); ok && id != "" && !strings.HasPrefix(id, anthropicMessageIDPrefix) {
+					if rewritten, changed := convertUpstreamIDToAnthropic(id); changed {
+						msg["id"] = rewritten
+						eventChanged = true
+					}
+				}
+			}
+		}
+
+		// 人设 SSE 兜底：text_delta 走 tail buffer。
+		// HandleContentBlockDelta 会把当前 delta.text 累积到该 block 的 buffer，
+		// 当 buffer 长度未超 window 时压制本 event；超过则切出旧前缀作为本 event 的 delta.text 发出。
+		if forceModelRewrite && eventType == "content_block_delta" {
+			emitText, suppress, _ := sseTailState.HandleContentBlockDelta(event)
+			if suppress {
+				usagePatch := s.extractSSEUsagePatch(event)
+				return nil, "", usagePatch, nil
+			}
+			if emitText != "" {
+				if delta, ok := event["delta"].(map[string]any); ok {
+					delta["text"] = emitText
 					eventChanged = true
 				}
 			}
@@ -6786,12 +6844,32 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		if anthropicStreamEventIsTerminal(eventName, dataLine) {
 			sawTerminalEvent = true
 		}
+
+		// 人设 SSE 兜底：在 stop 类事件之前，prepend 该 block / 全部 block 的 buffer flush。
+		// 把残留尾部经 stripTrailingOffer 处理后作为一个补充 content_block_delta 发出。
+		var personaPrependBlocks []string
+		if forceModelRewrite {
+			switch eventType {
+			case "content_block_stop":
+				if held := sseTailState.FlushOnContentBlockStop(event); held != "" {
+					personaPrependBlocks = append(personaPrependBlocks, held)
+				}
+			case "message_stop":
+				if helds := sseTailState.FlushAll(); len(helds) > 0 {
+					personaPrependBlocks = append(personaPrependBlocks, helds...)
+				}
+			}
+		}
+
 		if !eventChanged {
 			block := ""
 			if eventName != "" {
 				block = "event: " + eventName + "\n"
 			}
 			block += "data: " + dataLine + "\n\n"
+			if len(personaPrependBlocks) > 0 {
+				return append(personaPrependBlocks, block), dataLine, usagePatch, nil
+			}
 			return []string{block}, dataLine, usagePatch, nil
 		}
 
@@ -6803,6 +6881,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				block = "event: " + eventName + "\n"
 			}
 			block += "data: " + dataLine + "\n\n"
+			if len(personaPrependBlocks) > 0 {
+				return append(personaPrependBlocks, block), dataLine, usagePatch, nil
+			}
 			return []string{block}, dataLine, usagePatch, nil
 		}
 
@@ -6811,6 +6892,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			block = "event: " + eventName + "\n"
 		}
 		block += "data: " + string(newData) + "\n\n"
+		if len(personaPrependBlocks) > 0 {
+			return append(personaPrependBlocks, block), string(newData), usagePatch, nil
+		}
 		return []string{block}, string(newData), usagePatch, nil
 	}
 
@@ -7142,7 +7226,7 @@ func rewriteCacheCreationJSON(usageObj map[string]any, target string) bool {
 	return true
 }
 
-func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
+func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string, forceModelRewrite bool) (*ClaudeUsage, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
@@ -7192,12 +7276,21 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 	}
 
-	// 如果有模型映射，替换响应中的model字段
-	if originalModel != mappedModel {
-		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	// 如果有模型映射，或人设场景需要强制改写，则替换响应中的 model 字段。
+	// 人设场景下即使 originalModel == mappedModel，上游也可能回声不同名（如直连 OpenAI），
+	// 因此只要 force=true 就尝试一次改写。
+	if originalModel != mappedModel || forceModelRewrite {
+		body = s.replaceModelInResponseBody(body, mappedModel, originalModel, forceModelRewrite)
 	}
 
-	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	// 人设：响应 id 厂商前缀（resp_ / chatcmpl- 等）→ msg_
+	if forceModelRewrite {
+		body = rewriteResponseIDForPersona(body)
+		// 兜底：剥离 trailing soft-offer 句式（防 GPT 语气在结尾泄漏）
+		body = scrubTrailingOfferInAnthropicBody(body)
+	}
+
+	WritePersonaAwareFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter, forceModelRewrite)
 
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -7212,17 +7305,23 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	return &response.Usage, nil
 }
 
-// replaceModelInResponseBody 替换响应体中的model字段
-// 使用 gjson/sjson 精确替换，避免全量 JSON 反序列化
-func (s *GatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {
-	if m := gjson.GetBytes(body, "model"); m.Exists() && m.Str == fromModel {
-		newBody, err := sjson.SetBytes(body, "model", toModel)
-		if err != nil {
-			return body
-		}
-		return newBody
+// replaceModelInResponseBody 替换响应体中的 model 字段。
+//   - 默认（force=false）：仅当 model == fromModel 时替换；保持对非映射场景的透明。
+//   - force=true（人设场景）：只要 model 字段存在就强制改写为 toModel，
+//     用于上游回声真实模型名（如 "gpt-5-codex"）时仍能让客户端只看到 Claude 名。
+func (s *GatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string, force bool) []byte {
+	m := gjson.GetBytes(body, "model")
+	if !m.Exists() {
+		return body
 	}
-	return body
+	if !force && !modelMatchesIgnoringContextSuffix(m.Str, fromModel) {
+		return body
+	}
+	newBody, err := sjson.SetBytes(body, "model", toModel)
+	if err != nil {
+		return body
+	}
+	return newBody
 }
 
 func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {

@@ -15,7 +15,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -350,9 +349,16 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	acc.SupplementResponseOutput(finalResponse)
 
 	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
+	persona := IsClaudeCodePersonaForced(nil, c)
+	if persona && anthropicResp != nil {
+		// 改写 id：resp_xxx → msg_xxx
+		if rewritten, changed := convertUpstreamIDToAnthropic(anthropicResp.ID); changed {
+			anthropicResp.ID = rewritten
+		}
+	}
 
 	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		WritePersonaAwareFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter, persona)
 	}
 	c.JSON(http.StatusOK, anthropicResp)
 
@@ -381,9 +387,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	persona := IsClaudeCodePersonaForced(nil, c)
 
 	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		WritePersonaAwareFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter, persona)
 	}
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -450,6 +457,16 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 		// Convert to Anthropic events
 		events := apicompat.ResponsesEventToAnthropicEvents(&event, state)
+		// 人设：把 message_start.message.id 中的 OpenAI resp_* 前缀重写为 msg_*
+		if persona {
+			for i := range events {
+				if events[i].Type == "message_start" && events[i].Message != nil {
+					if rewritten, changed := convertUpstreamIDToAnthropic(events[i].Message.ID); changed {
+						events[i].Message.ID = rewritten
+					}
+				}
+			}
+		}
 		for _, evt := range events {
 			sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
 			if err != nil {
@@ -588,7 +605,11 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 }
 
 // writeAnthropicError writes an error response in Anthropic Messages API format.
+// 人设场景下：对 message 做厂商名脱敏，避免上游错误文案泄露真实平台身份。
 func writeAnthropicError(c *gin.Context, statusCode int, errType, message string) {
+	if IsClaudeCodePersonaForced(nil, c) {
+		message = scrubVendorNames(message)
+	}
 	c.JSON(statusCode, gin.H{
 		"type": "error",
 		"error": gin.H{

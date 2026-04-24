@@ -214,9 +214,38 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 - Docker 20.10+
 - Docker Compose v2+
 
-#### 快速开始（一键部署）
+#### 极简一键启动 — quickstart.sh ⭐推荐
 
-使用自动化部署脚本快速搭建：
+零参数、零配置文件、随机密码自动生成，一条命令上线：
+
+```bash
+git clone https://github.com/Wei-Shaw/sub2api.git
+cd sub2api/deploy
+./quickstart.sh
+```
+
+执行完会输出 admin 邮箱 + 密码 + 访问地址。然后：
+
+1. 浏览器登录后台
+2. **账号管理** → 添加 OpenAI / Codex / GPT Plus 订阅账号
+3. **分组管理** → 直接保存（默认已是 Claude Code 人设预设，OpenAI 上游 → 对外伪装为 Claude Code）
+4. 把账号绑定到该分组 → 生成 API Key
+5. Claude Code CLI 配置该 Key（`ANTHROPIC_BASE_URL=http://你的服务器:8080  claude`）即可使用
+
+之后维护用同一脚本：
+
+```bash
+./quickstart.sh logs -f      # 看日志
+./quickstart.sh restart      # 重启
+./quickstart.sh down         # 停止
+./quickstart.sh pull         # 拉新镜像
+```
+
+随机生成的 secrets 保存在 `deploy/.env`（已 gitignore），可以备份起来。
+
+#### 进阶：手动部署脚本
+
+需要更细粒度的控制时使用：
 
 ```bash
 # 创建部署目录

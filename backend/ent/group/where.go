@@ -170,6 +170,26 @@ func SortOrder(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldSortOrder, v))
 }
 
+// DisplayIcon applies equality check predicate on the "display_icon" field. It's identical to DisplayIconEQ.
+func DisplayIcon(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayIcon, v))
+}
+
+// DisplayName applies equality check predicate on the "display_name" field. It's identical to DisplayNameEQ.
+func DisplayName(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayName, v))
+}
+
+// DisplayRateMultiplier applies equality check predicate on the "display_rate_multiplier" field. It's identical to DisplayRateMultiplierEQ.
+func DisplayRateMultiplier(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayRateMultiplier, v))
+}
+
+// ClaudeCodePersona applies equality check predicate on the "claude_code_persona" field. It's identical to ClaudeCodePersonaEQ.
+func ClaudeCodePersona(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldClaudeCodePersona, v))
+}
+
 // AllowMessagesDispatch applies equality check predicate on the "allow_messages_dispatch" field. It's identical to AllowMessagesDispatchEQ.
 func AllowMessagesDispatch(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowMessagesDispatch, v))
@@ -1228,6 +1248,216 @@ func SortOrderLT(v int) predicate.Group {
 // SortOrderLTE applies the LTE predicate on the "sort_order" field.
 func SortOrderLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldSortOrder, v))
+}
+
+// DisplayIconEQ applies the EQ predicate on the "display_icon" field.
+func DisplayIconEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayIcon, v))
+}
+
+// DisplayIconNEQ applies the NEQ predicate on the "display_icon" field.
+func DisplayIconNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDisplayIcon, v))
+}
+
+// DisplayIconIn applies the In predicate on the "display_icon" field.
+func DisplayIconIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDisplayIcon, vs...))
+}
+
+// DisplayIconNotIn applies the NotIn predicate on the "display_icon" field.
+func DisplayIconNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDisplayIcon, vs...))
+}
+
+// DisplayIconGT applies the GT predicate on the "display_icon" field.
+func DisplayIconGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDisplayIcon, v))
+}
+
+// DisplayIconGTE applies the GTE predicate on the "display_icon" field.
+func DisplayIconGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDisplayIcon, v))
+}
+
+// DisplayIconLT applies the LT predicate on the "display_icon" field.
+func DisplayIconLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDisplayIcon, v))
+}
+
+// DisplayIconLTE applies the LTE predicate on the "display_icon" field.
+func DisplayIconLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDisplayIcon, v))
+}
+
+// DisplayIconContains applies the Contains predicate on the "display_icon" field.
+func DisplayIconContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldDisplayIcon, v))
+}
+
+// DisplayIconHasPrefix applies the HasPrefix predicate on the "display_icon" field.
+func DisplayIconHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldDisplayIcon, v))
+}
+
+// DisplayIconHasSuffix applies the HasSuffix predicate on the "display_icon" field.
+func DisplayIconHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldDisplayIcon, v))
+}
+
+// DisplayIconIsNil applies the IsNil predicate on the "display_icon" field.
+func DisplayIconIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldDisplayIcon))
+}
+
+// DisplayIconNotNil applies the NotNil predicate on the "display_icon" field.
+func DisplayIconNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldDisplayIcon))
+}
+
+// DisplayIconEqualFold applies the EqualFold predicate on the "display_icon" field.
+func DisplayIconEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldDisplayIcon, v))
+}
+
+// DisplayIconContainsFold applies the ContainsFold predicate on the "display_icon" field.
+func DisplayIconContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldDisplayIcon, v))
+}
+
+// DisplayNameEQ applies the EQ predicate on the "display_name" field.
+func DisplayNameEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayName, v))
+}
+
+// DisplayNameNEQ applies the NEQ predicate on the "display_name" field.
+func DisplayNameNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDisplayName, v))
+}
+
+// DisplayNameIn applies the In predicate on the "display_name" field.
+func DisplayNameIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDisplayName, vs...))
+}
+
+// DisplayNameNotIn applies the NotIn predicate on the "display_name" field.
+func DisplayNameNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDisplayName, vs...))
+}
+
+// DisplayNameGT applies the GT predicate on the "display_name" field.
+func DisplayNameGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDisplayName, v))
+}
+
+// DisplayNameGTE applies the GTE predicate on the "display_name" field.
+func DisplayNameGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDisplayName, v))
+}
+
+// DisplayNameLT applies the LT predicate on the "display_name" field.
+func DisplayNameLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDisplayName, v))
+}
+
+// DisplayNameLTE applies the LTE predicate on the "display_name" field.
+func DisplayNameLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDisplayName, v))
+}
+
+// DisplayNameContains applies the Contains predicate on the "display_name" field.
+func DisplayNameContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldDisplayName, v))
+}
+
+// DisplayNameHasPrefix applies the HasPrefix predicate on the "display_name" field.
+func DisplayNameHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldDisplayName, v))
+}
+
+// DisplayNameHasSuffix applies the HasSuffix predicate on the "display_name" field.
+func DisplayNameHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldDisplayName, v))
+}
+
+// DisplayNameIsNil applies the IsNil predicate on the "display_name" field.
+func DisplayNameIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldDisplayName))
+}
+
+// DisplayNameNotNil applies the NotNil predicate on the "display_name" field.
+func DisplayNameNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldDisplayName))
+}
+
+// DisplayNameEqualFold applies the EqualFold predicate on the "display_name" field.
+func DisplayNameEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldDisplayName, v))
+}
+
+// DisplayNameContainsFold applies the ContainsFold predicate on the "display_name" field.
+func DisplayNameContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldDisplayName, v))
+}
+
+// DisplayRateMultiplierEQ applies the EQ predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierNEQ applies the NEQ predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierIn applies the In predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDisplayRateMultiplier, vs...))
+}
+
+// DisplayRateMultiplierNotIn applies the NotIn predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDisplayRateMultiplier, vs...))
+}
+
+// DisplayRateMultiplierGT applies the GT predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierGTE applies the GTE predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierLT applies the LT predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierLTE applies the LTE predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierIsNil applies the IsNil predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldDisplayRateMultiplier))
+}
+
+// DisplayRateMultiplierNotNil applies the NotNil predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldDisplayRateMultiplier))
+}
+
+// ClaudeCodePersonaEQ applies the EQ predicate on the "claude_code_persona" field.
+func ClaudeCodePersonaEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldClaudeCodePersona, v))
+}
+
+// ClaudeCodePersonaNEQ applies the NEQ predicate on the "claude_code_persona" field.
+func ClaudeCodePersonaNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldClaudeCodePersona, v))
 }
 
 // AllowMessagesDispatchEQ applies the EQ predicate on the "allow_messages_dispatch" field.

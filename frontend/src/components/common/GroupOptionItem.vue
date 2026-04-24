@@ -10,6 +10,8 @@
         :name="name"
         :platform="platform"
         :subscription-type="subscriptionType"
+        :display-icon="displayIcon"
+        :display-name="displayName"
         :show-rate="false"
         class="groupOptionItemBadge"
       />
@@ -53,6 +55,7 @@
 import { computed } from 'vue'
 import GroupBadge from './GroupBadge.vue'
 import type { SubscriptionType, GroupPlatform } from '@/types'
+import { resolveIconTheme } from '@/constants/displayIcons'
 
 interface Props {
   name: string
@@ -63,13 +66,17 @@ interface Props {
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
+  displayIcon?: string | null
+  displayName?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   selected: false,
   showCheckmark: true,
-  userRateMultiplier: null
+  userRateMultiplier: null,
+  displayIcon: null,
+  displayName: null
 })
 
 // Whether user has a custom rate different from default
@@ -82,17 +89,21 @@ const hasCustomRate = computed(() => {
   )
 })
 
-// Rate pill color matches platform badge color
+// Rate pill color follows the same theme as the badge
+// (display_icon 优先；防止真实平台色泄露)
 const ratePillClass = computed(() => {
-  switch (props.platform) {
-    case 'anthropic':
+  const theme = resolveIconTheme(props.displayIcon, props.platform)
+  switch (theme) {
+    case 'orange':
       return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-    case 'openai':
+    case 'green':
       return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-    case 'gemini':
+    case 'blue':
       return 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
-    default: // antigravity and others
+    case 'violet':
       return 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400'
+    default:
+      return 'bg-gray-50 text-gray-700 dark:bg-gray-800/30 dark:text-gray-300'
   }
 })
 </script>

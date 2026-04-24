@@ -1003,7 +1003,12 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		requestID = resp.Header.Get("x-goog-request-id")
 	}
 	if requestID != "" {
-		c.Header("x-request-id", requestID)
+		// 人设场景使用 Anthropic 风格 request-id；否则保持 x-request-id
+		if IsClaudeCodePersonaForced(ctx, c) {
+			c.Header("request-id", requestID)
+		} else {
+			c.Header("x-request-id", requestID)
+		}
 	}
 
 	var usage *ClaudeUsage
@@ -2164,6 +2169,10 @@ func randomHex(nBytes int) string {
 }
 
 func (s *GeminiMessagesCompatService) writeClaudeError(c *gin.Context, status int, errType, message string) error {
+	// 人设场景下脱敏：去除 Google / Gemini 等厂商身份痕迹
+	if IsClaudeCodePersonaForced(nil, c) {
+		message = scrubVendorNames(message)
+	}
 	c.JSON(status, gin.H{
 		"type":  "error",
 		"error": gin.H{"type": errType, "message": message},

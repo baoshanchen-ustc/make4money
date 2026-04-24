@@ -19,6 +19,16 @@ type Group struct {
 	Status         string
 	Hydrated       bool // indicates the group was loaded from a trusted repository source
 
+	// 自定义展示（仅 UI 层；为空回退到 platform 默认）
+	DisplayIcon string
+	DisplayName string
+
+	// 外显倍率（仅 UI 展示；nil 表示与 RateMultiplier 一致；不参与计费）
+	DisplayRateMultiplier *float64
+
+	// Claude Code 人设系统提示词注入开关
+	ClaudeCodePersona bool
+
 	SubscriptionType    string
 	DailyLimitUSD       *float64
 	WeeklyLimitUSD      *float64
@@ -74,6 +84,18 @@ type Group struct {
 
 func (g *Group) IsActive() bool {
 	return g.Status == StatusActive
+}
+
+// EffectiveDisplayRateMultiplier 返回外显倍率（若未设置则回退到真实倍率）。
+// 仅供 UI/DTO 层使用，不得用于计费路径。
+func (g *Group) EffectiveDisplayRateMultiplier() float64 {
+	if g == nil {
+		return 0
+	}
+	if g.DisplayRateMultiplier != nil {
+		return *g.DisplayRateMultiplier
+	}
+	return g.RateMultiplier
 }
 
 func (g *Group) IsSubscriptionType() bool {

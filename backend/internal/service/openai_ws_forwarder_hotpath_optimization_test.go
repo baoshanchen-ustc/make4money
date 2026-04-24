@@ -60,14 +60,14 @@ func TestOpenAIWSMessageLikelyContainsToolCalls(t *testing.T) {
 
 func TestReplaceOpenAIWSMessageModel_OptimizedStillCorrect(t *testing.T) {
 	noModel := []byte(`{"type":"response.output_text.delta","delta":"hello"}`)
-	require.Equal(t, string(noModel), string(replaceOpenAIWSMessageModel(noModel, "gpt-5.1", "custom-model")))
+	require.Equal(t, string(noModel), string(replaceOpenAIWSMessageModel(noModel, "gpt-5.1", "custom-model", false)))
 
 	rootOnly := []byte(`{"type":"response.created","model":"gpt-5.1"}`)
-	require.Equal(t, `{"type":"response.created","model":"custom-model"}`, string(replaceOpenAIWSMessageModel(rootOnly, "gpt-5.1", "custom-model")))
+	require.Equal(t, `{"type":"response.created","model":"custom-model"}`, string(replaceOpenAIWSMessageModel(rootOnly, "gpt-5.1", "custom-model", false)))
 
 	responseOnly := []byte(`{"type":"response.completed","response":{"model":"gpt-5.1"}}`)
-	require.Equal(t, `{"type":"response.completed","response":{"model":"custom-model"}}`, string(replaceOpenAIWSMessageModel(responseOnly, "gpt-5.1", "custom-model")))
+	require.Equal(t, `{"type":"response.completed","response":{"model":"custom-model"}}`, string(replaceOpenAIWSMessageModel(responseOnly, "gpt-5.1", "custom-model", false)))
 
 	both := []byte(`{"model":"gpt-5.1","response":{"model":"gpt-5.1"}}`)
-	require.Equal(t, `{"model":"custom-model","response":{"model":"custom-model"}}`, string(replaceOpenAIWSMessageModel(both, "gpt-5.1", "custom-model")))
+	require.Equal(t, `{"model":"custom-model","response":{"model":"custom-model"}}`, string(replaceOpenAIWSMessageModel(both, "gpt-5.1", "custom-model", false)))
 }

@@ -115,3 +115,107 @@ func WriteFilteredHeaders(dst http.Header, src http.Header, filter *CompiledHead
 		}
 	}
 }
+
+// 头部前缀/全名集合：在 NormalizeForAnthropicPersona 中识别 OpenAI 风格 ratelimit / 厂商泄露头
+var (
+	openAIRateLimitPrefix = "x-ratelimit-"
+	openAIRequestIDKey    = "x-request-id"
+	anthropicRequestIDKey = "request-id"
+
+	// 任意被识别为厂商身份痕迹的响应头都会被剥离。
+	vendorIdentityHeaderPrefixes = []string{
+		"openai-",
+		"x-openai-",
+		"x-goog-",
+		"x-google-",
+		"x-amz-",
+		"x-amzn-",
+		"x-azure-",
+		"x-bedrock-",
+		"x-gemini-",
+		"x-vertex-",
+	}
+	vendorIdentityHeaderExact = map[string]struct{}{
+		"server":            {},
+		"via":               {},
+		"x-served-by":       {},
+		"x-cache":           {},
+		"openai-version":    {},
+		"openai-organization": {},
+		"openai-processing-ms": {},
+	}
+
+	// OpenAI x-ratelimit-* → Anthropic anthropic-ratelimit-* 名称映射。
+	// 注意值的语义不一定 1:1（e.g. OpenAI tokens vs Anthropic tokens），但 Claude Code CLI 仅关心是否
+	// 存在合理键值；保留原值优于完全缺失。
+	openAIToAnthropicRateLimit = map[string]string{
+		"x-ratelimit-limit-requests":     "anthropic-ratelimit-requests-limit",
+		"x-ratelimit-limit-tokens":       "anthropic-ratelimit-tokens-limit",
+		"x-ratelimit-remaining-requests": "anthropic-ratelimit-requests-remaining",
+		"x-ratelimit-remaining-tokens":   "anthropic-ratelimit-tokens-remaining",
+		"x-ratelimit-reset-requests":     "anthropic-ratelimit-requests-reset",
+		"x-ratelimit-reset-tokens":       "anthropic-ratelimit-tokens-reset",
+	}
+)
+
+// NormalizeForAnthropicPersona 把已写入 dst 的响应头规范化为 Anthropic 风格：
+//   - 剥离 server / via / openai-* / x-goog-* / x-amz-* 等厂商泄露头
+//   - x-ratelimit-* → anthropic-ratelimit-* （键名重写，值原样保留）
+//   - x-request-id → request-id（Anthropic 风格小写无前缀）
+//
+// 仅在 persona 模式下调用。其他流量不受影响。
+func NormalizeForAnthropicPersona(dst http.Header) {
+	if dst == nil {
+		return
+	}
+
+	// 收集需要 rename 或删除的键，避免在迭代中改 map
+	type rename struct{ from, to string }
+	var renames []rename
+	var deletes []string
+
+	for key := range dst {
+		lower := strings.ToLower(key)
+
+		if anthropicName, ok := openAIToAnthropicRateLimit[lower]; ok {
+			renames = append(renames, rename{from: key, to: anthropicName})
+			continue
+		}
+		if lower == openAIRequestIDKey {
+			renames = append(renames, rename{from: key, to: anthropicRequestIDKey})
+			continue
+		}
+
+		// 已经是 anthropic-ratelimit-* / request-id 时保持
+		if strings.HasPrefix(lower, "anthropic-") || lower == anthropicRequestIDKey {
+			continue
+		}
+
+		if _, hit := vendorIdentityHeaderExact[lower]; hit {
+			deletes = append(deletes, key)
+			continue
+		}
+		for _, prefix := range vendorIdentityHeaderPrefixes {
+			if strings.HasPrefix(lower, prefix) {
+				deletes = append(deletes, key)
+				break
+			}
+		}
+
+		// 漏网的 x-ratelimit-* 子健（比如 x-ratelimit-reset 不在白名单也兜底处理）
+		if strings.HasPrefix(lower, openAIRateLimitPrefix) {
+			deletes = append(deletes, key)
+		}
+	}
+
+	for _, r := range renames {
+		values := dst.Values(r.from)
+		dst.Del(r.from)
+		for _, v := range values {
+			dst.Add(r.to, v)
+		}
+	}
+	for _, k := range deletes {
+		dst.Del(k)
+	}
+}

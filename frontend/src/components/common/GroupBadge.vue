@@ -5,10 +5,10 @@
       badgeClass
     ]"
   >
-    <!-- Platform logo -->
-    <PlatformIcon v-if="platform" :platform="platform" size="sm" />
-    <!-- Group name -->
-    <span class="truncate">{{ name }}</span>
+    <!-- Platform logo: 优先使用 displayIcon -->
+    <PlatformIcon v-if="platform || displayIcon" :platform="platform" :icon-key="displayIcon" size="sm" />
+    <!-- Group name: 优先使用 displayName -->
+    <span class="truncate">{{ displayName || name }}</span>
     <!-- Right side label -->
     <span v-if="showLabel" :class="labelClass">
       <template v-if="hasCustomRate">
@@ -27,6 +27,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SubscriptionType, GroupPlatform } from '@/types'
+import { resolveIconTheme, type IconColorTheme } from '@/constants/displayIcons'
 import PlatformIcon from './PlatformIcon.vue'
 
 interface Props {
@@ -43,6 +44,10 @@ interface Props {
    * 只关心费率、不关心有效期的场景）。
    */
   alwaysShowRate?: boolean
+  /** 自定义图标 key（优先于 platform） */
+  displayIcon?: string | null
+  /** 自定义展示名称（优先于 name） */
+  displayName?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -50,12 +55,17 @@ const props = withDefaults(defineProps<Props>(), {
   showRate: true,
   daysRemaining: null,
   userRateMultiplier: null,
-  alwaysShowRate: false
+  alwaysShowRate: false,
+  displayIcon: null,
+  displayName: null
 })
 
 const { t } = useI18n()
 
 const isSubscription = computed(() => props.subscriptionType === 'subscription')
+
+// 主题色：按 displayIcon 优先，回退到 platform。屏蔽真实平台色泄露。
+const theme = computed<IconColorTheme>(() => resolveIconTheme(props.displayIcon, props.platform))
 
 // 是否有专属倍率（且与默认倍率不同）
 const hasCustomRate = computed(() => {
@@ -114,40 +124,45 @@ const labelClass = computed(() => {
     }
   }
 
-  // 正常状态或无天数：根据平台显示主题色
-  if (props.platform === 'anthropic') {
-    return `${base} bg-orange-200/60 text-orange-800 dark:bg-orange-800/40 dark:text-orange-300`
+  // 正常状态或无天数：按 theme（display_icon 优先）
+  switch (theme.value) {
+    case 'orange':
+      return `${base} bg-orange-200/60 text-orange-800 dark:bg-orange-800/40 dark:text-orange-300`
+    case 'green':
+      return `${base} bg-emerald-200/60 text-emerald-800 dark:bg-emerald-800/40 dark:text-emerald-300`
+    case 'blue':
+      return `${base} bg-blue-200/60 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300`
+    case 'violet':
+      return `${base} bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300`
+    default:
+      return `${base} bg-gray-200/60 text-gray-800 dark:bg-gray-700/50 dark:text-gray-300`
   }
-  if (props.platform === 'openai') {
-    return `${base} bg-emerald-200/60 text-emerald-800 dark:bg-emerald-800/40 dark:text-emerald-300`
-  }
-  if (props.platform === 'gemini') {
-    return `${base} bg-blue-200/60 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300`
-  }
-  return `${base} bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300`
 })
 
-// Badge color based on platform and subscription type
+// Badge color based on theme (display_icon 优先) + subscription type
 const badgeClass = computed(() => {
-  if (props.platform === 'anthropic') {
-    // Claude: orange theme
-    return isSubscription.value
-      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-      : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-  } else if (props.platform === 'openai') {
-    // OpenAI: green theme
-    return isSubscription.value
-      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-      : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+  const sub = isSubscription.value
+  switch (theme.value) {
+    case 'orange':
+      return sub
+        ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+        : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+    case 'green':
+      return sub
+        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+        : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+    case 'blue':
+      return sub
+        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+        : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
+    case 'violet':
+      return sub
+        ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
+        : 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400'
+    default:
+      return sub
+        ? 'bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-300'
+        : 'bg-gray-50 text-gray-700 dark:bg-gray-800/30 dark:text-gray-300'
   }
-  if (props.platform === 'gemini') {
-    return isSubscription.value
-      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-      : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
-  }
-  // Fallback: original colors
-  return isSubscription.value
-    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
 })
 </script>

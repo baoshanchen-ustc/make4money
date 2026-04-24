@@ -215,6 +215,35 @@ Deploy with Docker Compose, including PostgreSQL and Redis containers.
 - Docker 20.10+
 - Docker Compose v2+
 
+#### Zero-Config Quickstart — `quickstart.sh` ⭐ Recommended
+
+One-shot bootstrap, no env file editing, random secrets generated automatically:
+
+```bash
+git clone https://github.com/Wei-Shaw/sub2api.git
+cd sub2api/deploy
+./quickstart.sh
+```
+
+It prints the admin email/password and access URL. Then:
+
+1. Open the URL in a browser and login
+2. **Accounts** → add an OpenAI / Codex / GPT Plus subscription account
+3. **Groups** → click "Save" (defaults are already set to Claude Code persona — OpenAI upstream presented as Claude Code to clients)
+4. Bind the account to that group → generate an API key
+5. In Claude Code CLI: `ANTHROPIC_BASE_URL=http://<your-server>:8080 claude`
+
+Subsequent maintenance with the same script:
+
+```bash
+./quickstart.sh logs -f      # tail logs
+./quickstart.sh restart
+./quickstart.sh down
+./quickstart.sh pull         # fetch newer image
+```
+
+Generated secrets live in `deploy/.env` (gitignored). Keep a backup.
+
 #### Quick Start (One-Click Deployment)
 
 Use the automated deployment script for easy setup:

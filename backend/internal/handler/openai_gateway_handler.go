@@ -115,6 +115,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		zap.Int64("api_key_id", apiKey.ID),
 		zap.Any("group_id", apiKey.GroupID),
 	)
+	// 提前设置人设 context（即便最终是 OpenAI 协议输出也无害；
+	// 仅当 group.ClaudeCodePersona=true 才生效）
+	if apiKey.Group != nil {
+		service.SetClaudeCodePersonaInContext(c, apiKey.Group.ClaudeCodePersona)
+	}
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}
@@ -306,6 +311,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		forwardBody := body
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+		}
+		// Claude Code 人设：OpenAI Responses 走 instructions 字段；幂等
+		if apiKey.Group != nil && apiKey.Group.ClaudeCodePersona && len(forwardBody) > 0 {
+			forwardBody = service.InjectClaudeCodePersonaInstructions(forwardBody)
+			service.SetClaudeCodePersonaInContext(c, true)
 		}
 		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -529,6 +539,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
+	// 提前设置人设 context，使后续所有错误路径也能享受 vendor 脱敏 + Anthropic 风格头部
+	if apiKey.Group != nil {
+		service.SetClaudeCodePersonaInContext(c, apiKey.Group.ClaudeCodePersona)
+	}
+
 	// 检查分组是否允许 /v1/messages 调度
 	if apiKey.Group != nil && !apiKey.Group.AllowMessagesDispatch {
 		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
@@ -688,6 +703,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if channelMappingMsg.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMappingMsg.MappedModel)
 		}
+		// Claude Code 人设：入参是 Anthropic 协议；幂等
+		if apiKey.Group != nil && apiKey.Group.ClaudeCodePersona && len(forwardBody) > 0 {
+			forwardBody = service.InjectClaudeCodePersonaAnthropic(forwardBody)
+			service.SetClaudeCodePersonaInContext(c, true)
+		}
 		result, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -796,6 +816,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 // anthropicErrorResponse writes an error in Anthropic Messages API format.
 func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int, errType, message string) {
+	// 人设场景下：脱敏错误消息中的 vendor 名 + 头部统一为 Anthropic 风格 request-id
+	if service.IsClaudeCodePersonaForced(nil, c) {
+		message = service.ScrubVendorNamesForPersona(message)
+		if v := c.Writer.Header().Get("X-Request-Id"); v != "" {
+			c.Writer.Header().Del("X-Request-Id")
+			c.Writer.Header().Set("Request-Id", v)
+		}
+	}
 	c.JSON(status, gin.H{
 		"type": "error",
 		"error": gin.H{

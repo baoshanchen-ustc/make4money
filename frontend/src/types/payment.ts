@@ -102,6 +102,8 @@ export interface SubscriptionPlan {
   group_id: number
   group_platform?: string
   group_name?: string
+  group_display_name?: string
+  group_display_icon?: string
   rate_multiplier?: number
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null

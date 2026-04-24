@@ -22,6 +22,7 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformDeepSeek    = "deepseek"
 )
 
 // Account type constants
@@ -113,6 +114,43 @@ var DefaultAntigravityModelMapping = map[string]string{
 	// 其他官方模型
 	"gpt-oss-120b-medium":    "gpt-oss-120b-medium",
 	"tab_flash_lite_preview": "tab_flash_lite_preview",
+}
+
+// DefaultDeepSeekModelMapping 是 DeepSeek 平台的默认模型映射
+// 当账号未配置 model_mapping 时使用此默认值
+// 与前端 useModelWhitelist.ts 中的 deepseekPresetMappings 保持一致
+//
+// DeepSeek V4 系列（2026-04-24 发布）：
+//   - deepseek-v4-pro：1.6T MoE，1M context，对标 Claude Opus 4.5
+//   - deepseek-v4-flash：284B MoE，1M context，对标 Claude Sonnet 4.5
+//
+// 注：thinking 双模式由请求体参数控制（待实现），当前阶段仅做 model id 映射。
+// 旧的 deepseek-chat / deepseek-reasoner 已由 DeepSeek 官方路由到 v4-flash，
+// 并将在 2026-07-24 后下线，本表直接使用 V4 名称。
+var DefaultDeepSeekModelMapping = map[string]string{
+	// Claude Opus → V4 Pro
+	"claude-opus-4-7":          "deepseek-v4-pro",
+	"claude-opus-4-7-thinking": "deepseek-v4-pro",
+	"claude-opus-4-6":          "deepseek-v4-pro",
+	"claude-opus-4-6-thinking": "deepseek-v4-pro",
+	"claude-opus-4-5-thinking": "deepseek-v4-pro",
+	"claude-opus-4-5-20251101": "deepseek-v4-pro",
+	"claude-opus-4-1":          "deepseek-v4-pro",
+	"claude-opus-4-20250514":   "deepseek-v4-pro",
+	// Claude Sonnet → V4 Flash
+	"claude-sonnet-4-6":          "deepseek-v4-flash",
+	"claude-sonnet-4-6-thinking": "deepseek-v4-flash",
+	"claude-sonnet-4-5":          "deepseek-v4-flash",
+	"claude-sonnet-4-5-thinking": "deepseek-v4-flash",
+	"claude-sonnet-4-5-20250929": "deepseek-v4-flash",
+	"claude-sonnet-4-20250514":   "deepseek-v4-flash",
+	"claude-3-7-sonnet-20250219": "deepseek-v4-flash",
+	"claude-3-5-sonnet-20241022": "deepseek-v4-flash",
+	"claude-3-5-sonnet-20240620": "deepseek-v4-flash",
+	// Claude Haiku → V4 Flash（DeepSeek 无小模型档）
+	"claude-haiku-4-5":          "deepseek-v4-flash",
+	"claude-haiku-4-5-20251001": "deepseek-v4-flash",
+	"claude-3-5-haiku-20241022": "deepseek-v4-flash",
 }
 
 // DefaultBedrockModelMapping 是 AWS Bedrock 平台的默认模型映射

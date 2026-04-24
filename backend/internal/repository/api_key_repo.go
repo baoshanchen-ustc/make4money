@@ -180,6 +180,10 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldRpmLimit,
+				group.FieldDisplayIcon,
+				group.FieldDisplayName,
+				group.FieldDisplayRateMultiplier,
+				group.FieldClaudeCodePersona,
 			)
 		}).
 		Only(ctx)
@@ -711,6 +715,10 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		MCPXMLInject:                    g.McpXMLInject,
 		SupportedModelScopes:            g.SupportedModelScopes,
 		SortOrder:                       g.SortOrder,
+		DisplayIcon:                     derefString(g.DisplayIcon),
+		DisplayName:                     derefString(g.DisplayName),
+		DisplayRateMultiplier:           g.DisplayRateMultiplier,
+		ClaudeCodePersona:               g.ClaudeCodePersona,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
 		RequireOAuthOnly:                g.RequireOauthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,

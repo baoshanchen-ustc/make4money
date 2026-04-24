@@ -194,6 +194,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		// Claude Code 人设：OpenAI Chat Completions 走 messages[0].role=system；幂等
+		if apiKey.Group != nil && apiKey.Group.ClaudeCodePersona && len(forwardBody) > 0 {
+			forwardBody = service.InjectClaudeCodePersonaChatMessages(forwardBody)
+			service.SetClaudeCodePersonaInContext(c, true)
+		}
 		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()

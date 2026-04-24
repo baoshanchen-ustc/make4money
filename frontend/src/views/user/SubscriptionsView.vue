@@ -29,21 +29,21 @@
           v-for="subscription in subscriptions"
           :key="subscription.id"
           class="overflow-hidden rounded-2xl border bg-white dark:bg-dark-800"
-          :class="platformBorderClass(subscription.group?.platform || '')"
+          :class="platformBorderClass(subscription.group?.platform || '', subscription.group?.display_icon)"
         >
           <!-- Header -->
           <div
             class="flex items-center justify-between border-b border-gray-100 p-4 dark:border-dark-700"
           >
             <div class="flex items-center gap-3">
-              <div :class="['h-1.5 w-1.5 shrink-0 rounded-full', platformAccentDotClass(subscription.group?.platform || '')]" />
+              <div :class="['h-1.5 w-1.5 shrink-0 rounded-full', platformAccentDotClass(subscription.group?.platform || '', subscription.group?.display_icon)]" />
               <div>
                 <div class="flex items-center gap-2">
                   <h3 class="font-semibold text-gray-900 dark:text-white">
-                    {{ subscription.group?.name || `Group #${subscription.group_id}` }}
+                    {{ subscription.group?.display_name || subscription.group?.name || `Group #${subscription.group_id}` }}
                   </h3>
-                  <span :class="['rounded-md border px-2 py-0.5 text-[11px] font-medium', platformBadgeClass(subscription.group?.platform || '')]">
-                    {{ platformLabel(subscription.group?.platform || '') }}
+                  <span :class="['rounded-md border px-2 py-0.5 text-[11px] font-medium', platformBadgeClass(subscription.group?.platform || '', subscription.group?.display_icon)]">
+                    {{ subscription.group?.display_name || platformLabel(subscription.group?.platform || '') }}
                   </span>
                 </div>
                 <p v-if="subscription.group?.description" class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
@@ -257,8 +257,16 @@ import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly } from '@/utils/format'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
 
-function platformAccentDotClass(p: string): string {
-  switch (p) {
+// 接 displayIcon 优先：人设场景下圆点也跟随展示主题色，避免泄露真实 platform。
+const ICON_TO_DOT_PLATFORM: Record<string, string> = {
+  anthropic: 'anthropic', claude: 'anthropic', 'claude-code': 'anthropic', bedrock: 'anthropic',
+  openai: 'openai', chatgpt: 'openai', codex: 'openai',
+  gemini: 'gemini', 'gemini-cli': 'gemini',
+  antigravity: 'antigravity'
+}
+function platformAccentDotClass(p: string, displayIcon?: string | null): string {
+  const eff = (displayIcon && ICON_TO_DOT_PLATFORM[displayIcon]) || p
+  switch (eff) {
     case 'anthropic': return 'bg-orange-500'
     case 'openai': return 'bg-emerald-500'
     case 'antigravity': return 'bg-purple-500'

@@ -114,6 +114,10 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	// 自定义展示（用户侧可见；为空时由前端回退到 platform 默认）
+	DisplayIcon string `json:"display_icon,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -143,6 +147,14 @@ type AdminGroup struct {
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
+
+	// 真实倍率（管理员视图覆盖 Group.RateMultiplier 的外显语义，承载实际计费倍率）
+	RealRateMultiplier float64 `json:"real_rate_multiplier"`
+	// 外显倍率（管理员视图独立展示）；nil 表示与真实倍率一致，未做差异化
+	DisplayRateMultiplier *float64 `json:"display_rate_multiplier,omitempty"`
+
+	// Claude Code 人设伪装开关（仅管理员可见）
+	ClaudeCodePersona bool `json:"claude_code_persona"`
 }
 
 type Account struct {

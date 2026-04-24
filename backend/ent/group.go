@@ -69,6 +69,14 @@ type Group struct {
 	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
 	// 分组显示排序，数值越小越靠前
 	SortOrder int `json:"sort_order,omitempty"`
+	// 自定义展示图标 key（白名单受控）
+	DisplayIcon *string `json:"display_icon,omitempty"`
+	// 自定义展示名称（覆盖默认 platform 名称）
+	DisplayName *string `json:"display_name,omitempty"`
+	// 外显倍率（仅 UI 展示，NULL 表示与 rate_multiplier 一致）
+	DisplayRateMultiplier *float64 `json:"display_rate_multiplier,omitempty"`
+	// 是否在转发时注入 Claude Code 人设系统提示词
+	ClaudeCodePersona bool `json:"claude_code_persona,omitempty"`
 	// 是否允许 /v1/messages 调度到此 OpenAI 分组
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch,omitempty"`
 	// 仅允许非 apikey 类型账号关联到此分组
@@ -189,13 +197,13 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldClaudeCodePersona, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
+		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldDisplayRateMultiplier:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
+		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDisplayIcon, group.FieldDisplayName, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -383,6 +391,33 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field sort_order", values[i])
 			} else if value.Valid {
 				_m.SortOrder = int(value.Int64)
+			}
+		case group.FieldDisplayIcon:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field display_icon", values[i])
+			} else if value.Valid {
+				_m.DisplayIcon = new(string)
+				*_m.DisplayIcon = value.String
+			}
+		case group.FieldDisplayName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field display_name", values[i])
+			} else if value.Valid {
+				_m.DisplayName = new(string)
+				*_m.DisplayName = value.String
+			}
+		case group.FieldDisplayRateMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field display_rate_multiplier", values[i])
+			} else if value.Valid {
+				_m.DisplayRateMultiplier = new(float64)
+				*_m.DisplayRateMultiplier = value.Float64
+			}
+		case group.FieldClaudeCodePersona:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field claude_code_persona", values[i])
+			} else if value.Valid {
+				_m.ClaudeCodePersona = value.Bool
 			}
 		case group.FieldAllowMessagesDispatch:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -592,6 +627,24 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("sort_order=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SortOrder))
+	builder.WriteString(", ")
+	if v := _m.DisplayIcon; v != nil {
+		builder.WriteString("display_icon=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.DisplayName; v != nil {
+		builder.WriteString("display_name=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.DisplayRateMultiplier; v != nil {
+		builder.WriteString("display_rate_multiplier=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("claude_code_persona=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ClaudeCodePersona))
 	builder.WriteString(", ")
 	builder.WriteString("allow_messages_dispatch=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowMessagesDispatch))

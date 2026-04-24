@@ -136,12 +136,18 @@ func GroupFromService(g *service.Group) *Group {
 
 // GroupFromServiceAdmin converts a service Group to DTO for admin users.
 // It includes internal fields like model_routing and account_count.
+//
+// 注意：管理员视图保留 Group.RateMultiplier = 真实倍率（与 user 视图语义不同），
+// 同时通过 RealRateMultiplier / DisplayRateMultiplier 字段区分双倍率。
 func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	if g == nil {
 		return nil
 	}
+	base := groupFromServiceBase(g)
+	// 用户视图下 base.RateMultiplier 已被替换为外显值，这里恢复为真实值
+	base.RateMultiplier = g.RateMultiplier
 	out := &AdminGroup{
-		Group:                       groupFromServiceBase(g),
+		Group:                       base,
 		ModelRouting:                g.ModelRouting,
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
 		MCPXMLInject:                g.MCPXMLInject,
@@ -152,6 +158,9 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		ActiveAccountCount:          g.ActiveAccountCount,
 		RateLimitedAccountCount:     g.RateLimitedAccountCount,
 		SortOrder:                   g.SortOrder,
+		RealRateMultiplier:          g.RateMultiplier,
+		DisplayRateMultiplier:       g.DisplayRateMultiplier,
+		ClaudeCodePersona:           g.ClaudeCodePersona,
 	}
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
@@ -163,13 +172,20 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	return out
 }
 
+// groupFromServiceBase 构造用户可见的 Group DTO。
+// RateMultiplier 字段在用户视图下承载「外显倍率」（若分组配置了 DisplayRateMultiplier 则用之，否则回退真实倍率）。
+// 字段名保持 rate_multiplier 不变，避免老前端/客户端兼容问题；管理员视图通过 AdminGroup 暴露真实值。
 func groupFromServiceBase(g *service.Group) Group {
+	displayRate := g.RateMultiplier
+	if g.DisplayRateMultiplier != nil {
+		displayRate = *g.DisplayRateMultiplier
+	}
 	return Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     g.Description,
 		Platform:                        g.Platform,
-		RateMultiplier:                  g.RateMultiplier,
+		RateMultiplier:                  displayRate,
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
 		SubscriptionType:                g.SubscriptionType,
@@ -186,6 +202,8 @@ func groupFromServiceBase(g *service.Group) Group {
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
 		RPMLimit:                        g.RPMLimit,
+		DisplayIcon:                     g.DisplayIcon,
+		DisplayName:                     g.DisplayName,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

@@ -71,6 +71,31 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 	return &zero
 }
 
+// allowedDisplayIcons 与前端 displayIconOptions 同源（前后端共享枚举）。
+// 对应 frontend/src/constants/displayIcons.ts。
+var allowedDisplayIcons = map[string]struct{}{
+	"anthropic":   {},
+	"claude":      {},
+	"claude-code": {},
+	"openai":      {},
+	"chatgpt":     {},
+	"codex":       {},
+	"gemini":      {},
+	"gemini-cli":  {},
+	"antigravity": {},
+	"bedrock":     {},
+	"deepseek":    {},
+	"generic":     {},
+}
+
+func isValidDisplayIcon(s string) bool {
+	if s == "" {
+		return true
+	}
+	_, ok := allowedDisplayIcons[s]
+	return ok
+}
+
 // NewGroupHandler creates a new admin group handler
 func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
 	return &GroupHandler{
@@ -84,7 +109,7 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 type CreateGroupRequest struct {
 	Name             string             `json:"name" binding:"required"`
 	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
+	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity deepseek"`
 	RateMultiplier   float64            `json:"rate_multiplier"`
 	IsExclusive      bool               `json:"is_exclusive"`
 	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -112,6 +137,12 @@ type CreateGroupRequest struct {
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
+	// 自定义展示
+	DisplayIcon           string   `json:"display_icon" binding:"omitempty,oneof=anthropic claude claude-code openai chatgpt codex gemini gemini-cli antigravity bedrock deepseek generic"`
+	DisplayName           string   `json:"display_name" binding:"omitempty,max=50"`
+	DisplayRateMultiplier *float64 `json:"display_rate_multiplier" binding:"omitempty,min=0"`
+	// Claude Code 人设伪装
+	ClaudeCodePersona bool `json:"claude_code_persona"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -120,7 +151,7 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name             string             `json:"name"`
 	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
+	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity deepseek"`
 	RateMultiplier   *float64           `json:"rate_multiplier"`
 	IsExclusive      *bool              `json:"is_exclusive"`
 	Status           string             `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -149,6 +180,13 @@ type UpdateGroupRequest struct {
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
+	// 自定义展示（指针表示是否本次提交了；DisplayRateMultiplier 负数代表清空）
+	// 空字符串表示清空；非空必须命中 allowedDisplayIcons 白名单（在 Update 中显式校验）。
+	DisplayIcon           *string  `json:"display_icon"`
+	DisplayName           *string  `json:"display_name" binding:"omitempty,max=50"`
+	DisplayRateMultiplier *float64 `json:"display_rate_multiplier"`
+	// Claude Code 人设伪装
+	ClaudeCodePersona *bool `json:"claude_code_persona"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -267,6 +305,10 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		RPMLimit:                        req.RPMLimit,
+		DisplayIcon:                     req.DisplayIcon,
+		DisplayName:                     strings.TrimSpace(req.DisplayName),
+		DisplayRateMultiplier:           req.DisplayRateMultiplier,
+		ClaudeCodePersona:               req.ClaudeCodePersona,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -290,6 +332,20 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
+	}
+
+	// 显式校验 DisplayIcon 白名单（pointer + 空字符串语义无法用 binding:oneof 表达）
+	if req.DisplayIcon != nil && !isValidDisplayIcon(strings.TrimSpace(*req.DisplayIcon)) {
+		response.BadRequest(c, "invalid display_icon")
+		return
+	}
+	if req.DisplayIcon != nil {
+		v := strings.TrimSpace(*req.DisplayIcon)
+		req.DisplayIcon = &v
+	}
+	if req.DisplayName != nil {
+		v := strings.TrimSpace(*req.DisplayName)
+		req.DisplayName = &v
 	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
@@ -319,6 +375,10 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		RPMLimit:                        req.RPMLimit,
+		DisplayIcon:                     req.DisplayIcon,
+		DisplayName:                     req.DisplayName,
+		DisplayRateMultiplier:           req.DisplayRateMultiplier,
+		ClaudeCodePersona:               req.ClaudeCodePersona,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

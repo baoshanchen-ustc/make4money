@@ -355,6 +355,62 @@ func (_c *GroupCreate) SetNillableSortOrder(v *int) *GroupCreate {
 	return _c
 }
 
+// SetDisplayIcon sets the "display_icon" field.
+func (_c *GroupCreate) SetDisplayIcon(v string) *GroupCreate {
+	_c.mutation.SetDisplayIcon(v)
+	return _c
+}
+
+// SetNillableDisplayIcon sets the "display_icon" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDisplayIcon(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetDisplayIcon(*v)
+	}
+	return _c
+}
+
+// SetDisplayName sets the "display_name" field.
+func (_c *GroupCreate) SetDisplayName(v string) *GroupCreate {
+	_c.mutation.SetDisplayName(v)
+	return _c
+}
+
+// SetNillableDisplayName sets the "display_name" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDisplayName(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetDisplayName(*v)
+	}
+	return _c
+}
+
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (_c *GroupCreate) SetDisplayRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetDisplayRateMultiplier(v)
+	return _c
+}
+
+// SetNillableDisplayRateMultiplier sets the "display_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDisplayRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetDisplayRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetClaudeCodePersona sets the "claude_code_persona" field.
+func (_c *GroupCreate) SetClaudeCodePersona(v bool) *GroupCreate {
+	_c.mutation.SetClaudeCodePersona(v)
+	return _c
+}
+
+// SetNillableClaudeCodePersona sets the "claude_code_persona" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableClaudeCodePersona(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetClaudeCodePersona(*v)
+	}
+	return _c
+}
+
 // SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
 func (_c *GroupCreate) SetAllowMessagesDispatch(v bool) *GroupCreate {
 	_c.mutation.SetAllowMessagesDispatch(v)
@@ -624,6 +680,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultSortOrder
 		_c.mutation.SetSortOrder(v)
 	}
+	if _, ok := _c.mutation.ClaudeCodePersona(); !ok {
+		v := group.DefaultClaudeCodePersona
+		_c.mutation.SetClaudeCodePersona(v)
+	}
 	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
 		v := group.DefaultAllowMessagesDispatch
 		_c.mutation.SetAllowMessagesDispatch(v)
@@ -714,6 +774,19 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.SortOrder(); !ok {
 		return &ValidationError{Name: "sort_order", err: errors.New(`ent: missing required field "Group.sort_order"`)}
+	}
+	if v, ok := _c.mutation.DisplayIcon(); ok {
+		if err := group.DisplayIconValidator(v); err != nil {
+			return &ValidationError{Name: "display_icon", err: fmt.Errorf(`ent: validator failed for field "Group.display_icon": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.DisplayName(); ok {
+		if err := group.DisplayNameValidator(v); err != nil {
+			return &ValidationError{Name: "display_name", err: fmt.Errorf(`ent: validator failed for field "Group.display_name": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ClaudeCodePersona(); !ok {
+		return &ValidationError{Name: "claude_code_persona", err: errors.New(`ent: missing required field "Group.claude_code_persona"`)}
 	}
 	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
 		return &ValidationError{Name: "allow_messages_dispatch", err: errors.New(`ent: missing required field "Group.allow_messages_dispatch"`)}
@@ -864,6 +937,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SortOrder(); ok {
 		_spec.SetField(group.FieldSortOrder, field.TypeInt, value)
 		_node.SortOrder = value
+	}
+	if value, ok := _c.mutation.DisplayIcon(); ok {
+		_spec.SetField(group.FieldDisplayIcon, field.TypeString, value)
+		_node.DisplayIcon = &value
+	}
+	if value, ok := _c.mutation.DisplayName(); ok {
+		_spec.SetField(group.FieldDisplayName, field.TypeString, value)
+		_node.DisplayName = &value
+	}
+	if value, ok := _c.mutation.DisplayRateMultiplier(); ok {
+		_spec.SetField(group.FieldDisplayRateMultiplier, field.TypeFloat64, value)
+		_node.DisplayRateMultiplier = &value
+	}
+	if value, ok := _c.mutation.ClaudeCodePersona(); ok {
+		_spec.SetField(group.FieldClaudeCodePersona, field.TypeBool, value)
+		_node.ClaudeCodePersona = value
 	}
 	if value, ok := _c.mutation.AllowMessagesDispatch(); ok {
 		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
@@ -1462,6 +1551,78 @@ func (u *GroupUpsert) UpdateSortOrder() *GroupUpsert {
 // AddSortOrder adds v to the "sort_order" field.
 func (u *GroupUpsert) AddSortOrder(v int) *GroupUpsert {
 	u.Add(group.FieldSortOrder, v)
+	return u
+}
+
+// SetDisplayIcon sets the "display_icon" field.
+func (u *GroupUpsert) SetDisplayIcon(v string) *GroupUpsert {
+	u.Set(group.FieldDisplayIcon, v)
+	return u
+}
+
+// UpdateDisplayIcon sets the "display_icon" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDisplayIcon() *GroupUpsert {
+	u.SetExcluded(group.FieldDisplayIcon)
+	return u
+}
+
+// ClearDisplayIcon clears the value of the "display_icon" field.
+func (u *GroupUpsert) ClearDisplayIcon() *GroupUpsert {
+	u.SetNull(group.FieldDisplayIcon)
+	return u
+}
+
+// SetDisplayName sets the "display_name" field.
+func (u *GroupUpsert) SetDisplayName(v string) *GroupUpsert {
+	u.Set(group.FieldDisplayName, v)
+	return u
+}
+
+// UpdateDisplayName sets the "display_name" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDisplayName() *GroupUpsert {
+	u.SetExcluded(group.FieldDisplayName)
+	return u
+}
+
+// ClearDisplayName clears the value of the "display_name" field.
+func (u *GroupUpsert) ClearDisplayName() *GroupUpsert {
+	u.SetNull(group.FieldDisplayName)
+	return u
+}
+
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (u *GroupUpsert) SetDisplayRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldDisplayRateMultiplier, v)
+	return u
+}
+
+// UpdateDisplayRateMultiplier sets the "display_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDisplayRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldDisplayRateMultiplier)
+	return u
+}
+
+// AddDisplayRateMultiplier adds v to the "display_rate_multiplier" field.
+func (u *GroupUpsert) AddDisplayRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldDisplayRateMultiplier, v)
+	return u
+}
+
+// ClearDisplayRateMultiplier clears the value of the "display_rate_multiplier" field.
+func (u *GroupUpsert) ClearDisplayRateMultiplier() *GroupUpsert {
+	u.SetNull(group.FieldDisplayRateMultiplier)
+	return u
+}
+
+// SetClaudeCodePersona sets the "claude_code_persona" field.
+func (u *GroupUpsert) SetClaudeCodePersona(v bool) *GroupUpsert {
+	u.Set(group.FieldClaudeCodePersona, v)
+	return u
+}
+
+// UpdateClaudeCodePersona sets the "claude_code_persona" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateClaudeCodePersona() *GroupUpsert {
+	u.SetExcluded(group.FieldClaudeCodePersona)
 	return u
 }
 
@@ -2075,6 +2236,90 @@ func (u *GroupUpsertOne) AddSortOrder(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateSortOrder() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSortOrder()
+	})
+}
+
+// SetDisplayIcon sets the "display_icon" field.
+func (u *GroupUpsertOne) SetDisplayIcon(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayIcon(v)
+	})
+}
+
+// UpdateDisplayIcon sets the "display_icon" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDisplayIcon() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayIcon()
+	})
+}
+
+// ClearDisplayIcon clears the value of the "display_icon" field.
+func (u *GroupUpsertOne) ClearDisplayIcon() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDisplayIcon()
+	})
+}
+
+// SetDisplayName sets the "display_name" field.
+func (u *GroupUpsertOne) SetDisplayName(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayName(v)
+	})
+}
+
+// UpdateDisplayName sets the "display_name" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDisplayName() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayName()
+	})
+}
+
+// ClearDisplayName clears the value of the "display_name" field.
+func (u *GroupUpsertOne) ClearDisplayName() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDisplayName()
+	})
+}
+
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (u *GroupUpsertOne) SetDisplayRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayRateMultiplier(v)
+	})
+}
+
+// AddDisplayRateMultiplier adds v to the "display_rate_multiplier" field.
+func (u *GroupUpsertOne) AddDisplayRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDisplayRateMultiplier(v)
+	})
+}
+
+// UpdateDisplayRateMultiplier sets the "display_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDisplayRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayRateMultiplier()
+	})
+}
+
+// ClearDisplayRateMultiplier clears the value of the "display_rate_multiplier" field.
+func (u *GroupUpsertOne) ClearDisplayRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDisplayRateMultiplier()
+	})
+}
+
+// SetClaudeCodePersona sets the "claude_code_persona" field.
+func (u *GroupUpsertOne) SetClaudeCodePersona(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetClaudeCodePersona(v)
+	})
+}
+
+// UpdateClaudeCodePersona sets the "claude_code_persona" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateClaudeCodePersona() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateClaudeCodePersona()
 	})
 }
 
@@ -2867,6 +3112,90 @@ func (u *GroupUpsertBulk) AddSortOrder(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateSortOrder() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSortOrder()
+	})
+}
+
+// SetDisplayIcon sets the "display_icon" field.
+func (u *GroupUpsertBulk) SetDisplayIcon(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayIcon(v)
+	})
+}
+
+// UpdateDisplayIcon sets the "display_icon" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDisplayIcon() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayIcon()
+	})
+}
+
+// ClearDisplayIcon clears the value of the "display_icon" field.
+func (u *GroupUpsertBulk) ClearDisplayIcon() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDisplayIcon()
+	})
+}
+
+// SetDisplayName sets the "display_name" field.
+func (u *GroupUpsertBulk) SetDisplayName(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayName(v)
+	})
+}
+
+// UpdateDisplayName sets the "display_name" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDisplayName() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayName()
+	})
+}
+
+// ClearDisplayName clears the value of the "display_name" field.
+func (u *GroupUpsertBulk) ClearDisplayName() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDisplayName()
+	})
+}
+
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetDisplayRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayRateMultiplier(v)
+	})
+}
+
+// AddDisplayRateMultiplier adds v to the "display_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddDisplayRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDisplayRateMultiplier(v)
+	})
+}
+
+// UpdateDisplayRateMultiplier sets the "display_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDisplayRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayRateMultiplier()
+	})
+}
+
+// ClearDisplayRateMultiplier clears the value of the "display_rate_multiplier" field.
+func (u *GroupUpsertBulk) ClearDisplayRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDisplayRateMultiplier()
+	})
+}
+
+// SetClaudeCodePersona sets the "claude_code_persona" field.
+func (u *GroupUpsertBulk) SetClaudeCodePersona(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetClaudeCodePersona(v)
+	})
+}
+
+// UpdateClaudeCodePersona sets the "claude_code_persona" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateClaudeCodePersona() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateClaudeCodePersona()
 	})
 }
 

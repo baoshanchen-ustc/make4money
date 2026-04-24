@@ -253,6 +253,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
+	if apiKey.Group != nil {
+		parsedReq.ClaudeCodePersona = apiKey.Group.ClaudeCodePersona
+		// 同步置入 gin.Context：跨服务调用边界（Gemini compat / Antigravity 等）使用
+		service.SetClaudeCodePersonaInContext(c, apiKey.Group.ClaudeCodePersona)
+	}
 
 	// 计算粘性会话hash
 	parsedReq.SessionContext = &service.SessionContext{
@@ -414,10 +419,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			// Claude Code 人设：Anthropic→Gemini 跨平台 compat，注入到 Anthropic-format body，
+			// 由后续 convertClaudeMessagesToGeminiGenerateContent 自然转换到 systemInstruction。
+			forwardBody := body
+			if parsedReq != nil && parsedReq.ClaudeCodePersona && len(forwardBody) > 0 {
+				forwardBody = service.InjectClaudeCodePersonaAnthropic(forwardBody)
+			}
 			if account.Platform == service.PlatformAntigravity {
-				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, body, hasBoundSession)
+				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, forwardBody, hasBoundSession)
 			} else {
-				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
+				result, err = h.geminiCompatService.Forward(requestCtx, c, account, forwardBody)
 			}
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
@@ -711,7 +722,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
-				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
+				antigravityBody := body
+				if parsedReq != nil && parsedReq.ClaudeCodePersona && len(antigravityBody) > 0 {
+					antigravityBody = service.InjectClaudeCodePersonaAnthropic(antigravityBody)
+				}
+				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, antigravityBody, hasBoundSession)
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
 			}
@@ -879,19 +894,38 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 // Models handles listing available models
 // GET /v1/models
 // Returns models based on account configurations (model_mapping whitelist)
-// Falls back to default models if no whitelist is configured
+// Falls back to default models if no whitelist is configured.
+//
+// 人设模式（apiKey.Group.ClaudeCodePersona）：忽略账号白名单，强制只返回
+// claude.DefaultModels —— 避免 Claude Code CLI 在 /model 命令中看到 gpt-* / gemini-* 等
+// 真实上游模型名而泄露真实平台身份。
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
 	var groupID *int64
 	var platform string
+	personaForced := false
 
 	if apiKey != nil && apiKey.Group != nil {
 		groupID = &apiKey.Group.ID
 		platform = apiKey.Group.Platform
+		personaForced = apiKey.Group.ClaudeCodePersona
 	}
 	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
 		platform = forcedPlatform
+	}
+
+	if personaForced {
+		// 中间件预先写了 X-Request-Id，人设场景下统一改为 Anthropic 风格 request-id
+		if v := c.Writer.Header().Get("X-Request-Id"); v != "" {
+			c.Writer.Header().Del("X-Request-Id")
+			c.Writer.Header().Set("Request-Id", v)
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   claude.DefaultModels,
+		})
+		return
 	}
 
 	// Get available models from account configurations (without platform filter)
@@ -1393,6 +1427,15 @@ func (h *GatewayHandler) checkClaudeCodeVersion(c *gin.Context) bool {
 
 // errorResponse 返回Claude API格式的错误响应
 func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
+	// 人设场景下：脱敏错误消息中的真实厂商名 + 头部统一 Anthropic 风格
+	if service.IsClaudeCodePersonaForced(nil, c) {
+		message = service.ScrubVendorNamesForPersona(message)
+		// 把 RequestLogger 写入的 X-Request-Id 改名为 Anthropic 风格 request-id
+		if v := c.Writer.Header().Get("X-Request-Id"); v != "" {
+			c.Writer.Header().Del("X-Request-Id")
+			c.Writer.Header().Set("Request-Id", v)
+		}
+	}
 	c.JSON(status, gin.H{
 		"type": "error",
 		"error": gin.H{

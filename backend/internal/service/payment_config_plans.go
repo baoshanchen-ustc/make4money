@@ -60,9 +60,13 @@ func validatePlanPatch(req UpdatePlanRequest) error {
 // --- Plan CRUD ---
 
 // PlanGroupInfo holds the group details needed for subscription plan display.
+// DisplayName/DisplayIcon 用于 persona 模式：前端优先按 display_name 展示分组名、
+// 按 display_icon 决定 badge 配色，避免暴露真实上游 platform（如 deepseek）。
 type PlanGroupInfo struct {
 	Platform        string   `json:"platform"`
 	Name            string   `json:"name"`
+	DisplayName     string   `json:"display_name"`
+	DisplayIcon     string   `json:"display_icon"`
 	RateMultiplier  float64  `json:"rate_multiplier"`
 	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
@@ -99,9 +103,19 @@ func (s *PaymentConfigService) GetGroupInfoMap(ctx context.Context, plans []*dbe
 	}
 	m := make(map[int64]PlanGroupInfo, len(groups))
 	for _, g := range groups {
+		displayName := ""
+		if g.DisplayName != nil {
+			displayName = *g.DisplayName
+		}
+		displayIcon := ""
+		if g.DisplayIcon != nil {
+			displayIcon = *g.DisplayIcon
+		}
 		m[int64(g.ID)] = PlanGroupInfo{
 			Platform:        g.Platform,
 			Name:            g.Name,
+			DisplayName:     displayName,
+			DisplayIcon:     displayIcon,
 			RateMultiplier:  g.RateMultiplier,
 			DailyLimitUSD:   g.DailyLimitUsd,
 			WeeklyLimitUSD:  g.WeeklyLimitUsd,

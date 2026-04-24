@@ -468,6 +468,11 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if fs.SwitchCount > 0 {
 			requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 		}
+		// Claude Code 人设：仅当 generateContent / streamGenerateContent 等含 systemInstruction 的请求才注入
+		if apiKey.Group != nil && apiKey.Group.ClaudeCodePersona && len(body) > 0 {
+			body = service.InjectClaudeCodePersonaGemini(body)
+			service.SetClaudeCodePersonaInContext(c, true)
+		}
 		if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 			result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, modelName, action, stream, body, hasBoundSession)
 		} else {

@@ -1980,7 +1980,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	responseID := ""
 	var finalResponse []byte
 	wroteDownstream := false
-	needModelReplace := originalModel != mappedModel
+	forceModelRewrite := IsClaudeCodePersonaForced(ctx, c)
+	needModelReplace := originalModel != mappedModel || forceModelRewrite
 	var mappedModelBytes []byte
 	if needModelReplace && mappedModel != "" {
 		mappedModelBytes = []byte(mappedModel)
@@ -2145,8 +2146,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if !clientDisconnected {
-			if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(message, mappedModelBytes) {
-				message = replaceOpenAIWSMessageModel(message, mappedModel, originalModel)
+			// Fast path: rewrite when upstream echoes mapped model.
+			// Force path (人设): can't rely on bytes.Contains(mappedModel) because upstream
+			// may emit its own native name; always attempt the replace if the event type
+			// could carry "model".
+			if needModelReplace && openAIWSEventMayContainModel(eventType) {
+				if forceModelRewrite || (len(mappedModelBytes) > 0 && bytes.Contains(message, mappedModelBytes)) {
+					message = replaceOpenAIWSMessageModel(message, mappedModel, originalModel, forceModelRewrite)
+				}
 			}
 			if openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(message) {
 				if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(message); changed {
@@ -2280,7 +2287,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if needModelReplace {
-			finalResponse = s.replaceModelInResponseBody(finalResponse, mappedModel, originalModel)
+			finalResponse = s.replaceModelInResponseBody(finalResponse, mappedModel, originalModel, forceModelRewrite)
 		}
 		finalResponse = s.correctToolCallsInResponseBody(finalResponse)
 		populateOpenAIUsageFromResponseJSON(finalResponse, usage)
@@ -2772,9 +2779,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		clientDisconnected := false
 		mappedModel := ""
 		var mappedModelBytes []byte
+		ingressForceModelRewrite := IsClaudeCodePersonaForced(ctx, c)
 		if originalModel != "" {
 			mappedModel = normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
-			needModelReplace = mappedModel != "" && mappedModel != originalModel
+			needModelReplace = (mappedModel != "" && mappedModel != originalModel) || ingressForceModelRewrite
 			if needModelReplace {
 				mappedModelBytes = []byte(mappedModel)
 			}
@@ -2879,8 +2887,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 
 			if !clientDisconnected {
-				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
-					upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
+				if needModelReplace && openAIWSEventMayContainModel(eventType) {
+					if ingressForceModelRewrite || (len(mappedModelBytes) > 0 && bytes.Contains(upstreamMessage, mappedModelBytes)) {
+						upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel, ingressForceModelRewrite)
+					}
 				}
 				if openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(upstreamMessage) {
 					if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(upstreamMessage); changed {
@@ -3732,19 +3742,29 @@ func isOpenAIWSTokenEvent(eventType string) bool {
 	return eventType == "response.completed" || eventType == "response.done"
 }
 
-func replaceOpenAIWSMessageModel(message []byte, fromModel, toModel string) []byte {
+// replaceOpenAIWSMessageModel 改写 WS 消息的 model / response.model 字段。
+// force=true 时（人设场景）忽略 fromModel 比对，存在即重写为 toModel；
+// 否则维持「仅当 model == fromModel 时改写」的精确匹配语义。
+func replaceOpenAIWSMessageModel(message []byte, fromModel, toModel string, force bool) []byte {
 	if len(message) == 0 {
 		return message
 	}
-	if strings.TrimSpace(fromModel) == "" || strings.TrimSpace(toModel) == "" || fromModel == toModel {
+	if strings.TrimSpace(toModel) == "" {
 		return message
 	}
-	if !bytes.Contains(message, []byte(`"model"`)) || !bytes.Contains(message, []byte(fromModel)) {
+	if !force {
+		if strings.TrimSpace(fromModel) == "" || fromModel == toModel {
+			return message
+		}
+		if !bytes.Contains(message, []byte(`"model"`)) || !bytes.Contains(message, []byte(fromModel)) {
+			return message
+		}
+	} else if !bytes.Contains(message, []byte(`"model"`)) {
 		return message
 	}
 	modelValues := gjson.GetManyBytes(message, "model", "response.model")
-	replaceModel := modelValues[0].Exists() && modelValues[0].Str == fromModel
-	replaceResponseModel := modelValues[1].Exists() && modelValues[1].Str == fromModel
+	replaceModel := modelValues[0].Exists() && (force || modelValues[0].Str == fromModel) && modelValues[0].Str != toModel
+	replaceResponseModel := modelValues[1].Exists() && (force || modelValues[1].Str == fromModel) && modelValues[1].Str != toModel
 	if !replaceModel && !replaceResponseModel {
 		return message
 	}

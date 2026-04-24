@@ -66,6 +66,14 @@ const (
 	FieldSupportedModelScopes = "supported_model_scopes"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
 	FieldSortOrder = "sort_order"
+	// FieldDisplayIcon holds the string denoting the display_icon field in the database.
+	FieldDisplayIcon = "display_icon"
+	// FieldDisplayName holds the string denoting the display_name field in the database.
+	FieldDisplayName = "display_name"
+	// FieldDisplayRateMultiplier holds the string denoting the display_rate_multiplier field in the database.
+	FieldDisplayRateMultiplier = "display_rate_multiplier"
+	// FieldClaudeCodePersona holds the string denoting the claude_code_persona field in the database.
+	FieldClaudeCodePersona = "claude_code_persona"
 	// FieldAllowMessagesDispatch holds the string denoting the allow_messages_dispatch field in the database.
 	FieldAllowMessagesDispatch = "allow_messages_dispatch"
 	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
@@ -178,6 +186,10 @@ var Columns = []string{
 	FieldMcpXMLInject,
 	FieldSupportedModelScopes,
 	FieldSortOrder,
+	FieldDisplayIcon,
+	FieldDisplayName,
+	FieldDisplayRateMultiplier,
+	FieldClaudeCodePersona,
 	FieldAllowMessagesDispatch,
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
@@ -249,6 +261,12 @@ var (
 	DefaultSupportedModelScopes []string
 	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
 	DefaultSortOrder int
+	// DisplayIconValidator is a validator for the "display_icon" field. It is called by the builders before save.
+	DisplayIconValidator func(string) error
+	// DisplayNameValidator is a validator for the "display_name" field. It is called by the builders before save.
+	DisplayNameValidator func(string) error
+	// DefaultClaudeCodePersona holds the default value on creation for the "claude_code_persona" field.
+	DefaultClaudeCodePersona bool
 	// DefaultAllowMessagesDispatch holds the default value on creation for the "allow_messages_dispatch" field.
 	DefaultAllowMessagesDispatch bool
 	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
@@ -386,6 +404,26 @@ func ByMcpXMLInject(opts ...sql.OrderTermOption) OrderOption {
 // BySortOrder orders the results by the sort_order field.
 func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSortOrder, opts...).ToFunc()
+}
+
+// ByDisplayIcon orders the results by the display_icon field.
+func ByDisplayIcon(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisplayIcon, opts...).ToFunc()
+}
+
+// ByDisplayName orders the results by the display_name field.
+func ByDisplayName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisplayName, opts...).ToFunc()
+}
+
+// ByDisplayRateMultiplier orders the results by the display_rate_multiplier field.
+func ByDisplayRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisplayRateMultiplier, opts...).ToFunc()
+}
+
+// ByClaudeCodePersona orders the results by the claude_code_persona field.
+func ByClaudeCodePersona(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClaudeCodePersona, opts...).ToFunc()
 }
 
 // ByAllowMessagesDispatch orders the results by the allow_messages_dispatch field.

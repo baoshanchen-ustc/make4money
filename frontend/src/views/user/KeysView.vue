@@ -112,6 +112,8 @@
                   :subscription-type="row.group.subscription_type"
                   :rate-multiplier="row.group.rate_multiplier"
                   :user-rate-multiplier="userGroupRates[row.group.id]"
+                  :display-icon="row.group.display_icon"
+                  :display-name="row.group.display_name"
                 />
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
@@ -422,6 +424,8 @@
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                :display-icon="(option as unknown as GroupOption).displayIcon"
+                :display-name="(option as unknown as GroupOption).displayName"
               />
               <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
             </template>
@@ -433,6 +437,8 @@
                 :rate-multiplier="(option as unknown as GroupOption).rate"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
                 :description="(option as unknown as GroupOption).description"
+                :display-icon="(option as unknown as GroupOption).displayIcon"
+                :display-name="(option as unknown as GroupOption).displayName"
                 :selected="selected"
               />
             </template>
@@ -927,6 +933,7 @@
       :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
+      :display-icon="selectedKey?.group?.display_icon || null"
       @close="closeUseKeyModal"
     />
 
@@ -1028,6 +1035,8 @@
               :rate-multiplier="option.rate"
               :user-rate-multiplier="option.userRate"
               :description="option.description"
+              :display-icon="option.displayIcon"
+              :display-name="option.displayName"
               :selected="
                 selectedKeyForGroup?.group_id === option.value ||
                 (!selectedKeyForGroup?.group_id && option.value === null)
@@ -1089,6 +1098,8 @@ interface GroupOption {
   userRate: number | null
   subscriptionType: SubscriptionType
   platform: GroupPlatform
+  displayIcon?: string
+  displayName?: string
 }
 
 const appStore = useAppStore()
@@ -1246,7 +1257,9 @@ const groupOptions = computed(() =>
     rate: group.rate_multiplier,
     userRate: userGroupRates.value[group.id] ?? null,
     subscriptionType: group.subscription_type,
-    platform: group.platform
+    platform: group.platform,
+    displayIcon: group.display_icon,
+    displayName: group.display_name
   }))
 )
 
@@ -1744,7 +1757,7 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
       };
     }
   })`
-  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  const providerName = (publicSettings.value?.site_name || 'cch').trim() || 'cch'
 
   const params = new URLSearchParams({
     resource: 'provider',

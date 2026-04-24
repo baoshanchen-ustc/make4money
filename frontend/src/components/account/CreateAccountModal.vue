@@ -147,6 +147,21 @@
             <Icon name="cloud" size="sm" />
             Antigravity
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'deepseek'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'deepseek'
+                ? 'bg-white text-cyan-600 shadow-sm dark:bg-dark-600 dark:text-cyan-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-5-5 1.41-1.41L11 14.17l7.59-7.59L20 8l-9 9z"/>
+            </svg>
+            DeepSeek
+          </button>
         </div>
       </div>
 
@@ -3353,6 +3368,11 @@ watch(
       form.type = 'apikey'
       return
     }
+    // DeepSeek 仅支持 API Key 方式
+    if (form.platform === 'deepseek') {
+      form.type = 'apikey'
+      return
+    }
     // Bedrock 类型
     if (form.platform === 'anthropic' && category === 'bedrock') {
       form.type = 'bedrock' as AccountType
@@ -3377,11 +3397,13 @@ watch(
         ? 'https://api.openai.com'
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newPlatform === 'deepseek'
+            ? 'https://api.deepseek.com'
+            : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
-    // Antigravity: 默认使用映射模式并填充默认映射
+    // Antigravity + DeepSeek: 设置默认配置
     if (newPlatform === 'antigravity') {
       antigravityModelRestrictionMode.value = 'mapping'
       fetchAntigravityDefaultMappings().then(mappings => {
@@ -3390,6 +3412,8 @@ watch(
       antigravityWhitelistModels.value = []
       accountCategory.value = 'oauth-based'
       antigravityAccountType.value = 'oauth'
+    } else if (newPlatform === 'deepseek') {
+      accountCategory.value = 'apikey'
     } else {
       allowOverages.value = false
       antigravityWhitelistModels.value = []
@@ -4068,7 +4092,9 @@ const handleSubmit = async () => {
       ? 'https://api.openai.com'
       : form.platform === 'gemini'
         ? 'https://generativelanguage.googleapis.com'
-        : 'https://api.anthropic.com'
+        : form.platform === 'deepseek'
+          ? 'https://api.deepseek.com'
+          : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
