@@ -187,6 +187,9 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 		}
 		input = filterCodexInput(input, needsToolContinuation)
 		reqBody["input"] = input
+		if normalizeCodexOAuthInputRequestBodyMap(reqBody) {
+			result.Modified = true
+		}
 		result.Modified = true
 	} else if inputStr, ok := reqBody["input"].(string); ok {
 		// ChatGPT codex endpoint requires input to be a list, not a string.
@@ -384,6 +387,217 @@ func stringifyCodexContentText(value any) string {
 		}
 		return fmt.Sprint(v)
 	}
+}
+
+func normalizeCodexOAuthInputBody(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 || !bytesContainsJSONField(body, "input") {
+		return body, false, nil
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return body, false, err
+	}
+	if !normalizeCodexOAuthInputRequestBodyMap(reqBody) {
+		return body, false, nil
+	}
+
+	normalized, err := json.Marshal(reqBody)
+	if err != nil {
+		return body, false, err
+	}
+	return normalized, true, nil
+}
+
+func normalizeCodexOAuthInputRequestBodyMap(reqBody map[string]any) bool {
+	if reqBody == nil {
+		return false
+	}
+
+	rawInput, exists := reqBody["input"]
+	if !exists || rawInput == nil {
+		return false
+	}
+
+	switch input := rawInput.(type) {
+	case []any:
+		normalized, changed := normalizeCodexOAuthInputItems(input)
+		if changed {
+			reqBody["input"] = normalized
+		}
+		return changed
+	case map[string]any:
+		normalized, _ := normalizeCodexOAuthInputItems([]any{input})
+		reqBody["input"] = normalized
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeCodexOAuthInputItems(input []any) ([]any, bool) {
+	if len(input) == 0 {
+		return input, false
+	}
+
+	normalized := make([]any, 0, len(input))
+	pendingParts := make([]any, 0, len(input))
+	changed := false
+
+	flushPendingParts := func() {
+		if len(pendingParts) == 0 {
+			return
+		}
+		content := append([]any(nil), pendingParts...)
+		normalized = append(normalized, map[string]any{
+			"type":    "message",
+			"role":    "user",
+			"content": content,
+		})
+		pendingParts = pendingParts[:0]
+	}
+
+	for _, item := range input {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			flushPendingParts()
+			normalized = append(normalized, item)
+			continue
+		}
+
+		if normalizedMessage, messageChanged, isMessage := normalizeCodexOAuthMessageInputItem(itemMap); isMessage {
+			flushPendingParts()
+			normalized = append(normalized, normalizedMessage)
+			if messageChanged {
+				changed = true
+			}
+			continue
+		}
+
+		if normalizedPart, isContentPart := normalizeCodexOAuthTopLevelContentPart(itemMap); isContentPart {
+			pendingParts = append(pendingParts, normalizedPart)
+			changed = true
+			continue
+		}
+
+		flushPendingParts()
+		normalized = append(normalized, itemMap)
+	}
+
+	if len(pendingParts) > 0 {
+		flushPendingParts()
+	}
+
+	return normalized, changed
+}
+
+func normalizeCodexOAuthMessageInputItem(item map[string]any) (map[string]any, bool, bool) {
+	role := strings.TrimSpace(firstNonEmptyString(item["role"]))
+	itemType := strings.TrimSpace(firstNonEmptyString(item["type"]))
+	if role == "" && itemType != "message" {
+		return nil, false, false
+	}
+
+	newItem := item
+	changed := false
+	copied := false
+	ensureCopy := func() {
+		if copied {
+			return
+		}
+		cloned := make(map[string]any, len(item))
+		for key, value := range item {
+			cloned[key] = value
+		}
+		newItem = cloned
+		copied = true
+	}
+
+	if itemType != "message" {
+		ensureCopy()
+		newItem["type"] = "message"
+		changed = true
+	}
+
+	if content, ok := item["content"].([]any); ok {
+		if normalizedContent, contentChanged := normalizeCodexOAuthMessageContentParts(role, content); contentChanged {
+			ensureCopy()
+			newItem["content"] = normalizedContent
+			changed = true
+		}
+	}
+
+	return newItem, changed, true
+}
+
+func normalizeCodexOAuthMessageContentParts(role string, content []any) ([]any, bool) {
+	if len(content) == 0 {
+		return content, false
+	}
+
+	if role == "assistant" {
+		return content, false
+	}
+
+	normalized := make([]any, 0, len(content))
+	changed := false
+	for _, rawPart := range content {
+		partMap, ok := rawPart.(map[string]any)
+		if !ok {
+			normalized = append(normalized, rawPart)
+			continue
+		}
+		partType := strings.TrimSpace(firstNonEmptyString(partMap["type"]))
+		switch partType {
+		case "text", "output_text":
+			cloned := make(map[string]any, len(partMap))
+			for key, value := range partMap {
+				cloned[key] = value
+			}
+			cloned["type"] = "input_text"
+			normalized = append(normalized, cloned)
+			changed = true
+		default:
+			normalized = append(normalized, rawPart)
+		}
+	}
+	if !changed {
+		return content, false
+	}
+	return normalized, true
+}
+
+func normalizeCodexOAuthTopLevelContentPart(item map[string]any) (map[string]any, bool) {
+	itemType := strings.TrimSpace(firstNonEmptyString(item["type"]))
+	switch itemType {
+	case "", "text", "input_text", "output_text", "input_image":
+	default:
+		return nil, false
+	}
+
+	if itemType == "" {
+		if _, hasText := item["text"]; !hasText {
+			if _, hasImageURL := item["image_url"]; !hasImageURL {
+				return nil, false
+			}
+		}
+	}
+
+	cloned := make(map[string]any, len(item))
+	for key, value := range item {
+		cloned[key] = value
+	}
+	if itemType == "" || itemType == "text" || itemType == "output_text" {
+		cloned["type"] = "input_text"
+	}
+	return cloned, true
+}
+
+func bytesContainsJSONField(body []byte, field string) bool {
+	if len(body) == 0 || strings.TrimSpace(field) == "" {
+		return false
+	}
+	return strings.Contains(string(body), `"`+field+`"`)
 }
 
 func normalizeCodexModel(model string) string {

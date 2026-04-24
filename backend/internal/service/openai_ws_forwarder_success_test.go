@@ -456,6 +456,8 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	require.True(t, gjson.Get(requestJSON, "stream").Exists(), "WSv2 payload 应保留 stream 字段")
 	require.True(t, gjson.Get(requestJSON, "stream").Bool(), "OAuth Codex 规范化后应强制 stream=true")
 	require.False(t, gjson.Get(requestJSON, "service_tier").Exists(), "OAuth WSv2 不应向 ChatGPT Codex 上游透传 service_tier")
+	require.Equal(t, "message", gjson.Get(requestJSON, "input.0.type").String(), "OAuth WSv2 应将顶层 input_text 包装为 message")
+	require.Equal(t, "hello", gjson.Get(requestJSON, "input.0.content.0.text").String())
 	require.Equal(t, openAIWSBetaV2Value, captureDialer.lastHeaders.Get("OpenAI-Beta"))
 	// OAuth 账号的 session_id/conversation_id 应被 isolateOpenAISessionID 隔离，
 	// 测试中未设置 api_key 到 context，apiKeyID=0。

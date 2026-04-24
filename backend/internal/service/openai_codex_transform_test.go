@@ -924,6 +924,67 @@ func TestApplyCodexOAuthTransform_StringInputWithToolsField(t *testing.T) {
 	require.Len(t, input, 1)
 }
 
+func TestApplyCodexOAuthTransform_WrapsTopLevelResponsesContentItems(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"input": []any{
+			map[string]any{"type": "input_text", "text": "hello"},
+			map[string]any{"type": "input_image", "image_url": "https://example.com/a.png"},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+	require.True(t, result.Modified)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+
+	msg, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "message", msg["type"])
+	require.Equal(t, "user", msg["role"])
+
+	content, ok := msg["content"].([]any)
+	require.True(t, ok)
+	require.Len(t, content, 2)
+	firstPart, ok := content[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "input_text", firstPart["type"])
+	require.Equal(t, "hello", firstPart["text"])
+	secondPart, ok := content[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "input_image", secondPart["type"])
+	require.Equal(t, "https://example.com/a.png", secondPart["image_url"])
+}
+
+func TestApplyCodexOAuthTransform_AddsMessageTypeForRoleBasedInput(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"input": []any{
+			map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "hello"}}},
+		},
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+	require.True(t, result.Modified)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+	msg, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "message", msg["type"])
+
+	content, ok := msg["content"].([]any)
+	require.True(t, ok)
+	require.Len(t, content, 1)
+	part, ok := content[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "input_text", part["type"])
+	require.Equal(t, "hello", part["text"])
+}
+
 func TestExtractSystemMessagesFromInput(t *testing.T) {
 	t.Run("no system messages", func(t *testing.T) {
 		reqBody := map[string]any{

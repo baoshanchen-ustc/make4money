@@ -2531,6 +2531,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if serviceTierChanged {
 			normalized = next
 		}
+		if account != nil && account.Type == AccountTypeOAuth {
+			next, inputChanged, setErr := normalizeCodexOAuthInputBody(normalized)
+			if setErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
+			}
+			if inputChanged {
+				normalized = next
+			}
+		}
 
 		return openAIWSClientPayload{
 			payloadRaw:         normalized,
