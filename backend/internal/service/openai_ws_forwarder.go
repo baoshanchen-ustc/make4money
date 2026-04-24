@@ -1191,6 +1191,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSCreatePayload(reqBody map[string]any
 	}
 
 	delete(payload, "background")
+	_, _, _ = normalizeOpenAIServiceTierForUpstreamMap(payload, account)
 	if _, exists := payload["stream"]; !exists {
 		payload["stream"] = true
 	}
@@ -2521,6 +2522,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if setErr != nil {
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
 			}
+			normalized = next
+		}
+		next, serviceTierChanged, setErr := normalizeOpenAIServiceTierForUpstreamBody(normalized, account)
+		if setErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
+		}
+		if serviceTierChanged {
 			normalized = next
 		}
 

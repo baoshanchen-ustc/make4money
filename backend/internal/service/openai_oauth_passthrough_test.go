@@ -876,8 +876,8 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamingSetsFirstTokenMs(t *test
 	require.GreaterOrEqual(t, time.Since(start), time.Duration(0))
 	require.NotNil(t, result.FirstTokenMs)
 	require.GreaterOrEqual(t, *result.FirstTokenMs, 0)
-	require.NotNil(t, result.ServiceTier)
-	require.Equal(t, "priority", *result.ServiceTier)
+	require.Nil(t, result.ServiceTier)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
 }
 
 func TestOpenAIGatewayService_OAuthPassthrough_StreamClientDisconnectStillCollectsUsage(t *testing.T) {
