@@ -39,6 +39,7 @@ type GatewayHandler struct {
 	gatewayService            *service.GatewayService
 	geminiCompatService       *service.GeminiMessagesCompatService
 	antigravityGatewayService *service.AntigravityGatewayService
+	openAIMessages            *service.OpenAIGatewayService
 	userService               *service.UserService
 	billingCacheService       *service.BillingCacheService
 	usageService              *service.UsageService
@@ -58,6 +59,7 @@ func NewGatewayHandler(
 	gatewayService *service.GatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
 	antigravityGatewayService *service.AntigravityGatewayService,
+	openAIMessages *service.OpenAIGatewayService,
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
@@ -92,6 +94,7 @@ func NewGatewayHandler(
 		gatewayService:            gatewayService,
 		geminiCompatService:       geminiCompatService,
 		antigravityGatewayService: antigravityGatewayService,
+		openAIMessages:            openAIMessages,
 		userService:               userService,
 		billingCacheService:       billingCacheService,
 		usageService:              usageService,
@@ -104,6 +107,25 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+	}
+}
+
+// convertOpenAIForwardResult converts OpenAIForwardResult to ForwardResult for unified usage recording.
+func convertOpenAIForwardResult(o *service.OpenAIForwardResult) *service.ForwardResult {
+	if o == nil {
+		return nil
+	}
+	return &service.ForwardResult{
+		RequestID:       o.RequestID,
+		Usage:           service.ClaudeUsage{InputTokens: o.Usage.InputTokens, OutputTokens: o.Usage.OutputTokens, CacheCreationInputTokens: o.Usage.CacheCreationInputTokens, CacheReadInputTokens: o.Usage.CacheReadInputTokens, ImageOutputTokens: o.Usage.ImageOutputTokens},
+		Model:           o.Model,
+		UpstreamModel:   o.UpstreamModel,
+		Stream:          o.Stream,
+		Duration:        o.Duration,
+		FirstTokenMs:    o.FirstTokenMs,
+		ReasoningEffort: o.ReasoningEffort,
+		ImageCount:      o.ImageCount,
+		ImageSize:       o.ImageSize,
 	}
 }
 
@@ -686,6 +708,21 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
+			} else if account.Platform == service.PlatformOpenAI {
+				// Universal group may schedule OpenAI accounts; forward via OpenAI chain
+				// (Anthropic→OpenAI conversion)
+				promptCacheKey := sessionKey
+				var mappedModel string
+				if channelMapping.Mapped {
+					mappedModel = channelMapping.MappedModel
+				}
+				openaiResult, openaiErr := h.openAIMessages.ForwardAsAnthropic(requestCtx, c, account, body, promptCacheKey, mappedModel)
+				if openaiErr != nil {
+					err = openaiErr
+					result = nil
+				} else if openaiResult != nil {
+					result = convertOpenAIForwardResult(openaiResult)
+				}
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
 			}

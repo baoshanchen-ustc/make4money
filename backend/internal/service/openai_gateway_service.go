@@ -1780,7 +1780,7 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 402, 403, 429, 529:
+	case 401, 402, 403, 404, 429, 529:
 		return true
 	default:
 		return statusCode >= 500

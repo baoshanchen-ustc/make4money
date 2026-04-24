@@ -230,7 +230,8 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		eventType, ok := parseCCeventLine(line)
+		if !ok {
 			continue
 		}
 
@@ -238,15 +239,16 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 			break
 		}
 		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := parseCCdataLine(dataLine)
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
+		event.Type = eventType
 
 		// message_start carries the initial response structure and cache usage
 		if event.Type == "message_start" && event.Message != nil {
@@ -421,7 +423,8 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		eventType, ok := parseCCeventLine(line)
+		if !ok {
 			continue
 		}
 
@@ -429,15 +432,16 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			break
 		}
 		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := parseCCdataLine(dataLine)
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
 		}
+		event.Type = eventType
 
 		if processAnthropicEvent(&event) {
 			return resultWithUsage(), nil
@@ -482,4 +486,28 @@ func writeGatewayCCError(c *gin.Context, statusCode int, errType, message string
 			"message": message,
 		},
 	})
+}
+
+// parseCCeventLine extracts the event name from an SSE "event:" line.
+// Compatible with both "event: name" (with space) and "event:name" (without space).
+func parseCCeventLine(line string) (string, bool) {
+	if strings.HasPrefix(line, "event: ") {
+		return strings.TrimSpace(line[7:]), true
+	}
+	if strings.HasPrefix(line, "event:") {
+		return strings.TrimSpace(line[6:]), true
+	}
+	return "", false
+}
+
+// parseCCdataLine extracts the data payload from an SSE "data:" line.
+// Compatible with both "data: {...}" (with space) and "data:{...}" (without space).
+func parseCCdataLine(line string) (string, bool) {
+	if strings.HasPrefix(line, "data: ") {
+		return line[6:], true
+	}
+	if strings.HasPrefix(line, "data:") {
+		return line[5:], true
+	}
+	return "", false
 }
