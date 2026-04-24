@@ -620,6 +620,12 @@ func TestEnsureOpenAIResponsesImageGenerationTool_PreservesExistingImageTool(t *
 	require.Equal(t, "webp", tool["output_format"])
 }
 
+func TestShouldAutoInjectOpenAIResponsesImageGenerationTool_SkipsSpark(t *testing.T) {
+	require.False(t, shouldAutoInjectOpenAIResponsesImageGenerationTool("gpt-5.3-codex-spark"))
+	require.False(t, shouldAutoInjectOpenAIResponsesImageGenerationTool("gpt-5.3-codex-spark(xhigh)"))
+	require.True(t, shouldAutoInjectOpenAIResponsesImageGenerationTool("gpt-5.4"))
+}
+
 func TestApplyCodexImageGenerationBridgeInstructions_AppendsBridgeOnce(t *testing.T) {
 	reqBody := map[string]any{
 		"model":        "gpt-5.4",

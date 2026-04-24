@@ -789,6 +789,15 @@ func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
 	return true
 }
 
+func shouldAutoInjectOpenAIResponsesImageGenerationTool(model string) bool {
+	switch normalizeCodexModel(model) {
+	case "gpt-5.3-codex-spark":
+		return false
+	default:
+		return true
+	}
+}
+
 func applyCodexImageGenerationBridgeInstructions(reqBody map[string]any) bool {
 	if len(reqBody) == 0 || !hasOpenAIImageGenerationTool(reqBody) {
 		return false
