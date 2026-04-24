@@ -92,6 +92,56 @@ func TestApplyCodexOAuthTransform_ToolContinuationNormalizesToolReferenceIDsOnly
 	require.Equal(t, "fc1", second["call_id"])
 }
 
+func TestApplyCodexOAuthTransform_ImageGenerationCallPreservesIDWithoutCallID(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.2",
+		"input": []any{
+			map[string]any{"type": "image_generation_call", "id": "ig_123", "result": "aGVsbG8="},
+		},
+		"tool_choice": "auto",
+	}
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+
+	item, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation_call", item["type"])
+	require.Equal(t, "ig_123", item["id"])
+	_, hasCallID := item["call_id"]
+	require.False(t, hasCallID)
+}
+
+func TestApplyCodexOAuthTransform_MixedImageGenerationCallAndFunctionCallOutput(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.2",
+		"input": []any{
+			map[string]any{"type": "image_generation_call", "id": "ig_123", "result": "aGVsbG8="},
+			map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "ok"},
+		},
+		"tool_choice": "auto",
+	}
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 2)
+
+	imageItem, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "ig_123", imageItem["id"])
+	_, hasImageCallID := imageItem["call_id"]
+	require.False(t, hasImageCallID)
+
+	outputItem, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "fc1", outputItem["call_id"])
+}
+
 func TestApplyCodexOAuthTransform_ExplicitStoreFalsePreserved(t *testing.T) {
 	// 续链场景：显式 store=false 不再强制为 true，保持 false。
 
@@ -186,6 +236,22 @@ func TestFilterCodexInput_RemovesItemReferenceWhenNotPreserved(t *testing.T) {
 	require.Equal(t, "text", item["type"])
 	_, hasID := item["id"]
 	require.False(t, hasID)
+}
+
+func TestFilterCodexInput_NonContinuationPreservesImageGenerationCallIDWithoutCallID(t *testing.T) {
+	input := []any{
+		map[string]any{"type": "image_generation_call", "id": "ig_123", "result": "aGVsbG8="},
+	}
+
+	filtered := filterCodexInput(input, false)
+	require.Len(t, filtered, 1)
+
+	item, ok := filtered[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation_call", item["type"])
+	require.Equal(t, "ig_123", item["id"])
+	_, hasCallID := item["call_id"]
+	require.False(t, hasCallID)
 }
 
 func TestApplyCodexOAuthTransform_NormalizeCodexTools_PreservesResponsesFunctionTools(t *testing.T) {

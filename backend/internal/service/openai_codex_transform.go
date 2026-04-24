@@ -503,7 +503,7 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 			copied = true
 		}
 
-		if isCodexToolCallItemType(typ) {
+		if isCodexCallIDItemType(typ) {
 			callID, ok := m["call_id"].(string)
 			if !ok || strings.TrimSpace(callID) == "" {
 				if id, ok := m["id"].(string); ok && strings.TrimSpace(id) != "" {
@@ -524,8 +524,10 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 
 		if !preserveReferences {
 			ensureCopy()
-			delete(newItem, "id")
-			if !isCodexToolCallItemType(typ) {
+			if !shouldPreserveCodexInputItemID(typ) {
+				delete(newItem, "id")
+			}
+			if !isCodexCallIDItemType(typ) {
 				delete(newItem, "call_id")
 			}
 		}
@@ -535,11 +537,22 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 	return filtered
 }
 
-func isCodexToolCallItemType(typ string) bool {
-	if typ == "" {
+func isCodexCallIDItemType(typ string) bool {
+	switch typ {
+	case "function_call", "function_call_output", "tool_call":
+		return true
+	default:
 		return false
 	}
-	return strings.HasSuffix(typ, "_call") || strings.HasSuffix(typ, "_call_output")
+}
+
+func shouldPreserveCodexInputItemID(typ string) bool {
+	switch typ {
+	case "image_generation_call":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeCodexTools(reqBody map[string]any) bool {
