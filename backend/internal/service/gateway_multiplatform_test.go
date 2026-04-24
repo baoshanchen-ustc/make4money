@@ -800,6 +800,51 @@ func TestGatewayService_SelectAccountForModelWithPlatform_RoutedStickySessionHit
 	require.Equal(t, int64(1), acc.ID)
 }
 
+func TestGatewayService_SelectAccountForModelWithPlatform_OpenAIRouting(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13)
+	requestedModel := "gpt-5.3-codex-spark"
+
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{ID: 104, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Priority: 10, Status: StatusActive, Schedulable: true},
+			{ID: 144, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Priority: 1, Status: StatusActive, Schedulable: true},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	groupRepo := &mockGroupRepoForGateway{
+		groups: map[int64]*Group{
+			groupID: {
+				ID:                  groupID,
+				Name:                "openai-route-group",
+				Platform:            PlatformOpenAI,
+				Status:              StatusActive,
+				Hydrated:            true,
+				ModelRoutingEnabled: true,
+				ModelRouting: map[string][]int64{
+					requestedModel: {104},
+				},
+			},
+		},
+	}
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		cache:       &mockGatewayCacheForPlatform{},
+		cfg:         testConfig(),
+		groupRepo:   groupRepo,
+	}
+
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, &groupID, "", requestedModel, nil, PlatformOpenAI)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.Equal(t, int64(104), acc.ID)
+}
+
 func TestGatewayService_SelectAccountForModelWithPlatform_RoutedFallbackToNormal(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(12)

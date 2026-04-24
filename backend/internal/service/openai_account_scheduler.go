@@ -251,6 +251,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	}()
 
 	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
+	routingAccountIDs := s.service.openAIModelRoutingAccountIDs(ctx, req.GroupID, req.RequestedModel)
 	if previousResponseID != "" {
 		selection, err := s.service.SelectAccountByPreviousResponseID(
 			ctx,
@@ -266,6 +267,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
 				selection = nil
 			}
+		}
+		if selection != nil && selection.Account != nil && !openAIAccountIDAllowedByRouting(selection.Account.ID, routingAccountIDs) {
+			selection = nil
 		}
 		if selection != nil && selection.Account != nil {
 			decision.Layer = openAIAccountScheduleLayerPreviousResponse
@@ -324,6 +328,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 	}
 	if accountID <= 0 {
+		return nil, nil
+	}
+	if !openAIAccountIDAllowedByRouting(accountID, s.service.openAIModelRoutingAccountIDs(ctx, req.GroupID, req.RequestedModel)) {
+		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 	if req.ExcludedIDs != nil {
@@ -601,6 +609,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	filtered := make([]*Account, 0, len(accounts))
 	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
+	routingAccountIDs := s.service.openAIModelRoutingAccountIDs(ctx, req.GroupID, req.RequestedModel)
 	for i := range accounts {
 		account := &accounts[i]
 		if req.ExcludedIDs != nil {
@@ -609,6 +618,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			}
 		}
 		if !account.IsSchedulable() || !account.IsOpenAI() {
+			continue
+		}
+		if !openAIAccountIDAllowedByRouting(account.ID, routingAccountIDs) {
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常

@@ -22,6 +22,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -1221,7 +1222,9 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 
 	// 1. 尝试粘性会话命中
 	// Try sticky session hit
-	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, requestedModel, excludedIDs, stickyAccountID); account != nil {
+	routingAccountIDs := s.openAIModelRoutingAccountIDs(ctx, groupID, requestedModel)
+
+	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, requestedModel, excludedIDs, stickyAccountID, routingAccountIDs); account != nil {
 		return account, nil
 	}
 
@@ -1234,7 +1237,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 
 	// 3. 按优先级 + LRU 选择最佳账号
 	// Select by priority + LRU
-	selected := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs)
+	selected := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs, routingAccountIDs)
 
 	if selected == nil {
 		if requestedModel != "" {
@@ -1257,7 +1260,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 //
 // tryStickySessionHit attempts to get account from sticky session.
 // Returns account if hit and usable; clears session and returns nil if account is unavailable.
-func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID *int64, sessionHash, requestedModel string, excludedIDs map[int64]struct{}, stickyAccountID int64) *Account {
+func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID *int64, sessionHash, requestedModel string, excludedIDs map[int64]struct{}, stickyAccountID int64, routingAccountIDs []int64) *Account {
 	if sessionHash == "" {
 		return nil
 	}
@@ -1272,6 +1275,10 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	}
 
 	if _, excluded := excludedIDs[accountID]; excluded {
+		return nil
+	}
+	if !openAIAccountIDAllowedByRouting(accountID, routingAccountIDs) {
+		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
 
@@ -1317,7 +1324,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 //
 // selectBestAccount selects the best account from candidates (priority + LRU).
 // Returns nil if no available account.
-func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}) *Account {
+func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, routingAccountIDs []int64) *Account {
 	var selected *Account
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 
@@ -1327,6 +1334,9 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		// 跳过被排除的账号
 		// Skip excluded accounts
 		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+		}
+		if !openAIAccountIDAllowedByRouting(acc.ID, routingAccountIDs) {
 			continue
 		}
 
@@ -1401,6 +1411,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 
 	cfg := s.schedulingConfig()
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	routingAccountIDs := s.openAIModelRoutingAccountIDs(ctx, groupID, requestedModel)
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil {
@@ -1455,34 +1466,38 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	if sessionHash != "" {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
-			account, err := s.getSchedulableAccount(ctx, accountID)
-			if err == nil {
-				clearSticky := shouldClearStickySession(account, requestedModel)
-				if clearSticky {
-					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-				}
-				if !clearSticky && account.IsSchedulable() && account.IsOpenAI() &&
-					(requestedModel == "" || account.IsModelSupported(requestedModel)) {
-					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
-					if account == nil {
+			if !openAIAccountIDAllowedByRouting(accountID, routingAccountIDs) {
+				_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+			} else {
+				account, err := s.getSchedulableAccount(ctx, accountID)
+				if err == nil {
+					clearSticky := shouldClearStickySession(account, requestedModel)
+					if clearSticky {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else {
-						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
-						if err == nil && result.Acquired {
-							_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
-							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
-						}
+					}
+					if !clearSticky && account.IsSchedulable() && account.IsOpenAI() &&
+						(requestedModel == "" || account.IsModelSupported(requestedModel)) {
+						account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
+						if account == nil {
+							_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+						} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
+							_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+						} else {
+							result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+							if err == nil && result.Acquired {
+								_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
+								return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
+							}
 
-						waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
-						if waitingCount < cfg.StickySessionMaxWaiting {
-							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
-								AccountID:      accountID,
-								MaxConcurrency: account.Concurrency,
-								Timeout:        cfg.StickySessionWaitTimeout,
-								MaxWaiting:     cfg.StickySessionMaxWaiting,
-							})
+							waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
+							if waitingCount < cfg.StickySessionMaxWaiting {
+								return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+									AccountID:      accountID,
+									MaxConcurrency: account.Concurrency,
+									Timeout:        cfg.StickySessionWaitTimeout,
+									MaxWaiting:     cfg.StickySessionMaxWaiting,
+								})
+							}
 						}
 					}
 				}
@@ -1495,6 +1510,9 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	for i := range accounts {
 		acc := &accounts[i]
 		if isExcluded(acc.ID) {
+			continue
+		}
+		if !openAIAccountIDAllowedByRouting(acc.ID, routingAccountIDs) {
 			continue
 		}
 		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
@@ -1619,6 +1637,33 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	return nil, ErrNoAvailableAccounts
+}
+
+func (s *OpenAIGatewayService) openAIModelRoutingAccountIDs(ctx context.Context, groupID *int64, requestedModel string) []int64 {
+	if groupID == nil || requestedModel == "" {
+		return nil
+	}
+	if s != nil && s.schedulerSnapshot != nil {
+		if group, err := s.schedulerSnapshot.GetGroupByID(ctx, *groupID); err == nil && group != nil && group.ID == *groupID {
+			return group.GetRoutingAccountIDs(requestedModel)
+		}
+	}
+	if group, _ := ctx.Value(ctxkey.Group).(*Group); group != nil && group.ID == *groupID {
+		return group.GetRoutingAccountIDs(requestedModel)
+	}
+	return nil
+}
+
+func openAIAccountIDAllowedByRouting(accountID int64, routingAccountIDs []int64) bool {
+	if len(routingAccountIDs) == 0 {
+		return true
+	}
+	for _, allowedID := range routingAccountIDs {
+		if allowedID == accountID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
@@ -5179,7 +5224,16 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 
 	var reqBody map[string]any
 	if err := json.Unmarshal(normalized, &reqBody); err == nil {
-		if normalizeCodexReasoningForUpstream(reqBody) {
+		reasoningChanged := normalizeCodexReasoningForUpstream(reqBody)
+		modelChanged := false
+		if model, ok := reqBody["model"].(string); ok && isCodexSparkModel(model) {
+			upstreamModel := normalizeCodexModel(model)
+			if upstreamModel != "" && upstreamModel != model {
+				reqBody["model"] = upstreamModel
+				modelChanged = true
+			}
+		}
+		if reasoningChanged || modelChanged {
 			next, marshalErr := json.Marshal(reqBody)
 			if marshalErr != nil {
 				return body, false, fmt.Errorf("normalize passthrough body reasoning: %w", marshalErr)

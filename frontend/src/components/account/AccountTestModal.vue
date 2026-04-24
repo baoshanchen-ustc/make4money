@@ -125,10 +125,11 @@
           {{ t('admin.accounts.imagePreview') }}
         </div>
         <div class="flex flex-wrap justify-center gap-3">
-          <div
+          <button
             v-for="(image, index) in generatedImages"
             :key="`${image.url}-${index}`"
-            class="group/img relative cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
+            type="button"
+            class="group/img relative overflow-hidden rounded-xl border border-gray-200 bg-white text-left shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
             @click="previewImageUrl = image.url"
           >
             <img :src="image.url" :alt="`test-image-${index + 1}`" class="max-h-[360px] w-full object-contain" />
@@ -138,7 +139,7 @@
             <div class="border-t border-gray-100 px-3 py-1.5 text-xs text-gray-500 dark:border-dark-500 dark:text-gray-300">
               {{ image.mimeType || 'image/*' }}
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -252,6 +253,8 @@ interface OutputLine {
 interface PreviewImage {
   url: string
   mimeType?: string
+  width?: number
+  height?: number
 }
 
 const props = defineProps<{
@@ -385,6 +388,24 @@ const scrollToBottom = async () => {
   }
 }
 
+const loadImageSize = (url: string) =>
+  new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    image.onerror = () => reject(new Error('Failed to load preview image'))
+    image.src = url
+  })
+
+const shouldHideLowQualityPreview = (width: number, height: number) => {
+  if (!width || !height) return false
+  const ratio = width / height
+
+  // 论坛截图、楼层图、聊天截图通常是异常狭长的成图，不适合保留在生图测试预览里。
+  if (ratio >= 2.2 || ratio <= 0.45) return true
+
+  return false
+}
+
 const startTest = async () => {
   if (!props.account || !selectedModelId.value) return
 
@@ -462,7 +483,7 @@ const startTest = async () => {
   }
 }
 
-const handleEvent = (event: {
+const handleEvent = async (event: {
   type: string
   text?: string
   model?: string
@@ -496,10 +517,24 @@ const handleEvent = (event: {
 
     case 'image':
       if (event.image_url) {
-        generatedImages.value.push({
-          url: event.image_url,
-          mimeType: event.mime_type
-        })
+        try {
+          const { width, height } = await loadImageSize(event.image_url)
+          if (shouldHideLowQualityPreview(width, height)) {
+            addLine('Skipped low-quality preview image', 'text-gray-500')
+            break
+          }
+          generatedImages.value.push({
+            url: event.image_url,
+            mimeType: event.mime_type,
+            width,
+            height
+          })
+        } catch {
+          generatedImages.value.push({
+            url: event.image_url,
+            mimeType: event.mime_type
+          })
+        }
         addLine(t('admin.accounts.imageReceived', { count: generatedImages.value.length }), 'text-purple-300')
       }
       break
