@@ -283,6 +283,10 @@ const providerName = ref('OIDC')
 const adoptionRequired = ref(false)
 const suggestedDisplayName = ref('')
 const suggestedAvatarUrl = ref('')
+
+function getAffiliateCode(): string {
+  return sessionStorage.getItem('affiliate_code')?.trim() || ''
+}
 const adoptDisplayName = ref(true)
 const adoptAvatar = ref(true)
 const needsAdoptionConfirmation = ref(false)
@@ -654,12 +658,14 @@ async function handleSubmitInvitation() {
           await apiClient.post<PendingOidcCompletion>('/auth/oauth/oidc/complete-registration', {
             pending_oauth_token: legacyPendingOAuthToken.value,
             invitation_code: invitationCode.value.trim(),
+            ...(getAffiliateCode() ? { aff_code: getAffiliateCode() } : {}),
             ...serializeAdoptionDecision(currentAdoptionDecision())
           })
         ).data
       : await completeOIDCOAuthRegistration(
           invitationCode.value.trim(),
-          currentAdoptionDecision()
+          currentAdoptionDecision(),
+          ...(getAffiliateCode() ? [getAffiliateCode()] : [])
         )
     await finalizePendingAccountResponse(completion)
   } catch (e: unknown) {
@@ -695,6 +701,7 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
       password: payload.password,
       verify_code: payload.verifyCode || undefined,
       invitation_code: payload.invitationCode || undefined,
+      ...(getAffiliateCode() ? { aff_code: getAffiliateCode() } : {}),
       ...serializeAdoptionDecision(currentAdoptionDecision())
     })
     await finalizePendingAccountResponse(data)

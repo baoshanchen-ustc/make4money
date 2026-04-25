@@ -216,6 +216,86 @@ func newAuthService(repo *userRepoStub, settings map[string]string, emailCache E
 	)
 }
 
+type affiliateRepoStub struct {
+	summaries    map[int64]*AffiliateSummary
+	codeSummary  *AffiliateSummary
+	bindCalls    [][2]int64
+	ensureCalls  []int64
+	getCodeCalls []string
+	accrueCalls  []struct {
+		inviterID     int64
+		inviteeUserID int64
+		amount        float64
+	}
+	accrueErr error
+}
+
+func (s *affiliateRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
+	s.ensureCalls = append(s.ensureCalls, userID)
+	if s.summaries == nil {
+		s.summaries = make(map[int64]*AffiliateSummary)
+	}
+	if summary, ok := s.summaries[userID]; ok {
+		return summary, nil
+	}
+	summary := &AffiliateSummary{UserID: userID, AffCode: "AUTOAFF"}
+	s.summaries[userID] = summary
+	return summary, nil
+}
+
+func (s *affiliateRepoStub) GetAffiliateByCode(_ context.Context, code string) (*AffiliateSummary, error) {
+	s.getCodeCalls = append(s.getCodeCalls, code)
+	if s.codeSummary == nil {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	return s.codeSummary, nil
+}
+
+func (s *affiliateRepoStub) BindInviter(_ context.Context, userID, inviterID int64) (bool, error) {
+	s.bindCalls = append(s.bindCalls, [2]int64{userID, inviterID})
+	return true, nil
+}
+
+func (s *affiliateRepoStub) AccrueQuota(_ context.Context, inviterID, inviteeUserID int64, amount float64) (bool, error) {
+	s.accrueCalls = append(s.accrueCalls, struct {
+		inviterID     int64
+		inviteeUserID int64
+		amount        float64
+	}{inviterID: inviterID, inviteeUserID: inviteeUserID, amount: amount})
+	if s.accrueErr != nil {
+		return false, s.accrueErr
+	}
+	return true, nil
+}
+
+func (s *affiliateRepoStub) TransferQuotaToBalance(context.Context, int64) (float64, float64, error) {
+	panic("unexpected TransferQuotaToBalance call")
+}
+
+func (s *affiliateRepoStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
+	panic("unexpected ListInvitees call")
+}
+
+func (s *affiliateRepoStub) UpdateUserAffCode(context.Context, int64, string) error {
+	panic("unexpected UpdateUserAffCode call")
+}
+
+func (s *affiliateRepoStub) ResetUserAffCode(context.Context, int64) (string, error) {
+	panic("unexpected ResetUserAffCode call")
+}
+
+func (s *affiliateRepoStub) SetUserRebateRate(context.Context, int64, *float64) error {
+	panic("unexpected SetUserRebateRate call")
+}
+
+func (s *affiliateRepoStub) BatchSetUserRebateRate(context.Context, []int64, *float64) error {
+	panic("unexpected BatchSetUserRebateRate call")
+}
+
+func (s *affiliateRepoStub) ListUsersWithCustomSettings(context.Context, AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error) {
+	panic("unexpected ListUsersWithCustomSettings call")
+}
+
 func TestAuthService_Register_Disabled(t *testing.T) {
 	repo := &userRepoStub{}
 	service := newAuthService(repo, map[string]string{
@@ -633,6 +713,26 @@ func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesLinuxDoAuthSourceDefa
 	require.Len(t, assigner.calls, 1)
 	require.Equal(t, int64(22), assigner.calls[0].GroupID)
 	require.Equal(t, 14, assigner.calls[0].ValidityDays)
+}
+
+func TestAuthService_LoginOrRegisterOAuthWithTokenPair_BindsAffiliateCodeOnSignup(t *testing.T) {
+	repo := &userRepoStub{nextID: 62}
+	affiliateRepo := &affiliateRepoStub{
+		codeSummary: &AffiliateSummary{UserID: 41, AffCode: "INVITER42"},
+	}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+		SettingKeyAffiliateEnabled:    "true",
+	}, nil)
+	service.refreshTokenCache = &refreshTokenCacheStub{}
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+
+	tokenPair, user, err := service.LoginOrRegisterOAuthWithTokenPair(context.Background(), "linuxdo-aff@linuxdo-connect.invalid", "linuxdo_aff", "", "INVITER42")
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.Equal(t, int64(62), user.ID)
+	require.Equal(t, [][2]int64{{62, 41}}, affiliateRepo.bindCalls)
 }
 
 func TestAuthService_LoginOrRegisterOAuthWithTokenPair_ExistingUserDoesNotGrantAgain(t *testing.T) {

@@ -6,11 +6,15 @@ import (
 	"context"
 	"errors"
 	"math"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type paymentFulfillmentTestProvider struct {
@@ -331,6 +335,78 @@ func TestIsValidProviderAmount(t *testing.T) {
 	assert.False(t, isValidProviderAmount(-1))
 	assert.False(t, isValidProviderAmount(math.NaN()))
 	assert.False(t, isValidProviderAmount(math.Inf(1)))
+}
+
+func TestApplyAffiliateRebateForOrderAccruesQuotaWithoutAuditUniqueIndex(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	inviter, err := client.User.Create().
+		SetEmail("affiliate-inviter@example.com").
+		SetPasswordHash("hash").
+		SetUsername("affiliate-inviter").
+		Save(ctx)
+	require.NoError(t, err)
+	invitee, err := client.User.Create().
+		SetEmail("affiliate-invitee@example.com").
+		SetPasswordHash("hash").
+		SetUsername("affiliate-invitee").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(invitee.ID).
+		SetUserEmail(invitee.Email).
+		SetUserName(invitee.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("AFFILIATE-REBATE-ORDER").
+		SetOutTradeNo("sub2_affiliate_rebate_order").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("affiliate-rebate-trade").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusRecharging).
+		SetPaidAt(time.Now()).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	inviterID := inviter.ID
+	affiliateRepo := &affiliateRepoStub{
+		summaries: map[int64]*AffiliateSummary{
+			invitee.ID: {UserID: invitee.ID, InviterID: &inviterID},
+			inviter.ID: {UserID: inviter.ID, AffCode: "INVITER"},
+		},
+	}
+	settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:    "true",
+		SettingKeyAffiliateRebateRate: "20",
+	}}, nil)
+
+	svc := &PaymentService{
+		entClient:        client,
+		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil),
+	}
+
+	svc.applyAffiliateRebateForOrder(ctx, order)
+
+	require.Len(t, affiliateRepo.accrueCalls, 1)
+	require.Equal(t, inviter.ID, affiliateRepo.accrueCalls[0].inviterID)
+	require.Equal(t, invitee.ID, affiliateRepo.accrueCalls[0].inviteeUserID)
+	require.InDelta(t, 20.0, affiliateRepo.accrueCalls[0].amount, 1e-9)
+}
+
+func TestAffiliateRebateClaimSQLCastsOrderIDParameterForPostgres(t *testing.T) {
+	src, err := os.ReadFile("payment_fulfillment.go")
+	require.NoError(t, err)
+
+	sql := string(src)
+	require.Contains(t, sql, "SELECT CAST($1 AS TEXT), 'AFFILIATE_REBATE_APPLIED'")
+	require.Contains(t, sql, "WHERE order_id = CAST($1 AS TEXT)")
+	require.False(t, strings.Contains(sql, "WHERE order_id = $1\n"), "Postgres infers conflicting parameter types without an explicit text cast")
 }
 
 func TestValidateProviderNotificationMetadataRejectsAlipaySnapshotMismatch(t *testing.T) {

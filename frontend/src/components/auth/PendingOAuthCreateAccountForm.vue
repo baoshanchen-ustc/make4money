@@ -99,6 +99,7 @@ export type PendingOAuthCreateAccountPayload = {
   password: string
   verifyCode: string
   invitationCode?: string
+  affiliateCode?: string
 }
 
 const props = defineProps<{

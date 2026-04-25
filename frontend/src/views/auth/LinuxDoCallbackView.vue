@@ -288,6 +288,10 @@ const canReturnToCreateAccount = ref(false)
 const bindSuccessMessage = t('profile.authBindings.bindSuccess')
 const needsTotpChallenge = ref(false)
 const totpTempToken = ref('')
+
+function getAffiliateCode(): string {
+  return sessionStorage.getItem('affiliate_code')?.trim() || ''
+}
 const totpCode = ref('')
 const totpError = ref('')
 const totpUserEmailMasked = ref('')
@@ -632,12 +636,14 @@ async function handleSubmitInvitation() {
           await apiClient.post<LinuxDoPendingActionResponse>('/auth/oauth/linuxdo/complete-registration', {
             pending_oauth_token: legacyPendingOAuthToken.value,
             invitation_code: invitationCode.value.trim(),
+            ...(getAffiliateCode() ? { aff_code: getAffiliateCode() } : {}),
             ...serializeAdoptionDecision(currentAdoptionDecision())
           })
         ).data
       : await completeLinuxDoOAuthRegistration(
           invitationCode.value.trim(),
-          currentAdoptionDecision()
+          currentAdoptionDecision(),
+          ...(getAffiliateCode() ? [getAffiliateCode()] : [])
         )
     await finalizePendingAccountResponse(completion)
   } catch (e: unknown) {
@@ -673,6 +679,7 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
       password: payload.password,
       verify_code: payload.verifyCode || undefined,
       invitation_code: payload.invitationCode || undefined,
+      ...(getAffiliateCode() ? { aff_code: getAffiliateCode() } : {}),
       ...serializeAdoptionDecision(currentAdoptionDecision())
     })
     await finalizePendingAccountResponse(data)

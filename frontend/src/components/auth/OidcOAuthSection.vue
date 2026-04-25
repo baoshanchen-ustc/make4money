@@ -44,6 +44,10 @@ const normalizedProviderName = computed(() => {
 const providerInitial = computed(() => normalizedProviderName.value.charAt(0).toUpperCase() || 'O')
 
 function startLogin(): void {
+  const affCode = ((route.query.aff as string) || (route.query.aff_code as string) || '').trim()
+  if (affCode) {
+    sessionStorage.setItem('affiliate_code', affCode)
+  }
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')

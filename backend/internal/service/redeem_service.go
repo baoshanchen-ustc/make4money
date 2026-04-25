@@ -80,6 +80,7 @@ type RedeemService struct {
 	billingCacheService  *BillingCacheService
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	affiliateService     *AffiliateService
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -91,6 +92,7 @@ func NewRedeemService(
 	billingCacheService *BillingCacheService,
 	entClient *dbent.Client,
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	affiliateService *AffiliateService,
 ) *RedeemService {
 	return &RedeemService{
 		redeemRepo:           redeemRepo,
@@ -100,6 +102,7 @@ func NewRedeemService(
 		billingCacheService:  billingCacheService,
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
+		affiliateService:     affiliateService,
 	}
 }
 
@@ -255,6 +258,17 @@ func (s *RedeemService) releaseRedeemLock(ctx context.Context, code string) {
 
 // Redeem 使用兑换码
 func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
+	return s.redeem(ctx, userID, code, false)
+}
+
+// RedeemRecharge redeems a balance code that represents a completed recharge.
+// It is intentionally separate from Redeem: ordinary user-entered redeem codes
+// must not trigger invite rebates.
+func (s *RedeemService) RedeemRecharge(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
+	return s.redeem(ctx, userID, code, true)
+}
+
+func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, applyRechargeRebate bool) (*RedeemCode, error) {
 	// 检查限流
 	if err := s.checkRedeemRateLimit(ctx, userID); err != nil {
 		return nil, err
@@ -322,6 +336,11 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		}
 		if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
+		}
+		if applyRechargeRebate && amount > 0 && s.affiliateService != nil {
+			if _, err := s.affiliateService.AccrueInviteRebate(txCtx, userID, amount); err != nil {
+				return nil, fmt.Errorf("accrue affiliate rebate: %w", err)
+			}
 		}
 
 	case RedeemTypeConcurrency:

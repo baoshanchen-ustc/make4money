@@ -185,7 +185,7 @@ func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
 			return nil, createErr
 		}
 
-		redeemed, redeemErr := h.redeemService.Redeem(ctx, req.UserID, req.Code)
+		redeemed, redeemErr := h.redeemService.RedeemRecharge(ctx, req.UserID, req.Code)
 		if redeemErr != nil {
 			return nil, redeemErr
 		}
@@ -200,7 +200,7 @@ func (h *RedeemHandler) resolveCreateAndRedeemExisting(ctx context.Context, exis
 
 	// If previous run created the code but crashed before redeem, redeem it now.
 	if existing.CanUse() {
-		redeemed, err := h.redeemService.Redeem(ctx, userID, existing.Code)
+		redeemed, err := h.redeemService.RedeemRecharge(ctx, userID, existing.Code)
 		if err == nil {
 			return gin.H{"redeem_code": dto.RedeemCodeFromServiceAdmin(redeemed)}, nil
 		}
