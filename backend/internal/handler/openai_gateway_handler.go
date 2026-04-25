@@ -433,7 +433,8 @@ func isOpenAIRemoteCompactPath(c *gin.Context) bool {
 		return false
 	}
 	normalizedPath := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
-	return strings.HasSuffix(normalizedPath, "/responses/compact")
+	return strings.HasSuffix(normalizedPath, "/responses/compact") ||
+		strings.Contains(normalizedPath, "/responses/compact/")
 }
 
 func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, startedAt time.Time) {

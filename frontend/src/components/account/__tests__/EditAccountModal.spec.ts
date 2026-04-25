@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
+import type { PropType } from 'vue'
 import { mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
@@ -86,7 +87,7 @@ const SelectStub = defineComponent({
   name: 'SelectStub',
   props: {
     modelValue: {
-      type: [String, Number, Boolean, null],
+      type: [String, Number, Boolean] as PropType<string | number | boolean | null>,
       default: ''
     },
     options: {
