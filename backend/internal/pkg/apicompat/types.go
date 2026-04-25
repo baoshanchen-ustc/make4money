@@ -190,6 +190,10 @@ type ResponsesInputItem struct {
 
 	// type=function_call_output
 	Output string `json:"output,omitempty"`
+
+	// type=reasoning
+	Summary          []ResponsesSummary `json:"summary,omitempty"`
+	EncryptedContent string             `json:"encrypted_content,omitempty"`
 }
 
 // ResponsesContentPart is a typed content part in a Responses message.

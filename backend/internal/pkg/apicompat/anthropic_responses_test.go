@@ -111,7 +111,7 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	assert.Equal(t, "Sunny, 72°F", items[3].Output)
 }
 
-func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
+func TestAnthropicToResponses_ThinkingPreservedAsReasoning(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
 		MaxTokens: 1024,
@@ -127,15 +127,27 @@ func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	// user + assistant(text only, thinking ignored) + user = 3
-	require.Len(t, items, 3)
-	assert.Equal(t, "assistant", items[1].Role)
-	// Assistant content should only have text, not thinking.
+	// user + reasoning + assistant + user = 4
+	require.Len(t, items, 4)
+
+	assert.Equal(t, "user", items[0].Role)
+
+	// Reasoning item must come before its owning assistant message so that
+	// downstream converters (e.g. DeepSeek thinking mode) can attach it as
+	// reasoning_content on that turn.
+	assert.Equal(t, "reasoning", items[1].Type)
+	require.Len(t, items[1].Summary, 1)
+	assert.Equal(t, "summary_text", items[1].Summary[0].Type)
+	assert.Equal(t, "deep thought", items[1].Summary[0].Text)
+
+	assert.Equal(t, "assistant", items[2].Role)
 	var parts []ResponsesContentPart
-	require.NoError(t, json.Unmarshal(items[1].Content, &parts))
+	require.NoError(t, json.Unmarshal(items[2].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Equal(t, "Hi!", parts[0].Text)
+
+	assert.Equal(t, "user", items[3].Role)
 }
 
 func TestAnthropicToResponses_MaxTokensFloor(t *testing.T) {

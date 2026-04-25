@@ -230,9 +230,13 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 }
 
 // anthropicAssistantToResponses handles an Anthropic assistant message.
-// Text content → assistant message with output_text parts.
-// tool_use blocks → function_call items.
-// thinking blocks → ignored (OpenAI doesn't accept them as input).
+// thinking blocks  → reasoning item (must precede the message so providers
+//
+//	like DeepSeek can echo it back as reasoning_content on
+//	the same assistant turn).
+//
+// Text content     → assistant message with output_text parts.
+// tool_use blocks  → function_call items.
 func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, error) {
 	// Try plain string.
 	var s string
@@ -251,6 +255,24 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 	}
 
 	var items []ResponsesInputItem
+
+	// thinking blocks → reasoning input item (placed first so downstream
+	// converters can attach it to this turn's assistant message).
+	// Emit a reasoning item whenever a thinking block exists, even when its
+	// text is empty — DeepSeek thinking-mode upstreams reject the request
+	// when the previous turn lacks reasoning_content, regardless of content
+	// length. A single-space placeholder satisfies the "must be passed back"
+	// check without polluting visible output.
+	if hasAnthropicThinkingBlock(blocks) {
+		text := extractAnthropicThinkingFromBlocks(blocks)
+		if text == "" {
+			text = " "
+		}
+		items = append(items, ResponsesInputItem{
+			Type:    "reasoning",
+			Summary: []ResponsesSummary{{Type: "summary_text", Text: text}},
+		})
+	}
 
 	// Text content → assistant message with output_text content parts.
 	text := extractAnthropicTextFromBlocks(blocks)
@@ -376,6 +398,32 @@ func extractAnthropicTextFromBlocks(blocks []AnthropicContentBlock) string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// extractAnthropicThinkingFromBlocks joins all thinking blocks. Used to
+// reconstruct reasoning_content for upstream providers (e.g. DeepSeek thinking
+// mode) which require the previous turn's reasoning to be echoed back.
+func extractAnthropicThinkingFromBlocks(blocks []AnthropicContentBlock) string {
+	var parts []string
+	for _, b := range blocks {
+		if b.Type == "thinking" && b.Thinking != "" {
+			parts = append(parts, b.Thinking)
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// hasAnthropicThinkingBlock reports whether any thinking block exists,
+// regardless of whether its text is populated. Empty thinking blocks still
+// need to be acknowledged downstream — e.g. when echoing back to a thinking-
+// mode upstream that validates the *presence* of prior reasoning.
+func hasAnthropicThinkingBlock(blocks []AnthropicContentBlock) bool {
+	for _, b := range blocks {
+		if b.Type == "thinking" {
+			return true
+		}
+	}
+	return false
 }
 
 // mapAnthropicEffortToResponses converts Anthropic reasoning effort levels to
