@@ -77,7 +77,7 @@
     </div>
 
     <!-- Quick Actions -->
-    <div class="mb-4 flex flex-wrap gap-2">
+    <div v-if="!isFixedModelListPlatform" class="mb-4 flex flex-wrap gap-2">
       <button
         type="button"
         @click="fillRelated"
@@ -94,8 +94,8 @@
       </button>
     </div>
 
-    <!-- Custom Model Input -->
-    <div class="mb-3">
+    <!-- Custom Model Input (hidden for fixed model list platforms) -->
+    <div v-if="!isFixedModelListPlatform" class="mb-3">
       <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.customModelName') }}</label>
       <div class="flex gap-2">
         <input
@@ -177,6 +177,11 @@ const availableOptions = computed(() => {
   return allModels.filter(model => allowedModels.has(model.value))
 })
 
+// Platforms with a fixed, closed model list — no custom model input allowed
+const isFixedModelListPlatform = computed(() =>
+  normalizedPlatforms.value.some(p => p === 'bigmodel' || p === 'minimax' || p === 'kimi')
+)
+
 const filteredModels = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   if (!query) return availableOptions.value
@@ -205,6 +210,8 @@ const toggleModel = (model: string) => {
 const addCustom = () => {
   const model = customModel.value.trim()
   if (!model) return
+  // Block custom models on fixed-list platforms
+  if (isFixedModelListPlatform.value) return
   if (props.modelValue.includes(model)) {
     appStore.showInfo(t('admin.accounts.modelExists'))
     return

@@ -166,9 +166,7 @@ const doubaoModels = [
 
 // MiniMax
 const minimaxModels = [
-  'abab6.5-chat', 'abab6.5s-chat', 'abab6.5s-chat-pro',
-  'abab6-chat',
-  'abab5.5-chat', 'abab5.5s-chat'
+  'MiniMax-M2.7'
 ]
 
 // 百度 文心
@@ -201,6 +199,16 @@ const perplexityModels = [
   'llama-3-sonar-small-32k-chat', 'llama-3-sonar-large-32k-chat'
 ]
 
+// 智谱 BigModel (Anthropic-compatible)
+const bigmodelModels = [
+  'GLM-5', 'GLM-5.1', 'GLM-4.7'
+]
+
+// Kimi (Anthropic-compatible)
+const kimiModels = [
+  'kimi-for-coding'
+]
+
 // 所有模型（去重）
 const allModelsList: string[] = [
   ...openaiModels,
@@ -217,6 +225,8 @@ const allModelsList: string[] = [
   ...moonshotModels,
   ...doubaoModels,
   ...minimaxModels,
+  ...bigmodelModels,
+  ...kimiModels,
   ...baiduModels,
   ...sparkModels,
   ...hunyuanModels,
@@ -365,6 +375,8 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'moonshot': return moonshotModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
+    case 'bigmodel': return bigmodelModels
+    case 'kimi': return kimiModels
     case 'baidu': return baiduModels
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels
@@ -373,12 +385,32 @@ export function getModelsByPlatform(platform: string): string[] {
   }
 }
 
+// BigModel (智谱) 预设映射
+const bigmodelPresetMappings = [
+  { label: 'GLM-5', from: 'GLM-5', to: 'GLM-5', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'GLM-5.1', from: 'GLM-5.1', to: 'GLM-5.1', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
+  { label: 'GLM-4.7', from: 'GLM-4.7', to: 'GLM-4.7', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+]
+
+// MiniMax 预设映射
+const minimaxPresetMappings = [
+  { label: 'MiniMax-M2.7', from: 'MiniMax-M2.7', to: 'MiniMax-M2.7', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+]
+
+// Kimi 预设映射
+const kimiPresetMappings = [
+  { label: 'kimi-for-coding', from: 'kimi-for-coding', to: 'kimi-for-coding', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+]
+
 // 按平台获取预设映射
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
+  if (platform === 'bigmodel') return bigmodelPresetMappings
+  if (platform === 'minimax') return minimaxPresetMappings
+  if (platform === 'kimi') return kimiPresetMappings
   return anthropicPresetMappings
 }
 

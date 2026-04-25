@@ -31,6 +31,7 @@
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
+            v-if="!isFixedBaseUrlPlatform"
             v-model="editBaseUrl"
             type="text"
             class="input"
@@ -44,7 +45,15 @@
                     : 'https://api.anthropic.com'
             "
           />
-          <p class="input-hint">{{ baseUrlHint }}</p>
+          <input
+            v-else
+            :value="fixedBaseUrl"
+            type="text"
+            class="input bg-gray-50 dark:bg-dark-700"
+            readonly
+            disabled
+          />
+          <p class="input-hint">{{ isFixedBaseUrlPlatform ? t('admin.accounts.fixedBaseUrlHint') : baseUrlHint }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
@@ -1902,6 +1911,20 @@ const baseUrlHint = computed(() => {
   return t('admin.accounts.baseUrlHint')
 })
 
+// Fixed base URL platforms (bigmodel/minimax/kimi)
+const isFixedBaseUrlPlatform = computed(() => {
+  const p = props.account?.platform
+  return p === 'bigmodel' || p === 'minimax' || p === 'kimi'
+})
+
+const fixedBaseUrl = computed(() => {
+  const p = props.account?.platform
+  if (p === 'bigmodel') return 'https://open.bigmodel.cn/api/anthropic'
+  if (p === 'minimax') return 'https://api.minimaxi.com/anthropic'
+  if (p === 'kimi') return 'https://api.kimi.com/coding/'
+  return ''
+})
+
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
@@ -2085,6 +2108,9 @@ const tempUnschedPresets = computed(() => [
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (props.account?.platform === 'bigmodel') return 'https://open.bigmodel.cn/api/anthropic'
+  if (props.account?.platform === 'minimax') return 'https://api.minimaxi.com/anthropic'
+  if (props.account?.platform === 'kimi') return 'https://api.kimi.com/coding/'
   return 'https://api.anthropic.com'
 })
 
@@ -2288,7 +2314,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newAccount.platform === 'bigmodel'
+            ? 'https://open.bigmodel.cn/api/anthropic'
+            : newAccount.platform === 'minimax'
+              ? 'https://api.minimaxi.com/anthropic'
+              : newAccount.platform === 'kimi'
+                ? 'https://api.kimi.com/coding/'
+                : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
@@ -2386,7 +2418,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newAccount.platform === 'bigmodel'
+            ? 'https://open.bigmodel.cn/api/anthropic'
+            : newAccount.platform === 'minimax'
+              ? 'https://api.minimaxi.com/anthropic'
+              : newAccount.platform === 'kimi'
+                ? 'https://api.kimi.com/coding/'
+                : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI OAuth accounts
@@ -2879,7 +2917,8 @@ const handleSubmit = async () => {
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
-      const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
+      // For fixed base_url platforms, always use the fixed URL
+      const newBaseUrl = isFixedBaseUrlPlatform.value ? fixedBaseUrl.value : (editBaseUrl.value.trim() || defaultBaseUrl.value)
       const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 
       // Always update credentials for apikey type to handle model mapping changes
