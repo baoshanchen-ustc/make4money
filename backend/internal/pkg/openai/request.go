@@ -27,9 +27,15 @@ var CodexOfficialClientUserAgentPrefixes = []string{
 // 说明：OpenAI 官方 Codex 客户端并不只使用固定的 codex_app 标识。
 // 例如 codex_cli_rs、codex_vscode、codex_chatgpt_desktop、codex_atlas、codex_exec、codex_sdk_ts 等。
 var CodexOfficialClientOriginatorPrefixes = []string{
-	"codex_",
-	"codex-",
-	"codex ",
+	"codex_cli_rs",
+	"codex_vscode",
+	"codex-tui",
+	"codex_app",
+	"codex_chatgpt_desktop",
+	"codex_atlas",
+	"codex_exec",
+	"codex_sdk_ts",
+	"codex desktop",
 }
 
 // IsCodexCLIRequest checks if the User-Agent indicates a Codex CLI request
@@ -57,7 +63,7 @@ func IsCodexOfficialClientOriginator(originator string) bool {
 	if v == "" {
 		return false
 	}
-	return matchCodexClientHeaderPrefixes(v, CodexOfficialClientOriginatorPrefixes)
+	return matchCodexClientOriginatorPrefixes(v, CodexOfficialClientOriginatorPrefixes)
 }
 
 // IsCodexOfficialClientByHeaders checks whether the request headers indicate an
@@ -76,25 +82,41 @@ func ExtractCodexClientVersion(userAgent string) string {
 	}
 
 	lowerUA := strings.ToLower(ua)
-	start := strings.Index(lowerUA, "codex")
-	if start < 0 {
-		return ""
+	searchFrom := 0
+	for searchFrom < len(lowerUA) {
+		offset := strings.Index(lowerUA[searchFrom:], "codex")
+		if offset < 0 {
+			return ""
+		}
+
+		start := searchFrom + offset
+		searchFrom = start + len("codex")
+		if start > 0 && isASCIIAlphaNumeric(lowerUA[start-1]) {
+			continue
+		}
+
+		candidateLower := lowerUA[start:]
+		if !hasOfficialCodexUserAgentPrefix(candidateLower) {
+			continue
+		}
+
+		candidate := ua[start:]
+		slash := strings.Index(candidate, "/")
+		if slash < 0 || slash+1 >= len(candidate) {
+			continue
+		}
+
+		version := trimCodexClientVersionToken(candidate[slash+1:])
+		if version == "" {
+			continue
+		}
+		if version[0] < '0' || version[0] > '9' {
+			continue
+		}
+		return version
 	}
 
-	candidate := ua[start:]
-	slash := strings.Index(candidate, "/")
-	if slash < 0 || slash+1 >= len(candidate) {
-		return ""
-	}
-
-	version := trimCodexClientVersionToken(candidate[slash+1:])
-	if version == "" {
-		return ""
-	}
-	if version[0] < '0' || version[0] > '9' {
-		return ""
-	}
-	return version
+	return ""
 }
 
 func normalizeCodexClientHeader(value string) string {
@@ -113,6 +135,66 @@ func matchCodexClientHeaderPrefixes(value string, prefixes []string) bool {
 		}
 	}
 	return false
+}
+
+func matchCodexClientOriginatorPrefixes(value string, prefixes []string) bool {
+	if matchCodexClientTokenPrefixes(value, prefixes) {
+		return true
+	}
+
+	for _, token := range splitCodexClientCompositeHeader(value) {
+		if matchCodexClientTokenPrefixes(token, prefixes) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchCodexClientTokenPrefixes(value string, prefixes []string) bool {
+	normalizedValue := normalizeCodexClientHeader(value)
+	if normalizedValue == "" {
+		return false
+	}
+	for _, prefix := range prefixes {
+		normalizedPrefix := normalizeCodexClientHeader(prefix)
+		if normalizedPrefix == "" {
+			continue
+		}
+		if strings.HasPrefix(normalizedValue, normalizedPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func splitCodexClientCompositeHeader(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		switch r {
+		case ',', ';', '|':
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+func hasOfficialCodexUserAgentPrefix(value string) bool {
+	for _, prefix := range CodexOfficialClientUserAgentPrefixes {
+		normalizedPrefix := normalizeCodexClientHeader(prefix)
+		if normalizedPrefix == "" {
+			continue
+		}
+		if strings.HasPrefix(value, normalizedPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isASCIIAlphaNumeric(b byte) bool {
+	return (b >= '0' && b <= '9') ||
+		(b >= 'a' && b <= 'z') ||
+		(b >= 'A' && b <= 'Z')
 }
 
 func trimCodexClientVersionToken(value string) string {

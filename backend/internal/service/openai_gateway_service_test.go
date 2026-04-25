@@ -1678,14 +1678,56 @@ func TestOpenAIBuildUpstreamRequestCompactPreservesOfficialClientHeaders(t *test
 		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
 	}
 
-	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
-	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5.5"}`), "token", false, "", isCodexCLI)
+	isCodexOfficialClient := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5.5"}`), "token", false, "", isCodexOfficialClient)
 	require.NoError(t, err)
 	require.Equal(t, "codex-tui/0.125.0", req.Header.Get("User-Agent"))
 	require.Equal(t, "0.125.0", req.Header.Get("Version"))
 	require.Equal(t, "codex-tui", req.Header.Get("Originator"))
 	require.Equal(t, "install-123", req.Header.Get("X-Codex-Installation-Id"))
 	require.Equal(t, "window-456", req.Header.Get("X-Codex-Window-Id"))
+}
+
+func TestOpenAIBuildUpstreamRequestCompactIgnoresNonOfficialClientVersion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5.5"}`)))
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	c.Request.Header.Set("Version", "9.9.9")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5.5"}`), "token", false, "", false)
+	require.NoError(t, err)
+	require.Equal(t, codexCompactUserAgent, req.Header.Get("User-Agent"))
+	require.Equal(t, codexCompactVersion, req.Header.Get("Version"))
+}
+
+func TestOpenAIBuildUpstreamRequestCompactForceCodexCLIPreservesLegacyHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5.5"}`)))
+	c.Request.Header.Set("User-Agent", "codex-tui/0.125.0")
+	c.Request.Header.Set("Version", "0.125.0")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Gateway: config.GatewayConfig{ForceCodexCLI: true},
+	}}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5.5"}`), "token", false, "", true)
+	require.NoError(t, err)
+	require.Equal(t, codexCLIUserAgent, req.Header.Get("User-Agent"))
+	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
 }
 
 func TestOpenAIBuildUpstreamRequestPreservesCompactPathForAPIKeyBaseURL(t *testing.T) {
@@ -1742,8 +1784,8 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 				Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
 			}
 
-			isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
-			req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", isCodexCLI)
+			isCodexOfficialClient := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+			req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", isCodexOfficialClient)
 			require.NoError(t, err)
 			require.Equal(t, tt.wantOriginator, req.Header.Get("originator"))
 		})

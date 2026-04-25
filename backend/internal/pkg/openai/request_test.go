@@ -74,6 +74,8 @@ func TestIsCodexOfficialClientOriginator(t *testing.T) {
 		{name: "codex_sdk_ts", originator: "codex_sdk_ts", want: true},
 		{name: "Codex 前缀", originator: "Codex Desktop", want: true},
 		{name: "空白包裹", originator: "  codex_vscode  ", want: true},
+		{name: "复合 originator token", originator: "foo, codex_vscode", want: true},
+		{name: "恶意包含 codex-tui", originator: "client-codex-tui", want: false},
 		{name: "非 codex", originator: "my_client", want: false},
 		{name: "空字符串", originator: "", want: false},
 	}
@@ -97,6 +99,7 @@ func TestExtractCodexClientVersion(t *testing.T) {
 		{name: "codex tui", ua: "codex-tui/0.125.0", want: "0.125.0"},
 		{name: "desktop ua", ua: "Codex Desktop/1.2.3", want: "1.2.3"},
 		{name: "复合 ua", ua: "Mozilla/5.0 codex_cli_rs/0.98.0", want: "0.98.0"},
+		{name: "跳过非官方 codex 子串", ua: "notcodex/9.9 codex-tui/0.125.0", want: "0.125.0"},
 		{name: "带后缀", ua: "codex-tui/0.125.0-beta.1 (linux; x86_64)", want: "0.125.0-beta.1"},
 		{name: "非 codex", ua: "curl/8.0.1", want: ""},
 		{name: "缺少版本", ua: "codex-tui/", want: ""},

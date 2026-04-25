@@ -1223,11 +1223,16 @@ func resolveOpenAICompactUpstreamUserAgent(clientUserAgent, currentUserAgent str
 }
 
 func resolveOpenAICompactUpstreamVersion(clientVersion, clientUserAgent, currentUserAgent string) string {
-	if version := strings.TrimSpace(clientVersion); version != "" {
+	clientUserAgent = strings.TrimSpace(clientUserAgent)
+	currentUserAgent = strings.TrimSpace(currentUserAgent)
+
+	if version := strings.TrimSpace(clientVersion); version != "" &&
+		openai.IsCodexOfficialClientRequest(clientUserAgent) &&
+		!isLegacyCodexFallbackUserAgent(clientUserAgent) {
 		return version
 	}
 
-	for _, userAgent := range []string{strings.TrimSpace(clientUserAgent), strings.TrimSpace(currentUserAgent)} {
+	for _, userAgent := range []string{clientUserAgent, currentUserAgent} {
 		if userAgent == "" || isLegacyCodexFallbackUserAgent(userAgent) || !openai.IsCodexOfficialClientRequest(userAgent) {
 			continue
 		}
@@ -1237,6 +1242,17 @@ func resolveOpenAICompactUpstreamVersion(clientVersion, clientUserAgent, current
 	}
 
 	return codexCompactVersion
+}
+
+func applyOpenAIForcedCodexCLIHeaders(req *http.Request, compact bool) {
+	if req == nil {
+		return
+	}
+
+	req.Header.Set("user-agent", codexCLIUserAgent)
+	if compact {
+		req.Header.Set("version", codexCLIVersion)
+	}
 }
 
 func applyOpenAICompactClientHeaders(req *http.Request, clientUserAgent, clientVersion string) {
@@ -2725,8 +2741,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	upstreamModel := ""
-	if isOpenAIResponsesCompactPath(c) {
+	if isCompactRequest {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, reqModel)
 		if compactMappedModel != "" && compactMappedModel != reqModel {
 			nextBody, setErr := sjson.SetBytes(body, "model", compactMappedModel)
@@ -2739,6 +2756,12 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	if account != nil && account.Type == AccountTypeOAuth {
+		if isCompactRequest && c != nil {
+			if promptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); promptCacheKey != "" {
+				c.Set(openAICompactSessionSeedKey, promptCacheKey)
+			}
+		}
+
 		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
 			rejectMsg := "OpenAI codex passthrough requires a non-empty instructions field"
 			setOpsUpstreamError(c, http.StatusForbidden, rejectMsg, "")
@@ -2762,7 +2785,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			return nil, fmt.Errorf("openai passthrough rejected before upstream: %s", rejectReason)
 		}
 
-		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, isOpenAIResponsesCompactPath(c))
+		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, isCompactRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -2959,6 +2982,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 	clientUserAgent := ""
 	clientVersion := ""
+	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	if c != nil && c.Request != nil {
 		clientUserAgent = c.Request.Header.Get("user-agent")
 		clientVersion = c.Request.Header.Get("version")
@@ -2995,7 +3019,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		// 先保存客户端原始值，再做 compact 补充，避免后续统一隔离时读到已处理的值。
 		clientSessionID := strings.TrimSpace(req.Header.Get("session_id"))
 		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
-		if isOpenAIResponsesCompactPath(c) {
+		if isCompactRequest {
 			req.Header.Set("accept", "application/json")
 			if clientSessionID == "" {
 				clientSessionID = resolveOpenAICompactSessionID(c)
@@ -3029,13 +3053,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if customUA != "" {
 		req.Header.Set("user-agent", customUA)
 	}
-	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		req.Header.Set("user-agent", codexCLIUserAgent)
+	forceCodexCLI := s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI
+	if forceCodexCLI {
+		applyOpenAIForcedCodexCLIHeaders(req, isCompactRequest)
 	}
 	// OAuth 安全透传：非 compact 保持旧 Codex CLI 兼容兜底；compact 则保留/补齐新版官方客户端头。
 	if account.Type == AccountTypeOAuth {
-		if isOpenAIResponsesCompactPath(c) {
-			applyOpenAICompactClientHeaders(req, clientUserAgent, clientVersion)
+		if isCompactRequest {
+			if !forceCodexCLI {
+				applyOpenAICompactClientHeaders(req, clientUserAgent, clientVersion)
+			}
 		} else if !openai.IsCodexOfficialClientRequest(req.Header.Get("user-agent")) {
 			req.Header.Set("user-agent", codexCLIUserAgent)
 		}
@@ -3494,6 +3521,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 
 	clientUserAgent := ""
 	clientVersion := ""
+	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	if c != nil && c.Request != nil {
 		clientUserAgent = c.Request.Header.Get("user-agent")
 		clientVersion = c.Request.Header.Get("version")
@@ -3530,7 +3558,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Set("OpenAI-Beta", "responses=experimental")
 		req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 		apiKeyID := getAPIKeyIDFromContext(c)
-		if isOpenAIResponsesCompactPath(c) {
+		if isCompactRequest {
 			req.Header.Set("accept", "application/json")
 			compactSession := resolveOpenAICompactSessionID(c)
 			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, compactSession))
@@ -3552,10 +3580,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 
 	// 若开启 ForceCodexCLI，则强制将上游 User-Agent 伪装为 Codex CLI。
 	// 用于网关未透传/改写 User-Agent 时，仍能命中 Codex 侧识别逻辑。
-	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		req.Header.Set("user-agent", codexCLIUserAgent)
+	forceCodexCLI := s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI
+	if forceCodexCLI {
+		applyOpenAIForcedCodexCLIHeaders(req, isCompactRequest)
 	}
-	if account.Type == AccountTypeOAuth && isOpenAIResponsesCompactPath(c) {
+	if account.Type == AccountTypeOAuth && isCompactRequest && !forceCodexCLI {
 		applyOpenAICompactClientHeaders(req, clientUserAgent, clientVersion)
 	}
 
