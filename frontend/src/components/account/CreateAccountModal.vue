@@ -3427,6 +3427,19 @@ const isOpenAIModelRestrictionDisabled = computed(() =>
   form.platform === 'openai' && openaiPassthroughEnabled.value
 )
 
+const isOpenAIOAuthSelection = computed(() =>
+  form.platform === 'openai' && accountCategory.value === 'oauth-based'
+)
+
+const buildOpenAIOAuthManualModelMapping = () => {
+  if (isOpenAIModelRestrictionDisabled.value) return null
+  if (modelRestrictionMode.value === 'mapping') {
+    return buildModelMappingObject('mapping', [], modelMappings.value)
+  }
+  if (allowedModels.value.length === 0) return null
+  return buildModelMappingObject('whitelist', allowedModels.value, [])
+}
+
 const mixedChannelWarningMessageText = computed(() => {
   if (mixedChannelWarningDetails.value) {
     return t('admin.accounts.mixedChannelWarning', mixedChannelWarningDetails.value)
@@ -3543,8 +3556,8 @@ watch(
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
-      // Modal opened - fill related models
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      // Modal opened - fill related models unless OpenAI OAuth should wait for plan_type.
+      allowedModels.value = isOpenAIOAuthSelection.value ? [] : [...getModelsByPlatform(form.platform)]
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -3698,8 +3711,12 @@ const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | '
 
 // Auto-fill related models when switching to whitelist mode or changing platform
 watch(
-  [modelRestrictionMode, () => form.platform],
+  [modelRestrictionMode, () => form.platform, accountCategory],
   ([newMode]) => {
+    if (isOpenAIOAuthSelection.value) {
+      allowedModels.value = []
+      return
+    }
     if (newMode === 'whitelist') {
       allowedModels.value = [...getModelsByPlatform(form.platform)]
     }
@@ -4578,9 +4595,9 @@ const handleOpenAIExchange = async (authCode: string) => {
     const extra = buildOpenAIExtra(oauthExtra)
     const shouldCreateOpenAI = form.platform === 'openai'
 
-    // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
-    if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
-      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    // OpenAI OAuth 默认交给后端按 plan_type 写入模型映射；这里仅提交用户手动配置。
+    if (shouldCreateOpenAI) {
+      const modelMapping = buildOpenAIOAuthManualModelMapping()
       if (modelMapping) {
         credentials.model_mapping = modelMapping
       }
@@ -4676,9 +4693,9 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
         const extra = buildOpenAIExtra(oauthExtra)
 
-        // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
-        if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
-          const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+        // OpenAI OAuth 默认交给后端按 plan_type 写入模型映射；这里仅提交用户手动配置。
+        if (shouldCreateOpenAI) {
+          const modelMapping = buildOpenAIOAuthManualModelMapping()
           if (modelMapping) {
             credentials.model_mapping = modelMapping
           }

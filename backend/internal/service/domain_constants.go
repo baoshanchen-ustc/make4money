@@ -224,6 +224,7 @@ const (
 	SettingKeyGeminiQuotaPolicy = "gemini_quota_policy"
 
 	// Model fallback settings
+	SettingKeyOpenAIPlanModelCatalog   = "openai_plan_model_catalog"
 	SettingKeyEnableModelFallback      = "enable_model_fallback"
 	SettingKeyFallbackModelAnthropic   = "fallback_model_anthropic"
 	SettingKeyFallbackModelOpenAI      = "fallback_model_openai"

@@ -64,12 +64,20 @@
     v-else
     ref="tableWrapperRef"
     class="table-wrapper"
+    :style="tableWrapperStyle"
     :class="{
       'actions-expanded': actionsExpanded,
       'is-scrollable': isScrollable
     }"
   >
     <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
+      <colgroup>
+        <col
+          v-for="column in columns"
+          :key="column.key"
+          :style="getColumnStyle(column)"
+        />
+      </colgroup>
       <thead class="table-header bg-gray-50 dark:bg-dark-800">
         <tr>
           <th
@@ -80,9 +88,11 @@
               'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
               getAdaptivePaddingClass(),
               { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable },
+              { 'is-resizing': resizingColumnKey === column.key },
               getStickyColumnClass(column, index),
               column.class
             ]"
+            :style="getColumnStyle(column)"
             @click="column.sortable && handleSort(column.key)"
           >
             <slot
@@ -115,6 +125,11 @@
                 </span>
               </div>
             </slot>
+            <span
+              v-if="isColumnResizable(column)"
+              class="column-resize-handle"
+              @mousedown.stop.prevent="startColumnResize(column, $event)"
+            ></span>
           </th>
         </tr>
       </thead>
@@ -173,6 +188,7 @@
                 getStickyColumnClass(column, colIndex),
                 column.class
               ]"
+              :style="getColumnStyle(column)"
             >
               <slot :name="`cell-${column.key}`"
                     :row="sortedData[virtualRow.index]"
@@ -306,6 +322,7 @@ const attachDesktopTableTracking = () => {
 }
 
 onMounted(() => {
+  columnWidths.value = readPersistedColumnWidths()
   if (typeof window !== 'undefined') {
     desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
     isDesktopViewport.value = desktopViewportMediaQuery.matches
@@ -361,6 +378,8 @@ interface Props {
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
   overscan?: number
+  /** Persist resized desktop column widths to localStorage using this key. */
+  columnWidthStorageKey?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -375,10 +394,132 @@ const props = withDefaults(defineProps<Props>(), {
 const sortKey = ref<string>('')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const actionsExpanded = ref(false)
+const columnWidths = ref<Record<string, number>>({})
+const resizingColumnKey = ref<string | null>(null)
+
+type ColumnWidthState = Record<string, number>
 
 type PersistedSortState = {
   key: string
   order: 'asc' | 'desc'
+}
+
+const parseColumnWidth = (value: number | string | undefined): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string') return null
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)px$/)
+  if (!match) return null
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const clampColumnWidth = (column: Column, width: number): number => {
+  const min = column.minWidth ?? 56
+  const max = column.maxWidth ?? 640
+  return Math.min(max, Math.max(min, Math.round(width)))
+}
+
+const getColumnWidth = (column: Column): number | null => {
+  const persisted = columnWidths.value[column.key]
+  if (Number.isFinite(persisted)) return clampColumnWidth(column, persisted)
+  return parseColumnWidth(column.width)
+}
+
+const getColumnStyle = (column: Column) => {
+  const width = getColumnWidth(column)
+  const style: Record<string, string> = {}
+  if (width !== null) {
+    style.width = `${width}px`
+    style.minWidth = `${column.minWidth ?? width}px`
+    if (column.maxWidth) style.maxWidth = `${column.maxWidth}px`
+  } else {
+    if (column.minWidth) style.minWidth = `${column.minWidth}px`
+    if (column.maxWidth) style.maxWidth = `${column.maxWidth}px`
+  }
+  return style
+}
+
+const isColumnResizable = (column: Column) =>
+  !!props.columnWidthStorageKey && column.resizable === true
+
+const readPersistedColumnWidths = (): ColumnWidthState => {
+  if (!props.columnWidthStorageKey || typeof localStorage === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(props.columnWidthStorageKey)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const next: ColumnWidthState = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        next[key] = value
+      }
+    }
+    return next
+  } catch (e) {
+    console.error('[DataTable] Failed to read persisted column widths:', e)
+    return {}
+  }
+}
+
+const writePersistedColumnWidths = (widths: ColumnWidthState) => {
+  if (!props.columnWidthStorageKey || typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(props.columnWidthStorageKey, JSON.stringify(widths))
+  } catch (e) {
+    console.error('[DataTable] Failed to persist column widths:', e)
+  }
+}
+
+const resetColumnWidths = () => {
+  columnWidths.value = {}
+  if (props.columnWidthStorageKey && typeof localStorage !== 'undefined') {
+    localStorage.removeItem(props.columnWidthStorageKey)
+  }
+  nextTick(() => {
+    checkScrollable()
+    checkActionsColumnWidth()
+  })
+}
+
+const tableWrapperStyle = computed(() => {
+  const firstColumn = props.columns[0]
+  const selectWidth = firstColumn?.key === 'select' ? (getColumnWidth(firstColumn) ?? 52) : 52
+  return {
+    '--select-col-width': `${selectWidth}px`
+  }
+})
+
+const startColumnResize = (column: Column, event: MouseEvent) => {
+  if (!isColumnResizable(column)) return
+  const startX = event.clientX
+  const startWidth = (event.currentTarget as HTMLElement).parentElement?.getBoundingClientRect().width
+    ?? getColumnWidth(column)
+    ?? parseColumnWidth(column.width)
+    ?? column.minWidth
+    ?? 120
+
+  resizingColumnKey.value = column.key
+  document.body.classList.add('select-none')
+
+  const onMove = (moveEvent: MouseEvent) => {
+    const nextWidth = clampColumnWidth(column, startWidth + moveEvent.clientX - startX)
+    columnWidths.value = { ...columnWidths.value, [column.key]: nextWidth }
+  }
+
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.classList.remove('select-none')
+    resizingColumnKey.value = null
+    writePersistedColumnWidths(columnWidths.value)
+    nextTick(() => {
+      checkScrollable()
+      checkActionsColumnWidth()
+    })
+  }
+
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
 }
 
 const collator = new Intl.Collator(undefined, {
@@ -701,6 +842,7 @@ defineExpose({
   sortedData,
   resolveRowKey,
   tableWrapperEl: tableWrapperRef,
+  resetColumnWidths,
 })
 </script>
 
@@ -740,6 +882,32 @@ defineExpose({
   top: 0;
   z-index: 210; /* 必须高于所有表体内容 */
   background-color: rgb(249 250 251);
+}
+
+.column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 5;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.column-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  right: 3px;
+  bottom: 25%;
+  width: 1px;
+  background-color: transparent;
+}
+
+.column-resize-handle:hover::after,
+.sticky-header-cell.is-resizing .column-resize-handle::after {
+  background-color: rgb(59 130 246);
 }
 
 .dark .sticky-header-cell {

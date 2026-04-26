@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/util/httputil"
 )
@@ -65,7 +67,7 @@ type AdminService interface {
 	ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error)
 
 	// Account management
-	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, planType string, sortBy, sortOrder string) ([]Account, int64, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -548,7 +550,7 @@ func NewAdminService(
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
 ) AdminService {
-	return &adminServiceImpl{
+	svc := &adminServiceImpl{
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
 		accountRepo:          accountRepo,
@@ -567,6 +569,8 @@ func NewAdminService(
 		userSubRepo:          userSubRepo,
 		privacyClientFactory: privacyClientFactory,
 	}
+	svc.StartOpenAIPlanModelCatalogWorker(context.Background(), 24*time.Hour)
+	return svc
 }
 
 // User management implementations
@@ -2063,13 +2067,334 @@ func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGrou
 }
 
 // Account management implementations
-func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
+func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, planType string, sortBy, sortOrder string) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
-	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
+	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode, planType)
 	if err != nil {
 		return nil, 0, err
 	}
 	return accounts, result.Total, nil
+}
+
+type openAIPlanModelCatalogEntry struct {
+	Models          []string `json:"models"`
+	SampledAt       string   `json:"sampled_at,omitempty"`
+	SourceAccountID int64    `json:"source_account_id,omitempty"`
+	Status          string   `json:"status,omitempty"`
+	Error           string   `json:"error,omitempty"`
+}
+
+type openAIPlanModelCatalog struct {
+	Plans map[string]openAIPlanModelCatalogEntry `json:"plans,omitempty"`
+	Free  openAIPlanModelCatalogEntry            `json:"free,omitempty"`
+	Plus  openAIPlanModelCatalogEntry            `json:"plus,omitempty"`
+	Team  openAIPlanModelCatalogEntry            `json:"team,omitempty"`
+	Pro   openAIPlanModelCatalogEntry            `json:"pro,omitempty"`
+}
+
+var openAIPlanCatalogPlans = []string{"free", "plus", "team", "pro"}
+
+func hasExplicitModelMapping(credentials map[string]any) bool {
+	if credentials == nil {
+		return false
+	}
+	raw, ok := credentials["model_mapping"]
+	if !ok || raw == nil {
+		return false
+	}
+	switch v := raw.(type) {
+	case map[string]any:
+		return len(v) > 0
+	case map[string]string:
+		return len(v) > 0
+	case string:
+		return strings.TrimSpace(v) != ""
+	default:
+		return true
+	}
+}
+
+func normalizeOpenAIPlanType(value any) string {
+	var raw string
+	switch v := value.(type) {
+	case string:
+		raw = v
+	case fmt.Stringer:
+		raw = v.String()
+	default:
+		raw = fmt.Sprint(v)
+	}
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	switch raw {
+	case "free", "plus", "team", "pro":
+		return raw
+	default:
+		return "unknown"
+	}
+}
+
+func defaultOpenAIPlanModels(planType string) []string {
+	switch normalizeOpenAIPlanType(planType) {
+	case "free":
+		return []string{"gpt-5.3-codex"}
+	case "plus":
+		return []string{"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.4-mini"}
+	case "team":
+		return []string{"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.4-mini", "gpt-5.5"}
+	case "pro":
+		return openai.DefaultModelIDs()
+	default:
+		return []string{"gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini"}
+	}
+}
+
+func identityModelMapping(models []string) map[string]any {
+	if len(models) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		out[model] = model
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (s *adminServiceImpl) openAIPlanModelMapping(ctx context.Context, planType string) map[string]any {
+	plan := normalizeOpenAIPlanType(planType)
+	models := s.openAIPlanModelsFromCatalog(ctx, plan)
+	if len(models) == 0 {
+		models = defaultOpenAIPlanModels(plan)
+	}
+	return identityModelMapping(models)
+}
+
+func (s *adminServiceImpl) openAIPlanModelsFromCatalog(ctx context.Context, plan string) []string {
+	if s == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return nil
+	}
+	raw, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyOpenAIPlanModelCatalog)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var catalog openAIPlanModelCatalog
+	if err := json.Unmarshal([]byte(raw), &catalog); err != nil {
+		slog.Warn("openai_plan_model_catalog_parse_failed", "error", err)
+		return nil
+	}
+	if catalog.Plans != nil {
+		if entry, ok := catalog.Plans[plan]; ok && len(entry.Models) > 0 {
+			return entry.Models
+		}
+	}
+	switch plan {
+	case "free":
+		return catalog.Free.Models
+	case "plus":
+		return catalog.Plus.Models
+	case "team":
+		return catalog.Team.Models
+	case "pro":
+		return catalog.Pro.Models
+	default:
+		return nil
+	}
+}
+
+func (s *adminServiceImpl) StartOpenAIPlanModelCatalogWorker(ctx context.Context, interval time.Duration) {
+	if s == nil || s.accountRepo == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = 24 * time.Hour
+	}
+	go func() {
+		timer := time.NewTimer(5 * time.Minute)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			refreshCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			if err := s.RefreshOpenAIPlanModelCatalog(refreshCtx); err != nil {
+				slog.Warn("openai_plan_model_catalog_refresh_failed", "error", err)
+			}
+			cancel()
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+}
+
+func (s *adminServiceImpl) RefreshOpenAIPlanModelCatalog(ctx context.Context) error {
+	if s == nil || s.accountRepo == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return nil
+	}
+	catalog := s.readOpenAIPlanModelCatalog(ctx)
+	if catalog.Plans == nil {
+		catalog.Plans = map[string]openAIPlanModelCatalogEntry{}
+	}
+	for _, plan := range openAIPlanCatalogPlans {
+		catalog.Plans[plan] = s.sampleOpenAIPlanCatalogEntry(ctx, plan, catalog.Plans[plan])
+	}
+	payload, err := json.Marshal(catalog)
+	if err != nil {
+		return err
+	}
+	return s.settingService.settingRepo.Set(ctx, SettingKeyOpenAIPlanModelCatalog, string(payload))
+}
+
+func (s *adminServiceImpl) readOpenAIPlanModelCatalog(ctx context.Context) openAIPlanModelCatalog {
+	if s == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return openAIPlanModelCatalog{}
+	}
+	raw, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyOpenAIPlanModelCatalog)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return openAIPlanModelCatalog{}
+	}
+	var catalog openAIPlanModelCatalog
+	if err := json.Unmarshal([]byte(raw), &catalog); err != nil {
+		slog.Warn("openai_plan_model_catalog_parse_failed", "error", err)
+		return openAIPlanModelCatalog{}
+	}
+	if catalog.Plans == nil {
+		catalog.Plans = map[string]openAIPlanModelCatalogEntry{}
+	}
+	for _, plan := range openAIPlanCatalogPlans {
+		if _, ok := catalog.Plans[plan]; ok {
+			continue
+		}
+		switch plan {
+		case "free":
+			catalog.Plans[plan] = catalog.Free
+		case "plus":
+			catalog.Plans[plan] = catalog.Plus
+		case "team":
+			catalog.Plans[plan] = catalog.Team
+		case "pro":
+			catalog.Plans[plan] = catalog.Pro
+		}
+	}
+	return catalog
+}
+
+func (s *adminServiceImpl) sampleOpenAIPlanCatalogEntry(ctx context.Context, plan string, previous openAIPlanModelCatalogEntry) openAIPlanModelCatalogEntry {
+	account, err := s.pickOpenAIPlanSampleAccount(ctx, plan)
+	if err != nil {
+		previous.Status = "error"
+		previous.Error = err.Error()
+		return previous
+	}
+	if account == nil {
+		previous.Status = "no_account"
+		previous.Error = "no usable OpenAI OAuth account for plan"
+		return previous
+	}
+
+	candidates := previous.Models
+	if len(candidates) == 0 {
+		candidates = defaultOpenAIPlanModels(plan)
+	}
+	nextModels := make([]string, 0, len(candidates))
+	temporaryErr := ""
+	for _, model := range candidates {
+		supported, unsupported, err := probeOpenAIPlanModel(ctx, account, model)
+		if supported {
+			nextModels = append(nextModels, model)
+			continue
+		}
+		if unsupported {
+			continue
+		}
+		if err != nil && temporaryErr == "" {
+			temporaryErr = err.Error()
+		}
+		nextModels = append(nextModels, model)
+	}
+	if temporaryErr != "" {
+		previous.Status = "error"
+		previous.Error = temporaryErr
+		return previous
+	}
+	return openAIPlanModelCatalogEntry{
+		Models:          nextModels,
+		SampledAt:       time.Now().UTC().Format(time.RFC3339),
+		SourceAccountID: account.ID,
+		Status:          "ok",
+	}
+}
+
+func (s *adminServiceImpl) pickOpenAIPlanSampleAccount(ctx context.Context, plan string) (*Account, error) {
+	accounts, _, err := s.accountRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 20}, PlatformOpenAI, AccountTypeOAuth, StatusActive, "", 0, "", plan)
+	if err != nil {
+		return nil, err
+	}
+	for i := range accounts {
+		token, _ := accounts[i].Credentials["access_token"].(string)
+		if strings.TrimSpace(token) == "" {
+			continue
+		}
+		return &accounts[i], nil
+	}
+	return nil, nil
+}
+
+func probeOpenAIPlanModel(ctx context.Context, account *Account, model string) (supported bool, unsupported bool, err error) {
+	token, _ := account.Credentials["access_token"].(string)
+	if strings.TrimSpace(token) == "" {
+		return false, false, errors.New("missing access_token")
+	}
+	body, err := json.Marshal(map[string]any{
+		"model":             model,
+		"input":             "ping",
+		"store":             false,
+		"stream":            false,
+		"max_output_tokens": 1,
+	})
+	if err != nil {
+		return false, false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
+	if err != nil {
+		return false, false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, false, err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true, false, nil
+	}
+	lowerBody := strings.ToLower(string(respBody))
+	if strings.Contains(lowerBody, "model_not_found") ||
+		strings.Contains(lowerBody, "unsupported model") ||
+		strings.Contains(lowerBody, "model is not supported") ||
+		strings.Contains(lowerBody, "does not exist") {
+		return false, true, nil
+	}
+	return false, false, fmt.Errorf("sample model %s failed with status %d", model, resp.StatusCode)
 }
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
@@ -2110,6 +2435,19 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {
 		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
 			return nil, err
+		}
+	}
+
+	if input.Platform == PlatformOpenAI && input.Type == AccountTypeOAuth && !hasExplicitModelMapping(input.Credentials) {
+		if input.Credentials == nil {
+			input.Credentials = map[string]any{}
+		}
+		planType := normalizeOpenAIPlanType(input.Credentials["plan_type"])
+		if planType == "unknown" {
+			planType = normalizeOpenAIPlanType(input.Credentials["chatgpt_plan_type"])
+		}
+		if mapping := s.openAIPlanModelMapping(ctx, planType); len(mapping) > 0 {
+			input.Credentials["model_mapping"] = mapping
 		}
 	}
 
