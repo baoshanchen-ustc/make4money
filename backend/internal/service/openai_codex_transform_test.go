@@ -953,6 +953,14 @@ func TestApplyCodexOAuthTransform_NormalizesCodexReasoningEffort(t *testing.T) {
 			wantEffort: "high",
 		},
 		{
+			name: "model suffix none uses default",
+			reqBody: map[string]any{
+				"model": "gpt-5.3-codex-spark-none",
+				"input": []any{},
+			},
+			wantEffort: "medium",
+		},
+		{
 			name: "invalid effort stays untouched",
 			reqBody: map[string]any{
 				"model":            "gpt-5.3-codex-spark",

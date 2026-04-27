@@ -182,6 +182,56 @@ func requestToJSONString(payload map[string]any) string {
 	return string(b)
 }
 
+func TestBuildOpenAIWSCreatePayload_OAuthSparkReasoningDefault(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 170, Type: AccountTypeOAuth}
+
+	t.Run("explicit none uses spark default", func(t *testing.T) {
+		payload := svc.buildOpenAIWSCreatePayload(map[string]any{
+			"model":     "gpt-5.3-codex-spark",
+			"stream":    false,
+			"input":     []any{},
+			"reasoning": map[string]any{"effort": "none"},
+		}, account)
+
+		require.Equal(t, "medium", gjson.Get(requestToJSONString(payload), "reasoning.effort").String())
+	})
+
+	t.Run("missing effort uses spark default", func(t *testing.T) {
+		payload := svc.buildOpenAIWSCreatePayload(map[string]any{
+			"model":  "gpt-5.3-codex-spark",
+			"stream": false,
+			"input":  []any{},
+		}, account)
+
+		require.Equal(t, "medium", gjson.Get(requestToJSONString(payload), "reasoning.effort").String())
+	})
+}
+
+func TestNormalizeOpenAIWSCodexReasoningPayloadRaw_OAuthSpark(t *testing.T) {
+	account := &Account{ID: 170, Type: AccountTypeOAuth}
+
+	t.Run("direct ws none uses spark default", func(t *testing.T) {
+		payload := []byte(`{"type":"response.create","model":"gpt-5.3-codex-spark","reasoning":{"effort":"none"},"input":[]}`)
+
+		got, modified, err := normalizeOpenAIWSCodexReasoningPayloadRaw(payload, "gpt-5.3-codex-spark", account)
+
+		require.NoError(t, err)
+		require.True(t, modified)
+		require.Equal(t, "medium", gjson.GetBytes(got, "reasoning.effort").String())
+	})
+
+	t.Run("direct ws missing effort uses spark default", func(t *testing.T) {
+		payload := []byte(`{"type":"response.create","model":"gpt-5.3-codex-spark","input":[]}`)
+
+		got, modified, err := normalizeOpenAIWSCodexReasoningPayloadRaw(payload, "gpt-5.3-codex-spark", account)
+
+		require.NoError(t, err)
+		require.True(t, modified)
+		require.Equal(t, "medium", gjson.GetBytes(got, "reasoning.effort").String())
+	})
+}
+
 func TestLogOpenAIWSBindResponseAccountWarn(t *testing.T) {
 	require.NotPanics(t, func() {
 		logOpenAIWSBindResponseAccountWarn(1, 2, "resp_ok", nil)

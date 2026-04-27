@@ -1200,7 +1200,41 @@ func (s *OpenAIGatewayService) buildOpenAIWSCreatePayload(reqBody map[string]any
 	if account != nil && account.Type == AccountTypeOAuth && !s.isOpenAIWSStoreRecoveryAllowed(account) {
 		payload["store"] = false
 	}
+	normalizeOpenAIWSCodexReasoningPayload(payload, account)
 	return payload
+}
+
+func normalizeOpenAIWSCodexReasoningPayload(payload map[string]any, account *Account) bool {
+	if len(payload) == 0 || account == nil || account.Type != AccountTypeOAuth {
+		return false
+	}
+	model, _ := payload["model"].(string)
+	return normalizeCodexReasoningEffortForModel(payload, model)
+}
+
+func normalizeOpenAIWSCodexReasoningPayloadRaw(payload []byte, model string, account *Account) ([]byte, bool, error) {
+	if len(payload) == 0 || account == nil || account.Type != AccountTypeOAuth {
+		return payload, false, nil
+	}
+	if defaultCodexReasoningEffort(model) == "" {
+		return payload, false, nil
+	}
+
+	decoded := make(map[string]any)
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return payload, false, err
+	}
+	if strings.TrimSpace(model) != "" {
+		decoded["model"] = model
+	}
+	if !normalizeCodexReasoningEffortForModel(decoded, model) {
+		return payload, false, nil
+	}
+	rebuilt, err := json.Marshal(decoded)
+	if err != nil {
+		return payload, false, err
+	}
+	return rebuilt, true, nil
 }
 
 func setOpenAIWSTurnMetadata(payload map[string]any, turnMetadata string) {
@@ -2539,6 +2573,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if setErr != nil {
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
 			}
+			normalized = next
+		}
+		if next, modified, normalizeErr := normalizeOpenAIWSCodexReasoningPayloadRaw(normalized, upstreamModel, account); normalizeErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", normalizeErr)
+		} else if modified {
 			normalized = next
 		}
 
