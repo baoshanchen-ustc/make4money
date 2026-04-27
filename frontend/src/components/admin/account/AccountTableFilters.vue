@@ -11,11 +11,14 @@
     <div ref="filterDropdownRef" class="relative">
       <button
         type="button"
-        class="btn btn-secondary px-3"
-        @click="showFilterMenu = !showFilterMenu"
+        class="btn btn-secondary px-2.5 md:px-3"
+        :aria-expanded="showFilterMenu"
+        aria-haspopup="menu"
+        @click="toggleFilterMenu"
+        @keydown.escape.stop.prevent="closeFilterMenu"
       >
         <Icon name="filter" size="sm" class="mr-1.5" />
-        <span>筛选</span>
+        <span>{{ t('admin.accounts.filters.title') }}</span>
         <span
           v-if="activeFilterCount > 0"
           class="ml-1.5 rounded-full bg-primary-100 px-1.5 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
@@ -26,11 +29,15 @@
 
       <div
         v-if="showFilterMenu"
-        class="absolute left-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+        class="absolute left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+        role="menu"
+        @keydown.escape.stop.prevent="closeFilterMenu"
       >
         <div class="space-y-3">
           <div>
-            <div class="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-dark-400">账号</div>
+            <div class="mb-2 px-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.filters.account') }}
+            </div>
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Select :model-value="filters.platform" :options="platformOptions" @update:model-value="updateFilter('platform', $event)" @change="$emit('change')" />
               <Select :model-value="filters.type" :options="typeOptions" @update:model-value="updateFilter('type', $event)" @change="$emit('change')" />
@@ -40,12 +47,16 @@
           </div>
 
           <div>
-            <div class="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-dark-400">状态</div>
+            <div class="mb-2 px-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.filters.status') }}
+            </div>
             <Select :model-value="filters.status" :options="statusOptions" @update:model-value="updateFilter('status', $event)" @change="$emit('change')" />
           </div>
 
           <div>
-            <div class="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-dark-400">Plan</div>
+            <div class="mb-2 px-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.filters.plan') }}
+            </div>
             <Select :model-value="filters.plan_type" :options="planOptions" @update:model-value="updateFilter('plan_type', $event)" @change="$emit('change')" />
           </div>
         </div>
@@ -68,7 +79,7 @@
         class="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200"
         @click="clearAllFilters"
       >
-        全部清除
+        {{ t('admin.accounts.filters.clearAll') }}
       </button>
     </div>
   </div>
@@ -135,12 +146,12 @@ const groupOptions = computed(() => [
 ])
 
 const planOptions = computed(() => [
-  { value: '', label: '全部 Plan' },
+  { value: '', label: t('admin.accounts.filters.allPlans') },
   { value: 'free', label: 'Free' },
   { value: 'plus', label: 'Plus' },
   { value: 'team', label: 'Team' },
   { value: 'pro', label: 'Pro' },
-  { value: '__unset__', label: '未识别' }
+  { value: '__unset__', label: t('admin.accounts.filters.unrecognizedPlan') }
 ])
 
 const optionGroups = computed<Record<string, Array<{ value: string | number | boolean | null; label: string }>>>(() => ({
@@ -152,14 +163,14 @@ const optionGroups = computed<Record<string, Array<{ value: string | number | bo
   plan_type: planOptions.value
 }))
 
-const filterNames: Record<string, string> = {
-  platform: '平台',
-  type: '类型',
-  status: '状态',
-  privacy_mode: '隐私',
-  group: '分组',
-  plan_type: 'Plan'
-}
+const filterNames = computed<Record<string, string>>(() => ({
+  platform: t('admin.accounts.filters.platform'),
+  type: t('admin.accounts.filters.type'),
+  status: t('admin.accounts.filters.status'),
+  privacy_mode: t('admin.accounts.filters.privacy'),
+  group: t('admin.accounts.filters.group'),
+  plan_type: t('admin.accounts.filters.plan')
+}))
 
 const filterKeys = ['platform', 'type', 'status', 'privacy_mode', 'group', 'plan_type']
 
@@ -170,7 +181,7 @@ const activeTags = computed(() => filterKeys
     const option = optionGroups.value[key]?.find((item) => String(item.value) === String(value))
     return {
       key,
-      label: `${filterNames[key]}: ${option?.label ?? value}`
+      label: `${filterNames.value[key]}: ${option?.label ?? value}`
     }
   })
   .filter(Boolean) as Array<{ key: string; label: string }>)
@@ -195,13 +206,33 @@ const clearAllFilters = () => {
   emit('change')
 }
 
+const toggleFilterMenu = () => {
+  showFilterMenu.value = !showFilterMenu.value
+}
+
+const closeFilterMenu = () => {
+  showFilterMenu.value = false
+}
+
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as Node
   if (filterDropdownRef.value && !filterDropdownRef.value.contains(target)) {
-    showFilterMenu.value = false
+    closeFilterMenu()
   }
 }
 
-onMounted(() => document.addEventListener('click', handleClickOutside))
-onUnmounted(() => document.removeEventListener('click', handleClickOutside))
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    closeFilterMenu()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
+})
 </script>

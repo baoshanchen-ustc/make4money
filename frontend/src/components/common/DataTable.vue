@@ -128,6 +128,7 @@
             <span
               v-if="isColumnResizable(column)"
               class="column-resize-handle"
+              @click.stop.prevent
               @mousedown.stop.prevent="startColumnResize(column, $event)"
             ></span>
           </th>
@@ -489,14 +490,21 @@ const tableWrapperStyle = computed(() => {
   }
 })
 
-const startColumnResize = (column: Column, event: MouseEvent) => {
-  if (!isColumnResizable(column)) return
-  const startX = event.clientX
-  const startWidth = (event.currentTarget as HTMLElement).parentElement?.getBoundingClientRect().width
-    ?? getColumnWidth(column)
+const getResizeStartWidth = (column: Column, event: MouseEvent) => {
+  const parentWidth = (event.currentTarget as HTMLElement).parentElement?.getBoundingClientRect().width
+  if (parentWidth && Number.isFinite(parentWidth) && parentWidth > 0) {
+    return parentWidth
+  }
+  return getColumnWidth(column)
     ?? parseColumnWidth(column.width)
     ?? column.minWidth
     ?? 120
+}
+
+const startColumnResize = (column: Column, event: MouseEvent) => {
+  if (!isColumnResizable(column)) return
+  const startX = event.clientX
+  const startWidth = getResizeStartWidth(column, event)
 
   resizingColumnKey.value = column.key
   document.body.classList.add('select-none')

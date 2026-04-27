@@ -2665,7 +2665,8 @@ export default {
         proxy: '代理',
         lastUsed: '最近使用',
         expiresAt: '过期时间',
-        actions: '操作'
+        actions: '操作',
+        resetWidths: '重置列宽'
       },
       allPrivacyModes: '全部Privacy状态',
       privacyUnset: '未设置',
@@ -2888,12 +2889,20 @@ export default {
         statusLabel: '状态'
       },
       filters: {
+        title: '筛选',
+        account: '账号',
         platform: '平台',
         allPlatforms: '全部平台',
         type: '类型',
         allTypes: '全部类型',
+        privacy: '隐私',
+        group: '分组',
         status: '状态',
-        allStatuses: '全部状态'
+        allStatuses: '全部状态',
+        plan: 'Plan',
+        clearAll: '全部清除',
+        allPlans: '全部 Plan',
+        unrecognizedPlan: '未识别'
       },
       saving: '保存中...',
       refreshing: '刷新中...',
