@@ -5509,6 +5509,10 @@ func deriveOpenAIReasoningEffortFromModel(model string) string {
 		return ""
 	}
 
+	if _, effort, ok := splitOpenAICompatReasoningModel(model); ok {
+		return effort
+	}
+
 	modelID := strings.TrimSpace(model)
 	if strings.Contains(modelID, "/") {
 		parts := strings.Split(modelID, "/")
