@@ -40,6 +40,8 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return nil, fmt.Errorf("parse anthropic request: %w", err)
 	}
 	originalModel := anthropicReq.Model
+	applyOpenAICompatModelNormalization(&anthropicReq)
+	normalizedModel := anthropicReq.Model
 	clientStream := anthropicReq.Stream // client's original stream preference
 
 	// 2. Convert Anthropic → Responses
@@ -59,16 +61,13 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	// 3. Model mapping
-	mappedModel := account.GetMappedModel(originalModel)
-	// 分组级降级：账号未映射时使用分组默认映射模型
-	if mappedModel == originalModel && defaultMappedModel != "" {
-		mappedModel = defaultMappedModel
-	}
+	mappedModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
 	responsesReq.Model = mappedModel
 
 	logger.L().Debug("openai messages: model mapping applied",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
+		zap.String("normalized_model", normalizedModel),
 		zap.String("mapped_model", mappedModel),
 		zap.Bool("stream", isStream),
 	)

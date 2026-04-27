@@ -388,7 +388,7 @@ func mapAnthropicEffortToResponses(effort string) string {
 	switch effort {
 	case "medium":
 		return "high"
-	case "high":
+	case "high", "max":
 		return "xhigh"
 	default:
 		return effort // "low" and any unknown values pass through unchanged
