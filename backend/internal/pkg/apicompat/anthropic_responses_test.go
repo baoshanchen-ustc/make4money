@@ -988,12 +988,13 @@ func TestAnthropicToResponses_ToolChoiceSpecific(t *testing.T) {
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
 
+	// Responses API uses flat {"type":"function","name":"X"}, not nested.
 	var tc map[string]any
 	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "function", tc["type"])
-	fn, ok := tc["function"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "get_weather", fn["name"])
+	assert.Equal(t, "get_weather", tc["name"])
+	_, hasNested := tc["function"]
+	assert.False(t, hasNested, "Responses API rejects nested 'function' field in tool_choice")
 }
 
 // ---------------------------------------------------------------------------
