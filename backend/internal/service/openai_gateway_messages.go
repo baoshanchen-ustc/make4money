@@ -85,7 +85,8 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 		}
-		codexResult := applyCodexOAuthTransform(reqBody, false, false)
+		upstreamIsCodexCLI := requiresCodexCLIHeadersForOAuthModel(account, upstreamModel)
+		codexResult := applyCodexOAuthTransform(reqBody, upstreamIsCodexCLI, false)
 		forcedTemplateText := ""
 		if s.cfg != nil {
 			forcedTemplateText = s.cfg.Gateway.ForcedCodexInstructionsTemplate
@@ -163,7 +164,8 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	// 6. Build upstream request
-	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, responsesBody, token, isStream, promptCacheKey, false)
+	upstreamIsCodexCLI := requiresCodexCLIHeadersForOAuthModel(account, upstreamModel)
+	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, responsesBody, token, isStream, promptCacheKey, upstreamIsCodexCLI)
 	if err != nil {
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
