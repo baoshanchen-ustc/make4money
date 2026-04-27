@@ -70,7 +70,7 @@
       'is-scrollable': isScrollable
     }"
   >
-    <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
+    <table class="w-full table-fixed divide-y divide-gray-200 dark:divide-dark-700" :style="desktopTableStyle">
       <colgroup>
         <col
           v-for="column in columns"
@@ -101,8 +101,8 @@
               :sort-key="sortKey"
               :sort-order="sortOrder"
             >
-              <div class="flex items-center space-x-1">
-                <span>{{ column.label }}</span>
+              <div class="flex min-w-0 items-center space-x-1">
+                <span class="min-w-0 truncate">{{ column.label }}</span>
                 <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
                   <svg
                     v-if="sortKey === column.key"
@@ -184,7 +184,7 @@
               v-for="(column, colIndex) in columns"
               :key="column.key"
               :class="[
-                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                'overflow-hidden whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
                 getAdaptivePaddingClass(),
                 getStickyColumnClass(column, colIndex),
                 column.class
@@ -488,6 +488,14 @@ const tableWrapperStyle = computed(() => {
   return {
     '--select-col-width': `${selectWidth}px`
   }
+})
+
+const desktopTableStyle = computed(() => {
+  const totalWidth = props.columns.reduce((sum, column) => {
+    const width = getColumnWidth(column) ?? column.minWidth ?? 120
+    return sum + width
+  }, 0)
+  return totalWidth > 0 ? { minWidth: `${totalWidth}px` } : {}
 })
 
 const getResizeStartWidth = (column: Column, event: MouseEvent) => {
@@ -888,8 +896,14 @@ defineExpose({
 .sticky-header-cell {
   position: sticky;
   top: 0;
+  overflow: hidden;
   z-index: 210; /* 必须高于所有表体内容 */
   background-color: rgb(249 250 251);
+}
+
+.table-wrapper th,
+.table-wrapper td {
+  overflow: hidden;
 }
 
 .column-resize-handle {

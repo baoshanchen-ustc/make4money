@@ -74,4 +74,14 @@ describe('DataTable column widths', () => {
 
     expect(localStorage.getItem('test-column-widths')).toBeNull()
   })
+
+  it('uses fixed table layout so text content does not force resized width', () => {
+    const wrapper = mountTable()
+    const table = wrapper.get('table')
+    const headerLabel = wrapper.get('thead th span.truncate')
+
+    expect(table.classes()).toContain('table-fixed')
+    expect(table.attributes('style')).toContain('min-width: 220px')
+    expect(headerLabel.classes()).toContain('truncate')
+  })
 })

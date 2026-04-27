@@ -469,65 +469,24 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	if accountType != "" {
 		q = q.Where(dbaccount.TypeEQ(accountType))
 	}
-	if status != "" {
-		switch status {
-		case service.StatusActive:
-			q = q.Where(
-				dbaccount.StatusEQ(status),
-				dbaccount.SchedulableEQ(true),
-				dbaccount.Or(
-					dbaccount.RateLimitResetAtIsNil(),
-					dbaccount.RateLimitResetAtLTE(time.Now()),
-				),
-				dbpredicate.Account(func(s *entsql.Selector) {
-					col := s.C("temp_unschedulable_until")
-					s.Where(entsql.Or(
-						entsql.IsNull(col),
-						entsql.LTE(col, entsql.Expr("NOW()")),
-					))
-				}),
-			)
-		case "rate_limited":
-			q = q.Where(
-				dbaccount.StatusEQ(service.StatusActive),
-				dbaccount.RateLimitResetAtGT(time.Now()),
-				dbpredicate.Account(func(s *entsql.Selector) {
-					col := s.C("temp_unschedulable_until")
-					s.Where(entsql.Or(
-						entsql.IsNull(col),
-						entsql.LTE(col, entsql.Expr("NOW()")),
-					))
-				}),
-			)
-		case "temp_unschedulable":
-			q = q.Where(
-				dbaccount.StatusEQ(service.StatusActive),
-				dbpredicate.Account(func(s *entsql.Selector) {
-					col := s.C("temp_unschedulable_until")
-					s.Where(entsql.And(
-						entsql.Not(entsql.IsNull(col)),
-						entsql.GT(col, entsql.Expr("NOW()")),
-					))
-				}),
-			)
-		case "unschedulable":
-			q = q.Where(
-				dbaccount.StatusEQ(service.StatusActive),
-				dbaccount.SchedulableEQ(false),
-				dbaccount.Or(
-					dbaccount.RateLimitResetAtIsNil(),
-					dbaccount.RateLimitResetAtLTE(time.Now()),
-				),
-				dbpredicate.Account(func(s *entsql.Selector) {
-					col := s.C("temp_unschedulable_until")
-					s.Where(entsql.Or(
-						entsql.IsNull(col),
-						entsql.LTE(col, entsql.Expr("NOW()")),
-					))
-				}),
-			)
-		default:
-			q = q.Where(dbaccount.StatusEQ(status))
+	if statusValues := splitAccountFilterValues(status); len(statusValues) > 0 {
+		now := time.Now()
+		statusPredicates := make([]dbpredicate.Account, 0, len(statusValues))
+		excludeRateLimited := false
+		for _, statusValue := range statusValues {
+			if statusValue == "not_rate_limited" {
+				excludeRateLimited = true
+				continue
+			}
+			statusPredicates = append(statusPredicates, accountStatusFilterPredicate(statusValue, now))
+		}
+		if len(statusPredicates) == 1 {
+			q = q.Where(statusPredicates[0])
+		} else if len(statusPredicates) > 1 {
+			q = q.Where(dbaccount.Or(statusPredicates...))
+		}
+		if excludeRateLimited {
+			q = q.Where(accountNotRateLimitedPredicate(now))
 		}
 	}
 	if search != "" {
@@ -552,19 +511,16 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 			}
 		}))
 	}
-	if planType != "" {
-		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
-			path := sqljson.Path("plan_type")
-			switch planType {
-			case service.AccountPlanTypeUnsetFilter:
-				s.Where(entsql.Or(
-					entsql.Not(sqljson.HasKey(dbaccount.FieldCredentials, path)),
-					sqljson.ValueEQ(dbaccount.FieldCredentials, "", path),
-				))
-			default:
-				s.Where(sqljson.ValueEQ(dbaccount.FieldCredentials, planType, path))
-			}
-		}))
+	if planTypes := splitAccountFilterValues(planType); len(planTypes) > 0 {
+		planPredicates := make([]dbpredicate.Account, 0, len(planTypes))
+		for _, value := range planTypes {
+			planPredicates = append(planPredicates, accountPlanTypeFilterPredicate(value))
+		}
+		if len(planPredicates) == 1 {
+			q = q.Where(planPredicates[0])
+		} else {
+			q = q.Where(dbaccount.Or(planPredicates...))
+		}
 	}
 
 	total, err := q.Count(ctx)
@@ -589,6 +545,101 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		return nil, nil, err
 	}
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+}
+
+func splitAccountFilterValues(raw string) []string {
+	seen := make(map[string]struct{})
+	values := make([]string, 0)
+	for _, part := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return values
+}
+
+func accountStatusFilterPredicate(status string, now time.Time) dbpredicate.Account {
+	switch status {
+	case service.StatusActive:
+		return dbaccount.And(
+			dbaccount.StatusEQ(status),
+			dbaccount.SchedulableEQ(true),
+			accountNotRateLimitedPredicate(now),
+			dbpredicate.Account(func(s *entsql.Selector) {
+				col := s.C("temp_unschedulable_until")
+				s.Where(entsql.Or(
+					entsql.IsNull(col),
+					entsql.LTE(col, entsql.Expr("NOW()")),
+				))
+			}),
+		)
+	case "rate_limited":
+		return dbaccount.And(
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.RateLimitResetAtGT(now),
+			dbpredicate.Account(func(s *entsql.Selector) {
+				col := s.C("temp_unschedulable_until")
+				s.Where(entsql.Or(
+					entsql.IsNull(col),
+					entsql.LTE(col, entsql.Expr("NOW()")),
+				))
+			}),
+		)
+	case "temp_unschedulable":
+		return dbaccount.And(
+			dbaccount.StatusEQ(service.StatusActive),
+			dbpredicate.Account(func(s *entsql.Selector) {
+				col := s.C("temp_unschedulable_until")
+				s.Where(entsql.And(
+					entsql.Not(entsql.IsNull(col)),
+					entsql.GT(col, entsql.Expr("NOW()")),
+				))
+			}),
+		)
+	case "unschedulable":
+		return dbaccount.And(
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(false),
+			accountNotRateLimitedPredicate(now),
+			dbpredicate.Account(func(s *entsql.Selector) {
+				col := s.C("temp_unschedulable_until")
+				s.Where(entsql.Or(
+					entsql.IsNull(col),
+					entsql.LTE(col, entsql.Expr("NOW()")),
+				))
+			}),
+		)
+	default:
+		return dbaccount.StatusEQ(status)
+	}
+}
+
+func accountNotRateLimitedPredicate(now time.Time) dbpredicate.Account {
+	return dbaccount.Or(
+		dbaccount.RateLimitResetAtIsNil(),
+		dbaccount.RateLimitResetAtLTE(now),
+	)
+}
+
+func accountPlanTypeFilterPredicate(planType string) dbpredicate.Account {
+	return dbpredicate.Account(func(s *entsql.Selector) {
+		path := sqljson.Path("plan_type")
+		switch planType {
+		case service.AccountPlanTypeUnsetFilter:
+			s.Where(entsql.Or(
+				entsql.Not(sqljson.HasKey(dbaccount.FieldCredentials, path)),
+				sqljson.ValueEQ(dbaccount.FieldCredentials, "", path),
+			))
+		default:
+			s.Where(sqljson.ValueEQ(dbaccount.FieldCredentials, planType, path))
+		}
+	})
 }
 
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {

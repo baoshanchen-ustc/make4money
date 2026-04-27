@@ -2784,6 +2784,7 @@ export default {
         paused: '暂停',
         limited: '限流',
         rateLimited: '限流中',
+        notRateLimited: '非限流',
         overloaded: '过载中',
         tempUnschedulable: '临时不可调度',
         quotaExceeded: '配额超限',

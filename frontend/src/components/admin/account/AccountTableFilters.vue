@@ -50,14 +50,46 @@
             <div class="mb-2 px-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.filters.status') }}
             </div>
-            <Select :model-value="filters.status" :options="statusOptions" @update:model-value="updateFilter('status', $event)" @change="$emit('change')" />
+            <div class="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              <button
+                v-for="option in statusMultiOptions"
+                :key="String(option.value)"
+                type="button"
+                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                @click="toggleMultiFilter('status', String(option.value))"
+              >
+                <span
+                  class="flex h-4 w-4 items-center justify-center rounded border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900"
+                  :class="isMultiFilterSelected('status', String(option.value)) && 'border-primary-500 bg-primary-500 text-white'"
+                >
+                  <Icon v-if="isMultiFilterSelected('status', String(option.value))" name="check" size="xs" />
+                </span>
+                <span class="truncate">{{ option.label }}</span>
+              </button>
+            </div>
           </div>
 
           <div>
             <div class="mb-2 px-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.filters.plan') }}
             </div>
-            <Select :model-value="filters.plan_type" :options="planOptions" @update:model-value="updateFilter('plan_type', $event)" @change="$emit('change')" />
+            <div class="grid grid-cols-2 gap-1">
+              <button
+                v-for="option in planMultiOptions"
+                :key="String(option.value)"
+                type="button"
+                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                @click="toggleMultiFilter('plan_type', String(option.value))"
+              >
+                <span
+                  class="flex h-4 w-4 items-center justify-center rounded border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900"
+                  :class="isMultiFilterSelected('plan_type', String(option.value)) && 'border-primary-500 bg-primary-500 text-white'"
+                >
+                  <Icon v-if="isMultiFilterSelected('plan_type', String(option.value))" name="check" size="xs" />
+                </span>
+                <span class="truncate">{{ option.label }}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -127,6 +159,7 @@ const statusOptions = computed(() => [
   { value: 'inactive', label: t('admin.accounts.status.inactive') },
   { value: 'error', label: t('admin.accounts.status.error') },
   { value: 'rate_limited', label: t('admin.accounts.status.rateLimited') },
+  { value: 'not_rate_limited', label: t('admin.accounts.status.notRateLimited') },
   { value: 'temp_unschedulable', label: t('admin.accounts.status.tempUnschedulable') },
   { value: 'unschedulable', label: t('admin.accounts.status.unschedulable') }
 ])
@@ -154,6 +187,9 @@ const planOptions = computed(() => [
   { value: '__unset__', label: t('admin.accounts.filters.unrecognizedPlan') }
 ])
 
+const statusMultiOptions = computed(() => statusOptions.value.filter((option) => option.value !== ''))
+const planMultiOptions = computed(() => planOptions.value.filter((option) => option.value !== ''))
+
 const optionGroups = computed<Record<string, Array<{ value: string | number | boolean | null; label: string }>>>(() => ({
   platform: platformOptions.value,
   type: typeOptions.value,
@@ -178,10 +214,14 @@ const activeTags = computed(() => filterKeys
   .map((key) => {
     const value = props.filters[key]
     if (value === '' || value === null || value === undefined) return null
-    const option = optionGroups.value[key]?.find((item) => String(item.value) === String(value))
+    const selectedValues = splitMultiFilterValue(value)
+    const labels = selectedValues.map((selectedValue) => {
+      const option = optionGroups.value[key]?.find((item) => String(item.value) === selectedValue)
+      return option?.label ?? selectedValue
+    })
     return {
       key,
-      label: `${filterNames.value[key]}: ${option?.label ?? value}`
+      label: `${filterNames.value[key]}: ${labels.join(', ')}`
     }
   })
   .filter(Boolean) as Array<{ key: string; label: string }>)
@@ -190,6 +230,25 @@ const activeFilterCount = computed(() => activeTags.value.length)
 
 const updateFilter = (key: string, value: string | number | boolean | null) => {
   emit('update:filters', { ...props.filters, [key]: value ?? '' })
+}
+
+const splitMultiFilterValue = (value: unknown) => String(value ?? '')
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean)
+
+const joinMultiFilterValue = (values: string[]) => Array.from(new Set(values)).join(',')
+
+const isMultiFilterSelected = (key: string, value: string) =>
+  splitMultiFilterValue(props.filters[key]).includes(value)
+
+const toggleMultiFilter = (key: string, value: string) => {
+  const current = splitMultiFilterValue(props.filters[key])
+  const next = current.includes(value)
+    ? current.filter((item) => item !== value)
+    : [...current, value]
+  emit('update:filters', { ...props.filters, [key]: joinMultiFilterValue(next) })
+  emit('change')
 }
 
 const clearFilter = (key: string) => {

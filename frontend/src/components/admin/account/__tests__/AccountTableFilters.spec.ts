@@ -31,6 +31,7 @@ const messages: Record<string, string> = {
   'admin.accounts.status.inactive': 'Inactive',
   'admin.accounts.status.error': 'Error',
   'admin.accounts.status.rateLimited': 'Rate Limited',
+  'admin.accounts.status.notRateLimited': 'Not rate limited',
   'admin.accounts.status.tempUnschedulable': 'Temp Unschedulable',
   'admin.accounts.status.unschedulable': 'Unschedulable'
 }
@@ -119,7 +120,8 @@ describe('AccountTableFilters', () => {
     await wrapper.get('button[aria-haspopup="menu"]').trigger('click')
 
     expect(wrapper.text()).toContain('Account')
-    expect(wrapper.text()).toContain('All Plans')
+    expect(wrapper.text()).toContain('Plan')
+    expect(wrapper.text()).toContain('Unrecognized')
     expect(wrapper.text()).toContain('Clear all')
   })
 
@@ -140,5 +142,21 @@ describe('AccountTableFilters', () => {
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
     expect(trigger.attributes('aria-expanded')).toBe('false')
+  })
+
+  it('emits comma-separated values for status and plan selections', async () => {
+    const wrapper = mountFilters()
+
+    await wrapper.get('button[aria-haspopup="menu"]').trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('Plus'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('Team'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('Not rate limited'))!.trigger('click')
+
+    const updates = wrapper.emitted('update:filters') as Array<[Record<string, string>]>
+
+    expect(updates[0][0]).toMatchObject({ plan_type: '__unset__,plus' })
+    expect(updates[1][0]).toMatchObject({ plan_type: '__unset__,team' })
+    expect(updates[2][0]).toMatchObject({ status: 'not_rate_limited' })
+    expect(wrapper.emitted('change')).toHaveLength(3)
   })
 })

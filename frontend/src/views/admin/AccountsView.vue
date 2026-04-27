@@ -1342,27 +1342,43 @@ const buildAccountQueryFilters = () => ({
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
 })
+const splitAccountFilterValues = (value: unknown) => String(value ?? '')
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean)
+
 const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
   if (filters.platform && account.platform !== filters.platform) return false
   if (filters.type && account.type !== filters.type) return false
-  if (filters.status) {
+  const statusValues = splitAccountFilterValues(filters.status)
+  if (statusValues.length > 0) {
     const now = Date.now()
     const rateLimitResetAt = account.rate_limit_reset_at ? new Date(account.rate_limit_reset_at).getTime() : Number.NaN
     const isRateLimited = Number.isFinite(rateLimitResetAt) && rateLimitResetAt > now
     const tempUnschedUntil = account.temp_unschedulable_until ? new Date(account.temp_unschedulable_until).getTime() : Number.NaN
     const isTempUnschedulable = Number.isFinite(tempUnschedUntil) && tempUnschedUntil > now
+    const excludeRateLimited = statusValues.includes('not_rate_limited')
+    const concreteStatusValues = statusValues.filter((status) => status !== 'not_rate_limited')
 
-    if (filters.status === 'active') {
-      if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable) return false
-    } else if (filters.status === 'rate_limited') {
-      if (account.status !== 'active' || !isRateLimited || isTempUnschedulable) return false
-    } else if (filters.status === 'temp_unschedulable') {
-      if (account.status !== 'active' || !isTempUnschedulable) return false
-    } else if (filters.status === 'unschedulable') {
-      if (account.status !== 'active' || account.schedulable || isRateLimited || isTempUnschedulable) return false
-    } else if (account.status !== filters.status) {
-      return false
+    if (excludeRateLimited && isRateLimited) return false
+    if (concreteStatusValues.length > 0) {
+      const matchesStatus = concreteStatusValues.some((status) => {
+        if (status === 'active') {
+          return account.status === 'active' && !isRateLimited && !isTempUnschedulable && account.schedulable
+        }
+        if (status === 'rate_limited') {
+          return account.status === 'active' && isRateLimited && !isTempUnschedulable
+        }
+        if (status === 'temp_unschedulable') {
+          return account.status === 'active' && isTempUnschedulable
+        }
+        if (status === 'unschedulable') {
+          return account.status === 'active' && !account.schedulable && !isRateLimited && !isTempUnschedulable
+        }
+        return account.status === status
+      })
+      if (!matchesStatus) return false
     }
   }
   if (filters.group) {
@@ -1382,12 +1398,15 @@ const accountMatchesCurrentFilters = (account: Account) => {
     }
   }
   const planType = typeof account.credentials?.plan_type === 'string' ? account.credentials.plan_type : ''
-  if (filters.plan_type) {
-    if (filters.plan_type === ACCOUNT_PLAN_TYPE_UNSET_QUERY_VALUE) {
-      if (planType.trim() !== '') return false
-    } else if (planType !== filters.plan_type) {
-      return false
-    }
+  const planTypeValues = splitAccountFilterValues(filters.plan_type)
+  if (planTypeValues.length > 0) {
+    const matchesPlanType = planTypeValues.some((value) => {
+      if (value === ACCOUNT_PLAN_TYPE_UNSET_QUERY_VALUE) {
+        return planType.trim() === ''
+      }
+      return planType === value
+    })
+    if (!matchesPlanType) return false
   }
   const search = String(filters.search || '').trim().toLowerCase()
   if (search && !account.name.toLowerCase().includes(search)) return false
