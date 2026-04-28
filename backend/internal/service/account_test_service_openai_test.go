@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
 
@@ -61,12 +62,17 @@ func newTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 
 type openAIAccountTestRepo struct {
 	mockAccountRepoForGemini
-	updatedExtra   map[string]any
-	rateLimitedID  int64
-	rateLimitedAt  *time.Time
-	clearedErrorID int64
-	setErrorID     int64
-	setErrorMsg    string
+	updatedExtra           map[string]any
+	rateLimitedID          int64
+	rateLimitedAt          *time.Time
+	clearedErrorID         int64
+	setErrorID             int64
+	setErrorMsg            string
+	tempUnschedID          int64
+	tempUnschedUntil       *time.Time
+	tempUnschedReason      string
+	updateCredentialsCalls int
+	lastCredentials        map[string]any
 }
 
 func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -88,6 +94,19 @@ func (r *openAIAccountTestRepo) ClearError(_ context.Context, id int64) error {
 func (r *openAIAccountTestRepo) SetError(_ context.Context, id int64, errorMsg string) error {
 	r.setErrorID = id
 	r.setErrorMsg = errorMsg
+	return nil
+}
+
+func (r *openAIAccountTestRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
+	r.tempUnschedID = id
+	r.tempUnschedUntil = &until
+	r.tempUnschedReason = reason
+	return nil
+}
+
+func (r *openAIAccountTestRepo) UpdateCredentials(_ context.Context, _ int64, credentials map[string]any) error {
+	r.updateCredentialsCalls++
+	r.lastCredentials = cloneCredentials(credentials)
 	return nil
 }
 
@@ -186,6 +205,104 @@ func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testin
 	require.NotNil(t, account.RateLimitResetAt)
 }
 
+func TestAccountTestService_OpenAIAPIKey502MarksTempUnschedulable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusBadGateway, `{"error":{"message":"Upstream service temporarily unavailable","type":"upstream_error"}}`),
+		},
+	}
+	rateLimitSvc := &RateLimitService{accountRepo: repo}
+	svc := &AccountTestService{
+		accountRepo:      repo,
+		httpUpstream:     upstream,
+		cfg:              &config.Config{},
+		rateLimitService: rateLimitSvc,
+	}
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":                    "test-key",
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{
+				map[string]any{
+					"error_code":       502,
+					"duration_minutes": 30,
+					"keywords":         []any{"bad gateway", "upstream", "gateway"},
+					"description":      "网关错误，临时停止调度",
+				},
+			},
+		},
+	}
+	repo.accountsByID = map[int64]*Account{
+		account.ID: account,
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.3-codex", "", "")
+	require.Error(t, err)
+	require.Equal(t, account.ID, repo.tempUnschedID)
+	require.NotNil(t, repo.tempUnschedUntil)
+	require.Contains(t, repo.tempUnschedReason, `"status_code":502`)
+	require.Contains(t, repo.tempUnschedReason, `"matched_keyword":"upstream"`)
+	require.Contains(t, recorder.Body.String(), `API returned 502`)
+	require.Zero(t, repo.setErrorID)
+}
+
+func TestAccountTestService_OpenAI429WithTempUnschedRuleAlsoPersistsRateLimitState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached","resets_at":"1777283883"}}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	rateLimitSvc := &RateLimitService{accountRepo: repo}
+	svc := &AccountTestService{
+		accountRepo:      repo,
+		httpUpstream:     upstream,
+		cfg:              &config.Config{},
+		rateLimitService: rateLimitSvc,
+	}
+	account := &Account{
+		ID:           92,
+		Platform:     PlatformOpenAI,
+		Type:         AccountTypeAPIKey,
+		Status:       StatusError,
+		ErrorMessage: "stale 403",
+		Concurrency:  1,
+		Credentials: map[string]any{
+			"api_key":                    "test-key",
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{
+				map[string]any{
+					"error_code":       429,
+					"duration_minutes": 30,
+					"keywords":         []any{"limit reached", "usage_limit_reached"},
+					"description":      "限流，临时停止调度",
+				},
+			},
+		},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.3-codex", "", "")
+	require.Error(t, err)
+	require.Equal(t, account.ID, repo.tempUnschedID)
+	require.NotNil(t, repo.tempUnschedUntil)
+	require.Equal(t, account.ID, repo.rateLimitedID)
+	require.NotNil(t, repo.rateLimitedAt)
+	require.Equal(t, account.ID, repo.clearedErrorID)
+	require.Equal(t, StatusActive, account.Status)
+	require.Empty(t, account.ErrorMessage)
+	require.NotNil(t, account.RateLimitResetAt)
+	require.Zero(t, repo.setErrorID)
+}
+
 func TestAccountTestService_OpenAI429BodyOnlyPersistsRateLimitAndClearsStaleError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
@@ -272,7 +389,7 @@ func TestAccountTestService_OpenAI429WithoutResetSignalDoesNotMutateRuntimeState
 	require.Nil(t, account.RateLimitResetAt)
 }
 
-func TestAccountTestService_OpenAI401SetsPermanentErrorOnly(t *testing.T) {
+func TestAccountTestService_OpenAIOAuth401SetsTempUnschedulableAndForcesRefresh(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
@@ -280,7 +397,10 @@ func TestAccountTestService_OpenAI401SetsPermanentErrorOnly(t *testing.T) {
 
 	repo := &openAIAccountTestRepo{}
 	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
-	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+	rateLimitSvc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	invalidator := &tokenCacheInvalidatorRecorder{}
+	rateLimitSvc.SetTokenCacheInvalidator(invalidator)
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, rateLimitService: rateLimitSvc}
 	account := &Account{
 		ID:          80,
 		Platform:    PlatformOpenAI,
@@ -292,8 +412,41 @@ func TestAccountTestService_OpenAI401SetsPermanentErrorOnly(t *testing.T) {
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
 	require.Error(t, err)
+	require.Equal(t, account.ID, repo.tempUnschedID)
+	require.NotNil(t, repo.tempUnschedUntil)
+	require.Zero(t, repo.setErrorID)
+	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.NotEmpty(t, repo.lastCredentials["expires_at"])
+	require.Len(t, invalidator.accounts, 1)
+	require.Same(t, account, invalidator.accounts[0])
+	require.Zero(t, repo.rateLimitedID)
+	require.Zero(t, repo.clearedErrorID)
+	require.Nil(t, account.RateLimitResetAt)
+}
+
+func TestAccountTestService_OpenAIAPIKey401SetsPermanentErrorOnly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusUnauthorized, `{"error":"bad key"}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
+	account := &Account{
+		ID:          81,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.Error(t, err)
 	require.Equal(t, account.ID, repo.setErrorID)
 	require.Contains(t, repo.setErrorMsg, "Authentication failed (401)")
+	require.Zero(t, repo.tempUnschedID)
 	require.Zero(t, repo.rateLimitedID)
 	require.Zero(t, repo.clearedErrorID)
 	require.Nil(t, account.RateLimitResetAt)
