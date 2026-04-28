@@ -2285,8 +2285,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		// Remove unsupported fields (not supported by upstream OpenAI API)
-		unsupportedFields := []string{"prompt_cache_retention", "safety_identifier"}
-		for _, unsupportedField := range unsupportedFields {
+		for _, unsupportedField := range openAIResponsesUnsupportedFields {
 			if _, has := reqBody[unsupportedField]; has {
 				delete(reqBody, unsupportedField)
 				bodyModified = true
@@ -5516,6 +5515,17 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 			next, err := sjson.SetBytes(normalized, "stream", true)
 			if err != nil {
 				return body, false, fmt.Errorf("normalize passthrough body stream=true: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+	}
+
+	for _, field := range openAIResponsesUnsupportedFields {
+		if value := gjson.GetBytes(normalized, field); value.Exists() {
+			next, err := sjson.DeleteBytes(normalized, field)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body delete %s: %w", field, err)
 			}
 			normalized = next
 			changed = true
