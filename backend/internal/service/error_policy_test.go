@@ -242,6 +242,39 @@ func TestHandleUpstreamError_PoolModeCustomErrorCodesOverride(t *testing.T) {
 		require.Equal(t, 0, repo.tempCalls)
 	})
 
+	t.Run("pool_mode_without_custom_error_codes_still_applies_temp_unsched_rules", func(t *testing.T) {
+		repo := &errorPolicyRepoStub{}
+		svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		account := &Account{
+			ID:       32,
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+			Credentials: map[string]any{
+				"pool_mode":                  true,
+				"temp_unschedulable_enabled": true,
+				"temp_unschedulable_rules": []any{
+					map[string]any{
+						"error_code":       float64(502),
+						"keywords":         []any{"temporarily unavailable"},
+						"duration_minutes": float64(10),
+					},
+				},
+			},
+		}
+
+		shouldDisable := svc.HandleUpstreamError(
+			context.Background(),
+			account,
+			http.StatusBadGateway,
+			http.Header{},
+			[]byte(`{"error":{"message":"Upstream service temporarily unavailable"}}`),
+		)
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 0, repo.setErrCalls)
+		require.Equal(t, 1, repo.tempCalls)
+	})
+
 	t.Run("pool_mode_with_custom_error_codes_uses_local_error_policy", func(t *testing.T) {
 		repo := &errorPolicyRepoStub{}
 		svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
