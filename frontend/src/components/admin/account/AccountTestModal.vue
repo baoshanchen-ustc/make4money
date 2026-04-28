@@ -261,6 +261,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'updated', account: Account): void
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
@@ -361,6 +362,15 @@ const resetState = () => {
   previewImageUrl.value = ''
 }
 
+const syncLatestAccountState = async (accountId: number) => {
+  try {
+    const latestAccount = await adminAPI.accounts.getById(accountId)
+    emit('updated', latestAccount)
+  } catch (error) {
+    console.error('Failed to sync latest account state after test:', error)
+  }
+}
+
 const handleClose = () => {
   abortStream()
   emit('close')
@@ -387,6 +397,7 @@ const scrollToBottom = async () => {
 
 const startTest = async () => {
   if (!props.account || !selectedModelId.value) return
+  const testedAccountId = props.account.id
 
   resetState()
   status.value = 'connecting'
@@ -397,10 +408,11 @@ const startTest = async () => {
   abortStream()
 
   abortController = new AbortController()
+  let shouldSyncLatestState = false
 
   try {
     // Create EventSource for SSE
-    const url = `/api/v1/admin/accounts/${props.account.id}/test`
+    const url = `/api/v1/admin/accounts/${testedAccountId}/test`
 
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const response = await fetch(url, {
@@ -450,6 +462,7 @@ const startTest = async () => {
         }
       }
     }
+    shouldSyncLatestState = true
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       status.value = 'idle'
@@ -459,6 +472,12 @@ const startTest = async () => {
     const msg = error instanceof Error ? error.message : 'Unknown error'
     errorMessage.value = msg
     addLine(`Error: ${msg}`, 'text-red-400')
+    shouldSyncLatestState = true
+  } finally {
+    abortController = null
+    if (shouldSyncLatestState) {
+      await syncLatestAccountState(testedAccountId)
+    }
   }
 }
 
