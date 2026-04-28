@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type openAIFastPolicyRepoStub struct {
@@ -165,7 +166,7 @@ func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	for _, tier := range []string{"auto", "default", "scale"} {
+	for _, tier := range []string{"flex", "auto", "default", "scale"} {
 		body := []byte(`{"model":"gpt-5.5","service_tier":"` + tier + `"}`)
 		updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 		require.NoError(t, err, "tier %q should pass without error", tier)
@@ -174,10 +175,48 @@ func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T
 	}
 
 	// evaluate 层也应判定为 pass（默认规则 ServiceTier=priority 与 auto/default/scale 不匹配）
-	for _, tier := range []string{"auto", "default", "scale"} {
+	for _, tier := range []string{"flex", "auto", "default", "scale"} {
 		action, _ := svc.evaluateOpenAIFastPolicy(context.Background(), account, "gpt-5.5", tier)
 		require.Equal(t, BetaPolicyActionPass, action, "tier %q should evaluate to pass", tier)
 	}
+}
+
+func TestApplyOpenAIFastPolicyToBody_OAuthCodexInternalDefaultsUnsupportedTiers(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{})
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	for _, tier := range []string{"flex", "auto", "default", "scale", "unknown"} {
+		body := []byte(`{"model":"gpt-5.5","service_tier":"` + tier + `"}`)
+		updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+		require.NoError(t, err)
+		require.Equal(t, OpenAICodexInternalDefaultServiceTier, gjson.GetBytes(updated, "service_tier").String(),
+			"tier %q should be sent as default for OAuth Codex internal upstream", tier)
+	}
+
+	body := []byte(`{"model":"gpt-5.5","service_tier":{"mode":"flex"}}`)
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Equal(t, OpenAICodexInternalDefaultServiceTier, gjson.GetBytes(updated, "service_tier").String())
+
+	body = []byte(`{"model":"gpt-5.5"}`)
+	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Equal(t, OpenAICodexInternalDefaultServiceTier, gjson.GetBytes(updated, "service_tier").String())
+}
+
+func TestApplyOpenAIFastPolicyToBody_OAuthCodexInternalKeepsPriority(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{})
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	body := []byte(`{"model":"gpt-5.5","service_tier":"priority"}`)
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
+
+	body = []byte(`{"model":"gpt-5.5","service_tier":"fast"}`)
+	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
 }
 
 // TestApplyOpenAIFastPolicyToBody_AllRuleStripsOfficialTiers 验证管理员显式配置

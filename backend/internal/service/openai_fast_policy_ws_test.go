@@ -68,6 +68,29 @@ func TestWSResponseCreate_FlexPassThrough(t *testing.T) {
 	require.Equal(t, "flex", gjson.GetBytes(updated, "service_tier").String(), "flex frames must reach upstream untouched under default policy")
 }
 
+func TestWSResponseCreate_OAuthCodexInternalDefaultsUnsupportedServiceTier(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, nil)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	frame := []byte(`{"type":"response.create","model":"gpt-5.5","service_tier":"flex"}`)
+	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "gpt-5.5", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.Equal(t, OpenAICodexInternalDefaultServiceTier, gjson.GetBytes(updated, "service_tier").String())
+
+	frame = []byte(`{"type":"response.create","model":"gpt-5.5","service_tier":{"mode":"flex"}}`)
+	updated, blocked, err = svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "gpt-5.5", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.Equal(t, OpenAICodexInternalDefaultServiceTier, gjson.GetBytes(updated, "service_tier").String())
+
+	frame = []byte(`{"type":"response.create","model":"gpt-5.5"}`)
+	updated, blocked, err = svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "gpt-5.5", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.Equal(t, OpenAICodexInternalDefaultServiceTier, gjson.GetBytes(updated, "service_tier").String())
+}
+
 func TestWSResponseCreate_BlockReturnsTypedError(t *testing.T) {
 	settings := &OpenAIFastPolicySettings{
 		Rules: []OpenAIFastPolicyRule{{

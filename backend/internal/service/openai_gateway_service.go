@@ -2327,8 +2327,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	//      否则 native /responses 入口透传 "fast" 给上游会被拒。chat-
 	//      completions 入口由 normalizeResponsesBodyServiceTier 完成同一
 	//      行为，这里手工实现等效逻辑。
-	if rawTier, ok := reqBody["service_tier"].(string); ok {
-		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
+	if tierValue, hasTier := reqBody["service_tier"]; hasTier {
+		rawTier, ok := tierValue.(string)
+		normTier := ""
+		if ok {
+			normTier = normalizedOpenAIServiceTierValue(rawTier)
+		}
+		if !ok || normTier == "" || !openAICodexInternalFastPolicyEligible(account, normTier) {
+			if isOpenAICodexInternalAccount(account) {
+				reqBody["service_tier"] = OpenAICodexInternalDefaultServiceTier
+				bodyModified = true
+				disablePatch()
+			}
+		} else {
 			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
 			switch action {
 			case BetaPolicyActionBlock:
@@ -2353,6 +2364,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 			}
 		}
+	} else if isOpenAICodexInternalAccount(account) {
+		reqBody["service_tier"] = OpenAICodexInternalDefaultServiceTier
+		bodyModified = true
+		disablePatch()
 	}
 
 	// Re-serialize body only if modified
@@ -5667,6 +5682,27 @@ func normalizeOpenAIServiceTier(raw string) *string {
 	}
 }
 
+func isOpenAICodexInternalAccount(account *Account) bool {
+	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
+}
+
+const OpenAICodexInternalDefaultServiceTier = "default"
+
+func openAICodexInternalFastPolicyEligible(account *Account, tier string) bool {
+	if !isOpenAICodexInternalAccount(account) {
+		return true
+	}
+	return tier == OpenAIFastTierPriority
+}
+
+func setOpenAICodexInternalDefaultServiceTier(body []byte) ([]byte, error) {
+	updated, err := sjson.SetBytes(body, "service_tier", OpenAICodexInternalDefaultServiceTier)
+	if err != nil {
+		return body, err
+	}
+	return updated, nil
+}
+
 // OpenAIFastBlockedError indicates a request was rejected by the OpenAI fast
 // policy (action=block). Mirrors BetaBlockedError on the Claude side.
 type OpenAIFastBlockedError struct {
@@ -5788,12 +5824,40 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	if len(body) == 0 {
 		return body, nil
 	}
-	rawTier := gjson.GetBytes(body, "service_tier").String()
-	if rawTier == "" {
+	tierResult := gjson.GetBytes(body, "service_tier")
+	if !tierResult.Exists() {
+		if isOpenAICodexInternalAccount(account) {
+			updated, err := setOpenAICodexInternalDefaultServiceTier(body)
+			if err != nil {
+				return body, fmt.Errorf("set default service_tier on body: %w", err)
+			}
+			return updated, nil
+		}
 		return body, nil
 	}
+	if tierResult.Type != gjson.String {
+		if !isOpenAICodexInternalAccount(account) {
+			return body, nil
+		}
+		updated, err := setOpenAICodexInternalDefaultServiceTier(body)
+		if err != nil {
+			return body, fmt.Errorf("set default service_tier on body: %w", err)
+		}
+		return updated, nil
+	}
+	rawTier := tierResult.String()
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
-	if normTier == "" {
+	if normTier == "" || !openAICodexInternalFastPolicyEligible(account, normTier) {
+		if !isOpenAICodexInternalAccount(account) {
+			return body, nil
+		}
+		updated, err := setOpenAICodexInternalDefaultServiceTier(body)
+		if err != nil {
+			return body, fmt.Errorf("set default service_tier on body: %w", err)
+		}
+		return updated, nil
+	}
+	if rawTier == "" {
 		return body, nil
 	}
 	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
@@ -5884,12 +5948,40 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	if frameType != "response.create" {
 		return frame, nil, nil
 	}
-	rawTier := gjson.GetBytes(frame, "service_tier").String()
-	if rawTier == "" {
+	tierResult := gjson.GetBytes(frame, "service_tier")
+	if !tierResult.Exists() {
+		if isOpenAICodexInternalAccount(account) {
+			updated, err := setOpenAICodexInternalDefaultServiceTier(frame)
+			if err != nil {
+				return frame, nil, fmt.Errorf("set default service_tier on ws frame: %w", err)
+			}
+			return updated, nil, nil
+		}
 		return frame, nil, nil
 	}
+	if tierResult.Type != gjson.String {
+		if !isOpenAICodexInternalAccount(account) {
+			return frame, nil, nil
+		}
+		updated, err := setOpenAICodexInternalDefaultServiceTier(frame)
+		if err != nil {
+			return frame, nil, fmt.Errorf("set default service_tier on ws frame: %w", err)
+		}
+		return updated, nil, nil
+	}
+	rawTier := tierResult.String()
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
-	if normTier == "" {
+	if normTier == "" || !openAICodexInternalFastPolicyEligible(account, normTier) {
+		if !isOpenAICodexInternalAccount(account) {
+			return frame, nil, nil
+		}
+		updated, err := setOpenAICodexInternalDefaultServiceTier(frame)
+		if err != nil {
+			return frame, nil, fmt.Errorf("set default service_tier on ws frame: %w", err)
+		}
+		return updated, nil, nil
+	}
+	if rawTier == "" {
 		return frame, nil, nil
 	}
 	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
@@ -5907,6 +5999,13 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 		}
 		return trimmed, nil, nil
 	default:
+		if normTier != rawTier {
+			updated, err := sjson.SetBytes(frame, "service_tier", normTier)
+			if err != nil {
+				return frame, nil, fmt.Errorf("normalize service_tier on ws frame: %w", err)
+			}
+			return updated, nil, nil
+		}
 		return frame, nil, nil
 	}
 }
