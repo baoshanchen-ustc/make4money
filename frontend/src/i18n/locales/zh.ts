@@ -3044,6 +3044,7 @@ export default {
       searchModels: '搜索模型...',
       noMatchingModels: '没有匹配的模型',
       fillRelatedModels: '填入相关模型',
+      getModels: '获取模型',
       clearAllModels: '清除所有模型',
       customModelName: '自定义模型名称',
       enterCustomModelName: '输入自定义模型名称',

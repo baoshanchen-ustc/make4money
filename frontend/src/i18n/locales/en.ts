@@ -2900,6 +2900,7 @@ export default {
       searchModels: 'Search models...',
       noMatchingModels: 'No matching models',
       fillRelatedModels: 'Fill related models',
+      getModels: 'Get models',
       clearAllModels: 'Clear all models',
       customModelName: 'Custom model name',
       enterCustomModelName: 'Enter custom model name',

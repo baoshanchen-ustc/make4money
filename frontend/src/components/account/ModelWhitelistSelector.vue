@@ -86,6 +86,13 @@
         {{ t('admin.accounts.fillRelatedModels') }}
       </button>
       <button
+          type="button"
+          @click="searchModels"
+          class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30"
+      >
+        {{ t('admin.accounts.getModels') }}
+      </button>
+      <button
         type="button"
         @click="clearAll"
         class="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
@@ -132,6 +139,8 @@ const { t } = useI18n()
 const props = defineProps<{
   modelValue: string[]
   platform?: string
+  apiKeyBaseUrl?: string
+  apiKey?: string
   platforms?: string[]
 }>()
 
@@ -226,6 +235,37 @@ const fillRelated = () => {
       }
     }
   }
+  emit('update:modelValue', newModels)
+}
+
+const searchModels = async () => {
+  const url = `/v1/models`
+
+  // Use fetch with streaming for SSE since EventSource doesn't support POST
+  const response = await fetch(props.apiKeyBaseUrl + url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${props.apiKey}`,
+      'Content-Type': 'application/json'
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('No response body')
+  }
+  const decoder = new TextDecoder()
+
+  const { value } = await reader.read()
+
+  let res = decoder.decode(value, { stream: false })
+
+  const event = JSON.parse(res)
+  const newModels = event.data.map((x: any) => x.id);
   emit('update:modelValue', newModels)
 }
 
