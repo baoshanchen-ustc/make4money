@@ -6,6 +6,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func assertJSONTokenOrder(t *testing.T, body string, tokens ...string) {
@@ -70,4 +71,32 @@ func TestEnforceCacheControlLimit_PreservesTopLevelFieldOrder(t *testing.T) {
 
 	assertJSONTokenOrder(t, resultStr, `"alpha"`, `"system"`, `"messages"`, `"omega"`)
 	require.Equal(t, 4, strings.Count(resultStr, `"cache_control"`))
+}
+
+func TestEnforceCacheControlLimit_CountsTopLevelAndToolCacheControl(t *testing.T) {
+	body := []byte(`{"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":[{"type":"text","text":"m1","cache_control":{"type":"ephemeral"}}]},{"role":"assistant","content":[{"type":"text","text":"m2","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"t","input_schema":{},"cache_control":{"type":"ephemeral"}}]}`)
+
+	result := enforceCacheControlLimit(body)
+	resultStr := string(result)
+
+	require.Equal(t, 4, strings.Count(resultStr, `"cache_control"`))
+	require.False(t, gjson.GetBytes(result, "cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "system.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "messages.0.content.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "messages.1.content.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "tools.0.cache_control").Exists())
+}
+
+func TestEnforceCacheControlLimit_TrimsMessagesBeforeToolsAndSystem(t *testing.T) {
+	body := []byte(`{"system":[{"type":"text","text":"s1","cache_control":{"type":"ephemeral"}},{"type":"text","text":"s2","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":[{"type":"text","text":"m1","cache_control":{"type":"ephemeral"}}]},{"role":"assistant","content":[{"type":"text","text":"m2","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"t","input_schema":{},"cache_control":{"type":"ephemeral"}}]}`)
+
+	result := enforceCacheControlLimit(body)
+	resultStr := string(result)
+
+	require.Equal(t, 4, strings.Count(resultStr, `"cache_control"`))
+	require.False(t, gjson.GetBytes(result, "messages.0.content.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "messages.1.content.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "tools.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "system.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "system.1.cache_control").Exists())
 }
