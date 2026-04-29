@@ -30,9 +30,17 @@
       </span>
     </div>
     <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
-    <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
+    <div v-if="planLabel || privacyBadge || overagesBadge" class="inline-flex items-center overflow-hidden rounded-md">
       <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
         <span>{{ planLabel }}</span>
+      </span>
+      <span
+        v-if="overagesBadge"
+        :class="['inline-flex items-center gap-1 px-1.5 py-1', overagesBadge.class]"
+        :title="overagesBadge.title"
+      >
+        <Icon name="sparkles" size="xs" />
+        <span>{{ overagesBadge.label }}</span>
       </span>
       <span
         v-if="privacyBadge"
@@ -65,6 +73,7 @@ interface Props {
   platform: AccountPlatform
   type: AccountType
   planType?: string
+  overagesEnabled?: boolean
   privacyMode?: string
   subscriptionExpiresAt?: string
 }
@@ -75,6 +84,7 @@ const platformLabel = computed(() => {
   if (props.platform === 'anthropic') return 'Anthropic'
   if (props.platform === 'openai') return 'OpenAI'
   if (props.platform === 'antigravity') return 'Antigravity'
+  if (props.platform === 'kiro') return 'Kiro'
   return 'Gemini'
 })
 
@@ -123,6 +133,9 @@ const platformClass = computed(() => {
   if (props.platform === 'antigravity') {
     return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
   }
+  if (props.platform === 'kiro') {
+    return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+  }
   return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
 })
 
@@ -136,6 +149,9 @@ const typeClass = computed(() => {
   if (props.platform === 'antigravity') {
     return 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
   }
+  if (props.platform === 'kiro') {
+    return 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+  }
   return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
 })
 
@@ -144,6 +160,15 @@ const planBadgeClass = computed(() => {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
   }
   return typeClass.value
+})
+
+const overagesBadge = computed(() => {
+  if (props.platform !== 'kiro' || !props.overagesEnabled) return null
+  return {
+    label: t('admin.accounts.status.overageActive'),
+    title: t('admin.accounts.usageWindow.kiroOverage'),
+    class: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  }
 })
 
 // Subscription expiration label (non-free only)
