@@ -118,8 +118,8 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 
 	for _, item := range items {
 		switch {
-		case item.Role == "system":
-			// System prompt → Anthropic system field
+		case item.Role == "system" || item.Role == "developer":
+			// System / developer prompt → Anthropic system field
 			text := extractTextFromContent(item.Content)
 			if text != "" {
 				system, _ = json.Marshal(text)
@@ -396,6 +396,16 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 				Name: "web_search",
 			})
 		case "function":
+			out = append(out, AnthropicTool{
+				Name:        t.Name,
+				Description: t.Description,
+				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
+			})
+		case "custom", "namespace", "tool_search", "local_shell",
+			"image_generation", "custom_tool_call":
+			// Codex-specific tool types. Anthropic only accepts
+			// "web_search_20250305" / "web_search_20260209" as
+			// type values; map these to function tools.
 			out = append(out, AnthropicTool{
 				Name:        t.Name,
 				Description: t.Description,
