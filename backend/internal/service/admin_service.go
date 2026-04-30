@@ -319,6 +319,7 @@ type BulkUpdateAccountFilters struct {
 	Group       string
 	Search      string
 	PrivacyMode string
+	PlanType    string
 }
 
 // BulkUpdateAccountResult captures the result for a single account update.
@@ -2816,6 +2817,7 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 			filters.Search,
 			groupID,
 			filters.PrivacyMode,
+			filters.PlanType,
 			"",
 			"",
 		)
