@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -90,11 +89,12 @@ func NewAccountTestService(
 }
 
 func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error) {
-	if s.cfg == nil {
-		return "", errors.New("config is not available")
+	allowInsecureHTTP := false
+	if s.cfg != nil {
+		allowInsecureHTTP = s.cfg.Security.URLAllowlist.AllowInsecureHTTP
 	}
-	if !s.cfg.Security.URLAllowlist.Enabled {
-		return urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+	if s.cfg == nil || !s.cfg.Security.URLAllowlist.Enabled {
+		return urlvalidator.ValidateURLFormat(raw, allowInsecureHTTP)
 	}
 	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
 		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
@@ -453,6 +453,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	var apiURL string
 	var isOAuth bool
 	var chatgptAccountID string
+	var useChatCompletionsAPI bool
 
 	if account.IsOAuth() {
 		isOAuth = true
@@ -480,7 +481,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		apiURL = strings.TrimSuffix(normalizedBaseURL, "/") + "/responses"
+		if isDeepSeekBaseURL(normalizedBaseURL) {
+			useChatCompletionsAPI = true
+			apiURL = buildOpenAIChatCompletionsURL(normalizedBaseURL)
+		} else {
+			apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+		}
 	} else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -492,8 +498,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Create OpenAI Responses API payload
-	payload := createOpenAITestPayload(testModelID, isOAuth)
+	// Create OpenAI test payload.
+	// DeepSeek's official OpenAI-compatible API is centered on /chat/completions,
+	// so its connectivity probe must avoid the Responses-only shape.
+	var payload map[string]any
+	if useChatCompletionsAPI {
+		payload = createOpenAIChatCompletionsTestPayload(testModelID)
+	} else {
+		payload = createOpenAITestPayload(testModelID, isOAuth)
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
@@ -507,6 +520,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	if useChatCompletionsAPI {
+		req.Header.Set("accept", "text/event-stream")
+	}
 
 	// Set OAuth-specific headers for ChatGPT internal API
 	if isOAuth {
@@ -549,7 +565,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
-	// Process SSE stream
+	// Process SSE stream.
+	if useChatCompletionsAPI {
+		return s.processOpenAIChatCompletionsStream(c, resp.Body)
+	}
 	return s.processOpenAIStream(c, resp.Body)
 }
 
@@ -1088,6 +1107,19 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 	return payload
 }
 
+func createOpenAIChatCompletionsTestPayload(modelID string) map[string]any {
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": "hi",
+			},
+		},
+		"stream": true,
+	}
+}
+
 // processClaudeStream processes the SSE stream from Claude API
 func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
@@ -1208,6 +1240,84 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 				}
 			}
 			return s.sendErrorAndEnd(c, errorMsg)
+		}
+	}
+}
+
+// processOpenAIChatCompletionsStream processes the SSE stream from
+// OpenAI-compatible /chat/completions providers such as DeepSeek.
+func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader) error {
+	reader := bufio.NewReader(body)
+	seenTerminal := false
+	seenContent := false
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				if seenTerminal || seenContent {
+					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+					return nil
+				}
+				return s.sendErrorAndEnd(c, "Stream ended before completion")
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" || !sseDataPrefix.MatchString(line) {
+			continue
+		}
+
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		if jsonStr == "[DONE]" {
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+
+		if errData, ok := data["error"].(map[string]any); ok {
+			errorMsg := "Unknown error"
+			if msg, ok := errData["message"].(string); ok && msg != "" {
+				errorMsg = msg
+			}
+			return s.sendErrorAndEnd(c, errorMsg)
+		}
+
+		choices, ok := data["choices"].([]any)
+		if !ok {
+			continue
+		}
+
+		for _, rawChoice := range choices {
+			choice, ok := rawChoice.(map[string]any)
+			if !ok {
+				continue
+			}
+			if delta, ok := choice["delta"].(map[string]any); ok {
+				if text, ok := delta["content"].(string); ok && text != "" {
+					seenContent = true
+					s.sendEvent(c, TestEvent{Type: "content", Text: text})
+				}
+			}
+			if msg, ok := choice["message"].(map[string]any); ok {
+				if text, ok := msg["content"].(string); ok && text != "" {
+					seenContent = true
+					s.sendEvent(c, TestEvent{Type: "content", Text: text})
+				}
+			}
+			if finishReason, exists := choice["finish_reason"]; exists && finishReason != nil {
+				seenTerminal = true
+			}
+		}
+
+		if seenTerminal {
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
 		}
 	}
 }

@@ -73,6 +73,19 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		compatPromptCacheInjected = promptCacheKey != ""
 	}
 
+	if shouldUseDirectOpenAIChatCompletionsUpstream(account) {
+		return s.forwardDirectChatCompletionsUpstream(
+			ctx,
+			c,
+			account,
+			&chatReq,
+			originalModel,
+			billingModel,
+			upstreamModel,
+			startTime,
+		)
+	}
+
 	// 3. Build the upstream (Responses API) body.
 	//
 	// Cursor compatibility: some clients (notably Cursor cloud) send Responses
@@ -288,6 +301,211 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	return result, handleErr
+}
+
+func (s *OpenAIGatewayService) forwardDirectChatCompletionsUpstream(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	chatReq *apicompat.ChatCompletionsRequest,
+	originalModel string,
+	billingModel string,
+	upstreamModel string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	if chatReq == nil {
+		return nil, fmt.Errorf("chat completions request is nil")
+	}
+
+	baseURL := account.GetOpenAIBaseURL()
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = "https://api.openai.com"
+	}
+	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	targetURL := buildOpenAIChatCompletionsURL(validatedURL)
+
+	chatReq.Model = upstreamModel
+	upstreamBody, err := json.Marshal(chatReq)
+	if err != nil {
+		return nil, fmt.Errorf("marshal chat completions request: %w", err)
+	}
+
+	token, _, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("get access token: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("authorization", "Bearer "+token)
+
+	for key, values := range c.Request.Header {
+		lowerKey := strings.ToLower(key)
+		if openaiAllowedHeaders[lowerKey] {
+			for _, v := range values {
+				req.Header.Add(key, v)
+			}
+		}
+	}
+
+	if customUA := account.GetOpenAIUserAgent(); customUA != "" {
+		req.Header.Set("user-agent", customUA)
+	}
+	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+		req.Header.Set("user-agent", codexCLIUserAgent)
+	}
+	if req.Header.Get("content-type") == "" {
+		req.Header.Set("content-type", "application/json")
+	}
+	if chatReq.Stream {
+		req.Header.Set("accept", "text/event-stream")
+	} else {
+		req.Header.Set("accept", "application/json")
+	}
+
+	proxyURL := ""
+	if account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+		if upstreamMsg == "" {
+			upstreamMsg = string(respBody)
+		}
+		writeChatCompletionsError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
+		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+	}
+
+	if chatReq.Stream {
+		return s.handleDirectChatCompletionsStream(resp, c, originalModel, billingModel, upstreamModel, startTime)
+	}
+	return s.handleDirectChatCompletionsJSON(resp, c, originalModel, billingModel, upstreamModel, startTime)
+}
+
+func (s *OpenAIGatewayService) handleDirectChatCompletionsJSON(
+	resp *http.Response,
+	c *gin.Context,
+	originalModel string,
+	billingModel string,
+	upstreamModel string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	usage := OpenAIUsage{}
+	usage.InputTokens = int(gjson.GetBytes(body, "usage.prompt_tokens").Int())
+	usage.OutputTokens = int(gjson.GetBytes(body, "usage.completion_tokens").Int())
+	usage.CacheReadInputTokens = int(gjson.GetBytes(body, "usage.prompt_tokens_details.cached_tokens").Int())
+
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "application/json; charset=utf-8"
+	}
+	c.Data(resp.StatusCode, contentType, body)
+
+	return &OpenAIForwardResult{
+		RequestID:       resp.Header.Get("x-request-id"),
+		Usage:           usage,
+		Model:           originalModel,
+		BillingModel:    billingModel,
+		UpstreamModel:   upstreamModel,
+		Stream:          false,
+		ResponseHeaders: resp.Header.Clone(),
+		Duration:        time.Since(startTime),
+	}, nil
+}
+
+func (s *OpenAIGatewayService) handleDirectChatCompletionsStream(
+	resp *http.Response,
+	c *gin.Context,
+	originalModel string,
+	billingModel string,
+	upstreamModel string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	requestID := resp.Header.Get("x-request-id")
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+
+	reader := bufio.NewReader(resp.Body)
+	usage := OpenAIUsage{}
+	var firstTokenMs *int
+
+	for {
+		line, err := reader.ReadString('\n')
+		if line != "" {
+			trimmed := strings.TrimRight(line, "\r\n")
+			if strings.HasPrefix(trimmed, "data: ") {
+				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data: "))
+				if payload != "" && payload != "[DONE]" {
+					if firstTokenMs == nil {
+						ms := int(time.Since(startTime).Milliseconds())
+						firstTokenMs = &ms
+					}
+					usage.InputTokens = int(gjson.Get(payload, "usage.prompt_tokens").Int())
+					usage.OutputTokens = int(gjson.Get(payload, "usage.completion_tokens").Int())
+					usage.CacheReadInputTokens = int(gjson.Get(payload, "usage.prompt_tokens_details.cached_tokens").Int())
+				}
+			}
+
+			if _, writeErr := io.WriteString(c.Writer, line); writeErr != nil {
+				return &OpenAIForwardResult{
+					RequestID:     requestID,
+					Usage:         usage,
+					Model:         originalModel,
+					BillingModel:  billingModel,
+					UpstreamModel: upstreamModel,
+					Stream:        true,
+					FirstTokenMs:  firstTokenMs,
+					Duration:      time.Since(startTime),
+				}, nil
+			}
+			c.Writer.Flush()
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				return &OpenAIForwardResult{
+					RequestID:       requestID,
+					Usage:           usage,
+					Model:           originalModel,
+					BillingModel:    billingModel,
+					UpstreamModel:   upstreamModel,
+					Stream:          true,
+					ResponseHeaders: resp.Header.Clone(),
+					FirstTokenMs:    firstTokenMs,
+					Duration:        time.Since(startTime),
+				}, nil
+			}
+			return nil, err
+		}
+	}
 }
 
 func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {

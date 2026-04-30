@@ -150,6 +150,39 @@ func TestAccountTestService_OpenAIStreamEOFBeforeCompletedFails(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
 
+func TestAccountTestService_OpenAIDeepSeekAPIKeyUsesChatCompletionsPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"choices":[{"delta":{"content":"ok"},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`))
+
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{httpUpstream: upstream}
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "test-token",
+			"base_url": "https://api.deepseek.com",
+		},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "deepseek-chat", "", "")
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://api.deepseek.com/chat/completions", upstream.requests[0].URL.String())
+	require.Contains(t, recorder.Body.String(), "test_complete")
+}
+
 func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()

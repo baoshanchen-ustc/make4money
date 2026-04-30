@@ -2378,6 +2378,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
+	if shouldUseDirectOpenAIChatCompletionsUpstream(account) {
+		return s.forwardOpenAIResponsesViaChatCompletions(
+			ctx,
+			c,
+			account,
+			body,
+			originalModel,
+			billingModel,
+			upstreamModel,
+			startTime,
+		)
+	}
+
 	// Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -4770,8 +4783,12 @@ func (s *OpenAIGatewayService) replaceModelInSSEBody(body, fromModel, toModel st
 }
 
 func (s *OpenAIGatewayService) validateUpstreamBaseURL(raw string) (string, error) {
-	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
-		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+	allowInsecureHTTP := false
+	if s.cfg != nil {
+		allowInsecureHTTP = s.cfg.Security.URLAllowlist.AllowInsecureHTTP
+	}
+	if s.cfg == nil || !s.cfg.Security.URLAllowlist.Enabled {
+		normalized, err := urlvalidator.ValidateURLFormat(raw, allowInsecureHTTP)
 		if err != nil {
 			return "", fmt.Errorf("invalid base_url: %w", err)
 		}

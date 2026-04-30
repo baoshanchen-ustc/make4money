@@ -283,6 +283,91 @@ func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	assert.Equal(t, "function", tc["type"])
 }
 
+func TestResponsesToChatCompletionsRequest_BasicTextAndTools(t *testing.T) {
+	req := &ResponsesRequest{
+		Model:        "deepseek-chat",
+		Instructions: "You are helpful.",
+		Input: json.RawMessage(`[
+			{"role":"user","content":[{"type":"input_text","text":"hello"}]},
+			{"type":"function_call","call_id":"call_1","name":"weather","arguments":"{\"city\":\"Tokyo\"}"},
+			{"type":"function_call_output","call_id":"call_1","output":"sunny"}
+		]`),
+		MaxOutputTokens: intPtr(256),
+		Stream:          true,
+		Reasoning:       &ResponsesReasoning{Effort: "high"},
+		Tools: []ResponsesTool{{
+			Type:        "function",
+			Name:        "weather",
+			Description: "Get weather",
+			Parameters:  json.RawMessage(`{"type":"object"}`),
+		}},
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 4)
+	assert.Equal(t, "system", out.Messages[0].Role)
+	assert.Equal(t, "user", out.Messages[1].Role)
+	assert.Equal(t, "assistant", out.Messages[2].Role)
+	assert.Equal(t, "tool", out.Messages[3].Role)
+	require.NotNil(t, out.MaxTokens)
+	assert.Equal(t, 256, *out.MaxTokens)
+	assert.Equal(t, "high", out.ReasoningEffort)
+	require.Len(t, out.Tools, 1)
+	assert.Equal(t, "weather", out.Tools[0].Function.Name)
+}
+
+func TestChatCompletionsToResponsesResponse(t *testing.T) {
+	resp := &ChatCompletionsResponse{
+		ID:      "chatcmpl_1",
+		Object:  "chat.completion",
+		Created: 1,
+		Model:   "deepseek-chat",
+		Choices: []ChatChoice{{
+			Index: 0,
+			Message: ChatMessage{
+				Role:             "assistant",
+				Content:          json.RawMessage(`"ok"`),
+				ReasoningContent: "thinking",
+				ToolCalls: []ChatToolCall{{
+					ID:   "call_1",
+					Type: "function",
+					Function: ChatFunctionCall{
+						Name:      "weather",
+						Arguments: `{"city":"Tokyo"}`,
+					},
+				}},
+			},
+			FinishReason: "stop",
+		}},
+		Usage: &ChatUsage{
+			PromptTokens:     10,
+			CompletionTokens: 3,
+			TotalTokens:      13,
+			PromptTokensDetails: &ChatTokenDetails{
+				CachedTokens: 2,
+			},
+		},
+	}
+
+	out := ChatCompletionsToResponsesResponse(resp, "gpt-5.4-mini")
+	require.Equal(t, "response", out.Object)
+	require.Equal(t, "gpt-5.4-mini", out.Model)
+	require.Len(t, out.Output, 3)
+	assert.Equal(t, "reasoning", out.Output[0].Type)
+	assert.Equal(t, "message", out.Output[1].Type)
+	assert.Equal(t, "function_call", out.Output[2].Type)
+	require.NotNil(t, out.Usage)
+	assert.Equal(t, 10, out.Usage.InputTokens)
+	assert.Equal(t, 3, out.Usage.OutputTokens)
+	require.NotNil(t, out.Usage.InputTokensDetails)
+	assert.Equal(t, 2, out.Usage.InputTokensDetails.CachedTokens)
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
 func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model:       "gpt-4o",
