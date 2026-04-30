@@ -181,6 +181,24 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 				Content: content,
 			})
 
+		case item.Type == "reasoning":
+			// reasoning → assistant message with thinking block.
+			// mergeConsecutiveMessages will combine this with the
+			// following assistant text message.
+			thinkingText := extractSummaryText(item.Summary)
+			if thinkingText == "" {
+				thinkingText = "(thinking)"
+			}
+			block := AnthropicContentBlock{
+				Type:     "thinking",
+				Thinking: thinkingText,
+			}
+			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
+			messages = append(messages, AnthropicMessage{
+				Role:    "assistant",
+				Content: blockJSON,
+			})
+
 		default:
 			// Unknown role/type — attempt as user message
 			if item.Content != nil {
@@ -196,6 +214,28 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 	messages = mergeConsecutiveMessages(messages)
 
 	return system, messages, nil
+}
+
+// extractSummaryText extracts text from a reasoning summary field.
+// Summary is an array like [{"type":"summary_text","text":"..."}].
+func extractSummaryText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var items []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return ""
+	}
+	var texts []string
+	for _, item := range items {
+		if (item.Type == "summary_text" || item.Type == "text") && item.Text != "" {
+			texts = append(texts, item.Text)
+		}
+	}
+	return strings.Join(texts, "\n\n")
 }
 
 // extractTextFromContent extracts text from a content field that may be a
