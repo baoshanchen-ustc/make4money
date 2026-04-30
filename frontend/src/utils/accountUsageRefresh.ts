@@ -5,12 +5,15 @@ const normalizeUsageRefreshValue = (value: unknown): string => {
   return String(value)
 }
 
+const OPENAI_CODEX_SPARK_MODEL = 'gpt-5.3-codex-spark'
+
 export const buildOpenAIUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'updated_at' | 'last_used_at' | 'rate_limit_reset_at' | 'extra'>): string => {
   if (account.platform !== 'openai' || account.type !== 'oauth') {
     return ''
   }
 
   const extra = account.extra ?? {}
+  const sparkLimit = extra.model_rate_limits?.[OPENAI_CODEX_SPARK_MODEL]
   return [
     account.id,
     account.updated_at,
@@ -24,6 +27,8 @@ export const buildOpenAIUsageRefreshKey = (account: Pick<Account, 'id' | 'platfo
     extra.codex_7d_used_percent,
     extra.codex_7d_reset_at,
     extra.codex_7d_reset_after_seconds,
-    extra.codex_7d_window_minutes
+    extra.codex_7d_window_minutes,
+    sparkLimit?.rate_limited_at,
+    sparkLimit?.rate_limit_reset_at
   ].map(normalizeUsageRefreshValue).join('|')
 }

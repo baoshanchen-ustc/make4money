@@ -107,6 +107,38 @@ func TestIsModelRateLimited(t *testing.T) {
 			expected:       true,
 		},
 		{
+			name: "openai spark mapped variant hit",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						"gpt-5.3-codex-spark": map[string]any{
+							"rate_limit_reset_at": future,
+						},
+					},
+				},
+			},
+			requestedModel: "gpt-5.3-codex-spark-high",
+			expected:       true,
+		},
+		{
+			name: "openai non-spark not blocked by spark limit",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						"gpt-5.3-codex-spark": map[string]any{
+							"rate_limit_reset_at": future,
+						},
+					},
+				},
+			},
+			requestedModel: "gpt-5.5",
+			expected:       false,
+		},
+		{
 			name: "antigravity platform - gemini-3-pro-preview mapped to gemini-3-pro-high",
 			account: &Account{
 				Platform: PlatformAntigravity,

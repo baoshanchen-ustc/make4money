@@ -582,14 +582,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 				Kind:               "failover",
 				Message:            upstreamMsg,
 			})
-			s.handleFailoverSideEffects(ctx, resp, account)
+			s.handleFailoverSideEffects(ctx, resp, account, UpstreamErrorOptions{})
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
-		return s.handleErrorResponse(ctx, resp, c, account, forwardBody)
+		return s.handleErrorResponse(ctx, resp, c, account, forwardBody, UpstreamErrorOptions{})
 	}
 	defer func() { _ = resp.Body.Close() }()
 

@@ -98,6 +98,33 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.text()).not.toContain('⚡')
   })
 
+  it('OpenAI Spark 模型限流显示短名', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 20,
+          name: 'openai-1',
+          platform: 'openai',
+          extra: {
+            model_rate_limits: {
+              'gpt-5.3-codex-spark': {
+                rate_limited_at: '2026-03-15T00:00:00Z',
+                rate_limit_reset_at: '2099-03-15T00:00:00Z'
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('Spark')
+  })
+
   it('AICredits key 生效 → 显示积分已用尽 (credits_exhausted)', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

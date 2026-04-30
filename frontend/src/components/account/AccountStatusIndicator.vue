@@ -238,6 +238,7 @@ const formatScopeName = (scope: string): string => {
     'gemini-3-pro-image': 'G3PI',
     'gemini-3.1-flash-image': 'G31FI',
     // 其他
+    'gpt-5.3-codex-spark': 'Spark',
     'gpt-oss-120b-medium': 'GPT120',
     'tab_flash_lite_preview': 'TabFL',
     // 旧版 scope 别名（兼容）
