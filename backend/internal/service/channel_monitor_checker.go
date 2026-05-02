@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -246,10 +247,52 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	applyCompatibilityProbeHeaders(provider, headers, opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	if shouldFallbackToAnthropicCompatibilityProbe(provider, opts, status, err, respBytes) {
+		compatOpts := &CheckOptions{
+			ExtraHeaders:              extraHeadersForCompatibilityFallback(opts),
+			CompatibilityProbeEnabled: true,
+		}
+		body, err = buildRequestBody(adapter, provider, model, prompt, compatOpts)
+		if err != nil {
+			return "", "", 0, err
+		}
+		headers = mergeHeaders(adapter.buildHeaders(apiKey), compatOpts)
+		applyCompatibilityProbeHeaders(provider, headers, compatOpts)
+		respBytes, status, err = postRawJSON(ctx, full, body, headers)
+	}
 	if err != nil {
 		return "", "", status, err
 	}
 	return adapter.extractText(respBytes), string(respBytes), status, nil
+}
+
+func shouldFallbackToAnthropicCompatibilityProbe(provider string, opts *CheckOptions, status int, err error, body []byte) bool {
+	if provider != MonitorProviderAnthropic || err != nil {
+		return false
+	}
+	if opts != nil && opts.CompatibilityProbeEnabled {
+		return false
+	}
+	if bodyOverrideMode(opts) == MonitorBodyOverrideModeReplace {
+		return false
+	}
+	if status != http.StatusBadRequest && status != http.StatusForbidden {
+		return false
+	}
+	msg := strings.ToLower(string(body))
+	return strings.Contains(msg, "only for use in claude code") ||
+		strings.Contains(msg, "client not allowed")
+}
+
+func extraHeadersForCompatibilityFallback(opts *CheckOptions) map[string]string {
+	if opts == nil || len(opts.ExtraHeaders) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(opts.ExtraHeaders))
+	for k, v := range opts.ExtraHeaders {
+		out[k] = v
+	}
+	return out
 }
 
 func applyCompatibilityProbeHeaders(provider string, headers map[string]string, opts *CheckOptions) {
@@ -261,7 +304,9 @@ func applyCompatibilityProbeHeaders(provider string, headers map[string]string, 
 	}
 	headers["anthropic-version"] = monitorAnthropicAPIVersion
 	headers["anthropic-beta"] = claude.APIKeyBetaHeader
-	headers["Accept"] = "text/event-stream"
+	headers["Accept"] = "application/json"
+	headers["x-stainless-helper-method"] = "stream"
+	headers["x-client-request-id"] = uuid.NewString()
 }
 
 func buildAnthropicCompatibilityChallengeBody(model, prompt string) ([]byte, error) {

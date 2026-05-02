@@ -367,6 +367,15 @@ func TestRunCheckForModel_AnthropicCompatibilityProbeOverridesCriticalClaudeHead
 		if got := r.Header.Get("X-App"); got != "cli" {
 			t.Fatalf("compatibility probe should send X-App=cli, got %q", got)
 		}
+		if got := r.Header.Get("Accept"); got != "application/json" {
+			t.Fatalf("compatibility probe should send Accept=application/json, got %q", got)
+		}
+		if got := r.Header.Get("x-stainless-helper-method"); got != "stream" {
+			t.Fatalf("compatibility probe should mark stream helper method, got %q", got)
+		}
+		if got := r.Header.Get("x-client-request-id"); got == "" {
+			t.Fatal("compatibility probe should include x-client-request-id")
+		}
 
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -392,6 +401,54 @@ func TestRunCheckForModel_AnthropicCompatibilityProbeOverridesCriticalClaudeHead
 
 	if res.Status != MonitorStatusOperational {
 		t.Fatalf("expected operational when compatibility probe repairs critical Claude headers, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_AnthropicClientNotAllowedFallsBackToCompatibilityProbe(t *testing.T) {
+	var attempts int
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if attempts == 1 {
+			if body["stream"] != nil {
+				t.Fatalf("first attempt should use default non-compat body, got stream=%v", body["stream"])
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{
+					"type":    nil,
+					"message": "This API is only for use in claude code, continue to use it outside claude code can cause your account banned",
+				},
+				"type": "error",
+			})
+			return
+		}
+
+		if body["stream"] != true {
+			t.Fatalf("fallback attempt should use compatibility streaming body, got stream=%v", body["stream"])
+		}
+		if got := r.Header.Get("User-Agent"); !strings.HasPrefix(got, "claude-cli/") {
+			t.Fatalf("fallback should send Claude CLI User-Agent, got %q", got)
+		}
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: content_block_delta\ndata: {\"delta\":{\"text\":%q}}\n\n", answer)
+	}))
+
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-fake", "claude-opus-4-6", nil)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational after Claude Code rejection fallback, got status=%s message=%q", res.Status, res.Message)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected exactly 2 attempts, got %d", attempts)
 	}
 }
 
