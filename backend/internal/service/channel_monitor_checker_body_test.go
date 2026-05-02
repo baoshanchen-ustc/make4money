@@ -5,7 +5,9 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -353,6 +355,122 @@ func TestRunCheckForModel_AnthropicCompatibilityProbeUsesClaudeCodeStreamingBody
 
 	if res.Status != MonitorStatusOperational {
 		t.Fatalf("expected operational with Claude Code streaming body, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_AnthropicCompatibilityProbeOverridesCriticalClaudeHeaders(t *testing.T) {
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		if got := r.Header.Get("User-Agent"); !strings.HasPrefix(got, "claude-cli/") {
+			t.Fatalf("compatibility probe should send Claude CLI User-Agent, got %q", got)
+		}
+		if got := r.Header.Get("X-App"); got != "cli" {
+			t.Fatalf("compatibility probe should send X-App=cli, got %q", got)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: content_block_delta\ndata: {\"delta\":{\"text\":%q}}\n\n", answer)
+	}))
+
+	opts := &CheckOptions{
+		CompatibilityProbeEnabled: true,
+		ExtraHeaders: map[string]string{
+			"User-Agent": "Go-http-client/2.0",
+			"X-App":      "",
+		},
+	}
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-fake", "claude-opus-4-7", opts)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational when compatibility probe repairs critical Claude headers, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_RetriesTransientHTTP502(t *testing.T) {
+	var attempts int
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if attempts == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"title":"Error 502: Bad gateway"}`))
+			return
+		}
+
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]any{{"type": "text", "text": answer}},
+		})
+	}))
+
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-fake", "claude-opus-4-6", nil)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational after retrying transient 502, got status=%s message=%q", res.Status, res.Message)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected exactly 2 attempts, got %d", attempts)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestRunCheckForModel_RetriesResponseHeaderTimeout(t *testing.T) {
+	orig := monitorHTTPClient
+	var attempts int
+	monitorHTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return nil, errors.New("http2: timeout awaiting response headers")
+		}
+
+		defer func() { _ = req.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+		respBody := fmt.Sprintf(`{"content":[{"type":"text","text":%q}]}`, answer)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(respBody)),
+			Request:    req,
+		}, nil
+	})}
+	t.Cleanup(func() { monitorHTTPClient = orig })
+
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, "https://example.test", "sk-fake", "claude-opus-4-6", nil)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational after retrying response header timeout, got status=%s message=%q", res.Status, res.Message)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected exactly 2 attempts, got %d", attempts)
 	}
 }
 

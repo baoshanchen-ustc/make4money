@@ -256,13 +256,12 @@ func applyCompatibilityProbeHeaders(provider string, headers map[string]string, 
 	if opts == nil || !opts.CompatibilityProbeEnabled || provider != MonitorProviderAnthropic {
 		return
 	}
+	for k, v := range claude.DefaultHeaders {
+		headers[k] = v
+	}
+	headers["anthropic-version"] = monitorAnthropicAPIVersion
 	headers["anthropic-beta"] = claude.APIKeyBetaHeader
 	headers["Accept"] = "text/event-stream"
-	for k, v := range claude.DefaultHeaders {
-		if _, ok := headers[k]; !ok {
-			headers[k] = v
-		}
-	}
 }
 
 func buildAnthropicCompatibilityChallengeBody(model, prompt string) ([]byte, error) {
@@ -516,6 +515,22 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
 func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
+	var lastBody []byte
+	var lastStatus int
+	var lastErr error
+	for attempt := 0; attempt <= monitorRequestRetryMaxRetries; attempt++ {
+		lastBody, lastStatus, lastErr = postRawJSONOnce(ctx, fullURL, payload, headers)
+		if !shouldRetryMonitorRequest(lastStatus, lastErr) || attempt == monitorRequestRetryMaxRetries {
+			return lastBody, lastStatus, lastErr
+		}
+		if err := waitMonitorRequestRetry(ctx); err != nil {
+			return lastBody, lastStatus, lastErr
+		}
+	}
+	return lastBody, lastStatus, lastErr
+}
+
+func postRawJSONOnce(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, fmt.Errorf("build request: %w", err)
@@ -537,6 +552,62 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
 	}
 	return respBody, resp.StatusCode, nil
+}
+
+func shouldRetryMonitorRequest(status int, err error) bool {
+	if err != nil {
+		return isTransientMonitorRequestError(err)
+	}
+	return isTransientMonitorStatus(status)
+}
+
+func isTransientMonitorStatus(status int) bool {
+	switch status {
+	case http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+		520, // Cloudflare: unknown error
+		521, // Cloudflare: web server is down
+		522, // Cloudflare: connection timed out
+		523, // Cloudflare: origin is unreachable
+		524, // Cloudflare: timeout occurred
+		529: // common upstream overload code
+		return true
+	default:
+		return false
+	}
+}
+
+func isTransientMonitorRequestError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, fragment := range []string{
+		"timeout awaiting response headers",
+		"client.timeout exceeded while awaiting headers",
+		"server closed idle connection",
+		"connection reset by peer",
+		"unexpected eof",
+		"stream error",
+	} {
+		if strings.Contains(msg, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func waitMonitorRequestRetry(ctx context.Context) error {
+	timer := time.NewTimer(monitorRequestRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // joinURL 把 base origin 与 path 拼成完整 URL。

@@ -100,6 +100,10 @@ const (
 	monitorTLSHandshakeTimeout = 10 * time.Second
 	// monitorResponseHeaderTimeout HTTP transport 等待响应头超时。
 	monitorResponseHeaderTimeout = 30 * time.Second
+	// monitorRequestRetryMaxRetries 单次模型探测遇到 transient upstream 错误时最多重试次数。
+	monitorRequestRetryMaxRetries = 1
+	// monitorRequestRetryDelay transient upstream 错误重试前的短暂等待。
+	monitorRequestRetryDelay = 250 * time.Millisecond
 	// monitorPingDiscardMaxBytes ping 时丢弃响应体的最大字节数。
 	monitorPingDiscardMaxBytes = 1024
 
