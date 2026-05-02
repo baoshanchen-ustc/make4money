@@ -104,6 +104,8 @@ const (
 	monitorRequestRetryMaxRetries = 1
 	// monitorRequestRetryDelay transient upstream 错误重试前的短暂等待。
 	monitorRequestRetryDelay = 250 * time.Millisecond
+	// monitorClaudeCodeRejectionMaxRetries Claude Code 指纹被上游偶发拒绝时，用新指纹重试次数。
+	monitorClaudeCodeRejectionMaxRetries = 1
 	// monitorPingDiscardMaxBytes ping 时丢弃响应体的最大字节数。
 	monitorPingDiscardMaxBytes = 1024
 

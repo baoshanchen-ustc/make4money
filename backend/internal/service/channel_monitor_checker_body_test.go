@@ -452,6 +452,66 @@ func TestRunCheckForModel_AnthropicClientNotAllowedFallsBackToCompatibilityProbe
 	}
 }
 
+func TestRunCheckForModel_AnthropicCompatibilityProbeRetriesClaudeCodeRejectionWithFreshFingerprint(t *testing.T) {
+	var attempts int
+	var firstRequestID string
+	var firstUserID string
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["stream"] != true {
+			t.Fatalf("compatibility attempt should use streaming body, got stream=%v", body["stream"])
+		}
+		metadata, _ := body["metadata"].(map[string]any)
+		userID, _ := metadata["user_id"].(string)
+		requestID := r.Header.Get("x-client-request-id")
+		if userID == "" || requestID == "" {
+			t.Fatalf("compatibility attempt should include user_id and request id, user_id=%q request_id=%q", userID, requestID)
+		}
+
+		if attempts == 1 {
+			firstUserID = userID
+			firstRequestID = requestID
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{
+					"type":    nil,
+					"message": "This API is only for use in claude code, continue to use it outside claude code can cause your account banned",
+				},
+				"type": "error",
+			})
+			return
+		}
+
+		if userID == firstUserID {
+			t.Fatal("retry should regenerate metadata.user_id")
+		}
+		if requestID == firstRequestID {
+			t.Fatal("retry should regenerate x-client-request-id")
+		}
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: content_block_delta\ndata: {\"delta\":{\"text\":%q}}\n\n", answer)
+	}))
+
+	opts := &CheckOptions{CompatibilityProbeEnabled: true}
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-fake", "claude-opus-4-6", opts)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational after retrying Claude Code rejection with fresh fingerprint, got status=%s message=%q", res.Status, res.Message)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected exactly 2 attempts, got %d", attempts)
+	}
+}
+
 func TestRunCheckForModel_RetriesTransientHTTP502(t *testing.T) {
 	var attempts int
 	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

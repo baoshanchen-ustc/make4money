@@ -243,21 +243,35 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err != nil {
 		return "", "", 0, err
 	}
+	activeOpts := opts
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	applyCompatibilityProbeHeaders(provider, headers, opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
 	if shouldFallbackToAnthropicCompatibilityProbe(provider, opts, status, err, respBytes) {
-		compatOpts := &CheckOptions{
+		activeOpts = &CheckOptions{
 			ExtraHeaders:              extraHeadersForCompatibilityFallback(opts),
 			CompatibilityProbeEnabled: true,
 		}
-		body, err = buildRequestBody(adapter, provider, model, prompt, compatOpts)
+		body, err = buildRequestBody(adapter, provider, model, prompt, activeOpts)
 		if err != nil {
 			return "", "", 0, err
 		}
-		headers = mergeHeaders(adapter.buildHeaders(apiKey), compatOpts)
-		applyCompatibilityProbeHeaders(provider, headers, compatOpts)
+		headers = mergeHeaders(adapter.buildHeaders(apiKey), activeOpts)
+		applyCompatibilityProbeHeaders(provider, headers, activeOpts)
+		respBytes, status, err = postRawJSON(ctx, full, body, headers)
+	}
+	for attempt := 0; attempt < monitorClaudeCodeRejectionMaxRetries &&
+		shouldRetryAnthropicCompatibilityProbe(provider, activeOpts, status, err, respBytes); attempt++ {
+		if waitErr := waitMonitorRequestRetry(ctx); waitErr != nil {
+			break
+		}
+		body, err = buildRequestBody(adapter, provider, model, prompt, activeOpts)
+		if err != nil {
+			return "", "", 0, err
+		}
+		headers = mergeHeaders(adapter.buildHeaders(apiKey), activeOpts)
+		applyCompatibilityProbeHeaders(provider, headers, activeOpts)
 		respBytes, status, err = postRawJSON(ctx, full, body, headers)
 	}
 	if err != nil {
@@ -267,13 +281,27 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 }
 
 func shouldFallbackToAnthropicCompatibilityProbe(provider string, opts *CheckOptions, status int, err error, body []byte) bool {
-	if provider != MonitorProviderAnthropic || err != nil {
-		return false
-	}
 	if opts != nil && opts.CompatibilityProbeEnabled {
 		return false
 	}
 	if bodyOverrideMode(opts) == MonitorBodyOverrideModeReplace {
+		return false
+	}
+	return isAnthropicClaudeCodeRejection(provider, status, err, body)
+}
+
+func shouldRetryAnthropicCompatibilityProbe(provider string, opts *CheckOptions, status int, err error, body []byte) bool {
+	if opts == nil || !opts.CompatibilityProbeEnabled {
+		return false
+	}
+	if bodyOverrideMode(opts) == MonitorBodyOverrideModeReplace {
+		return false
+	}
+	return isAnthropicClaudeCodeRejection(provider, status, err, body)
+}
+
+func isAnthropicClaudeCodeRejection(provider string, status int, err error, body []byte) bool {
+	if provider != MonitorProviderAnthropic || err != nil {
 		return false
 	}
 	if status != http.StatusBadRequest && status != http.StatusForbidden {
