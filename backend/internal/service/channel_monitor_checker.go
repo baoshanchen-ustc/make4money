@@ -328,13 +328,23 @@ func applyCompatibilityProbeHeaders(provider string, headers map[string]string, 
 		return
 	}
 	for k, v := range claude.DefaultHeaders {
-		headers[k] = v
+		monitorSetHeaderIfMissing(headers, k, v)
 	}
-	headers["anthropic-version"] = monitorAnthropicAPIVersion
-	headers["anthropic-beta"] = claude.APIKeyBetaHeader
-	headers["Accept"] = "application/json"
-	headers["x-stainless-helper-method"] = "stream"
-	headers["x-client-request-id"] = uuid.NewString()
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(monitorHeaderValue(headers, "User-Agent"))), "claude-cli/") {
+		monitorSetHeader(headers, "User-Agent", claude.DefaultHeaders["User-Agent"])
+	}
+	if strings.TrimSpace(monitorHeaderValue(headers, "X-App")) != "cli" {
+		monitorSetHeader(headers, "X-App", "cli")
+	}
+	if strings.TrimSpace(monitorHeaderValue(headers, "anthropic-version")) == "" {
+		monitorSetHeader(headers, "anthropic-version", monitorAnthropicAPIVersion)
+	}
+	if !containsBetaToken(monitorHeaderValue(headers, "anthropic-beta"), claude.BetaClaudeCode) {
+		monitorSetHeader(headers, "anthropic-beta", claude.APIKeyBetaHeader)
+	}
+	monitorSetHeader(headers, "Accept", "application/json")
+	monitorSetHeader(headers, "x-stainless-helper-method", "stream")
+	monitorSetHeader(headers, "x-client-request-id", uuid.NewString())
 }
 
 func buildAnthropicCompatibilityChallengeBody(model, prompt string) ([]byte, error) {
@@ -489,20 +499,50 @@ func joinNonEmptyGJSONStrings(items []gjson.Result, extract func(gjson.Result) s
 // mergeHeaders 把用户自定义 headers 合并到 adapter 默认 headers 上。
 // 用户值覆盖默认；命中黑名单（hop-by-hop / 由 http.Client 自管的）的 key 静默丢弃。
 func mergeHeaders(base map[string]string, opts *CheckOptions) map[string]string {
-	if opts == nil || len(opts.ExtraHeaders) == 0 {
-		return base
+	extraLen := 0
+	if opts != nil {
+		extraLen = len(opts.ExtraHeaders)
 	}
-	out := make(map[string]string, len(base)+len(opts.ExtraHeaders))
+	out := make(map[string]string, len(base)+extraLen)
 	for k, v := range base {
-		out[k] = v
+		monitorSetHeader(out, k, v)
+	}
+	if opts == nil || len(opts.ExtraHeaders) == 0 {
+		return out
 	}
 	for k, v := range opts.ExtraHeaders {
 		if IsForbiddenHeaderName(k) {
 			continue
 		}
-		out[k] = v
+		monitorSetHeader(out, k, v)
 	}
 	return out
+}
+
+func monitorHeaderValue(headers map[string]string, name string) string {
+	for k, v := range headers {
+		if strings.EqualFold(k, name) {
+			return v
+		}
+	}
+	return ""
+}
+
+func monitorSetHeaderIfMissing(headers map[string]string, name, value string) {
+	if strings.TrimSpace(monitorHeaderValue(headers, name)) != "" {
+		return
+	}
+	monitorSetHeader(headers, name, value)
+}
+
+func monitorSetHeader(headers map[string]string, name, value string) {
+	name = strings.TrimSpace(name)
+	for k := range headers {
+		if strings.EqualFold(k, name) {
+			delete(headers, k)
+		}
+	}
+	headers[resolveWireCasing(name)] = value
 }
 
 // buildRequestBody 根据 body_override_mode 构造请求 body。

@@ -452,6 +452,69 @@ func TestRunCheckForModel_AnthropicClientNotAllowedFallsBackToCompatibilityProbe
 	}
 }
 
+func TestRunCheckForModel_AnthropicCompatibilityProbePreservesClaudeCodeTemplateHeaders(t *testing.T) {
+	templateUA := "claude-cli/2.1.114 (external, sdk-cli)"
+	templateBeta := "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27"
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		if got := r.Header.Get("User-Agent"); got != templateUA {
+			t.Fatalf("compatibility probe should preserve valid Claude Code template User-Agent, got %q", got)
+		}
+		if got := r.Header.Get("anthropic-beta"); got != templateBeta {
+			t.Fatalf("compatibility probe should preserve valid Claude Code template beta header, got %q", got)
+		}
+		if got := r.Header.Get("X-App"); got != "cli" {
+			t.Fatalf("compatibility probe should preserve X-App=cli, got %q", got)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: content_block_delta\ndata: {\"delta\":{\"text\":%q}}\n\n", answer)
+	}))
+
+	opts := &CheckOptions{
+		CompatibilityProbeEnabled: true,
+		ExtraHeaders: map[string]string{
+			"user-agent":        templateUA,
+			"x-app":             "cli",
+			"anthropic-beta":    templateBeta,
+			"anthropic-version": monitorAnthropicAPIVersion,
+		},
+	}
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-fake", "claude-opus-4-7", opts)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational when preserving valid Claude Code template headers, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestMergeHeaders_NormalizesDuplicateHeaderNames(t *testing.T) {
+	headers := mergeHeaders(
+		map[string]string{"User-Agent": "base", "anthropic-version": monitorAnthropicAPIVersion},
+		&CheckOptions{ExtraHeaders: map[string]string{"user-agent": "template"}},
+	)
+
+	var userAgentKeys int
+	for key := range headers {
+		if strings.EqualFold(key, "User-Agent") {
+			userAgentKeys++
+		}
+	}
+	if userAgentKeys != 1 {
+		t.Fatalf("expected one User-Agent header after merge, got %d in %#v", userAgentKeys, headers)
+	}
+	if got := monitorHeaderValue(headers, "User-Agent"); got != "template" {
+		t.Fatalf("expected user header to win, got %q", got)
+	}
+}
+
 func TestRunCheckForModel_AnthropicCompatibilityProbeRetriesClaudeCodeRejectionWithFreshFingerprint(t *testing.T) {
 	var attempts int
 	var firstRequestID string
