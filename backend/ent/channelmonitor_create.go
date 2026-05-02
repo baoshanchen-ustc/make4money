@@ -183,6 +183,20 @@ func (_c *ChannelMonitorCreate) SetBodyOverride(v map[string]interface{}) *Chann
 	return _c
 }
 
+// SetCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field.
+func (_c *ChannelMonitorCreate) SetCompatibilityProbeEnabled(v bool) *ChannelMonitorCreate {
+	_c.mutation.SetCompatibilityProbeEnabled(v)
+	return _c
+}
+
+// SetNillableCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableCompatibilityProbeEnabled(v *bool) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetCompatibilityProbeEnabled(*v)
+	}
+	return _c
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by IDs.
 func (_c *ChannelMonitorCreate) AddHistoryIDs(ids ...int64) *ChannelMonitorCreate {
 	_c.mutation.AddHistoryIDs(ids...)
@@ -295,6 +309,10 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultBodyOverrideMode
 		_c.mutation.SetBodyOverrideMode(v)
 	}
+	if _, ok := _c.mutation.CompatibilityProbeEnabled(); !ok {
+		v := channelmonitor.DefaultCompatibilityProbeEnabled
+		_c.mutation.SetCompatibilityProbeEnabled(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -377,6 +395,9 @@ func (_c *ChannelMonitorCreate) check() error {
 		if err := channelmonitor.BodyOverrideModeValidator(v); err != nil {
 			return &ValidationError{Name: "body_override_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.body_override_mode": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.CompatibilityProbeEnabled(); !ok {
+		return &ValidationError{Name: "compatibility_probe_enabled", err: errors.New(`ent: missing required field "ChannelMonitor.compatibility_probe_enabled"`)}
 	}
 	return nil
 }
@@ -468,6 +489,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.BodyOverride(); ok {
 		_spec.SetField(channelmonitor.FieldBodyOverride, field.TypeJSON, value)
 		_node.BodyOverride = value
+	}
+	if value, ok := _c.mutation.CompatibilityProbeEnabled(); ok {
+		_spec.SetField(channelmonitor.FieldCompatibilityProbeEnabled, field.TypeBool, value)
+		_node.CompatibilityProbeEnabled = value
 	}
 	if nodes := _c.mutation.HistoryIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -798,6 +823,18 @@ func (u *ChannelMonitorUpsert) ClearBodyOverride() *ChannelMonitorUpsert {
 	return u
 }
 
+// SetCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field.
+func (u *ChannelMonitorUpsert) SetCompatibilityProbeEnabled(v bool) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldCompatibilityProbeEnabled, v)
+	return u
+}
+
+// UpdateCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateCompatibilityProbeEnabled() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldCompatibilityProbeEnabled)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1106,6 +1143,20 @@ func (u *ChannelMonitorUpsertOne) UpdateBodyOverride() *ChannelMonitorUpsertOne 
 func (u *ChannelMonitorUpsertOne) ClearBodyOverride() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.ClearBodyOverride()
+	})
+}
+
+// SetCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field.
+func (u *ChannelMonitorUpsertOne) SetCompatibilityProbeEnabled(v bool) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetCompatibilityProbeEnabled(v)
+	})
+}
+
+// UpdateCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateCompatibilityProbeEnabled() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateCompatibilityProbeEnabled()
 	})
 }
 
@@ -1583,6 +1634,20 @@ func (u *ChannelMonitorUpsertBulk) UpdateBodyOverride() *ChannelMonitorUpsertBul
 func (u *ChannelMonitorUpsertBulk) ClearBodyOverride() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.ClearBodyOverride()
+	})
+}
+
+// SetCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field.
+func (u *ChannelMonitorUpsertBulk) SetCompatibilityProbeEnabled(v bool) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetCompatibilityProbeEnabled(v)
+	})
+}
+
+// UpdateCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateCompatibilityProbeEnabled() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateCompatibilityProbeEnabled()
 	})
 }
 

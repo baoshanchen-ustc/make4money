@@ -8745,40 +8745,41 @@ func (m *AuthIdentityChannelMutation) ResetEdge(name string) error {
 // ChannelMonitorMutation represents an operation that mutates the ChannelMonitor nodes in the graph.
 type ChannelMonitorMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *int64
-	created_at              *time.Time
-	updated_at              *time.Time
-	name                    *string
-	provider                *channelmonitor.Provider
-	endpoint                *string
-	api_key_encrypted       *string
-	primary_model           *string
-	extra_models            *[]string
-	appendextra_models      []string
-	group_name              *string
-	enabled                 *bool
-	interval_seconds        *int
-	addinterval_seconds     *int
-	last_checked_at         *time.Time
-	created_by              *int64
-	addcreated_by           *int64
-	extra_headers           *map[string]string
-	body_override_mode      *string
-	body_override           *map[string]interface{}
-	clearedFields           map[string]struct{}
-	history                 map[int64]struct{}
-	removedhistory          map[int64]struct{}
-	clearedhistory          bool
-	daily_rollups           map[int64]struct{}
-	removeddaily_rollups    map[int64]struct{}
-	cleareddaily_rollups    bool
-	request_template        *int64
-	clearedrequest_template bool
-	done                    bool
-	oldValue                func(context.Context) (*ChannelMonitor, error)
-	predicates              []predicate.ChannelMonitor
+	op                          Op
+	typ                         string
+	id                          *int64
+	created_at                  *time.Time
+	updated_at                  *time.Time
+	name                        *string
+	provider                    *channelmonitor.Provider
+	endpoint                    *string
+	api_key_encrypted           *string
+	primary_model               *string
+	extra_models                *[]string
+	appendextra_models          []string
+	group_name                  *string
+	enabled                     *bool
+	interval_seconds            *int
+	addinterval_seconds         *int
+	last_checked_at             *time.Time
+	created_by                  *int64
+	addcreated_by               *int64
+	extra_headers               *map[string]string
+	body_override_mode          *string
+	body_override               *map[string]interface{}
+	compatibility_probe_enabled *bool
+	clearedFields               map[string]struct{}
+	history                     map[int64]struct{}
+	removedhistory              map[int64]struct{}
+	clearedhistory              bool
+	daily_rollups               map[int64]struct{}
+	removeddaily_rollups        map[int64]struct{}
+	cleareddaily_rollups        bool
+	request_template            *int64
+	clearedrequest_template     bool
+	done                        bool
+	oldValue                    func(context.Context) (*ChannelMonitor, error)
+	predicates                  []predicate.ChannelMonitor
 }
 
 var _ ent.Mutation = (*ChannelMonitorMutation)(nil)
@@ -9598,6 +9599,42 @@ func (m *ChannelMonitorMutation) ResetBodyOverride() {
 	delete(m.clearedFields, channelmonitor.FieldBodyOverride)
 }
 
+// SetCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field.
+func (m *ChannelMonitorMutation) SetCompatibilityProbeEnabled(b bool) {
+	m.compatibility_probe_enabled = &b
+}
+
+// CompatibilityProbeEnabled returns the value of the "compatibility_probe_enabled" field in the mutation.
+func (m *ChannelMonitorMutation) CompatibilityProbeEnabled() (r bool, exists bool) {
+	v := m.compatibility_probe_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompatibilityProbeEnabled returns the old "compatibility_probe_enabled" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldCompatibilityProbeEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompatibilityProbeEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompatibilityProbeEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompatibilityProbeEnabled: %w", err)
+	}
+	return oldValue.CompatibilityProbeEnabled, nil
+}
+
+// ResetCompatibilityProbeEnabled resets all changes to the "compatibility_probe_enabled" field.
+func (m *ChannelMonitorMutation) ResetCompatibilityProbeEnabled() {
+	m.compatibility_probe_enabled = nil
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by ids.
 func (m *ChannelMonitorMutation) AddHistoryIDs(ids ...int64) {
 	if m.history == nil {
@@ -9780,7 +9817,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -9832,6 +9869,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	if m.body_override != nil {
 		fields = append(fields, channelmonitor.FieldBodyOverride)
 	}
+	if m.compatibility_probe_enabled != nil {
+		fields = append(fields, channelmonitor.FieldCompatibilityProbeEnabled)
+	}
 	return fields
 }
 
@@ -9874,6 +9914,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.BodyOverrideMode()
 	case channelmonitor.FieldBodyOverride:
 		return m.BodyOverride()
+	case channelmonitor.FieldCompatibilityProbeEnabled:
+		return m.CompatibilityProbeEnabled()
 	}
 	return nil, false
 }
@@ -9917,6 +9959,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldBodyOverrideMode(ctx)
 	case channelmonitor.FieldBodyOverride:
 		return m.OldBodyOverride(ctx)
+	case channelmonitor.FieldCompatibilityProbeEnabled:
+		return m.OldCompatibilityProbeEnabled(ctx)
 	}
 	return nil, fmt.Errorf("unknown ChannelMonitor field %s", name)
 }
@@ -10044,6 +10088,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBodyOverride(v)
+		return nil
+	case channelmonitor.FieldCompatibilityProbeEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompatibilityProbeEnabled(v)
 		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor field %s", name)
@@ -10198,6 +10249,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldBodyOverride:
 		m.ResetBodyOverride()
+		return nil
+	case channelmonitor.FieldCompatibilityProbeEnabled:
+		m.ResetCompatibilityProbeEnabled()
 		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor field %s", name)

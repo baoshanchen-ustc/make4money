@@ -118,20 +118,21 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		return nil, fmt.Errorf("encrypt api key: %w", err)
 	}
 	m := &ChannelMonitor{
-		Name:             strings.TrimSpace(p.Name),
-		Provider:         p.Provider,
-		Endpoint:         normalizeEndpoint(p.Endpoint),
-		APIKey:           encrypted, // 注意：传入 repository 时该字段为密文
-		PrimaryModel:     strings.TrimSpace(p.PrimaryModel),
-		ExtraModels:      normalizeModels(p.ExtraModels),
-		GroupName:        strings.TrimSpace(p.GroupName),
-		Enabled:          p.Enabled,
-		IntervalSeconds:  p.IntervalSeconds,
-		CreatedBy:        p.CreatedBy,
-		TemplateID:       p.TemplateID,
-		ExtraHeaders:     emptyHeadersIfNil(p.ExtraHeaders),
-		BodyOverrideMode: defaultBodyMode(p.BodyOverrideMode),
-		BodyOverride:     p.BodyOverride,
+		Name:                      strings.TrimSpace(p.Name),
+		Provider:                  p.Provider,
+		Endpoint:                  normalizeEndpoint(p.Endpoint),
+		APIKey:                    encrypted, // 注意：传入 repository 时该字段为密文
+		PrimaryModel:              strings.TrimSpace(p.PrimaryModel),
+		ExtraModels:               normalizeModels(p.ExtraModels),
+		GroupName:                 strings.TrimSpace(p.GroupName),
+		Enabled:                   p.Enabled,
+		IntervalSeconds:           p.IntervalSeconds,
+		CreatedBy:                 p.CreatedBy,
+		TemplateID:                p.TemplateID,
+		ExtraHeaders:              emptyHeadersIfNil(p.ExtraHeaders),
+		BodyOverrideMode:          defaultBodyMode(p.BodyOverrideMode),
+		BodyOverride:              p.BodyOverride,
+		CompatibilityProbeEnabled: p.CompatibilityProbeEnabled,
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("create channel monitor: %w", err)
@@ -298,9 +299,10 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 
 	// 所有模型共用同一份 CheckOptions（来自监控的快照字段）。
 	opts := &CheckOptions{
-		ExtraHeaders:     m.ExtraHeaders,
-		BodyOverrideMode: m.BodyOverrideMode,
-		BodyOverride:     m.BodyOverride,
+		ExtraHeaders:              m.ExtraHeaders,
+		BodyOverrideMode:          m.BodyOverrideMode,
+		BodyOverride:              m.BodyOverride,
+		CompatibilityProbeEnabled: m.CompatibilityProbeEnabled,
 	}
 
 	var eg errgroup.Group
@@ -501,6 +503,9 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 			return err
 		}
 		existing.IntervalSeconds = *p.IntervalSeconds
+	}
+	if p.CompatibilityProbeEnabled != nil {
+		existing.CompatibilityProbeEnabled = *p.CompatibilityProbeEnabled
 	}
 	return applyMonitorAdvancedUpdate(existing, p)
 }

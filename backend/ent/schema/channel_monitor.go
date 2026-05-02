@@ -82,6 +82,10 @@ func (ChannelMonitor) Fields() []ent.Field {
 		// body_override: 同 ChannelMonitorRequestTemplate.body_override
 		field.JSON("body_override", map[string]any{}).
 			Optional(),
+		// compatibility_probe_enabled: 启用 provider-specific 兼容探测请求体。
+		// 仅在用户明确开启时使用，避免改变普通监控的默认请求形态。
+		field.Bool("compatibility_probe_enabled").
+			Default(false),
 	}
 }
 

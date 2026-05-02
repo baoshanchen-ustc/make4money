@@ -49,8 +49,8 @@ const (
 	providerOpenAIPath = "/v1/chat/completions"
 	// providerAnthropicPath Anthropic Messages 路径。
 	providerAnthropicPath = "/v1/messages"
-	// providerGeminiPathTemplate Gemini generateContent 路径模板（含 model 占位）。
-	providerGeminiPathTemplate = "/v1beta/models/%s:generateContent"
+	// providerGeminiPathTemplate Gemini streamGenerateContent 路径模板（含 model 占位）。
+	providerGeminiPathTemplate = "/v1beta/models/%s:streamGenerateContent?alt=sse"
 
 	// MonitorProviderOpenAI / Anthropic / Gemini provider 字符串常量（也是 ent enum 的实际值）。
 	MonitorProviderOpenAI    = "openai"
@@ -83,8 +83,13 @@ const (
 
 	// monitorAnthropicAPIVersion Anthropic Messages API 版本头。
 	monitorAnthropicAPIVersion = "2023-06-01"
-	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
+	// monitorChallengeMaxTokens 单次 challenge 请求的默认 max_tokens（OpenAI / Claude 足够回答个位数算术）。
 	monitorChallengeMaxTokens = 50
+	// monitorAnthropicChallengeMaxTokens Claude Code probe 使用更接近真实 CLI/账号测试的输出上限。
+	monitorAnthropicChallengeMaxTokens = 1024
+	// monitorGeminiChallengeMaxOutputTokens Gemini 3.1 preview 会消耗较多 thinking tokens；
+	// 50 tokens 可能只产出半个答案后 MAX_TOKENS，导致 challenge mismatch got "" 或 got "4"。
+	monitorGeminiChallengeMaxOutputTokens = 256
 
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second

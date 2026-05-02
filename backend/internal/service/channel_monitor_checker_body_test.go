@@ -5,8 +5,11 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +60,74 @@ func setupFakeAnthropic(t *testing.T, handler *captureHandler) string {
 	return srv.URL
 }
 
+func setupFakeMonitorProvider(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+var monitorPromptQuestionRegex = regexp.MustCompile(`Q: (\d+) ([+-]) (\d+) = \?\s*A:\s*$`)
+
+func expectedAnswerFromPrompt(prompt string) (string, error) {
+	matches := monitorPromptQuestionRegex.FindStringSubmatch(prompt)
+	if len(matches) != 4 {
+		return "", fmt.Errorf("monitor prompt did not contain final arithmetic question: %q", prompt)
+	}
+	left, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return "", err
+	}
+	right, err := strconv.Atoi(matches[3])
+	if err != nil {
+		return "", err
+	}
+	switch matches[2] {
+	case "+":
+		return strconv.Itoa(left + right), nil
+	case "-":
+		return strconv.Itoa(left - right), nil
+	default:
+		return "", fmt.Errorf("unsupported operator %q", matches[2])
+	}
+}
+
+func anthropicPromptFromBody(body map[string]any) string {
+	messages, _ := body["messages"].([]any)
+	if len(messages) == 0 {
+		return ""
+	}
+	message, _ := messages[0].(map[string]any)
+	switch content := message["content"].(type) {
+	case string:
+		return content
+	case []any:
+		for _, part := range content {
+			partMap, _ := part.(map[string]any)
+			if text, _ := partMap["text"].(string); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func geminiPromptFromBody(body map[string]any) string {
+	contents, _ := body["contents"].([]any)
+	if len(contents) == 0 {
+		return ""
+	}
+	content, _ := contents[0].(map[string]any)
+	parts, _ := content["parts"].([]any)
+	if len(parts) == 0 {
+		return ""
+	}
+	part, _ := parts[0].(map[string]any)
+	text, _ := part["text"].(string)
+	return text
+}
+
 func TestRunCheckForModel_OffMode_PreservesDefaultBody(t *testing.T) {
 	h := &captureHandler{respondText: "the answer is 42"}
 	endpoint := setupFakeAnthropic(t, h)
@@ -69,6 +140,12 @@ func TestRunCheckForModel_OffMode_PreservesDefaultBody(t *testing.T) {
 	}
 	if _, ok := h.lastBody["messages"]; !ok {
 		t.Error("default body should contain messages")
+	}
+	if h.lastBody["stream"] != nil {
+		t.Errorf("default body should not enable streaming, got %v", h.lastBody["stream"])
+	}
+	if mt, ok := h.lastBody["max_tokens"].(float64); !ok || mt != monitorChallengeMaxTokens {
+		t.Errorf("default body should use max_tokens=%d, got %v", monitorChallengeMaxTokens, h.lastBody["max_tokens"])
 	}
 	if h.lastHeaders.Get("x-api-key") != "sk-fake" {
 		t.Errorf("expected adapter's x-api-key header, got %q", h.lastHeaders.Get("x-api-key"))
@@ -169,5 +246,238 @@ func TestRunCheckForModel_ReplaceMode_EmptyResponseIsFailed(t *testing.T) {
 	}
 	if !strings.Contains(res.Message, "replace-mode") {
 		t.Errorf("failure message should hint replace-mode, got %q", res.Message)
+	}
+}
+
+func TestRunCheckForModel_AnthropicTextAfterThinkingBlockPassesChallenge(t *testing.T) {
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]any{
+				{"type": "thinking", "thinking": ""},
+				{"type": "text", "text": answer},
+			},
+			"usage": map[string]any{"input_tokens": 562, "output_tokens": 57},
+		})
+	}))
+
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-fake", "claude-opus-4-6", nil)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational when Anthropic text follows thinking block, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_AnthropicCompatibilityProbePassesClaudeCodeValidation(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if !validator.Validate(r, body) {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{
+					"type":    nil,
+					"message": "This API is only for use in claude code",
+				},
+				"type": "error",
+			})
+			return
+		}
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]any{{"type": "text", "text": answer}},
+		})
+	}))
+
+	opts := &CheckOptions{CompatibilityProbeEnabled: true}
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-fake", "claude-opus-4-7", opts)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational with Claude Code-like compatibility probe request, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_AnthropicCompatibilityProbeUsesClaudeCodeStreamingBody(t *testing.T) {
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["stream"] != true || body["temperature"] != float64(1) || body["max_tokens"].(float64) < 1024 {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":{"message":"expected Claude Code streaming probe body"}}`))
+			return
+		}
+		messages, _ := body["messages"].([]any)
+		message, _ := messages[0].(map[string]any)
+		content, _ := message["content"].([]any)
+		contentPart, _ := content[0].(map[string]any)
+		cacheControl, _ := contentPart["cache_control"].(map[string]any)
+		if _, hasTTL := cacheControl["ttl"]; hasTTL {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":{"message":"unexpected cache_control ttl for API-key probe"}}`))
+			return
+		}
+		answer, err := expectedAnswerFromPrompt(anthropicPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":%q}}\n\n", answer)
+		fmt.Fprint(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	}))
+
+	opts := &CheckOptions{CompatibilityProbeEnabled: true}
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-fake", "claude-opus-4-6", opts)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational with Claude Code streaming body, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_GeminiTextAfterThoughtBlockPassesChallenge(t *testing.T) {
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		answer, err := expectedAnswerFromPrompt(geminiPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"candidates": []map[string]any{
+				{
+					"content": map[string]any{
+						"parts": []map[string]any{
+							{"thought": true, "text": ""},
+							{"text": answer},
+						},
+					},
+				},
+			},
+		})
+	}))
+
+	res := runCheckForModel(context.Background(), MonitorProviderGemini, endpoint, "AIza-fake", "gemini-3.1-pro-preview", nil)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational when Gemini text follows thought block, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_GeminiDefaultKeepsSmallChallengeBudget(t *testing.T) {
+	var observedMaxOutputTokens float64
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		generationConfig, _ := body["generationConfig"].(map[string]any)
+		observedMaxOutputTokens, _ = generationConfig["maxOutputTokens"].(float64)
+		answer, err := expectedAnswerFromPrompt(geminiPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":%q}]},\"finishReason\":\"STOP\"}]}\n\n", answer)
+	}))
+
+	res := runCheckForModel(context.Background(), MonitorProviderGemini, endpoint, "AIza-fake", "gemini-3.1-pro-preview", nil)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational with default Gemini probe, got status=%s message=%q", res.Status, res.Message)
+	}
+	if observedMaxOutputTokens != monitorChallengeMaxTokens {
+		t.Fatalf("default Gemini probe should keep maxOutputTokens=%d, got %v", monitorChallengeMaxTokens, observedMaxOutputTokens)
+	}
+}
+
+func TestRunCheckForModel_GeminiSSEStreamPassesChallenge(t *testing.T) {
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, ":streamGenerateContent") || r.URL.Query().Get("alt") != "sse" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"expected streamGenerateContent SSE endpoint"}}`))
+			return
+		}
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		answer, err := expectedAnswerFromPrompt(geminiPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: %s\n\n", `{"candidates":[{"content":{"parts":[{"thought":true,"text":"ignored thinking"}]}}]}`)
+		fmt.Fprintf(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":%q}]}}]}\n\n", answer)
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+
+	opts := &CheckOptions{CompatibilityProbeEnabled: true}
+	res := runCheckForModel(context.Background(), MonitorProviderGemini, endpoint, "AIza-fake", "gemini-3.1-pro-preview", opts)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational with Gemini SSE response, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_GeminiAllowsEnoughOutputTokensForThinkingModels(t *testing.T) {
+	endpoint := setupFakeMonitorProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		generationConfig, _ := body["generationConfig"].(map[string]any)
+		maxOutputTokens, _ := generationConfig["maxOutputTokens"].(float64)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if maxOutputTokens < 256 {
+			fmt.Fprintf(w, "data: %s\n\n", `{"candidates":[{"content":{"parts":[{"thought":true,"text":"thinking used the token budget"}]},"finishReason":"MAX_TOKENS"}]}`)
+			return
+		}
+
+		answer, err := expectedAnswerFromPrompt(geminiPromptFromBody(body))
+		if err != nil {
+			t.Fatalf("extract expected answer: %v", err)
+		}
+		fmt.Fprintf(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":%q}]},\"finishReason\":\"STOP\"}]}\n\n", answer)
+	}))
+
+	opts := &CheckOptions{CompatibilityProbeEnabled: true}
+	res := runCheckForModel(context.Background(), MonitorProviderGemini, endpoint, "AIza-fake", "gemini-3.1-pro-preview", opts)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("expected operational when Gemini has enough output tokens for thinking, got status=%s message=%q", res.Status, res.Message)
 	}
 }

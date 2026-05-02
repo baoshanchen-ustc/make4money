@@ -532,6 +532,10 @@ func init() {
 	channelmonitor.DefaultBodyOverrideMode = channelmonitorDescBodyOverrideMode.Default.(string)
 	// channelmonitor.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	channelmonitor.BodyOverrideModeValidator = channelmonitorDescBodyOverrideMode.Validators[0].(func(string) error)
+	// channelmonitorDescCompatibilityProbeEnabled is the schema descriptor for compatibility_probe_enabled field.
+	channelmonitorDescCompatibilityProbeEnabled := channelmonitorFields[15].Descriptor()
+	// channelmonitor.DefaultCompatibilityProbeEnabled holds the default value on creation for the compatibility_probe_enabled field.
+	channelmonitor.DefaultCompatibilityProbeEnabled = channelmonitorDescCompatibilityProbeEnabled.Default.(bool)
 	channelmonitordailyrollupFields := schema.ChannelMonitorDailyRollup{}.Fields()
 	_ = channelmonitordailyrollupFields
 	// channelmonitordailyrollupDescModel is the schema descriptor for model field.
