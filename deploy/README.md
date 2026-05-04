@@ -651,6 +651,8 @@ curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/ins
   | sudo bash -s -- upgrade-from-source
 ```
 
+On branch **`main`**, this fork’s install script tracks **`main`** for `git clone` / `git pull` and matches the raw URL path above. The **`i18n-seo`** branch carries the same script with **`i18n-seo`** as the default. Override anytime with **`GITHUB_DEPLOY_BRANCH`**.
+
 ### What the fast upgrade does
 
 1. Pre-flight: checks architecture (x86_64 only), disk space (>1GB), installs `jq` if missing

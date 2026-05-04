@@ -3,6 +3,9 @@
 # Sub2API Custom Fork - One-click Deploy Script
 # Usage: curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh | sudo bash
 #
+# This file on branch main tracks main (clone/pull + raw URL). Fork line i18n-seo uses the same script on branch i18n-seo.
+# Override: GITHUB_DEPLOY_BRANCH=i18n-seo
+#
 # This script:
 #   1. Installs Docker & Docker Compose if missing
 #   2. Clones the repo and builds a custom Docker image
@@ -16,6 +19,8 @@ set -e
 # Configuration
 # =============================================================================
 GITHUB_REPO="qiangweihewu/sub2api"
+# Git branch for clone/checkout/pull and raw.githubusercontent.com/.../<branch>/deploy/...
+GITHUB_DEPLOY_BRANCH="${GITHUB_DEPLOY_BRANCH:-main}"
 INSTALL_DIR="/opt/sub2api"
 IMAGE_NAME="sub2api-custom"
 COMPOSE_PROJECT="sub2api"
@@ -139,15 +144,29 @@ ensure_memory() {
 # =============================================================================
 # Clone & Build
 # =============================================================================
+sync_repo_to_deploy_branch() {
+    git fetch origin
+    if ! git rev-parse --verify "origin/$GITHUB_DEPLOY_BRANCH" >/dev/null 2>&1; then
+        print_error "Remote branch origin/$GITHUB_DEPLOY_BRANCH not found. Check GITHUB_REPO / GITHUB_DEPLOY_BRANCH."
+        exit 1
+    fi
+    if git show-ref --verify --quiet "refs/heads/$GITHUB_DEPLOY_BRANCH"; then
+        git checkout "$GITHUB_DEPLOY_BRANCH"
+    else
+        git checkout -b "$GITHUB_DEPLOY_BRANCH" "origin/$GITHUB_DEPLOY_BRANCH"
+    fi
+    git pull origin "$GITHUB_DEPLOY_BRANCH"
+}
+
 clone_repo() {
     if [ -d "$INSTALL_DIR/.git" ]; then
-        print_info "Repo already exists, pulling latest..."
+        print_info "Repo already exists, syncing branch $GITHUB_DEPLOY_BRANCH ..."
         cd "$INSTALL_DIR"
-        git pull origin main
+        sync_repo_to_deploy_branch
     else
-        print_info "Cloning repo from github.com/$GITHUB_REPO ..."
+        print_info "Cloning repo from github.com/$GITHUB_REPO (branch $GITHUB_DEPLOY_BRANCH) ..."
         rm -rf "$INSTALL_DIR"
-        git clone "https://github.com/${GITHUB_REPO}.git" "$INSTALL_DIR"
+        git clone -b "$GITHUB_DEPLOY_BRANCH" --single-branch "https://github.com/${GITHUB_REPO}.git" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
     fi
     print_success "Source code ready at $INSTALL_DIR"
@@ -311,8 +330,8 @@ start_services() {
 do_upgrade() {
     cd "$INSTALL_DIR"
 
-    print_info "Pulling latest code..."
-    git pull origin main
+    print_info "Pulling latest code (branch $GITHUB_DEPLOY_BRANCH)..."
+    sync_repo_to_deploy_branch
 
     print_info "Rebuilding Docker image..."
     ensure_memory
@@ -525,7 +544,7 @@ _upgrade_fast_download() {
     if [ ! -f "$INSTALL_DIR/deploy/Dockerfile.runtime" ]; then
         rm -rf "$STAGE_DIR"
         print_error "$INSTALL_DIR/deploy/Dockerfile.runtime not found. Ensure code is up to date:"
-        print_error "  cd $INSTALL_DIR && git pull origin main"
+        print_error "  cd $INSTALL_DIR && git fetch origin && git checkout $GITHUB_DEPLOY_BRANCH && git pull origin $GITHUB_DEPLOY_BRANCH"
         exit 1
     fi
     cp "$INSTALL_DIR/deploy/Dockerfile.runtime" "$STAGE_DIR/Dockerfile"
@@ -688,9 +707,9 @@ print_completion() {
     echo "  View logs:      docker compose -p sub2api logs -f sub2api"
     echo "  Restart:        docker compose -p sub2api restart"
     echo "  Stop:           docker compose -p sub2api down"
-    echo "  Upgrade (fast):    curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/deploy/install-custom.sh | sudo bash -s -- upgrade"
-    echo "  Upgrade (legacy):  curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/deploy/install-custom.sh | sudo bash -s -- upgrade-from-source"
-    echo "  Rollback:          curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/deploy/install-custom.sh | sudo bash -s -- rollback"
+    echo "  Upgrade (fast):    curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_DEPLOY_BRANCH}/deploy/install-custom.sh | sudo bash -s -- upgrade"
+    echo "  Upgrade (legacy):  curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_DEPLOY_BRANCH}/deploy/install-custom.sh | sudo bash -s -- upgrade-from-source"
+    echo "  Rollback:          curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_DEPLOY_BRANCH}/deploy/install-custom.sh | sudo bash -s -- rollback"
     echo ""
     echo -e "  ${YELLOW}Reverse Proxy:${NC}"
     echo "  Point your Nginx/Caddy to http://127.0.0.1:${server_port}"
@@ -717,7 +736,7 @@ main() {
             # Ensure we have the latest install-custom.sh and Dockerfile.runtime
             cd "$INSTALL_DIR"
             print_info "Syncing code (for Dockerfile.runtime and script updates)..."
-            git pull origin main
+            sync_repo_to_deploy_branch
             do_upgrade_fast
             exit 0
             ;;
