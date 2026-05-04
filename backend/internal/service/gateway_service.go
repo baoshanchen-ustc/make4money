@@ -6139,6 +6139,13 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
+	// 在所有 header 处理完成后，按 first-party Anthropic + config 开关条件填充 x-client-request-id。
+	// 仅在请求最终指向 first-party /v1/messages(/count_tokens) 且对应 token 类型的开关开启、
+	// 且客户端未提供该 header 时才生成。第三方 / 自定义 relay / API key passthrough（默认）不会触发。
+	if s.cfg != nil {
+		ensureClaudeFirstPartyRequestID(req, targetURL, s.cfg.Gateway.ClaudeRequestID, tokenType)
+	}
+
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
 		"url":                 req.URL.String(),
@@ -6634,11 +6641,9 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 	if isStream {
 		setHeaderRaw(req.Header, "x-stainless-helper-method", "stream")
 	}
-	// Real Claude CLI 每个请求都会生成一个新的 UUID 放在 x-client-request-id。
-	// 上游会以此作为会话/请求指纹的一部分，缺失或重复都可能触发第三方判定。
-	if getHeaderRaw(req.Header, "x-client-request-id") == "" {
-		setHeaderRaw(req.Header, "x-client-request-id", uuid.NewString())
-	}
+	// x-client-request-id 的自动生成已迁移到 ensureClaudeFirstPartyRequestID，由调用方在白名单/
+	// 指纹/mimic/beta policy 处理之后显式调用，并按 first-party Anthropic + config 开关共同 gate。
+	// 不在本函数内无条件生成，避免在自定义 relay / 第三方域上误填该标识。
 }
 
 func truncateForLog(b []byte, maxBytes int) string {
@@ -9312,6 +9317,11 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 			}
 		}
+	}
+
+	// First-party x-client-request-id 自动生成（count_tokens 路径与 messages 一致）
+	if s.cfg != nil {
+		ensureClaudeFirstPartyRequestID(req, targetURL, s.cfg.Gateway.ClaudeRequestID, tokenType)
 	}
 
 	if c != nil && tokenType == "oauth" {
