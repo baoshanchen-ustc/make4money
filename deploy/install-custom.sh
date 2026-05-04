@@ -1,10 +1,10 @@
 #!/bin/bash
 #
 # Sub2API Custom Fork - One-click Deploy Script
-# Usage: curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh | sudo bash
+# Usage: curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh | sudo bash
 #
-# This file on branch main tracks main (clone/pull + raw URL). Fork line i18n-seo uses the same script on branch i18n-seo.
-# Override: GITHUB_DEPLOY_BRANCH=i18n-seo
+# This file on branch i18n-seo tracks i18n-seo (clone/pull + raw URL). Branch main uses the same script with main as default.
+# Override: GITHUB_DEPLOY_BRANCH=main
 #
 # This script:
 #   1. Installs Docker & Docker Compose if missing
@@ -20,7 +20,7 @@ set -e
 # =============================================================================
 GITHUB_REPO="qiangweihewu/sub2api"
 # Git branch for clone/checkout/pull and raw.githubusercontent.com/.../<branch>/deploy/...
-GITHUB_DEPLOY_BRANCH="${GITHUB_DEPLOY_BRANCH:-main}"
+GITHUB_DEPLOY_BRANCH="${GITHUB_DEPLOY_BRANCH:-i18n-seo}"
 INSTALL_DIR="/opt/sub2api"
 IMAGE_NAME="sub2api-custom"
 COMPOSE_PROJECT="sub2api"
