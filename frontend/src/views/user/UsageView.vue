@@ -528,6 +528,7 @@ import { getBillingModeLabel, getBillingModeBadgeClass } from '@/utils/billingMo
 
 const { t } = useI18n()
 const appStore = useAppStore()
+type DateRangePreset = 'last24Hours' | null
 
 let abortController: AbortController | null = null
 
@@ -587,9 +588,11 @@ weekAgo.setDate(weekAgo.getDate() - 6)
 // Date range state
 const startDate = ref(formatLocalDate(weekAgo))
 const endDate = ref(formatLocalDate(now))
+const activeDatePreset = ref<DateRangePreset>(null)
 
 const filters = ref<UsageQueryParams>({
   api_key_id: undefined,
+  period: undefined,
   start_date: undefined,
   end_date: undefined
 })
@@ -598,12 +601,40 @@ const filters = ref<UsageQueryParams>({
 filters.value.start_date = startDate.value
 filters.value.end_date = endDate.value
 
+const buildRangeParams = (): Pick<UsageQueryParams, 'period' | 'start_date' | 'end_date'> => {
+  if (activeDatePreset.value === 'last24Hours') {
+    const end = new Date()
+    const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+    const nextStartDate = formatLocalDate(start)
+    const nextEndDate = formatLocalDate(end)
+    startDate.value = nextStartDate
+    endDate.value = nextEndDate
+    filters.value.period = 'last24hours'
+    filters.value.start_date = nextStartDate
+    filters.value.end_date = nextEndDate
+    return {
+      period: 'last24hours',
+      start_date: undefined,
+      end_date: undefined
+    }
+  }
+  return {
+    period: undefined,
+    start_date: startDate.value,
+    end_date: endDate.value
+  }
+}
+
 // Handle date range change from DateRangePicker
 const onDateRangeChange = (range: {
   startDate: string
   endDate: string
   preset: string | null
 }) => {
+  activeDatePreset.value = range.preset === 'last24Hours' ? 'last24Hours' : null
+  startDate.value = range.startDate
+  endDate.value = range.endDate
+  filters.value.period = activeDatePreset.value === 'last24Hours' ? 'last24hours' : undefined
   filters.value.start_date = range.startDate
   filters.value.end_date = range.endDate
   applyFilters()
@@ -679,6 +710,7 @@ const buildUsageQueryParams = (page: number, pageSize: number): UsageTableQueryP
   page,
   page_size: pageSize,
   ...filters.value,
+  ...buildRangeParams(),
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
 })
@@ -730,11 +762,13 @@ const loadApiKeys = async () => {
 const loadUsageStats = async () => {
   try {
     const apiKeyId = filters.value.api_key_id ? Number(filters.value.api_key_id) : undefined
-    const stats = await usageAPI.getStatsByDateRange(
-      filters.value.start_date || startDate.value,
-      filters.value.end_date || endDate.value,
-      apiKeyId
-    )
+    const stats = activeDatePreset.value === 'last24Hours'
+      ? await usageAPI.getStats('last24hours', apiKeyId)
+      : await usageAPI.getStatsByDateRange(
+          filters.value.start_date || startDate.value,
+          filters.value.end_date || endDate.value,
+          apiKeyId
+        )
     usageStats.value = stats
   } catch (error) {
     console.error('Failed to load usage stats:', error)
@@ -748,8 +782,10 @@ const applyFilters = () => {
 }
 
 const resetFilters = () => {
+  activeDatePreset.value = null
   filters.value = {
     api_key_id: undefined,
+    period: undefined,
     start_date: undefined,
     end_date: undefined
   }

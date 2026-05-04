@@ -119,6 +119,12 @@ func (h *UsageHandler) List(c *gin.Context) {
 		endTime = &t
 	}
 
+	if startTime == nil && endTime == nil && timezone.IsLast24HoursPeriod(c.Query("period")) {
+		start, end := timezone.Last24HoursInUserLocation(userTZ)
+		startTime = &start
+		endTime = &end
+	}
+
 	params := pagination.PaginationParams{
 		Page:      page,
 		PageSize:  pageSize,
@@ -237,17 +243,22 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	} else {
 		// 使用 period 参数
 		period := c.DefaultQuery("period", "today")
-		switch period {
-		case "today":
+		switch {
+		case timezone.IsLast24HoursPeriod(period):
+			startTime, endTime = timezone.Last24HoursInUserLocation(userTZ)
+		case period == "today":
 			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
-		case "week":
+			endTime = now
+		case period == "week":
 			startTime = now.AddDate(0, 0, -7)
-		case "month":
+			endTime = now
+		case period == "month":
 			startTime = now.AddDate(0, -1, 0)
+			endTime = now
 		default:
 			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+			endTime = now
 		}
-		endTime = now
 	}
 
 	var stats *service.UsageStats
@@ -272,8 +283,13 @@ func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
 	now := timezone.NowInUserLocation(userTZ)
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
+	period := c.Query("period")
 
 	var startTime, endTime time.Time
+
+	if startDate == "" && endDate == "" && timezone.IsLast24HoursPeriod(period) {
+		return timezone.Last24HoursInUserLocation(userTZ)
+	}
 
 	if startDate != "" {
 		if t, err := timezone.ParseInUserLocation("2006-01-02", startDate, userTZ); err == nil {
@@ -287,7 +303,7 @@ func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
 
 	if endDate != "" {
 		if t, err := timezone.ParseInUserLocation("2006-01-02", endDate, userTZ); err == nil {
-			endTime = t.Add(24 * time.Hour) // Include the end date
+			endTime = t.AddDate(0, 0, 1) // Include the end date
 		} else {
 			endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
 		}
@@ -334,12 +350,10 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
 		"trend":       trend,
-		"start_date":  startTime.Format("2006-01-02"),
-		"end_date":    endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 		"granularity": granularity,
-	})
+	}, c, startTime, endTime))
 }
 
 // DashboardModels handles getting user model usage statistics
@@ -359,11 +373,9 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{
-		"models":     stats,
-		"start_date": startTime.Format("2006-01-02"),
-		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
-	})
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
+		"models": stats,
+	}, c, startTime, endTime))
 }
 
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage

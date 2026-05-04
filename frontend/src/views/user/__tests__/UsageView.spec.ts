@@ -4,8 +4,9 @@ import { nextTick } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { query, getStatsByDateRange, list, showError, showWarning, showSuccess, showInfo } = vi.hoisted(() => ({
+const { query, getStats, getStatsByDateRange, list, showError, showWarning, showSuccess, showInfo } = vi.hoisted(() => ({
   query: vi.fn(),
+  getStats: vi.fn(),
   getStatsByDateRange: vi.fn(),
   list: vi.fn(),
   showError: vi.fn(),
@@ -46,6 +47,7 @@ const messages: Record<string, string> = {
 vi.mock('@/api', () => ({
   usageAPI: {
     query,
+    getStats,
     getStatsByDateRange,
   },
   keysAPI: {
@@ -75,6 +77,7 @@ const TablePageLayoutStub = {
 describe('user UsageView tooltip', () => {
   beforeEach(() => {
     query.mockReset()
+    getStats.mockReset()
     getStatsByDateRange.mockReset()
     list.mockReset()
     showError.mockReset()
@@ -181,6 +184,75 @@ describe('user UsageView tooltip', () => {
     expect(text).toContain('$0.092883')
     expect(text).toContain('$5.0000 / 1M tokens')
     expect(text).toContain('$30.0000 / 1M tokens')
+  })
+
+  it('uses rolling last24hours period when the date picker preset is selected', async () => {
+    query.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    getStats.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const DateRangePickerStub = {
+      template: '<button data-test="last24hours" @click="emitPreset">last24hours</button>',
+      methods: {
+        emitPreset() {
+          this.$emit('update:startDate', '2026-03-07')
+          this.$emit('update:endDate', '2026-03-08')
+          this.$emit('change', {
+            startDate: '2026-03-07',
+            endDate: '2026-03-08',
+            preset: 'last24Hours'
+          })
+        }
+      }
+    }
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: DateRangePickerStub,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    query.mockClear()
+    getStats.mockClear()
+    getStatsByDateRange.mockClear()
+
+    await wrapper.get('[data-test="last24hours"]').trigger('click')
+    await flushPromises()
+
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'last24hours',
+      start_date: undefined,
+      end_date: undefined,
+    }), expect.anything())
+    expect(getStats).toHaveBeenCalledWith('last24hours', undefined)
+    expect(getStatsByDateRange).not.toHaveBeenCalled()
   })
 
   it('exports csv with input and output unit price columns', async () => {

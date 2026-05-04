@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
@@ -16,8 +17,18 @@ import (
 
 type userUsageRepoCapture struct {
 	service.UsageLogRepository
-	listParams  pagination.PaginationParams
-	listFilters usagestats.UsageLogFilters
+	listParams                pagination.PaginationParams
+	listFilters               usagestats.UsageLogFilters
+	statsUserID               int64
+	statsStart                time.Time
+	statsEnd                  time.Time
+	dashboardTrendUserID      int64
+	dashboardTrendStart       time.Time
+	dashboardTrendEnd         time.Time
+	dashboardTrendGranularity string
+	dashboardModelsUserID     int64
+	dashboardModelsStart      time.Time
+	dashboardModelsEnd        time.Time
 }
 
 func (s *userUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -31,6 +42,28 @@ func (s *userUsageRepoCapture) ListWithFilters(ctx context.Context, params pagin
 	}, nil
 }
 
+func (s *userUsageRepoCapture) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	s.statsUserID = userID
+	s.statsStart = startTime
+	s.statsEnd = endTime
+	return &usagestats.UsageStats{}, nil
+}
+
+func (s *userUsageRepoCapture) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error) {
+	s.dashboardTrendUserID = userID
+	s.dashboardTrendStart = startTime
+	s.dashboardTrendEnd = endTime
+	s.dashboardTrendGranularity = granularity
+	return []usagestats.TrendDataPoint{}, nil
+}
+
+func (s *userUsageRepoCapture) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
+	s.dashboardModelsUserID = userID
+	s.dashboardModelsStart = startTime
+	s.dashboardModelsEnd = endTime
+	return []usagestats.ModelStat{}, nil
+}
+
 func newUserUsageRequestTypeTestRouter(repo *userUsageRepoCapture) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	usageSvc := service.NewUsageService(repo, nil, nil, nil)
@@ -41,6 +74,9 @@ func newUserUsageRequestTypeTestRouter(repo *userUsageRepoCapture) *gin.Engine {
 		c.Next()
 	})
 	router.GET("/usage", handler.List)
+	router.GET("/usage/stats", handler.Stats)
+	router.GET("/usage/dashboard/trend", handler.DashboardTrend)
+	router.GET("/usage/dashboard/models", handler.DashboardModels)
 	return router
 }
 
@@ -79,4 +115,73 @@ func TestUserUsageListInvalidStream(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestUserUsageListLast24HoursPeriod(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	before := time.Now().UTC()
+	req := httptest.NewRequest(http.MethodGet, "/usage?period=last24hours&timezone=UTC", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	after := time.Now().UTC()
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, repo.listFilters.StartTime)
+	require.NotNil(t, repo.listFilters.EndTime)
+	require.WithinDuration(t, before.Add(-24*time.Hour), *repo.listFilters.StartTime, 2*time.Second)
+	require.WithinDuration(t, after, *repo.listFilters.EndTime, 2*time.Second)
+	require.Equal(t, 24*time.Hour, repo.listFilters.EndTime.Sub(*repo.listFilters.StartTime))
+}
+
+func TestUserUsageStatsLast24HoursPeriod(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	before := time.Now().UTC()
+	req := httptest.NewRequest(http.MethodGet, "/usage/stats?period=last24hours&timezone=UTC", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	after := time.Now().UTC()
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int64(42), repo.statsUserID)
+	require.WithinDuration(t, before.Add(-24*time.Hour), repo.statsStart, 2*time.Second)
+	require.WithinDuration(t, after, repo.statsEnd, 2*time.Second)
+	require.Equal(t, 24*time.Hour, repo.statsEnd.Sub(repo.statsStart))
+}
+
+func TestUserDashboardTrendLast24HoursResponseMetadata(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/trend?period=24h&timezone=UTC", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int64(42), repo.dashboardTrendUserID)
+	require.Equal(t, "day", repo.dashboardTrendGranularity)
+	require.Contains(t, rec.Body.String(), "\"period\":\"last24hours\"")
+	require.Contains(t, rec.Body.String(), "\"start_time\"")
+	require.Contains(t, rec.Body.String(), "\"end_time\"")
+}
+
+func TestUserDashboardModelsDateRangeResponseMetadata(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/models?start_date=2025-01-01&end_date=2025-01-02&timezone=UTC", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int64(42), repo.dashboardModelsUserID)
+	require.Equal(t, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), repo.dashboardModelsStart)
+	require.Equal(t, time.Date(2025, 1, 3, 0, 0, 0, 0, time.UTC), repo.dashboardModelsEnd)
+	require.Contains(t, rec.Body.String(), "\"start_date\":\"2025-01-01\"")
+	require.Contains(t, rec.Body.String(), "\"end_date\":\"2025-01-02\"")
+	require.Contains(t, rec.Body.String(), "\"start_time\":\"2025-01-01T00:00:00Z\"")
+	require.Contains(t, rec.Body.String(), "\"end_time\":\"2025-01-03T00:00:00Z\"")
 }
