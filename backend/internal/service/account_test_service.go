@@ -21,7 +21,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -527,6 +526,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	var authToken string
 	var apiURL string
 	var isOAuth bool
+	var isOfficialOpenAI bool
 	var chatgptAccountID string
 
 	if account.IsOAuth() {
@@ -555,16 +555,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		// 账号已被探测为不支持 Responses（如 DeepSeek/Kimi 等）时，丢出明确提示。
-		// 账号本身可用（网关会走 CC 直转），仅测试入口需要补齐 CC SSE 处理逻辑。
-		// TODO：实现 CC 格式的账号测试路径（需专门的 CC SSE handler）。
-		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-			return s.sendErrorAndEnd(c,
-				"账号已被探测为不支持 OpenAI Responses API（如 DeepSeek/Kimi 等三方兼容上游），"+
-					"账号本身可正常使用，但当前测试接口仅支持 Responses API 路径。请直接通过实际 API 调用验证。",
-			)
+		// 判断是否为官方 OpenAI 还是第三方兼容上游
+		isOfficialOpenAI = strings.TrimSpace(baseURL) == "https://api.openai.com"
+		if isOfficialOpenAI {
+			// 官方 OpenAI 走 Responses API 路径
+			apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+		} else {
+			// 第三方兼容上游（DeepSeek/Kimi 等）走 /v1/chat/completions 直转路径
+			apiURL = buildOpenAIChatCompletionsURL(normalizedBaseURL)
 		}
-		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 	} else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -576,9 +575,17 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Create OpenAI Responses API payload
-	payload := createOpenAITestPayload(testModelID, isOAuth)
-	payloadBytes, _ := json.Marshal(payload)
+	// 根据 API 路径选择对应的 payload 格式
+	var payloadBytes []byte
+	if isOfficialOpenAI || isOAuth {
+		// 官方 OpenAI 和 OAuth 使用 Responses API 格式
+		payload := createOpenAITestPayload(testModelID, isOAuth)
+		payloadBytes, _ = json.Marshal(payload)
+	} else {
+		// 第三方兼容上游使用 Chat Completions 格式
+		payload := createOpenAIChatCompletionsTestPayload(testModelID)
+		payloadBytes, _ = json.Marshal(payload)
+	}
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -591,6 +598,11 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	// 第三方兼容上游使用流式响应
+	if !isOfficialOpenAI && !isOAuth {
+		req.Header.Set("Accept", "text/event-stream")
+	}
 
 	// Set OAuth-specific headers for ChatGPT internal API
 	if isOAuth {
@@ -1195,6 +1207,24 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 	return payload
 }
 
+// createOpenAIChatCompletionsTestPayload creates a test payload for OpenAI Chat Completions API
+// 用于第三方兼容上游（DeepSeek/Kimi/GLM/Qwen 等）的测试
+func createOpenAIChatCompletionsTestPayload(modelID string) map[string]any {
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": "hi",
+			},
+		},
+		"stream": true,
+		"stream_options": map[string]any{
+			"include_usage": true,
+		},
+	}
+}
+
 // processClaudeStream processes the SSE stream from Claude API
 func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
@@ -1249,16 +1279,20 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 	}
 }
 
-// processOpenAIStream processes the SSE stream from OpenAI Responses API
+// processOpenAIStream processes the SSE stream from OpenAI Responses API 或 Chat Completions API
+// 支持两种格式：
+// 1. Responses API（官方 OpenAI / OAuth）：type="response.output_text.delta", type="response.completed"
+// 2. Chat Completions（第三方兼容上游）：choices=[{delta:{content:"..."}}], [DONE]
 func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
 	seenCompleted := false
+	hasReceivedContent := false
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				if seenCompleted {
+				if seenCompleted || hasReceivedContent {
 					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 					return nil
 				}
@@ -1274,11 +1308,9 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
-			if seenCompleted {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
-			}
-			return s.sendErrorAndEnd(c, "Stream ended before response.completed")
+			// Chat Completions 格式：[DONE] 表示流结束
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
 		}
 
 		var data map[string]any
@@ -1288,11 +1320,29 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 
 		eventType, _ := data["type"].(string)
 
+		// 检查是否为 Chat Completions 格式（有 choices 字段）
+		if choices, ok := data["choices"].([]any); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]any); ok {
+				if delta, ok := choice["delta"].(map[string]any); ok {
+					if content, ok := delta["content"].(string); ok && content != "" {
+						s.sendEvent(c, TestEvent{Type: "content", Text: content})
+						hasReceivedContent = true
+					}
+				}
+				if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
+					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+					return nil
+				}
+			}
+			continue
+		}
+
+		// Responses API 格式
 		switch eventType {
 		case "response.output_text.delta":
-			// OpenAI Responses API uses "delta" field for text content
 			if delta, ok := data["delta"].(string); ok && delta != "" {
 				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
+				hasReceivedContent = true
 			}
 		case "response.completed", "response.done":
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})

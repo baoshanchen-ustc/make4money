@@ -43,8 +43,8 @@ var openaiCCRawAllowedHeaders = map[string]bool{
 // forwardAsRawChatCompletions 直转客户端的 Chat Completions 请求到上游
 // `{base_url}/v1/chat/completions`，**不**做 CC↔Responses 协议转换。
 //
-// 适用场景：account.platform=openai && account.type=apikey && 上游已被探测确认
-// 不支持 /v1/responses 端点（如 DeepSeek/Kimi/GLM/Qwen 等第三方 OpenAI 兼容上游）。
+// 适用场景：account.platform=openai && account.type=apikey && 非官方 OpenAI 上游
+// （如 DeepSeek/Kimi/GLM/Qwen 等第三方 OpenAI 兼容上游）。
 //
 // 与 ForwardAsChatCompletions 的关键差异：
 //
@@ -56,7 +56,7 @@ var openaiCCRawAllowedHeaders = map[string]bool{
 //   - 不注入 prompt_cache_key（OAuth 专属机制）
 //
 // 调用入口：openai_gateway_chat_completions.go::ForwardAsChatCompletions
-// 在函数顶部按 openai_compat.ShouldUseResponsesAPI 分流。
+// 在函数顶部按 base_url 是否为 https://api.openai.com 分流。
 func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	ctx context.Context,
 	c *gin.Context,
