@@ -182,6 +182,12 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		return
 	}
 
+	if h.enforcePromptFilter(c, body, "", func(status int, _ string, message string) {
+		googleError(c, status, message)
+	}) {
+		return
+	}
+
 	setOpsRequestContext(c, modelName, stream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
 

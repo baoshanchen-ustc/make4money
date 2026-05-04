@@ -100,6 +100,11 @@ func Status(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldStatus, v))
 }
 
+// PromptViolationCount applies equality check predicate on the "prompt_violation_count" field. It's identical to PromptViolationCountEQ.
+func PromptViolationCount(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldPromptViolationCount, v))
+}
+
 // Username applies equality check predicate on the "username" field. It's identical to UsernameEQ.
 func Username(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldUsername, v))
@@ -638,6 +643,46 @@ func StatusEqualFold(v string) predicate.User {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// PromptViolationCountEQ applies the EQ predicate on the "prompt_violation_count" field.
+func PromptViolationCountEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldPromptViolationCount, v))
+}
+
+// PromptViolationCountNEQ applies the NEQ predicate on the "prompt_violation_count" field.
+func PromptViolationCountNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldPromptViolationCount, v))
+}
+
+// PromptViolationCountIn applies the In predicate on the "prompt_violation_count" field.
+func PromptViolationCountIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldPromptViolationCount, vs...))
+}
+
+// PromptViolationCountNotIn applies the NotIn predicate on the "prompt_violation_count" field.
+func PromptViolationCountNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldPromptViolationCount, vs...))
+}
+
+// PromptViolationCountGT applies the GT predicate on the "prompt_violation_count" field.
+func PromptViolationCountGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldPromptViolationCount, v))
+}
+
+// PromptViolationCountGTE applies the GTE predicate on the "prompt_violation_count" field.
+func PromptViolationCountGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldPromptViolationCount, v))
+}
+
+// PromptViolationCountLT applies the LT predicate on the "prompt_violation_count" field.
+func PromptViolationCountLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldPromptViolationCount, v))
+}
+
+// PromptViolationCountLTE applies the LTE predicate on the "prompt_violation_count" field.
+func PromptViolationCountLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldPromptViolationCount, v))
 }
 
 // UsernameEQ applies the EQ predicate on the "username" field.

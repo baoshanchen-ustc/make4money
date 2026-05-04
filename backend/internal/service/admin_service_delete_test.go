@@ -138,6 +138,10 @@ func (s *userRepoStub) ExistsByEmail(ctx context.Context, email string) (bool, e
 	return s.exists, nil
 }
 
+func (s *userRepoStub) IncrementPromptViolationCount(ctx context.Context, userID int64, limit int) (int, bool, error) {
+	panic("unexpected IncrementPromptViolationCount call")
+}
+
 func (s *userRepoStub) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }

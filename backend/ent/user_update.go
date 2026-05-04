@@ -163,6 +163,27 @@ func (_u *UserUpdate) SetNillableStatus(v *string) *UserUpdate {
 	return _u
 }
 
+// SetPromptViolationCount sets the "prompt_violation_count" field.
+func (_u *UserUpdate) SetPromptViolationCount(v int) *UserUpdate {
+	_u.mutation.ResetPromptViolationCount()
+	_u.mutation.SetPromptViolationCount(v)
+	return _u
+}
+
+// SetNillablePromptViolationCount sets the "prompt_violation_count" field if the given value is not nil.
+func (_u *UserUpdate) SetNillablePromptViolationCount(v *int) *UserUpdate {
+	if v != nil {
+		_u.SetPromptViolationCount(*v)
+	}
+	return _u
+}
+
+// AddPromptViolationCount adds value to the "prompt_violation_count" field.
+func (_u *UserUpdate) AddPromptViolationCount(v int) *UserUpdate {
+	_u.mutation.AddPromptViolationCount(v)
+	return _u
+}
+
 // SetUsername sets the "username" field.
 func (_u *UserUpdate) SetUsername(v string) *UserUpdate {
 	_u.mutation.SetUsername(v)
@@ -969,6 +990,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.PromptViolationCount(); ok {
+		_spec.SetField(user.FieldPromptViolationCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPromptViolationCount(); ok {
+		_spec.AddField(user.FieldPromptViolationCount, field.TypeInt, value)
+	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
 	}
@@ -1728,6 +1755,27 @@ func (_u *UserUpdateOne) SetNillableStatus(v *string) *UserUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetPromptViolationCount sets the "prompt_violation_count" field.
+func (_u *UserUpdateOne) SetPromptViolationCount(v int) *UserUpdateOne {
+	_u.mutation.ResetPromptViolationCount()
+	_u.mutation.SetPromptViolationCount(v)
+	return _u
+}
+
+// SetNillablePromptViolationCount sets the "prompt_violation_count" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillablePromptViolationCount(v *int) *UserUpdateOne {
+	if v != nil {
+		_u.SetPromptViolationCount(*v)
+	}
+	return _u
+}
+
+// AddPromptViolationCount adds value to the "prompt_violation_count" field.
+func (_u *UserUpdateOne) AddPromptViolationCount(v int) *UserUpdateOne {
+	_u.mutation.AddPromptViolationCount(v)
 	return _u
 }
 
@@ -2566,6 +2614,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PromptViolationCount(); ok {
+		_spec.SetField(user.FieldPromptViolationCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPromptViolationCount(); ok {
+		_spec.AddField(user.FieldPromptViolationCount, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)

@@ -202,6 +202,10 @@ func (s *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, e
 	panic("unexpected ExistsByEmail call")
 }
 
+func (s *stubUserRepo) IncrementPromptViolationCount(ctx context.Context, userID int64, limit int) (int, bool, error) {
+	panic("unexpected IncrementPromptViolationCount call")
+}
+
 func (s *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }

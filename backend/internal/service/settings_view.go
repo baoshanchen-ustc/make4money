@@ -125,6 +125,13 @@ type SystemSettings struct {
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 
+	// Prompt keyword filter
+	PromptFilterEnabled        bool
+	PromptFilterKeywords       []string
+	PromptFilterViolationLimit int
+	PromptFilterWarningMessage string
+	PromptFilterBanMessage     string
+
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         bool
 	OpsRealtimeMonitoringEnabled bool

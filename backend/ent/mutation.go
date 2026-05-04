@@ -37438,6 +37438,8 @@ type UserMutation struct {
 	concurrency                   *int
 	addconcurrency                *int
 	status                        *string
+	prompt_violation_count        *int
+	addprompt_violation_count     *int
 	username                      *string
 	notes                         *string
 	totp_secret_encrypted         *string
@@ -37970,6 +37972,62 @@ func (m *UserMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *UserMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetPromptViolationCount sets the "prompt_violation_count" field.
+func (m *UserMutation) SetPromptViolationCount(i int) {
+	m.prompt_violation_count = &i
+	m.addprompt_violation_count = nil
+}
+
+// PromptViolationCount returns the value of the "prompt_violation_count" field in the mutation.
+func (m *UserMutation) PromptViolationCount() (r int, exists bool) {
+	v := m.prompt_violation_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPromptViolationCount returns the old "prompt_violation_count" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldPromptViolationCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPromptViolationCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPromptViolationCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPromptViolationCount: %w", err)
+	}
+	return oldValue.PromptViolationCount, nil
+}
+
+// AddPromptViolationCount adds i to the "prompt_violation_count" field.
+func (m *UserMutation) AddPromptViolationCount(i int) {
+	if m.addprompt_violation_count != nil {
+		*m.addprompt_violation_count += i
+	} else {
+		m.addprompt_violation_count = &i
+	}
+}
+
+// AddedPromptViolationCount returns the value that was added to the "prompt_violation_count" field in this mutation.
+func (m *UserMutation) AddedPromptViolationCount() (r int, exists bool) {
+	v := m.addprompt_violation_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPromptViolationCount resets all changes to the "prompt_violation_count" field.
+func (m *UserMutation) ResetPromptViolationCount() {
+	m.prompt_violation_count = nil
+	m.addprompt_violation_count = nil
 }
 
 // SetUsername sets the "username" field.
@@ -39284,7 +39342,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -39311,6 +39369,9 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, user.FieldStatus)
+	}
+	if m.prompt_violation_count != nil {
+		fields = append(fields, user.FieldPromptViolationCount)
 	}
 	if m.username != nil {
 		fields = append(fields, user.FieldUsername)
@@ -39380,6 +39441,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Concurrency()
 	case user.FieldStatus:
 		return m.Status()
+	case user.FieldPromptViolationCount:
+		return m.PromptViolationCount()
 	case user.FieldUsername:
 		return m.Username()
 	case user.FieldNotes:
@@ -39435,6 +39498,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldConcurrency(ctx)
 	case user.FieldStatus:
 		return m.OldStatus(ctx)
+	case user.FieldPromptViolationCount:
+		return m.OldPromptViolationCount(ctx)
 	case user.FieldUsername:
 		return m.OldUsername(ctx)
 	case user.FieldNotes:
@@ -39534,6 +39599,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case user.FieldPromptViolationCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPromptViolationCount(v)
 		return nil
 	case user.FieldUsername:
 		v, ok := value.(string)
@@ -39647,6 +39719,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 	}
+	if m.addprompt_violation_count != nil {
+		fields = append(fields, user.FieldPromptViolationCount)
+	}
 	if m.addbalance_notify_threshold != nil {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 	}
@@ -39668,6 +39743,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
+	case user.FieldPromptViolationCount:
+		return m.AddedPromptViolationCount()
 	case user.FieldBalanceNotifyThreshold:
 		return m.AddedBalanceNotifyThreshold()
 	case user.FieldTotalRecharged:
@@ -39696,6 +39773,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddConcurrency(v)
+		return nil
+	case user.FieldPromptViolationCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPromptViolationCount(v)
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		v, ok := value.(float64)
@@ -39810,6 +39894,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case user.FieldPromptViolationCount:
+		m.ResetPromptViolationCount()
 		return nil
 	case user.FieldUsername:
 		m.ResetUsername()

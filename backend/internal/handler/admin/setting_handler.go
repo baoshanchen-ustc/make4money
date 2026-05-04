@@ -198,6 +198,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		FallbackModelAntigravity:               settings.FallbackModelAntigravity,
 		EnableIdentityPatch:                    settings.EnableIdentityPatch,
 		IdentityPatchPrompt:                    settings.IdentityPatchPrompt,
+		PromptFilterEnabled:                    settings.PromptFilterEnabled,
+		PromptFilterKeywords:                   settings.PromptFilterKeywords,
+		PromptFilterViolationLimit:             settings.PromptFilterViolationLimit,
+		PromptFilterWarningMessage:             settings.PromptFilterWarningMessage,
+		PromptFilterBanMessage:                 settings.PromptFilterBanMessage,
 		OpsMonitoringEnabled:                   opsEnabled && settings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:           settings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                    settings.OpsQueryModeDefault,
@@ -425,6 +430,13 @@ type UpdateSettingsRequest struct {
 	// Identity patch configuration (Claude -> Gemini)
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
+
+	// Prompt keyword filter
+	PromptFilterEnabled        *bool     `json:"prompt_filter_enabled"`
+	PromptFilterKeywords       *[]string `json:"prompt_filter_keywords"`
+	PromptFilterViolationLimit *int      `json:"prompt_filter_violation_limit"`
+	PromptFilterWarningMessage *string   `json:"prompt_filter_warning_message"`
+	PromptFilterBanMessage     *string   `json:"prompt_filter_ban_message"`
 
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         *bool   `json:"ops_monitoring_enabled"`
@@ -1229,6 +1241,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FallbackModelAntigravity:         req.FallbackModelAntigravity,
 		EnableIdentityPatch:              req.EnableIdentityPatch,
 		IdentityPatchPrompt:              req.IdentityPatchPrompt,
+		PromptFilterEnabled:              boolValueOrDefault(req.PromptFilterEnabled, previousSettings.PromptFilterEnabled),
+		PromptFilterKeywords:             stringSliceValueOrDefault(req.PromptFilterKeywords, previousSettings.PromptFilterKeywords),
+		PromptFilterViolationLimit:       intValueOrDefault(req.PromptFilterViolationLimit, previousSettings.PromptFilterViolationLimit),
+		PromptFilterWarningMessage:       stringValueOrDefault(req.PromptFilterWarningMessage, previousSettings.PromptFilterWarningMessage),
+		PromptFilterBanMessage:           stringValueOrDefault(req.PromptFilterBanMessage, previousSettings.PromptFilterBanMessage),
 		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
@@ -1567,6 +1584,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FallbackModelAntigravity:               updatedSettings.FallbackModelAntigravity,
 		EnableIdentityPatch:                    updatedSettings.EnableIdentityPatch,
 		IdentityPatchPrompt:                    updatedSettings.IdentityPatchPrompt,
+		PromptFilterEnabled:                    updatedSettings.PromptFilterEnabled,
+		PromptFilterKeywords:                   updatedSettings.PromptFilterKeywords,
+		PromptFilterViolationLimit:             updatedSettings.PromptFilterViolationLimit,
+		PromptFilterWarningMessage:             updatedSettings.PromptFilterWarningMessage,
+		PromptFilterBanMessage:                 updatedSettings.PromptFilterBanMessage,
 		OpsMonitoringEnabled:                   updatedSettings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:           updatedSettings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                    updatedSettings.OpsQueryModeDefault,
@@ -1907,6 +1929,21 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.IdentityPatchPrompt != after.IdentityPatchPrompt {
 		changed = append(changed, "identity_patch_prompt")
 	}
+	if before.PromptFilterEnabled != after.PromptFilterEnabled {
+		changed = append(changed, "prompt_filter_enabled")
+	}
+	if !equalStringSlice(before.PromptFilterKeywords, after.PromptFilterKeywords) {
+		changed = append(changed, "prompt_filter_keywords")
+	}
+	if before.PromptFilterViolationLimit != after.PromptFilterViolationLimit {
+		changed = append(changed, "prompt_filter_violation_limit")
+	}
+	if before.PromptFilterWarningMessage != after.PromptFilterWarningMessage {
+		changed = append(changed, "prompt_filter_warning_message")
+	}
+	if before.PromptFilterBanMessage != after.PromptFilterBanMessage {
+		changed = append(changed, "prompt_filter_ban_message")
+	}
 	if before.OpsMonitoringEnabled != after.OpsMonitoringEnabled {
 		changed = append(changed, "ops_monitoring_enabled")
 	}
@@ -2091,6 +2128,20 @@ func intValueOrDefault(value *int, fallback int) int {
 }
 
 func boolValueOrDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+func stringValueOrDefault(value *string, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+func stringSliceValueOrDefault(value *[]string, fallback []string) []string {
 	if value == nil {
 		return fallback
 	}

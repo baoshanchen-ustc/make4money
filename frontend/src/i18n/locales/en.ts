@@ -5059,6 +5059,21 @@ export default {
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
         allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
       },
+      promptFilter: {
+        title: 'Prompt Keyword Filter',
+        description: 'Block user prompts containing banned keywords and disable the account after repeated violations.',
+        enabled: 'Enable Keyword Filter',
+        enabledHint: 'When enabled, matching requests return a policy warning before scheduling or billing.',
+        keywords: 'Banned Keywords',
+        keywordsPlaceholder: 'One keyword per line',
+        keywordsHint: 'Separate keywords by lines, commas, or Chinese commas. Matching is case-insensitive.',
+        violationLimit: 'Ban Threshold',
+        violationLimitHint: 'The user is disabled when cumulative violations reach this number.',
+        warningMessage: 'Violation Message',
+        warningMessageHint: 'Returned when a keyword matches before the ban threshold is reached.',
+        banMessage: 'Ban Message',
+        banMessageHint: 'Returned when the threshold is reached and the account is disabled.',
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',

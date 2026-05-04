@@ -196,6 +196,9 @@ func (m *mockUserRepo) UpdateUserLastActiveAt(_ context.Context, userID int64, a
 func (m *mockUserRepo) DeductBalance(context.Context, int64, float64) error { return nil }
 func (m *mockUserRepo) UpdateConcurrency(context.Context, int64, int) error { return nil }
 func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
+func (m *mockUserRepo) IncrementPromptViolationCount(context.Context, int64, int) (int, bool, error) {
+	return 0, false, nil
+}
 func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }

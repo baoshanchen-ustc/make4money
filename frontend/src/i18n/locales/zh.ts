@@ -5218,6 +5218,21 @@ export default {
         allowUngroupedKey: '允许未分组 Key 调度',
         allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
       },
+      promptFilter: {
+        title: 'Prompt 关键词过滤',
+        description: '拦截包含违禁关键词的用户 Prompt，并在多次违规后自动禁用账号。',
+        enabled: '启用关键词过滤',
+        enabledHint: '开启后，命中的请求会在进入调度和计费前直接返回违规提醒。',
+        keywords: '违禁关键词',
+        keywordsPlaceholder: '每行一个关键词',
+        keywordsHint: '支持按行、英文逗号或中文逗号分隔；匹配不区分大小写。',
+        violationLimit: '封号阈值',
+        violationLimitHint: '同一用户累计达到该次数后自动禁用账号。',
+        warningMessage: '违规提醒文案',
+        warningMessageHint: '命中关键词但未达到封号阈值时返回。',
+        banMessage: '封号提醒文案',
+        banMessageHint: '达到阈值并禁用账号时返回。',
+      },
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',

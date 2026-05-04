@@ -235,6 +235,13 @@ const (
 	SettingKeyEnableIdentityPatch = "enable_identity_patch"
 	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
 
+	// Prompt keyword filter
+	SettingKeyPromptFilterEnabled        = "prompt_filter_enabled"
+	SettingKeyPromptFilterKeywords       = "prompt_filter_keywords"
+	SettingKeyPromptFilterViolationLimit = "prompt_filter_violation_limit"
+	SettingKeyPromptFilterWarningMessage = "prompt_filter_warning_message"
+	SettingKeyPromptFilterBanMessage     = "prompt_filter_ban_message"
+
 	// =========================
 	// Ops Monitoring (vNext)
 	// =========================

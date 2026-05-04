@@ -71,6 +71,9 @@ func (s *userRepoStubForGroupUpdate) UpdateConcurrency(context.Context, int64, i
 func (s *userRepoStubForGroupUpdate) ExistsByEmail(context.Context, string) (bool, error) {
 	panic("unexpected")
 }
+func (s *userRepoStubForGroupUpdate) IncrementPromptViolationCount(context.Context, int64, int) (int, bool, error) {
+	panic("unexpected")
+}
 func (s *userRepoStubForGroupUpdate) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	panic("unexpected")
 }

@@ -81,6 +81,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		zap.String("capability", string(parsed.RequiredCapability)),
 	)
 
+	if h.enforcePromptFilter(c, nil, parsed.Prompt, func(status int, errorType string, message string) {
+		h.errorResponse(c, status, errorType, message)
+	}) {
+		return
+	}
+
 	if parsed.Multipart {
 		setOpsRequestContext(c, parsed.Model, parsed.Stream, nil)
 	} else {

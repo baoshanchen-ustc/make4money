@@ -422,6 +422,13 @@ export interface SystemSettings {
   enable_identity_patch: boolean;
   identity_patch_prompt: string;
 
+  // Prompt keyword filter
+  prompt_filter_enabled: boolean;
+  prompt_filter_keywords: string[];
+  prompt_filter_violation_limit: number;
+  prompt_filter_warning_message: string;
+  prompt_filter_ban_message: string;
+
   // Ops Monitoring (vNext)
   ops_monitoring_enabled: boolean;
   ops_realtime_monitoring_enabled: boolean;
@@ -600,6 +607,11 @@ export interface UpdateSettingsRequest {
   fallback_model_antigravity?: string;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;
+  prompt_filter_enabled?: boolean;
+  prompt_filter_keywords?: string[];
+  prompt_filter_violation_limit?: number;
+  prompt_filter_warning_message?: string;
+  prompt_filter_ban_message?: string;
   ops_monitoring_enabled?: boolean;
   ops_realtime_monitoring_enabled?: boolean;
   ops_query_mode_default?: "auto" | "raw" | "preagg" | string;

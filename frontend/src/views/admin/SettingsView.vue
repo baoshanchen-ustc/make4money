@@ -2986,6 +2986,108 @@
             </div>
           </div>
 
+          <!-- Prompt Keyword Filter -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.promptFilter.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.promptFilter.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.promptFilter.enabled") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.promptFilter.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.prompt_filter_enabled" />
+              </div>
+
+              <div
+                v-if="form.prompt_filter_enabled"
+                class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.promptFilter.keywords") }}
+                  </label>
+                  <textarea
+                    v-model="promptFilterKeywordsInput"
+                    rows="6"
+                    class="input min-h-[140px] font-mono text-sm"
+                    :placeholder="
+                      t('admin.settings.promptFilter.keywordsPlaceholder')
+                    "
+                  ></textarea>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.promptFilter.keywordsHint") }}
+                  </p>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.promptFilter.violationLimit") }}
+                    </label>
+                    <input
+                      v-model.number="form.prompt_filter_violation_limit"
+                      type="number"
+                      min="1"
+                      class="input w-full"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.promptFilter.violationLimitHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.promptFilter.warningMessage") }}
+                    </label>
+                    <input
+                      v-model="form.prompt_filter_warning_message"
+                      type="text"
+                      class="input w-full"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.promptFilter.warningMessageHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.promptFilter.banMessage") }}
+                    </label>
+                    <input
+                      v-model="form.prompt_filter_ban_message"
+                      type="text"
+                      class="input w-full"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.promptFilter.banMessageHint") }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Gateway Forwarding Behavior -->
           <div class="card">
             <div
@@ -5588,6 +5690,7 @@ const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
+const promptFilterKeywordsInput = ref("");
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true);
@@ -5820,6 +5923,12 @@ const form = reactive<SettingsForm>({
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: "",
+  // Prompt keyword filter
+  prompt_filter_enabled: false,
+  prompt_filter_keywords: [] as string[],
+  prompt_filter_violation_limit: 10,
+  prompt_filter_warning_message: "请求包含违规关键词，已被拦截。",
+  prompt_filter_ban_message: "账号因多次提交违规内容已被禁用。",
   // Ops monitoring (vNext)
   ops_monitoring_enabled: true,
   ops_realtime_monitoring_enabled: true,
@@ -6341,6 +6450,24 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped;
 }
 
+function formatPromptFilterKeywords(keywords: string[] | undefined): string {
+  return Array.isArray(keywords) ? keywords.join("\n") : "";
+}
+
+function parsePromptFilterKeywordsInput(raw: string): string[] {
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const token of raw.split(/[\n\r,，;；]+/)) {
+    const keyword = token.trim();
+    if (!keyword) continue;
+    const key = keyword.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    keywords.push(keyword);
+  }
+  return keywords;
+}
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -6367,6 +6494,9 @@ async function loadSettings() {
       Array.isArray(settings.table_page_size_options)
         ? settings.table_page_size_options
         : [10, 20, 50, 100],
+    );
+    promptFilterKeywordsInput.value = formatPromptFilterKeywords(
+      settings.prompt_filter_keywords,
     );
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
@@ -6562,6 +6692,19 @@ async function saveSettings() {
 
     form.table_default_page_size = normalizedTableDefaultPageSize;
     form.table_page_size_options = normalizedTablePageSizeOptions;
+    form.prompt_filter_keywords = parsePromptFilterKeywordsInput(
+      promptFilterKeywordsInput.value,
+    );
+    form.prompt_filter_violation_limit = Math.max(
+      1,
+      Math.floor(Number(form.prompt_filter_violation_limit) || 10),
+    );
+    form.prompt_filter_warning_message =
+      form.prompt_filter_warning_message.trim() ||
+      "请求包含违规关键词，已被拦截。";
+    form.prompt_filter_ban_message =
+      form.prompt_filter_ban_message.trim() ||
+      "账号因多次提交违规内容已被禁用。";
 
     const normalizedDefaultSubscriptions = normalizeDefaultSubscriptionSettings(
       form.default_subscriptions,
@@ -6738,6 +6881,11 @@ async function saveSettings() {
       fallback_model_antigravity: form.fallback_model_antigravity,
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
+      prompt_filter_enabled: form.prompt_filter_enabled,
+      prompt_filter_keywords: form.prompt_filter_keywords,
+      prompt_filter_violation_limit: form.prompt_filter_violation_limit,
+      prompt_filter_warning_message: form.prompt_filter_warning_message,
+      prompt_filter_ban_message: form.prompt_filter_ban_message,
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
@@ -6839,6 +6987,9 @@ async function saveSettings() {
       Array.isArray(updated.table_page_size_options)
         ? updated.table_page_size_options
         : [10, 20, 50, 100],
+    );
+    promptFilterKeywordsInput.value = formatPromptFilterKeywords(
+      updated.prompt_filter_keywords,
     );
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";

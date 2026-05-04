@@ -35,6 +35,7 @@ type OpenAIGatewayHandler struct {
 	concurrencyHelper       *ConcurrencyHelper
 	maxAccountSwitches      int
 	cfg                     *config.Config
+	settingService          *service.SettingService
 }
 
 func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackModel string) string {
@@ -62,6 +63,7 @@ func NewOpenAIGatewayHandler(
 	apiKeyService *service.APIKeyService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
+	settingService *service.SettingService,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
 	pingInterval := time.Duration(0)
@@ -81,6 +83,7 @@ func NewOpenAIGatewayHandler(
 		concurrencyHelper:       NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		maxAccountSwitches:      maxAccountSwitches,
 		cfg:                     cfg,
+		settingService:          settingService,
 	}
 }
 
@@ -154,6 +157,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 校验请求体 JSON 合法性
 	if !gjson.ValidBytes(body) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+
+	if h.enforcePromptFilter(c, body, "", func(status int, errorType string, message string) {
+		h.errorResponse(c, status, errorType, message)
+	}) {
 		return
 	}
 
@@ -562,6 +571,12 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	if !gjson.ValidBytes(body) {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+
+	if h.enforcePromptFilter(c, body, "", func(status int, errorType string, message string) {
+		h.anthropicErrorResponse(c, status, errorType, message)
+	}) {
 		return
 	}
 

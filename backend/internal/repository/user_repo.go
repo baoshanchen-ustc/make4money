@@ -256,6 +256,41 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	return nil
 }
 
+func (r *userRepository) IncrementPromptViolationCount(ctx context.Context, userID int64, limit int) (int, bool, error) {
+	if userID <= 0 {
+		return 0, false, service.ErrUserNotFound
+	}
+	if limit <= 0 {
+		limit = service.DefaultPromptFilterViolationLimit
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return 0, false, fmt.Errorf("sql executor is not configured")
+	}
+
+	var count int
+	var disabled bool
+	err := scanSingleRow(ctx, exec, `
+UPDATE users
+SET prompt_violation_count = prompt_violation_count + 1,
+    status = CASE
+        WHEN prompt_violation_count + 1 >= $2 THEN $3
+        ELSE status
+    END,
+    updated_at = NOW()
+WHERE id = $1
+  AND deleted_at IS NULL
+RETURNING prompt_violation_count, status = $3
+`, []any{userID, limit, service.StatusDisabled}, &count, &disabled)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, false, service.ErrUserNotFound
+		}
+		return 0, false, err
+	}
+	return count, disabled, nil
+}
+
 func ensureEmailAuthIdentityWithClient(ctx context.Context, client *dbent.Client, userID int64, email string, source string) error {
 	client = clientFromContext(ctx, client)
 	if client == nil || userID <= 0 {

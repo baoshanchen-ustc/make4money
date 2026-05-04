@@ -642,6 +642,11 @@ func TestAPIContracts(t *testing.T) {
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
 					"promo_code_enabled": true,
+					"prompt_filter_enabled": false,
+					"prompt_filter_keywords": [],
+					"prompt_filter_violation_limit": 10,
+					"prompt_filter_warning_message": "请求包含违规关键词，已被拦截。",
+					"prompt_filter_ban_message": "账号因多次提交违规内容已被禁用。",
 					"password_reset_enabled": false,
 					"frontend_url": "",
 					"totp_enabled": false,
@@ -854,6 +859,11 @@ func TestAPIContracts(t *testing.T) {
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
 					"promo_code_enabled": true,
+					"prompt_filter_enabled": false,
+					"prompt_filter_keywords": [],
+					"prompt_filter_violation_limit": 10,
+					"prompt_filter_warning_message": "请求包含违规关键词，已被拦截。",
+					"prompt_filter_ban_message": "账号因多次提交违规内容已被禁用。",
 					"password_reset_enabled": false,
 					"frontend_url": "",
 					"invitation_code_enabled": false,
@@ -1293,6 +1303,10 @@ func (r *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount i
 
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return false, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) IncrementPromptViolationCount(ctx context.Context, userID int64, limit int) (int, bool, error) {
+	return 0, false, errors.New("not implemented")
 }
 
 func (r *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {

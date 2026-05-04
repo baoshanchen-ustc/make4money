@@ -78,6 +78,12 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
+	if h.enforcePromptFilter(c, body, "", func(status int, errorType string, message string) {
+		h.chatCompletionsErrorResponse(c, status, errorType, message)
+	}) {
+		return
+	}
+
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 

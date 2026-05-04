@@ -237,6 +237,26 @@ func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidat
 	s.rateLimitCacheInvalid = inv
 }
 
+func (s *APIKeyService) RecordPromptViolation(ctx context.Context, userID int64, limit int) (int, bool, error) {
+	if s == nil || s.userRepo == nil {
+		return 0, false, nil
+	}
+	if userID <= 0 {
+		return 0, false, nil
+	}
+	if limit <= 0 {
+		limit = DefaultPromptFilterViolationLimit
+	}
+	count, disabled, err := s.userRepo.IncrementPromptViolationCount(ctx, userID, limit)
+	if err != nil {
+		return count, disabled, err
+	}
+	if disabled {
+		s.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	return count, disabled, nil
+}
+
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
 	if apiKey == nil {
 		return

@@ -109,6 +109,10 @@ func (s *emailSyncRepoStub) UpdateConcurrency(context.Context, int64, int) error
 
 func (s *emailSyncRepoStub) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
 
+func (s *emailSyncRepoStub) IncrementPromptViolationCount(context.Context, int64, int) (int, bool, error) {
+	return 0, false, fmt.Errorf("unexpected IncrementPromptViolationCount call")
+}
+
 func (s *emailSyncRepoStub) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }
