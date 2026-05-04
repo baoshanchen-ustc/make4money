@@ -372,6 +372,7 @@ type CreateProxyInput struct {
 	Port     int
 	Username string
 	Password string
+	Method   string
 }
 
 type UpdateProxyInput struct {
@@ -381,6 +382,7 @@ type UpdateProxyInput struct {
 	Port     int
 	Username string
 	Password string
+	Method   string
 	Status   string
 }
 
@@ -2791,6 +2793,7 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 		Port:     input.Port,
 		Username: input.Username,
 		Password: input.Password,
+		Method:   input.Method,
 		Status:   StatusActive,
 	}
 	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
@@ -2824,6 +2827,9 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 	}
 	if input.Password != "" {
 		proxy.Password = input.Password
+	}
+	if input.Method != "" {
+		proxy.Method = input.Method
 	}
 	if input.Status != "" {
 		proxy.Status = input.Status

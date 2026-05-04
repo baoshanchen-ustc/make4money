@@ -411,6 +411,7 @@ func ProxyFromService(p *service.Proxy) *Proxy {
 		Host:      p.Host,
 		Port:      p.Port,
 		Username:  p.Username,
+		Method:    p.Method,
 		Status:    p.Status,
 		CreatedAt: p.CreatedAt,
 		UpdatedAt: p.UpdatedAt,

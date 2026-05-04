@@ -3775,6 +3775,7 @@ export default {
         https: 'HTTPS',
         socks5: 'SOCKS5',
         socks5h: 'SOCKS5H (远程 DNS)',
+        ss: 'SS / Shadowsocks',
       },
       name: '名称',
       protocol: '协议',
@@ -3782,10 +3783,14 @@ export default {
       port: '端口',
       username: '用户名（可选）',
       password: '密码（可选）',
+      method: '加密方法',
       status: '状态',
       enterProxyName: '请输入代理名称',
       optionalAuth: '可选认证信息',
       leaveEmptyToKeep: '留空保持不变',
+      ssPasswordPlaceholder: '请输入 Shadowsocks 密码/密钥',
+      methodRequired: '请选择 Shadowsocks 加密方法',
+      passwordRequired: '请输入密码',
       form: {
         hostPlaceholder: '请输入主机地址',
         portPlaceholder: '请输入端口'
@@ -3819,8 +3824,8 @@ export default {
       batchAdd: '快捷添加',
       batchInput: '代理列表',
       batchInputPlaceholder:
-        "每行输入一个代理，支持以下格式：\nsocks5://user:pass{'@'}192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
-      batchInputHint: "支持 http、https、socks5 协议，格式：协议://[用户名:密码{'@'}]主机:端口",
+        "每行输入一个代理，支持以下格式：\nsocks5://user:pass{'@'}192.168.1.1:1080\nss://2022-blake3-aes-128-gcm:password{'@'}proxy.example.com:8388\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
+      batchInputHint: "支持 http、https、socks5、socks5h、ss 协议。SS 格式：ss://method:password{'@'}host:port",
       parsedCount: '有效 {count} 个',
       invalidCount: '无效 {count} 个',
       duplicateCount: '重复 {count} 个',

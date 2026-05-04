@@ -27408,6 +27408,7 @@ type ProxyMutation struct {
 	addport         *int
 	username        *string
 	password        *string
+	method          *string
 	status          *string
 	clearedFields   map[string]struct{}
 	accounts        map[int64]struct{}
@@ -27899,6 +27900,55 @@ func (m *ProxyMutation) ResetPassword() {
 	delete(m.clearedFields, proxy.FieldPassword)
 }
 
+// SetMethod sets the "method" field.
+func (m *ProxyMutation) SetMethod(s string) {
+	m.method = &s
+}
+
+// Method returns the value of the "method" field in the mutation.
+func (m *ProxyMutation) Method() (r string, exists bool) {
+	v := m.method
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMethod returns the old "method" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldMethod(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMethod is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMethod requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMethod: %w", err)
+	}
+	return oldValue.Method, nil
+}
+
+// ClearMethod clears the value of the "method" field.
+func (m *ProxyMutation) ClearMethod() {
+	m.method = nil
+	m.clearedFields[proxy.FieldMethod] = struct{}{}
+}
+
+// MethodCleared returns if the "method" field was cleared in this mutation.
+func (m *ProxyMutation) MethodCleared() bool {
+	_, ok := m.clearedFields[proxy.FieldMethod]
+	return ok
+}
+
+// ResetMethod resets all changes to the "method" field.
+func (m *ProxyMutation) ResetMethod() {
+	m.method = nil
+	delete(m.clearedFields, proxy.FieldMethod)
+}
+
 // SetStatus sets the "status" field.
 func (m *ProxyMutation) SetStatus(s string) {
 	m.status = &s
@@ -28023,7 +28073,7 @@ func (m *ProxyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProxyMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.created_at != nil {
 		fields = append(fields, proxy.FieldCreatedAt)
 	}
@@ -28050,6 +28100,9 @@ func (m *ProxyMutation) Fields() []string {
 	}
 	if m.password != nil {
 		fields = append(fields, proxy.FieldPassword)
+	}
+	if m.method != nil {
+		fields = append(fields, proxy.FieldMethod)
 	}
 	if m.status != nil {
 		fields = append(fields, proxy.FieldStatus)
@@ -28080,6 +28133,8 @@ func (m *ProxyMutation) Field(name string) (ent.Value, bool) {
 		return m.Username()
 	case proxy.FieldPassword:
 		return m.Password()
+	case proxy.FieldMethod:
+		return m.Method()
 	case proxy.FieldStatus:
 		return m.Status()
 	}
@@ -28109,6 +28164,8 @@ func (m *ProxyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldUsername(ctx)
 	case proxy.FieldPassword:
 		return m.OldPassword(ctx)
+	case proxy.FieldMethod:
+		return m.OldMethod(ctx)
 	case proxy.FieldStatus:
 		return m.OldStatus(ctx)
 	}
@@ -28183,6 +28240,13 @@ func (m *ProxyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetPassword(v)
 		return nil
+	case proxy.FieldMethod:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMethod(v)
+		return nil
 	case proxy.FieldStatus:
 		v, ok := value.(string)
 		if !ok {
@@ -28244,6 +28308,9 @@ func (m *ProxyMutation) ClearedFields() []string {
 	if m.FieldCleared(proxy.FieldPassword) {
 		fields = append(fields, proxy.FieldPassword)
 	}
+	if m.FieldCleared(proxy.FieldMethod) {
+		fields = append(fields, proxy.FieldMethod)
+	}
 	return fields
 }
 
@@ -28266,6 +28333,9 @@ func (m *ProxyMutation) ClearField(name string) error {
 		return nil
 	case proxy.FieldPassword:
 		m.ClearPassword()
+		return nil
+	case proxy.FieldMethod:
+		m.ClearMethod()
 		return nil
 	}
 	return fmt.Errorf("unknown Proxy nullable field %s", name)
@@ -28301,6 +28371,9 @@ func (m *ProxyMutation) ResetField(name string) error {
 		return nil
 	case proxy.FieldPassword:
 		m.ResetPassword()
+		return nil
+	case proxy.FieldMethod:
+		m.ResetMethod()
 		return nil
 	case proxy.FieldStatus:
 		m.ResetStatus()

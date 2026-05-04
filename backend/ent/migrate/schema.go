@@ -1086,7 +1086,8 @@ var (
 		{Name: "host", Type: field.TypeString, Size: 255},
 		{Name: "port", Type: field.TypeInt},
 		{Name: "username", Type: field.TypeString, Nullable: true, Size: 100},
-		{Name: "password", Type: field.TypeString, Nullable: true, Size: 100},
+		{Name: "password", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "method", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
 	}
 	// ProxiesTable holds the schema information for the "proxies" table.
@@ -1098,7 +1099,7 @@ var (
 			{
 				Name:    "proxy_status",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[10]},
+				Columns: []*schema.Column{ProxiesColumns[11]},
 			},
 			{
 				Name:    "proxy_deleted_at",

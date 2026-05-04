@@ -4,6 +4,7 @@
 //   - HTTP/HTTPS: 通过 Transport.Proxy 设置
 //   - SOCKS5: 通过 Transport.DialContext 设置（客户端本地解析 DNS）
 //   - SOCKS5H: 通过 Transport.DialContext 设置（代理端远程解析 DNS，推荐）
+//   - SS/Shadowsocks: 通过 Transport.DialContext 设置（代理端远程解析 DNS）
 //
 // 注意：proxyurl.Parse() 会自动将 socks5:// 升级为 socks5h://，
 // 确保 DNS 也由代理端解析，防止 DNS 泄漏。
@@ -16,7 +17,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/sagernet/sing-shadowsocks/shadowimpl"
+	M "github.com/sagernet/sing/common/metadata"
 	"golang.org/x/net/proxy"
 )
 
@@ -26,6 +30,7 @@ import (
 //   - http/https: 设置 transport.Proxy
 //   - socks5: 设置 transport.DialContext（客户端本地解析 DNS）
 //   - socks5h: 设置 transport.DialContext（代理端远程解析 DNS，推荐）
+//   - ss: 设置 transport.DialContext（Shadowsocks，代理端远程解析 DNS）
 //
 // 参数：
 //   - transport: 需要配置的 http.Transport
@@ -61,7 +66,56 @@ func ConfigureTransportProxy(transport *http.Transport, proxyURL *url.URL) error
 		}
 		return nil
 
+	case "ss", "shadowsocks":
+		dialContext, err := newShadowsocksDialContext(proxyURL)
+		if err != nil {
+			return err
+		}
+		transport.DialContext = dialContext
+		return nil
+
 	default:
 		return fmt.Errorf("unsupported proxy scheme: %s", scheme)
 	}
+}
+
+func newShadowsocksDialContext(proxyURL *url.URL) (func(context.Context, string, string) (net.Conn, error), error) {
+	methodName := proxyURL.User.Username()
+	password, ok := proxyURL.User.Password()
+	if methodName == "" || !ok || password == "" {
+		return nil, fmt.Errorf("invalid shadowsocks proxy URL: method and password are required")
+	}
+
+	method, err := shadowimpl.FetchMethod(methodName, password, time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("create shadowsocks method: %w", err)
+	}
+
+	serverAddr := proxyURL.Host
+	if serverAddr == "" {
+		return nil, fmt.Errorf("invalid shadowsocks proxy URL: host is required")
+	}
+
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if network != "tcp" && network != "tcp4" && network != "tcp6" {
+			return nil, fmt.Errorf("shadowsocks proxy only supports tcp network, got %s", network)
+		}
+
+		destination := M.ParseSocksaddr(addr)
+		if destination.IsValid() {
+			var dialer net.Dialer
+			conn, err := dialer.DialContext(ctx, "tcp", serverAddr)
+			if err != nil {
+				return nil, err
+			}
+			ssConn, err := method.DialConn(conn, destination)
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
+			return ssConn, nil
+		}
+
+		return nil, fmt.Errorf("invalid shadowsocks target address: %s", addr)
+	}, nil
 }

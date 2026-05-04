@@ -15,6 +15,7 @@ type Proxy struct {
 	Port      int
 	Username  string
 	Password  string
+	Method    string
 	Status    string
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -28,6 +29,12 @@ func (p *Proxy) URL() string {
 	u := &url.URL{
 		Scheme: p.Protocol,
 		Host:   net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),
+	}
+	if p.Protocol == "ss" || p.Protocol == "shadowsocks" {
+		if p.Method != "" && p.Password != "" {
+			u.User = url.UserPassword(p.Method, p.Password)
+		}
+		return u.String()
 	}
 	if p.Username != "" && p.Password != "" {
 		u.User = url.UserPassword(p.Username, p.Password)

@@ -46,6 +46,10 @@ func (Proxy) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 		field.String("password").
+			MaxLen(255).
+			Optional().
+			Nillable(),
+		field.String("method").
 			MaxLen(100).
 			Optional().
 			Nillable(),

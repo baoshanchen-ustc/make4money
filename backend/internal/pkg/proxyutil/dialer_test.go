@@ -51,6 +51,17 @@ func TestConfigureTransportProxy_SOCKS5(t *testing.T) {
 	assert.NotNil(t, transport.DialContext, "SOCKS5 proxy should set DialContext")
 }
 
+func TestConfigureTransportProxy_Shadowsocks(t *testing.T) {
+	transport := &http.Transport{}
+	proxyURL, _ := url.Parse("ss://2022-blake3-aes-128-gcm:MTIzNDU2Nzg5MDEyMzQ1Ng%3D%3D@ss.example.com:8388")
+
+	err := ConfigureTransportProxy(transport, proxyURL)
+
+	require.NoError(t, err)
+	assert.Nil(t, transport.Proxy, "Shadowsocks proxy should not set Proxy")
+	assert.NotNil(t, transport.DialContext, "Shadowsocks proxy should set DialContext")
+}
+
 func TestConfigureTransportProxy_SOCKS5H(t *testing.T) {
 	transport := &http.Transport{}
 	proxyURL, _ := url.Parse("socks5h://socks.example.com:1080")

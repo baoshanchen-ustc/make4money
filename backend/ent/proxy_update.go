@@ -158,6 +158,26 @@ func (_u *ProxyUpdate) ClearPassword() *ProxyUpdate {
 	return _u
 }
 
+// SetMethod sets the "method" field.
+func (_u *ProxyUpdate) SetMethod(v string) *ProxyUpdate {
+	_u.mutation.SetMethod(v)
+	return _u
+}
+
+// SetNillableMethod sets the "method" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableMethod(v *string) *ProxyUpdate {
+	if v != nil {
+		_u.SetMethod(*v)
+	}
+	return _u
+}
+
+// ClearMethod clears the value of the "method" field.
+func (_u *ProxyUpdate) ClearMethod() *ProxyUpdate {
+	_u.mutation.ClearMethod()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ProxyUpdate) SetStatus(v string) *ProxyUpdate {
 	_u.mutation.SetStatus(v)
@@ -282,6 +302,11 @@ func (_u *ProxyUpdate) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Method(); ok {
+		if err := proxy.MethodValidator(v); err != nil {
+			return &ValidationError{Name: "method", err: fmt.Errorf(`ent: validator failed for field "Proxy.method": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := proxy.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)}
@@ -337,6 +362,12 @@ func (_u *ProxyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.PasswordCleared() {
 		_spec.ClearField(proxy.FieldPassword, field.TypeString)
+	}
+	if value, ok := _u.mutation.Method(); ok {
+		_spec.SetField(proxy.FieldMethod, field.TypeString, value)
+	}
+	if _u.mutation.MethodCleared() {
+		_spec.ClearField(proxy.FieldMethod, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
@@ -535,6 +566,26 @@ func (_u *ProxyUpdateOne) ClearPassword() *ProxyUpdateOne {
 	return _u
 }
 
+// SetMethod sets the "method" field.
+func (_u *ProxyUpdateOne) SetMethod(v string) *ProxyUpdateOne {
+	_u.mutation.SetMethod(v)
+	return _u
+}
+
+// SetNillableMethod sets the "method" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableMethod(v *string) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetMethod(*v)
+	}
+	return _u
+}
+
+// ClearMethod clears the value of the "method" field.
+func (_u *ProxyUpdateOne) ClearMethod() *ProxyUpdateOne {
+	_u.mutation.ClearMethod()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ProxyUpdateOne) SetStatus(v string) *ProxyUpdateOne {
 	_u.mutation.SetStatus(v)
@@ -672,6 +723,11 @@ func (_u *ProxyUpdateOne) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Method(); ok {
+		if err := proxy.MethodValidator(v); err != nil {
+			return &ValidationError{Name: "method", err: fmt.Errorf(`ent: validator failed for field "Proxy.method": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := proxy.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)}
@@ -744,6 +800,12 @@ func (_u *ProxyUpdateOne) sqlSave(ctx context.Context) (_node *Proxy, err error)
 	}
 	if _u.mutation.PasswordCleared() {
 		_spec.ClearField(proxy.FieldPassword, field.TypeString)
+	}
+	if value, ok := _u.mutation.Method(); ok {
+		_spec.SetField(proxy.FieldMethod, field.TypeString, value)
+	}
+	if _u.mutation.MethodCleared() {
+		_spec.ClearField(proxy.FieldMethod, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)

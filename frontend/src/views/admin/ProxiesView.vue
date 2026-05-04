@@ -443,7 +443,11 @@
             />
           </div>
         </div>
-        <div>
+        <div v-if="createForm.protocol === 'ss'">
+          <label class="input-label">{{ t('admin.proxies.method') }}</label>
+          <Select v-model="createForm.method" :options="shadowsocksMethodOptions" />
+        </div>
+        <div v-if="createForm.protocol !== 'ss'">
           <label class="input-label">{{ t('admin.proxies.username') }}</label>
           <input
             v-model="createForm.username"
@@ -641,7 +645,11 @@
             />
           </div>
         </div>
-        <div>
+        <div v-if="editForm.protocol === 'ss'">
+          <label class="input-label">{{ t('admin.proxies.method') }}</label>
+          <Select v-model="editForm.method" :options="shadowsocksMethodOptions" />
+        </div>
+        <div v-if="editForm.protocol !== 'ss'">
           <label class="input-label">{{ t('admin.proxies.username') }}</label>
           <input v-model="editForm.username" type="text" class="input" />
         </div>
@@ -917,7 +925,8 @@ const protocolOptions = computed(() => [
   { value: 'http', label: 'HTTP' },
   { value: 'https', label: 'HTTPS' },
   { value: 'socks5', label: 'SOCKS5' },
-  { value: 'socks5h', label: 'SOCKS5H' }
+  { value: 'socks5h', label: 'SOCKS5H' },
+  { value: 'ss', label: 'SS' }
 ])
 
 const statusOptions = computed(() => [
@@ -931,12 +940,24 @@ const protocolSelectOptions = computed(() => [
   { value: 'http', label: t('admin.proxies.protocols.http') },
   { value: 'https', label: t('admin.proxies.protocols.https') },
   { value: 'socks5', label: t('admin.proxies.protocols.socks5') },
-  { value: 'socks5h', label: t('admin.proxies.protocols.socks5h') }
+  { value: 'socks5h', label: t('admin.proxies.protocols.socks5h') },
+  { value: 'ss', label: t('admin.proxies.protocols.ss') }
 ])
 
 const editStatusOptions = computed(() => [
   { value: 'active', label: t('admin.accounts.status.active') },
   { value: 'inactive', label: t('admin.accounts.status.inactive') }
+])
+
+const shadowsocksMethodOptions = computed(() => [
+  { value: '2022-blake3-aes-128-gcm', label: '2022-blake3-aes-128-gcm' },
+  { value: '2022-blake3-aes-256-gcm', label: '2022-blake3-aes-256-gcm' },
+  { value: '2022-blake3-chacha20-poly1305', label: '2022-blake3-chacha20-poly1305' },
+  { value: 'aes-128-gcm', label: 'aes-128-gcm' },
+  { value: 'aes-192-gcm', label: 'aes-192-gcm' },
+  { value: 'aes-256-gcm', label: 'aes-256-gcm' },
+  { value: 'chacha20-ietf-poly1305', label: 'chacha20-ietf-poly1305' },
+  { value: 'xchacha20-ietf-poly1305', label: 'xchacha20-ietf-poly1305' }
 ])
 
 const proxies = ref<Proxy[]>([])
@@ -1020,6 +1041,7 @@ const batchParseResult = reactive({
     port: number
     username: string
     password: string
+    method?: string
   }>
 })
 
@@ -1029,7 +1051,8 @@ const createForm = reactive({
   host: '',
   port: 8080,
   username: '',
-  password: ''
+  password: '',
+  method: '2022-blake3-aes-128-gcm'
 })
 
 const editForm = reactive({
@@ -1039,6 +1062,7 @@ const editForm = reactive({
   port: 8080,
   username: '',
   password: '',
+  method: '2022-blake3-aes-128-gcm',
   status: 'active' as 'active' | 'inactive'
 })
 
@@ -1142,6 +1166,7 @@ const closeCreateModal = () => {
   createForm.port = 8080
   createForm.username = ''
   createForm.password = ''
+  createForm.method = '2022-blake3-aes-128-gcm'
   createPasswordVisible.value = false
   batchInput.value = ''
   batchParseResult.total = 0
@@ -1156,7 +1181,7 @@ const handleDataImported = () => {
   loadProxies()
 }
 
-// Parse proxy URL: protocol://user:pass@host:port or protocol://host:port
+// Parse proxy URL: protocol://user:pass@host:port, protocol://host:port, or ss://method:password@host:port
 const parseProxyUrl = (
   line: string
 ): {
@@ -1165,27 +1190,41 @@ const parseProxyUrl = (
   port: number
   username: string
   password: string
+  method?: string
 } | null => {
   const trimmed = line.trim()
   if (!trimmed) return null
 
-  // Regex to parse proxy URL (supports http, https, socks5, socks5h)
-  const regex = /^(https?|socks5h?):\/\/(?:([^:@]+):([^@]+)@)?([^:]+):(\d+)$/i
-  const match = trimmed.match(regex)
+  try {
+    const parsedURL = new URL(trimmed)
+    const protocol = parsedURL.protocol.replace(':', '').toLowerCase() as ProxyProtocol
+    if (!['http', 'https', 'socks5', 'socks5h', 'ss'].includes(protocol)) return null
+    const portNum = parseInt(parsedURL.port, 10)
+    if (!parsedURL.hostname || portNum < 1 || portNum > 65535) return null
 
-  if (!match) return null
+    if (protocol === 'ss') {
+      const method = decodeURIComponent(parsedURL.username || '')
+      const password = decodeURIComponent(parsedURL.password || '')
+      if (!method || !password) return null
+      return {
+        protocol,
+        host: parsedURL.hostname,
+        port: portNum,
+        username: '',
+        password,
+        method
+      }
+    }
 
-  const [, protocol, username, password, host, port] = match
-  const portNum = parseInt(port, 10)
-
-  if (portNum < 1 || portNum > 65535) return null
-
-  return {
-    protocol: protocol.toLowerCase() as ProxyProtocol,
-    host: host.trim(),
-    port: portNum,
-    username: username?.trim() || '',
-    password: password?.trim() || ''
+    return {
+      protocol,
+      host: parsedURL.hostname,
+      port: portNum,
+      username: decodeURIComponent(parsedURL.username || ''),
+      password: decodeURIComponent(parsedURL.password || '')
+    }
+  } catch {
+    return null
   }
 }
 
@@ -1203,8 +1242,8 @@ const parseBatchInput = () => {
       continue
     }
 
-    // Check for duplicates (same host:port:username:password)
-    const key = `${parsed.host}:${parsed.port}:${parsed.username}:${parsed.password}`
+    // Check for duplicates (same protocol:host:port:username:password:method)
+    const key = `${parsed.protocol}:${parsed.host}:${parsed.port}:${parsed.username}:${parsed.password}:${parsed.method || ''}`
     if (seen.has(key)) {
       duplicate++
       continue
@@ -1258,6 +1297,14 @@ const handleCreateProxy = async () => {
     appStore.showError(t('admin.proxies.portInvalid'))
     return
   }
+  if (createForm.protocol === 'ss' && !createForm.method.trim()) {
+    appStore.showError(t('admin.proxies.methodRequired'))
+    return
+  }
+  if (createForm.protocol === 'ss' && !createForm.password.trim()) {
+    appStore.showError(t('admin.proxies.passwordRequired'))
+    return
+  }
   submitting.value = true
   try {
     await adminAPI.proxies.create({
@@ -1265,8 +1312,9 @@ const handleCreateProxy = async () => {
       protocol: createForm.protocol,
       host: createForm.host.trim(),
       port: createForm.port,
-      username: createForm.username.trim() || null,
-      password: createForm.password.trim() || null
+      username: createForm.protocol === 'ss' ? null : createForm.username.trim() || null,
+      password: createForm.password.trim() || null,
+      method: createForm.protocol === 'ss' ? createForm.method : null
     })
     appStore.showSuccess(t('admin.proxies.proxyCreated'))
     closeCreateModal()
@@ -1287,6 +1335,7 @@ const handleEdit = (proxy: Proxy) => {
   editForm.port = proxy.port
   editForm.username = proxy.username || ''
   editForm.password = proxy.password || ''
+  editForm.method = proxy.method || '2022-blake3-aes-128-gcm'
   editForm.status = proxy.status
   editPasswordVisible.value = false
   editPasswordDirty.value = false
@@ -1314,6 +1363,14 @@ const handleUpdateProxy = async () => {
     appStore.showError(t('admin.proxies.portInvalid'))
     return
   }
+  if (editForm.protocol === 'ss' && !editForm.method.trim()) {
+    appStore.showError(t('admin.proxies.methodRequired'))
+    return
+  }
+  if (editForm.protocol === 'ss' && editPasswordDirty.value && !editForm.password.trim()) {
+    appStore.showError(t('admin.proxies.passwordRequired'))
+    return
+  }
 
   submitting.value = true
   try {
@@ -1322,7 +1379,8 @@ const handleUpdateProxy = async () => {
       protocol: editForm.protocol,
       host: editForm.host.trim(),
       port: editForm.port,
-      username: editForm.username.trim() || null,
+      username: editForm.protocol === 'ss' ? null : editForm.username.trim() || null,
+      method: editForm.protocol === 'ss' ? editForm.method : null,
       status: editForm.status
     }
 
@@ -1880,3 +1938,4 @@ onUnmounted(() => {
   document.removeEventListener('click', closeCopyMenu)
 })
 </script>
+

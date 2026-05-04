@@ -45,6 +45,9 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 	if proxyIn.Password != "" {
 		builder.SetPassword(proxyIn.Password)
 	}
+	if proxyIn.Method != "" {
+		builder.SetMethod(proxyIn.Method)
+	}
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -99,6 +102,11 @@ func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) er
 		builder.SetPassword(proxyIn.Password)
 	} else {
 		builder.ClearPassword()
+	}
+	if proxyIn.Method != "" {
+		builder.SetMethod(proxyIn.Method)
+	} else {
+		builder.ClearMethod()
 	}
 
 	updated, err := builder.Save(ctx)
@@ -431,6 +439,9 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 	}
 	if m.Password != nil {
 		out.Password = *m.Password
+	}
+	if m.Method != nil {
+		out.Method = *m.Method
 	}
 	return out
 }

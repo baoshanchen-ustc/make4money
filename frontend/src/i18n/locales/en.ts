@@ -3645,7 +3645,8 @@ export default {
         http: 'HTTP',
         https: 'HTTPS',
         socks5: 'SOCKS5',
-        socks5h: 'SOCKS5H (Remote DNS)'
+        socks5h: 'SOCKS5H (Remote DNS)',
+        ss: 'SS / Shadowsocks'
       },
       columns: {
         name: 'Name',
@@ -3686,10 +3687,14 @@ export default {
       port: 'Port',
       username: 'Username (Optional)',
       password: 'Password (Optional)',
+      method: 'Method',
       status: 'Status',
       enterProxyName: 'Enter proxy name',
       leaveEmptyToKeep: 'Leave empty to keep current',
       optionalAuth: 'Optional authentication',
+      ssPasswordPlaceholder: 'Enter Shadowsocks password/key',
+      methodRequired: 'Please select a Shadowsocks method',
+      passwordRequired: 'Please enter password',
       form: {
         hostPlaceholder: 'proxy.example.com',
         portPlaceholder: '8080'
@@ -3701,9 +3706,9 @@ export default {
       batchAdd: 'Quick Add',
       batchInput: 'Proxy List',
       batchInputPlaceholder:
-        "Enter one proxy per line in the following formats:\nsocks5://user:pass{'@'}192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
+        "Enter one proxy per line in the following formats:\nsocks5://user:pass{'@'}192.168.1.1:1080\nss://2022-blake3-aes-128-gcm:password{'@'}proxy.example.com:8388\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
       batchInputHint:
-        "Supports http, https, socks5 protocols. Format: protocol://[user:pass{'@'}]host:port",
+        "Supports http, https, socks5, socks5h, ss protocols. SS format: ss://method:password{'@'}host:port",
       parsedCount: '{count} valid',
       invalidCount: '{count} invalid',
       duplicateCount: '{count} duplicate',

@@ -33,6 +33,8 @@ const (
 	FieldUsername = "username"
 	// FieldPassword holds the string denoting the password field in the database.
 	FieldPassword = "password"
+	// FieldMethod holds the string denoting the method field in the database.
+	FieldMethod = "method"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
@@ -60,6 +62,7 @@ var Columns = []string{
 	FieldPort,
 	FieldUsername,
 	FieldPassword,
+	FieldMethod,
 	FieldStatus,
 }
 
@@ -97,6 +100,8 @@ var (
 	UsernameValidator func(string) error
 	// PasswordValidator is a validator for the "password" field. It is called by the builders before save.
 	PasswordValidator func(string) error
+	// MethodValidator is a validator for the "method" field. It is called by the builders before save.
+	MethodValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -154,6 +159,11 @@ func ByUsername(opts ...sql.OrderTermOption) OrderOption {
 // ByPassword orders the results by the password field.
 func ByPassword(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPassword, opts...).ToFunc()
+}
+
+// ByMethod orders the results by the method field.
+func ByMethod(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMethod, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

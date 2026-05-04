@@ -645,7 +645,7 @@ export interface UpdateGroupRequest {
 export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
-export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
+export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h' | 'ss'
 
 // Claude Model type (returned by /v1/models and account models API)
 export interface ClaudeModel {
@@ -663,6 +663,7 @@ export interface Proxy {
   port: number
   username: string | null
   password?: string | null
+  method?: string | null
   status: 'active' | 'inactive'
   account_count?: number // Number of accounts using this proxy
   latency_ms?: number
@@ -1019,6 +1020,7 @@ export interface CreateProxyRequest {
   port: number
   username?: string | null
   password?: string | null
+  method?: string | null
 }
 
 export interface UpdateProxyRequest {
@@ -1028,6 +1030,7 @@ export interface UpdateProxyRequest {
   port?: number
   username?: string | null
   password?: string | null
+  method?: string | null
   status?: 'active' | 'inactive'
 }
 
@@ -1047,6 +1050,7 @@ export interface AdminDataProxy {
   port: number
   username?: string | null
   password?: string | null
+  method?: string | null
   status: 'active' | 'inactive'
 }
 

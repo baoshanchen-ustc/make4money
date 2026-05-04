@@ -117,6 +117,20 @@ func (_c *ProxyCreate) SetNillablePassword(v *string) *ProxyCreate {
 	return _c
 }
 
+// SetMethod sets the "method" field.
+func (_c *ProxyCreate) SetMethod(v string) *ProxyCreate {
+	_c.mutation.SetMethod(v)
+	return _c
+}
+
+// SetNillableMethod sets the "method" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableMethod(v *string) *ProxyCreate {
+	if v != nil {
+		_c.SetMethod(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *ProxyCreate) SetStatus(v string) *ProxyCreate {
 	_c.mutation.SetStatus(v)
@@ -249,6 +263,11 @@ func (_c *ProxyCreate) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.Method(); ok {
+		if err := proxy.MethodValidator(v); err != nil {
+			return &ValidationError{Name: "method", err: fmt.Errorf(`ent: validator failed for field "Proxy.method": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Proxy.status"`)}
 	}
@@ -319,6 +338,10 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Password(); ok {
 		_spec.SetField(proxy.FieldPassword, field.TypeString, value)
 		_node.Password = &value
+	}
+	if value, ok := _c.mutation.Method(); ok {
+		_spec.SetField(proxy.FieldMethod, field.TypeString, value)
+		_node.Method = &value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
@@ -509,6 +532,24 @@ func (u *ProxyUpsert) UpdatePassword() *ProxyUpsert {
 // ClearPassword clears the value of the "password" field.
 func (u *ProxyUpsert) ClearPassword() *ProxyUpsert {
 	u.SetNull(proxy.FieldPassword)
+	return u
+}
+
+// SetMethod sets the "method" field.
+func (u *ProxyUpsert) SetMethod(v string) *ProxyUpsert {
+	u.Set(proxy.FieldMethod, v)
+	return u
+}
+
+// UpdateMethod sets the "method" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateMethod() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldMethod)
+	return u
+}
+
+// ClearMethod clears the value of the "method" field.
+func (u *ProxyUpsert) ClearMethod() *ProxyUpsert {
+	u.SetNull(proxy.FieldMethod)
 	return u
 }
 
@@ -706,6 +747,27 @@ func (u *ProxyUpsertOne) UpdatePassword() *ProxyUpsertOne {
 func (u *ProxyUpsertOne) ClearPassword() *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
 		s.ClearPassword()
+	})
+}
+
+// SetMethod sets the "method" field.
+func (u *ProxyUpsertOne) SetMethod(v string) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetMethod(v)
+	})
+}
+
+// UpdateMethod sets the "method" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateMethod() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateMethod()
+	})
+}
+
+// ClearMethod clears the value of the "method" field.
+func (u *ProxyUpsertOne) ClearMethod() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearMethod()
 	})
 }
 
@@ -1071,6 +1133,27 @@ func (u *ProxyUpsertBulk) UpdatePassword() *ProxyUpsertBulk {
 func (u *ProxyUpsertBulk) ClearPassword() *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
 		s.ClearPassword()
+	})
+}
+
+// SetMethod sets the "method" field.
+func (u *ProxyUpsertBulk) SetMethod(v string) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetMethod(v)
+	})
+}
+
+// UpdateMethod sets the "method" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateMethod() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateMethod()
+	})
+}
+
+// ClearMethod clears the value of the "method" field.
+func (u *ProxyUpsertBulk) ClearMethod() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearMethod()
 	})
 }
 

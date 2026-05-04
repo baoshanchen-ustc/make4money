@@ -71,6 +71,25 @@ func TestParse_有效SOCKS5代理_自动升级为SOCKS5H(t *testing.T) {
 	}
 }
 
+func TestParse_有效SS代理(t *testing.T) {
+	trimmed, parsed, err := Parse("ss://2022-blake3-aes-128-gcm:secret_key@proxy.example.com:8388")
+	if err != nil {
+		t.Fatalf("有效 SS 代理应成功: %v", err)
+	}
+	if trimmed != "ss://2022-blake3-aes-128-gcm:secret_key@proxy.example.com:8388" {
+		t.Errorf("trimmed 不匹配: got %q", trimmed)
+	}
+	if parsed == nil {
+		t.Fatal("parsed 不应为 nil")
+	}
+	if parsed.Scheme != "ss" {
+		t.Errorf("Scheme 不匹配: got %q", parsed.Scheme)
+	}
+	if parsed.Host != "proxy.example.com:8388" {
+		t.Errorf("Host 不匹配: got %q", parsed.Host)
+	}
+}
+
 func TestParse_无效URL(t *testing.T) {
 	_, _, err := Parse("://invalid")
 	if err == nil {

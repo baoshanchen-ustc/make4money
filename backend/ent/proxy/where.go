@@ -100,6 +100,11 @@ func Password(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldPassword, v))
 }
 
+// Method applies equality check predicate on the "method" field. It's identical to MethodEQ.
+func Method(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldMethod, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldStatus, v))
@@ -618,6 +623,81 @@ func PasswordEqualFold(v string) predicate.Proxy {
 // PasswordContainsFold applies the ContainsFold predicate on the "password" field.
 func PasswordContainsFold(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldContainsFold(FieldPassword, v))
+}
+
+// MethodEQ applies the EQ predicate on the "method" field.
+func MethodEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldMethod, v))
+}
+
+// MethodNEQ applies the NEQ predicate on the "method" field.
+func MethodNEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldMethod, v))
+}
+
+// MethodIn applies the In predicate on the "method" field.
+func MethodIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldMethod, vs...))
+}
+
+// MethodNotIn applies the NotIn predicate on the "method" field.
+func MethodNotIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldMethod, vs...))
+}
+
+// MethodGT applies the GT predicate on the "method" field.
+func MethodGT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldMethod, v))
+}
+
+// MethodGTE applies the GTE predicate on the "method" field.
+func MethodGTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldMethod, v))
+}
+
+// MethodLT applies the LT predicate on the "method" field.
+func MethodLT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldMethod, v))
+}
+
+// MethodLTE applies the LTE predicate on the "method" field.
+func MethodLTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldMethod, v))
+}
+
+// MethodContains applies the Contains predicate on the "method" field.
+func MethodContains(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContains(FieldMethod, v))
+}
+
+// MethodHasPrefix applies the HasPrefix predicate on the "method" field.
+func MethodHasPrefix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasPrefix(FieldMethod, v))
+}
+
+// MethodHasSuffix applies the HasSuffix predicate on the "method" field.
+func MethodHasSuffix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasSuffix(FieldMethod, v))
+}
+
+// MethodIsNil applies the IsNil predicate on the "method" field.
+func MethodIsNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldIsNull(FieldMethod))
+}
+
+// MethodNotNil applies the NotNil predicate on the "method" field.
+func MethodNotNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotNull(FieldMethod))
+}
+
+// MethodEqualFold applies the EqualFold predicate on the "method" field.
+func MethodEqualFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEqualFold(FieldMethod, v))
+}
+
+// MethodContainsFold applies the ContainsFold predicate on the "method" field.
+func MethodContainsFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContainsFold(FieldMethod, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

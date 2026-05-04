@@ -266,6 +266,7 @@ type Proxy struct {
 	Port      int       `json:"port"`
 	Username  string    `json:"username"`
 	Password  string    `json:"-"`
+	Method    string    `json:"method,omitempty"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
