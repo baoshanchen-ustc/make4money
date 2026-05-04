@@ -308,9 +308,13 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 		"x-anthropic-additional-protection",
 	}
 
+	// 用 getHeaderRaw 而不是 Header.Get：转发链路普遍以 wire casing（多为全小写）原样存储 header
+	// （见 setHeaderRaw / header_util.go），Go 的 Header.Get 会先 canonical 化再查表，因此
+	// "authorization" / "x-client-request-id" / "x-claude-remote-container-id" 等 raw key 用
+	// Header.Get 读不到。结果是 debug line 漏掉本应被 hash 后记录的指纹，排障能力变弱。
 	h := make([]string, 0, len(interesting))
 	for _, k := range interesting {
-		if v := req.Header.Get(k); v != "" {
+		if v := getHeaderRaw(req.Header, k); v != "" {
 			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
 		}
 	}

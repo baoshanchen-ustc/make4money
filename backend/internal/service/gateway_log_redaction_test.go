@@ -214,3 +214,79 @@ func mustParseURL(t *testing.T, raw string) *url.URL {
 	}
 	return u
 }
+
+// TestBuildClaudeMimicDebugLineReadsRawWireCasing 防止回归：转发路径用 setHeaderRaw 把 header 以
+// 原始小写 wire form 存到 map（不走 Go canonical 化）。debug line 必须用 getHeaderRaw 读取，
+// 否则 Header.Get 会按 canonical 查不到这些 raw key，进而漏掉本应记录的 hashed 指纹。
+//
+// 这条测试与 TestBuildClaudeMimicDebugLineHashesAuthorization 等的区别在于：
+//   - 那些测试用 req.Header.Set(...)，会触发 Go MIMEHeader 的 canonical 化（"authorization" → "Authorization"）；
+//   - 真实转发路径用 setHeaderRaw 直接 h[key] = []string{value}，map key 保持原样小写。
+//
+// 如果维护者把 buildClaudeMimicDebugLine 的 Header.Get 改回去，这条测试会立刻失败。
+func TestBuildClaudeMimicDebugLineReadsRawWireCasing(t *testing.T) {
+	req := &http.Request{
+		URL:    mustParseURL(t, "https://api.anthropic.com/v1/messages"),
+		Header: http.Header{},
+	}
+
+	const (
+		token       = "Bearer raw.cased.token.aaaaa"
+		containerID = "container-raw-cased-id-12345"
+		sessionID   = "session-raw-cased-id-67890"
+		clientReqID = "raw-cased-client-request-id-uuid"
+	)
+
+	// 模拟生产转发路径：setHeaderRaw 直接以 wire casing 存储到底层 map。
+	setHeaderRaw(req.Header, "authorization", token)
+	setHeaderRaw(req.Header, "x-claude-remote-container-id", containerID)
+	setHeaderRaw(req.Header, "x-claude-remote-session-id", sessionID)
+	setHeaderRaw(req.Header, "x-client-request-id", clientReqID)
+	setHeaderRaw(req.Header, "x-client-app", "vscode")
+	setHeaderRaw(req.Header, "user-agent", "claude-cli/2.1.92 (external, cli)")
+
+	// 防御性 sanity：req.Header.Get（canonical lookup）应当读不到这些 raw key，
+	// 这正是本测试要避免的场景。这里 assert 一下让"为什么必须用 getHeaderRaw"显式可见。
+	if got := req.Header.Get("authorization"); got != "" {
+		t.Logf("note: Header.Get found %q via canonical lookup; raw-casing assumption may have changed", got)
+	}
+
+	line := buildClaudeMimicDebugLine(req, []byte(`{}`), nil, "oauth", true)
+
+	// authorization 必须被记录并 redact —— 之前的 bug 表现是 Header.Get 找不到，整行不出现 authorization 字段。
+	if !strings.Contains(line, "authorization=") {
+		t.Errorf("debug line should record authorization field even when stored as raw lowercase; line=%s", line)
+	}
+	if strings.Contains(line, token) {
+		t.Errorf("authorization token leaked into debug line; line=%s", line)
+	}
+	if !strings.Contains(line, "Bearer [redacted]") {
+		t.Errorf("expected Bearer [redacted] for raw-cased authorization; line=%s", line)
+	}
+
+	// 远程容器 / 会话 ID 必须以 hash 形式出现，不能漏。
+	for _, key := range []string{"x-claude-remote-container-id", "x-claude-remote-session-id"} {
+		if !strings.Contains(line, key+"=") {
+			t.Errorf("debug line should record %q (raw casing) via getHeaderRaw; line=%s", key, line)
+		}
+	}
+	if strings.Contains(line, containerID) {
+		t.Errorf("raw-cased container id leaked; line=%s", line)
+	}
+	if strings.Contains(line, sessionID) {
+		t.Errorf("raw-cased session id leaked; line=%s", line)
+	}
+
+	// x-client-request-id 必须出现，但作为非敏感 ID 原样记录。
+	if !strings.Contains(line, "x-client-request-id="+`"`+clientReqID+`"`) {
+		t.Errorf("debug line should include verbatim x-client-request-id from raw casing; line=%s", line)
+	}
+
+	// x-client-app 与 user-agent 走非敏感路径，不应漏。
+	if !strings.Contains(line, `x-client-app="vscode"`) {
+		t.Errorf("debug line should include verbatim x-client-app; line=%s", line)
+	}
+	if !strings.Contains(line, `user-agent="claude-cli/2.1.92 (external, cli)"`) {
+		t.Errorf("debug line should include verbatim user-agent from raw casing; line=%s", line)
+	}
+}
