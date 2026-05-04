@@ -438,6 +438,8 @@ export interface SystemSettings {
   // Gateway forwarding behavior
   enable_fingerprint_unification: boolean;
   enable_metadata_passthrough: boolean;
+  default_upstream_user_agent: string;
+  force_unified_upstream_user_agent: boolean;
   enable_cch_signing: boolean;
   enable_anthropic_cache_ttl_1h_injection: boolean;
   web_search_emulation_enabled?: boolean;
@@ -609,6 +611,8 @@ export interface UpdateSettingsRequest {
   allow_ungrouped_key_scheduling?: boolean;
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
+  default_upstream_user_agent?: string;
+  force_unified_upstream_user_agent?: boolean;
   enable_cch_signing?: boolean;
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   // Payment configuration
