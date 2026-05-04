@@ -45,11 +45,12 @@ func TestAnthropicToResponses_SystemPrompt(t *testing.T) {
 		}
 		resp, err := AnthropicToResponses(req)
 		require.NoError(t, err)
+		assert.Equal(t, "You are helpful.", resp.Instructions)
 
 		var items []ResponsesInputItem
 		require.NoError(t, json.Unmarshal(resp.Input, &items))
-		require.Len(t, items, 2)
-		assert.Equal(t, "system", items[0].Role)
+		require.Len(t, items, 1)
+		assert.Equal(t, "user", items[0].Role)
 	})
 
 	t.Run("array", func(t *testing.T) {
@@ -61,15 +62,12 @@ func TestAnthropicToResponses_SystemPrompt(t *testing.T) {
 		}
 		resp, err := AnthropicToResponses(req)
 		require.NoError(t, err)
+		assert.Equal(t, "Part 1\n\nPart 2", resp.Instructions)
 
 		var items []ResponsesInputItem
 		require.NoError(t, json.Unmarshal(resp.Input, &items))
-		require.Len(t, items, 2)
-		assert.Equal(t, "system", items[0].Role)
-		// System text should be joined with double newline.
-		var text string
-		require.NoError(t, json.Unmarshal(items[0].Content, &text))
-		assert.Equal(t, "Part 1\n\nPart 2", text)
+		require.Len(t, items, 1)
+		assert.Equal(t, "user", items[0].Role)
 	})
 }
 

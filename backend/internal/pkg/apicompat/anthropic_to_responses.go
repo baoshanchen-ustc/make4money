@@ -11,7 +11,16 @@ import (
 // Chat Completions intermediary round-trip (e.g. thinking, cache_control,
 // structured system prompts).
 func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
-	input, err := convertAnthropicToResponsesInput(req.System, req.Messages)
+	instructions := ""
+	if len(req.System) > 0 {
+		systemText, err := parseAnthropicSystemPrompt(req.System)
+		if err != nil {
+			return nil, err
+		}
+		instructions = systemText
+	}
+
+	input, err := convertAnthropicToResponsesInput(req.Messages)
 	if err != nil {
 		return nil, err
 	}
@@ -22,12 +31,13 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	}
 
 	out := &ResponsesRequest{
-		Model:       req.Model,
-		Input:       inputJSON,
-		Temperature: req.Temperature,
-		TopP:        req.TopP,
-		Stream:      req.Stream,
-		Include:     []string{"reasoning.encrypted_content"},
+		Model:        req.Model,
+		Instructions: instructions,
+		Input:        inputJSON,
+		Temperature:  req.Temperature,
+		TopP:         req.TopP,
+		Stream:       req.Stream,
+		Include:      []string{"reasoning.encrypted_content"},
 	}
 
 	storeFalse := false
@@ -104,24 +114,10 @@ func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage
 }
 
 // convertAnthropicToResponsesInput builds the Responses API input items array
-// from the Anthropic system field and message list.
-func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMessage) ([]ResponsesInputItem, error) {
+// from the Anthropic message list. The Anthropic system field maps to top-level
+// Responses instructions and is handled by AnthropicToResponses.
+func convertAnthropicToResponsesInput(msgs []AnthropicMessage) ([]ResponsesInputItem, error) {
 	var out []ResponsesInputItem
-
-	// System prompt → system role input item.
-	if len(system) > 0 {
-		sysText, err := parseAnthropicSystemPrompt(system)
-		if err != nil {
-			return nil, err
-		}
-		if sysText != "" {
-			content, _ := json.Marshal(sysText)
-			out = append(out, ResponsesInputItem{
-				Role:    "system",
-				Content: content,
-			})
-		}
-	}
 
 	for _, m := range msgs {
 		items, err := anthropicMsgToResponsesItems(m)
