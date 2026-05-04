@@ -695,6 +695,34 @@
               </div>
 
               <template v-else>
+                <!-- Preset selector: switch product-level default behavior independently of rules. -->
+                <div
+                  class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+                >
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.betaPolicy.preset") }}
+                  </label>
+                  <Select
+                    :modelValue="betaPolicyForm.preset"
+                    @update:modelValue="betaPolicyForm.preset = $event as any"
+                    :options="betaPolicyPresetOptions"
+                  />
+                  <p
+                    v-if="betaPolicyForm.preset === 'claude_code_compat'"
+                    class="mt-2 text-xs text-amber-600 dark:text-amber-400"
+                  >
+                    {{ t("admin.settings.betaPolicy.presetCompatWarning") }}
+                  </p>
+                  <p
+                    v-else
+                    class="mt-2 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.betaPolicy.presetConservativeHint") }}
+                  </p>
+                </div>
+
                 <!-- Rule Cards -->
                 <div
                   v-for="rule in betaPolicyForm.rules"
@@ -5631,6 +5659,7 @@ const rectifierForm = reactive({
 const betaPolicyLoading = ref(true);
 const betaPolicySaving = ref(false);
 const betaPolicyForm = reactive({
+  preset: "conservative" as "conservative" | "claude_code_compat" | "",
   rules: [] as Array<{
     beta_token: string;
     action: "pass" | "filter" | "block";
@@ -5641,6 +5670,17 @@ const betaPolicyForm = reactive({
     fallback_error_message?: string;
   }>,
 });
+
+const betaPolicyPresetOptions = computed(() => [
+  {
+    value: "conservative",
+    label: t("admin.settings.betaPolicy.presetConservative"),
+  },
+  {
+    value: "claude_code_compat",
+    label: t("admin.settings.betaPolicy.presetClaudeCodeCompat"),
+  },
+]);
 
 // OpenAI Fast/Flex Policy 状态
 const openaiFastPolicyForm = reactive({
@@ -7214,6 +7254,8 @@ async function loadBetaPolicySettings() {
   betaPolicyLoading.value = true;
   try {
     const settings = await adminAPI.settings.getBetaPolicySettings();
+    // Backend service-layer fallback ensures preset is "conservative" when missing.
+    betaPolicyForm.preset = settings.preset || "conservative";
     betaPolicyForm.rules = settings.rules;
   } catch (_error: unknown) {
     // Silent fail - settings will use defaults
@@ -7300,8 +7342,10 @@ async function saveBetaPolicySettings() {
       };
     });
     const updated = await adminAPI.settings.updateBetaPolicySettings({
+      preset: betaPolicyForm.preset || "conservative",
       rules: cleanedRules,
     });
+    betaPolicyForm.preset = updated.preset || "conservative";
     betaPolicyForm.rules = updated.rules;
     appStore.showSuccess(t("admin.settings.betaPolicy.saved"));
   } catch (error: unknown) {

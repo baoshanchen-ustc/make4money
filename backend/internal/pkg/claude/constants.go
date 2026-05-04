@@ -89,10 +89,27 @@ func FullClaudeCodeMimicryBetas() []string {
 }
 
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
+//
+// Baseline 来源（按可信度排序）：
+//  1. 真实 Claude Code CLI 抓包（首选）—— 当前 baseline 对齐 claude-cli/2.1.92。
+//  2. Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT —— 第三方维护的伪装基线，
+//     可作为辅助参考，但更新滞后于真实 CLI。
+//  3. 仓库内 migration 模板（如 backend/migrations/129_seed_claude_code_template.sql 写到的
+//     claude-cli/2.1.114）属于"手工伪装模板"，不能单独作为 DefaultHeaders 的事实来源；
+//     只有在抓包确认后才能采用。
+//
+// 更新策略：
+//   - User-Agent / Stainless package version / runtime version 应每 1~2 个月校对一次；
+//   - 不盲目追未验证的最新版本；先维持本 baseline 不变，再按抓包结果整体推进；
+//   - 任何字段都允许通过外部配置覆盖（参见 applyClaudeCodeMimicHeaders 的 setHeaderRaw 调用），
+//     但目前没有暴露给 admin UI；如果需要灰度调整，应通过新增 config key + 回滚开关。
+//   - 修改本 map 时请同步更新 CLICurrentVersion 和 backend/internal/service/header_util.go
+//     注释里引用的抓包版本号，避免文档漂移。
+//
+// 不变量：
+//   - User-Agent 必须形如 "claude-cli/<X.Y.Z> (external, cli)"，且与 CLICurrentVersion 一致；
+//   - Anthropic-Dangerous-Direct-Browser-Access 必须保持 "true"，与当前 SDK 行为一致。
 var DefaultHeaders = map[string]string{
-	// Keep these in sync with recent Claude CLI traffic to reduce the chance
-	// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
-	// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
 	"User-Agent":                                "claude-cli/2.1.92 (external, cli)",
 	"X-Stainless-Lang":                          "js",
 	"X-Stainless-Package-Version":               "0.70.0",

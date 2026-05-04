@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -212,11 +213,32 @@ func redactAuthHeaderValue(v string) string {
 	return "[redacted]"
 }
 
+// hashSummary 返回适合日志的短摘要：sha256:<前 8 hex 字符>...
+// 空输入返回空串。用于把可识别标识符（如 metadata.user_id、remote-container-id）
+// 转成稳定但不可逆的指纹，便于排障同时不泄漏原始值。
+func hashSummary(value string) string {
+	if value == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(h[:])[:8] + "..."
+}
+
 func safeHeaderValueForLog(key string, v string) string {
 	key = strings.ToLower(strings.TrimSpace(key))
 	switch key {
 	case "authorization", "x-api-key":
 		return redactAuthHeaderValue(v)
+	case "cookie", "set-cookie":
+		// cookie 完全不进日志：可能携带 session token / OAuth refresh
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return ""
+		}
+		return "[redacted]"
+	case "x-claude-remote-container-id", "x-claude-remote-session-id", "x-anthropic-additional-protection":
+		// 这些条件头本身可能是稳定标识符，hash 后再进日志，便于按 fingerprint 排障。
+		return hashSummary(strings.TrimSpace(v))
 	default:
 		return strings.TrimSpace(v)
 	}
@@ -257,9 +279,12 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 	}
 
 	// Only log a minimal fingerprint to avoid leaking user content.
+	// 条件头（remote container/session、additional-protection）通过 safeHeaderValueForLog
+	// 自动 hash，不会以原文进入日志；x-client-app 是非敏感的应用标识，可原样保留。
 	interesting := []string{
 		"user-agent",
 		"x-app",
+		"x-client-app",
 		"anthropic-dangerous-direct-browser-access",
 		"anthropic-version",
 		"anthropic-beta",
@@ -276,11 +301,20 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 		"content-type",
 		"accept",
 		"x-stainless-helper-method",
+		"x-claude-code-session-id",
+		"x-client-request-id",
+		"x-claude-remote-container-id",
+		"x-claude-remote-session-id",
+		"x-anthropic-additional-protection",
 	}
 
+	// 用 getHeaderRaw 而不是 Header.Get：转发链路普遍以 wire casing（多为全小写）原样存储 header
+	// （见 setHeaderRaw / header_util.go），Go 的 Header.Get 会先 canonical 化再查表，因此
+	// "authorization" / "x-client-request-id" / "x-claude-remote-container-id" 等 raw key 用
+	// Header.Get 读不到。结果是 debug line 漏掉本应被 hash 后记录的指纹，排障能力变弱。
 	h := make([]string, 0, len(interesting))
 	for _, k := range interesting {
-		if v := req.Header.Get(k); v != "" {
+		if v := getHeaderRaw(req.Header, k); v != "" {
 			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
 		}
 	}
@@ -288,9 +322,11 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 	metaUserID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
 	sysPreview := strings.TrimSpace(extractSystemPreviewFromBody(body))
 
-	// Truncate preview to keep logs sane.
-	if len(sysPreview) > 300 {
-		sysPreview = sysPreview[:300] + "..."
+	// 把 system 内容稳定 hash 化作为主记录，附带 80 字符截断预览作为排障辅助。
+	// 80 字符预览仍可能包含部分用户文本，但 SUB2API_DEBUG_GATEWAY_BODY 之外不写完整 body。
+	sysHash := hashSummary(sysPreview)
+	if len(sysPreview) > 80 {
+		sysPreview = sysPreview[:80] + "..."
 	}
 	sysPreview = strings.ReplaceAll(sysPreview, "\n", "\\n")
 	sysPreview = strings.ReplaceAll(sysPreview, "\r", "\\r")
@@ -303,13 +339,14 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 	}
 
 	return fmt.Sprintf(
-		"url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id=%q system.preview=%q headers={%s}",
+		"url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id.hash=%q system.hash=%q system.preview=%q headers={%s}",
 		req.URL.String(),
 		aid,
 		aname,
 		tokenType,
 		mimicClaudeCode,
-		metaUserID,
+		hashSummary(metaUserID),
+		sysHash,
 		sysPreview,
 		strings.Join(h, " "),
 	)
@@ -378,6 +415,14 @@ var allowedHeaders = map[string]bool{
 	"accept-encoding":                           true,
 	"x-claude-code-session-id":                  true,
 	"x-client-request-id":                       true,
+	// Claude Code Remote / Agent SDK / additional-protection 条件头：
+	// 仅在客户端发送时透传，代理端不合成默认值。
+	// 真实 Claude Code 在 Remote / Agent SDK 模式下会带 remote container/session 标识；
+	// x-anthropic-additional-protection 是 SDK 在特定 beta 流量下补的保护标记。
+	"x-claude-remote-container-id":     true,
+	"x-claude-remote-session-id":       true,
+	"x-client-app":                     true,
+	"x-anthropic-additional-protection": true,
 }
 
 // GatewayCache 定义网关服务的缓存操作接口。
@@ -6098,6 +6143,13 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
+	// 在所有 header 处理完成后，按 first-party Anthropic + config 开关条件填充 x-client-request-id。
+	// 仅在请求最终指向 first-party /v1/messages(/count_tokens) 且对应 token 类型的开关开启、
+	// 且客户端未提供该 header 时才生成。第三方 / 自定义 relay / API key passthrough（默认）不会触发。
+	if s.cfg != nil {
+		ensureClaudeFirstPartyRequestID(req, targetURL, s.cfg.Gateway.ClaudeRequestID, tokenType)
+	}
+
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
 		"url":                 req.URL.String(),
@@ -6345,6 +6397,23 @@ type betaPolicyResult struct {
 	filterSet map[string]struct{} // tokens to filter (may be nil)
 }
 
+// claudeCodeCompatAllowedBetas 是 claude_code_compat preset 下默认放行的 beta token 集合。
+// 当 BetaPolicySettings.Preset == BetaPolicyPresetClaudeCodeCompat 时，rules 中针对这些
+// token 的 Filter / Block 规则会被忽略，使其在请求中正常透传。
+//
+// 选型理由：
+//   - fast-mode-2026-02-01：Claude Code "/fast" 模式必需的 beta；conservative 预设默认
+//     filter 是为避免成本失控，但用户在 Claude Code 客户端期望能用就用，UI 中显式选择
+//     compat 预设即视为接受额外配额开销。
+//   - context-1m-2025-08-07：1M context 容量；同上理由，conservative 默认 filter 以防误用，
+//     compat 预设面向需要较新能力的运维。
+//
+// 该列表故意保持小而精：每加入一项都意味着默认配额行为可能改变，应在维护文档说明。
+var claudeCodeCompatAllowedBetas = map[string]struct{}{
+	"fast-mode-2026-02-01":  {},
+	"context-1m-2025-08-07": {},
+}
+
 // evaluateBetaPolicy loads settings once and evaluates all rules against the given request.
 func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account, model string) betaPolicyResult {
 	if s.settingService == nil {
@@ -6356,10 +6425,19 @@ func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader stri
 	}
 	isOAuth := account.IsOAuth()
 	isBedrock := account.IsBedrock()
+	// preset=claude_code_compat 时，已知 compat-allow 列表中的 token 跳过 Filter / Block，
+	// 让上游"看到"完整 beta header 并按需提供更新能力。
+	compatPreset := settings.Preset == BetaPolicyPresetClaudeCodeCompat
 	var result betaPolicyResult
 	for _, rule := range settings.Rules {
 		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
+		}
+		if compatPreset {
+			if _, allowed := claudeCodeCompatAllowedBetas[rule.BetaToken]; allowed {
+				// 兼容预设：忽略 Filter / Block，让 token 透传。
+				continue
+			}
 		}
 		effectiveAction, effectiveErrMsg := resolveRuleAction(rule, model)
 		switch effectiveAction {
@@ -6593,11 +6671,9 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 	if isStream {
 		setHeaderRaw(req.Header, "x-stainless-helper-method", "stream")
 	}
-	// Real Claude CLI 每个请求都会生成一个新的 UUID 放在 x-client-request-id。
-	// 上游会以此作为会话/请求指纹的一部分，缺失或重复都可能触发第三方判定。
-	if getHeaderRaw(req.Header, "x-client-request-id") == "" {
-		setHeaderRaw(req.Header, "x-client-request-id", uuid.NewString())
-	}
+	// x-client-request-id 的自动生成已迁移到 ensureClaudeFirstPartyRequestID，由调用方在白名单/
+	// 指纹/mimic/beta policy 处理之后显式调用，并按 first-party Anthropic + config 开关共同 gate。
+	// 不在本函数内无条件生成，避免在自定义 relay / 第三方域上误填该标识。
 }
 
 func truncateForLog(b []byte, maxBytes int) string {
@@ -9273,6 +9349,11 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		}
 	}
 
+	// First-party x-client-request-id 自动生成（count_tokens 路径与 messages 一致）
+	if s.cfg != nil {
+		ensureClaudeFirstPartyRequestID(req, targetURL, s.cfg.Gateway.ClaudeRequestID, tokenType)
+	}
+
 	if c != nil && tokenType == "oauth" {
 		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
 	}
@@ -9492,6 +9573,17 @@ func (s *GatewayService) initDebugGatewayBodyFile(path string) {
 //
 //	SUB2API_DEBUG_GATEWAY_BODY=1                          # 写入 gateway_debug.log
 //	SUB2API_DEBUG_GATEWAY_BODY=/tmp/gateway_debug.log     # 写入指定路径
+//
+// ⚠️  安全警告：本开关写出的是**未脱敏**的完整 request body 与 headers，
+//
+//	可能包含 OAuth token、API key、metadata.user_id、完整 system prompt、
+//	完整工具调用结果等敏感数据。
+//
+//	- 仅限本地短期排障使用，不得在共享 / 生产环境开启；
+//	- 文件以明文落盘，没有自动 rotation 或自动 redaction；
+//	- 启用后必须由运维手工管理 / 删除产生的 log 文件，并避免被备份系统 / 日志收集器抓走；
+//	- 默认 Gateway log（buildClaudeMimicDebugLine）已 hash metadata.user_id 与
+//	  remote-* 标识符；不需要 full body 时请优先用默认日志。
 //
 // tag: "CLIENT_ORIGINAL" 或 "UPSTREAM_FORWARD"
 func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra map[string]string) {

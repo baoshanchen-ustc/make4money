@@ -294,8 +294,17 @@ type BetaPolicyRule struct {
 }
 
 // BetaPolicySettings Beta 策略配置 DTO
+//
+// Preset 字段：
+//   - "" / 缺失：旧数据兼容，service 层按 "conservative" 解释，不会写回 DB；
+//   - "conservative"：保守默认，行为与历史版本一致；
+//   - "claude_code_compat"：Claude Code 兼容预设，放行特定较新 beta（具体行为由 T8 实现）。
+//
+// 持久化时 service 层会把空 preset 归一化为 "conservative"。
+// 旧 rules 数组保留，preset 仅作为附加策略层。
 type BetaPolicySettings struct {
-	Rules []BetaPolicyRule `json:"rules"`
+	Preset string           `json:"preset,omitempty"`
+	Rules  []BetaPolicyRule `json:"rules"`
 }
 
 // OpenAIFastPolicyRule OpenAI fast/flex 策略规则 DTO

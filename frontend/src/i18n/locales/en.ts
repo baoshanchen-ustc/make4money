@@ -5604,7 +5604,12 @@ export default {
         quickPresets: 'Quick Presets',
         presetOpusOnly: 'Opus only for 1M',
         presetOpusOnlyDesc: 'Pass for Opus, filter others',
-        commonPatterns: 'Common patterns'
+        commonPatterns: 'Common patterns',
+        preset: 'Policy Preset',
+        presetConservative: 'Conservative (default)',
+        presetClaudeCodeCompat: 'Claude Code Compat',
+        presetConservativeHint: 'Conservative: rules below are applied verbatim; matches historical behavior.',
+        presetCompatWarning: '⚠ Compat preset lets newer Claude Code betas (fast-mode-2026-02-01, context-1m-2025-08-07, etc.) pass through to upstream — **including overriding any Filter or Block rules you may have set for these tokens**: an explicit Block becomes a no-op once compat is selected. This may incur extra priority quota or 1M context costs — enable only if your account quota can absorb it.'
       },
       openaiFastPolicy: {
         title: 'OpenAI Fast/Flex Policy',

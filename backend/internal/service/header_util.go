@@ -9,7 +9,9 @@ import (
 // Go 的 HTTP server 解析请求时会将所有 header key 转为 Canonical 形式（如 x-app → X-App），
 // 此 map 用于在转发时恢复到真实的 wire format。
 //
-// 来源：对真实 Claude CLI (claude-cli/2.1.81) 到 api.anthropic.com 的 HTTPS 流量抓包。
+// 来源：对真实 Claude CLI 到 api.anthropic.com 的 HTTPS 流量抓包。
+// 当前 baseline 对齐 claude-cli/2.1.92（与 backend/internal/pkg/claude/constants.go
+// 的 DefaultHeaders 与 CLICurrentVersion 保持同步）。
 var headerWireCasing = map[string]string{
 	// Title case
 	"accept":     "Accept",
@@ -41,6 +43,13 @@ var headerWireCasing = map[string]string{
 	"x-claude-code-session-id": "X-Claude-Code-Session-Id",
 	"x-client-request-id":      "x-client-request-id",
 	"content-length":           "content-length",
+
+	// Claude Code Remote / Agent SDK / additional-protection 条件头：
+	// 真实 Claude CLI 抓包均为全小写 wire form，保留原样透传，不做大小写改写。
+	"x-claude-remote-container-id":     "x-claude-remote-container-id",
+	"x-claude-remote-session-id":       "x-claude-remote-session-id",
+	"x-client-app":                     "x-client-app",
+	"x-anthropic-additional-protection": "x-anthropic-additional-protection",
 }
 
 // headerWireOrder 定义真实 Claude CLI 发送 header 的顺序（基于抓包）。
@@ -61,6 +70,10 @@ var headerWireOrder = []string{
 	"x-app",
 	"User-Agent",
 	"X-Claude-Code-Session-Id",
+	"x-claude-remote-container-id",
+	"x-claude-remote-session-id",
+	"x-client-app",
+	"x-anthropic-additional-protection",
 	"content-type",
 	"anthropic-beta",
 	"x-client-request-id",
