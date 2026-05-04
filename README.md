@@ -562,7 +562,13 @@ Sub2API supports [Antigravity](https://antigravity.so/) accounts. After authoriz
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:8080/antigravity"
 export ANTHROPIC_AUTH_TOKEN="sk-xxx"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+export CLAUDE_CODE_ATTRIBUTION_HEADER=0
 ```
+
+The recommended sub2api template uses `ANTHROPIC_AUTH_TOKEN` (renders as `Authorization: Bearer ...`) instead of `ANTHROPIC_API_KEY`, and pairs it with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` (suppresses Claude Code metrics / autoupdater / error sink traffic) plus `CLAUDE_CODE_ATTRIBUTION_HEADER=0` (drops the first-party billing attribution header).
+
+> Detailed rationale, BigQuery metrics boundaries, response-header gateway-detection scope, and rollback levers: see [`hook/docs/sub2api-claude-code-usage-guide.md`](hook/docs/sub2api-claude-code-usage-guide.md).
 
 ### Hybrid Scheduling Mode
 
