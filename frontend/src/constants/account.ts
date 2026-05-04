@@ -1,3 +1,9 @@
+/** Types that support account-level quota / pool mode (align with domain.SupportsAccountQuotaType). */
+export function isAccountQuotaEligibleType(type: string | undefined | null): boolean {
+  if (!type) return false
+  return type === 'apikey' || type === 'bedrock' || type === 'vertex' || type === 'service_account'
+}
+
 /** WebSearch emulation mode values (must match backend WebSearchMode* constants in account.go) */
 export const WEB_SEARCH_MODE_DEFAULT = 'default' as const
 export const WEB_SEARCH_MODE_ENABLED = 'enabled' as const

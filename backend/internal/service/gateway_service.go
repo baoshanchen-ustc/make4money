@@ -5022,7 +5022,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return s.forwardBedrock(ctx, c, account, parsed, startTime)
 	}
 
-	if account != nil && account.IsVertex() {
+	// Legacy account type "vertex" uses gcp_project_id / gcp_region / gcp_service_account_json
+	// and the forwardVertex implementation below.
+	//
+	// Type "service_account" uses project_id / location / service_account_json and must
+	// follow the normal Anthropic path so GetAccessToken + buildUpstreamRequestAnthropicVertex
+	// can run (see merge fix v0.1.137).
+	if account != nil && account.Platform == PlatformAnthropic && account.Type == AccountTypeVertex {
 		return s.forwardVertex(ctx, c, account, parsed, startTime)
 	}
 

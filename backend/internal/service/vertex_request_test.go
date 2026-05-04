@@ -133,6 +133,20 @@ func TestVertexProjectID_NilAccount(t *testing.T) {
 	assert.Equal(t, "", vertexProjectID(nil))
 }
 
+// Anthropic service_account 使用 project_id；legacy forwardVertex 路径只读 gcp_project_id。
+func TestVertexProjectID_ServiceAccountUsesUnifiedGetterNotLegacyForwardVertexField(t *testing.T) {
+	acct := &Account{
+		Type:     AccountTypeServiceAccount,
+		Platform: PlatformAnthropic,
+		Credentials: map[string]any{
+			"project_id": "new-schema-project",
+			"location":   "us-central1",
+		},
+	}
+	assert.Equal(t, "", vertexProjectID(acct))
+	assert.Equal(t, "new-schema-project", acct.VertexProjectID())
+}
+
 func TestVertexRegion_FromCredentials(t *testing.T) {
 	acct := &Account{
 		Type:        AccountTypeVertex,

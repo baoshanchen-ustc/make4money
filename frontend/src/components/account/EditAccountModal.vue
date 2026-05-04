@@ -1543,9 +1543,9 @@
         </div>
       </div>
 
-      <!-- 配额控制 (Anthropic apikey/bedrock/vertex: 配额限制 + 亲和) -->
+      <!-- 配额控制 (Anthropic apikey/bedrock/vertex/service_account: 配额限制 + 亲和) -->
       <div
-        v-if="account?.platform === 'anthropic' && (account?.type === 'apikey' || account?.type === 'bedrock' || account?.type === 'vertex')"
+        v-if="account?.platform === 'anthropic' && isAccountQuotaEligibleType(account?.type)"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
@@ -1594,9 +1594,9 @@
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
         />
       </div>
-      <!-- 配额控制 (非 Anthropic apikey/bedrock/vertex) -->
+      <!-- 配额控制 (非 Anthropic 的配额适用类型) -->
       <div
-        v-else-if="account?.type === 'apikey' || account?.type === 'bedrock' || account?.type === 'vertex'"
+        v-else-if="isAccountQuotaEligibleType(account?.type) && account?.platform !== 'anthropic'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
@@ -2289,7 +2289,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
+import { VERTEX_LOCATION_OPTIONS, isAccountQuotaEligibleType } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -2359,17 +2359,17 @@ const editBedrockSessionToken = ref('')
 const editBedrockRegion = ref('')
 const editBedrockForceGlobal = ref(false)
 const editBedrockApiKeyValue = ref('')
-const editVertexProjectId = ref('')
-const editVertexClientEmail = ref('')
-const editVertexLocation = ref('us-central1')
 const isBedrockAPIKeyMode = computed(() =>
   props.account?.type === 'bedrock' &&
   (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'apikey'
 )
-// Vertex AI credentials
+// Vertex AI: legacy `vertex` uses gcp_project_id/gcp_region + gcp_service_account_json;
+// `service_account` uses project_id/location/client_email + service_account_json.
 const editVertexServiceAccountJson = ref('')
 const editVertexProjectId = ref('')
 const editVertexRegion = ref('')
+const editVertexClientEmail = ref('')
+const editVertexLocation = ref('us-central1')
 const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -2682,8 +2682,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
   }
 
-  // Load quota limit for apikey/bedrock/vertex accounts (bedrock/vertex quota also loaded in their own branches below)
-  if (newAccount.type === 'apikey' || newAccount.type === 'bedrock' || newAccount.type === 'vertex') {
+  // Load quota limit for apikey/bedrock/vertex/service_account accounts (bedrock/vertex quota also loaded in their own branches below)
+  if (isAccountQuotaEligibleType(newAccount.type)) {
     const quotaVal = extra?.quota_limit as number | undefined
     editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
     const dailyVal = extra?.quota_daily_limit as number | undefined
@@ -3862,8 +3862,8 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // For apikey/bedrock/vertex accounts, handle quota_limit in extra
-    if (props.account.type === 'apikey' || props.account.type === 'bedrock' || props.account.type === 'vertex') {
+    // For apikey/bedrock/vertex/service_account accounts, handle quota_limit in extra
+    if (isAccountQuotaEligibleType(props.account.type)) {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
