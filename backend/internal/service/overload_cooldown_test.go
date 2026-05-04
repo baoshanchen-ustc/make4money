@@ -184,6 +184,55 @@ func TestSetOverloadCooldownSettings_AcceptsBoundaries(t *testing.T) {
 	}
 }
 
+func TestGetRateLimitCooldownSettings_DefaultsWhenNotSet(t *testing.T) {
+	repo := newMockSettingRepo()
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetRateLimitCooldownSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.Enabled)
+	require.Equal(t, 5, settings.CooldownMinutes)
+}
+
+func TestGetRateLimitCooldownSettings_ReadsFromDB(t *testing.T) {
+	repo := newMockSettingRepo()
+	data, _ := json.Marshal(RateLimitCooldownSettings{Enabled: false, CooldownMinutes: 30})
+	repo.data[SettingKeyRateLimitCooldownSettings] = string(data)
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetRateLimitCooldownSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, settings.Enabled)
+	require.Equal(t, 30, settings.CooldownMinutes)
+}
+
+func TestSetRateLimitCooldownSettings_EnabledRejectsOutOfRange(t *testing.T) {
+	svc := NewSettingService(newMockSettingRepo(), &config.Config{})
+
+	for _, minutes := range []int{0, -1, 121, 999} {
+		err := svc.SetRateLimitCooldownSettings(context.Background(), &RateLimitCooldownSettings{
+			Enabled: true, CooldownMinutes: minutes,
+		})
+		require.Error(t, err, "should reject enabled=true + cooldown_minutes=%d", minutes)
+		require.Contains(t, err.Error(), "cooldown_minutes must be between 1-120")
+	}
+}
+
+func TestSetRateLimitCooldownSettings_DisabledNormalizesOutOfRange(t *testing.T) {
+	repo := newMockSettingRepo()
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.SetRateLimitCooldownSettings(context.Background(), &RateLimitCooldownSettings{
+		Enabled: false, CooldownMinutes: 0,
+	})
+	require.NoError(t, err)
+
+	settings, err := svc.GetRateLimitCooldownSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, settings.Enabled)
+	require.Equal(t, 5, settings.CooldownMinutes)
+}
+
 // ===========================================================================
 // RateLimitService: handle529 behaviour
 // ===========================================================================

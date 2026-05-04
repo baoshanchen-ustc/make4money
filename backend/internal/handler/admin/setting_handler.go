@@ -2462,6 +2462,58 @@ func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	})
 }
 
+// GetRateLimitCooldownSettings 获取429限流冷却配置
+// GET /api/v1/admin/settings/rate-limit-cooldown
+func (h *SettingHandler) GetRateLimitCooldownSettings(c *gin.Context) {
+	settings, err := h.settingService.GetRateLimitCooldownSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.RateLimitCooldownSettings{
+		Enabled:         settings.Enabled,
+		CooldownMinutes: settings.CooldownMinutes,
+	})
+}
+
+// UpdateRateLimitCooldownSettingsRequest 更新429限流冷却配置请求
+type UpdateRateLimitCooldownSettingsRequest struct {
+	Enabled         bool `json:"enabled"`
+	CooldownMinutes int  `json:"cooldown_minutes"`
+}
+
+// UpdateRateLimitCooldownSettings 更新429限流冷却配置
+// PUT /api/v1/admin/settings/rate-limit-cooldown
+func (h *SettingHandler) UpdateRateLimitCooldownSettings(c *gin.Context) {
+	var req UpdateRateLimitCooldownSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := &service.RateLimitCooldownSettings{
+		Enabled:         req.Enabled,
+		CooldownMinutes: req.CooldownMinutes,
+	}
+
+	if err := h.settingService.SetRateLimitCooldownSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetRateLimitCooldownSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.RateLimitCooldownSettings{
+		Enabled:         updatedSettings.Enabled,
+		CooldownMinutes: updatedSettings.CooldownMinutes,
+	})
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 // GET /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {

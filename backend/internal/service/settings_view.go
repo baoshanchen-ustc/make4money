@@ -389,6 +389,22 @@ func DefaultOverloadCooldownSettings() *OverloadCooldownSettings {
 	}
 }
 
+// RateLimitCooldownSettings 429限流冷却配置
+type RateLimitCooldownSettings struct {
+	// Enabled 是否在收到429时暂停账号调度
+	Enabled bool `json:"enabled"`
+	// CooldownMinutes 无法从上游解析恢复时间时的兜底冷却时长（分钟）
+	CooldownMinutes int `json:"cooldown_minutes"`
+}
+
+// DefaultRateLimitCooldownSettings 返回默认的429限流冷却配置（启用，5分钟）
+func DefaultRateLimitCooldownSettings() *RateLimitCooldownSettings {
+	return &RateLimitCooldownSettings{
+		Enabled:         true,
+		CooldownMinutes: 5,
+	}
+}
+
 // DefaultBetaPolicySettings 返回默认的 Beta 策略配置
 func DefaultBetaPolicySettings() *BetaPolicySettings {
 	return &BetaPolicySettings{

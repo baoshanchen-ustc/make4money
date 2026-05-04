@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -150,11 +151,13 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 type openAI429SnapshotRepo struct {
 	mockAccountRepoForGemini
 	rateLimitedID int64
+	rateLimitedAt *time.Time
 	updatedExtra  map[string]any
 }
 
-func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
+func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	r.rateLimitedID = id
+	r.rateLimitedAt = &resetAt
 	return nil
 }
 
@@ -190,6 +193,51 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	if got := repo.updatedExtra["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
 	}
+}
+
+func TestHandle429_OpenAIDisabledFromDB_SkipsRateLimit(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	settingRepo := newMockSettingRepo()
+	data, _ := json.Marshal(RateLimitCooldownSettings{Enabled: false, CooldownMinutes: 5})
+	settingRepo.data[SettingKeyRateLimitCooldownSettings] = string(data)
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(settingSvc)
+
+	account := &Account{ID: 124, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "100")
+	headers.Set("x-codex-primary-reset-after-seconds", "300")
+	headers.Set("x-codex-primary-window-minutes", "300")
+
+	svc.handle429(context.Background(), account, headers, nil)
+
+	require.Zero(t, repo.rateLimitedID)
+	require.Nil(t, repo.rateLimitedAt)
+	require.Empty(t, repo.updatedExtra)
+}
+
+func TestHandle429_OpenAINoResetUsesConfiguredFallback(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	settingRepo := newMockSettingRepo()
+	data, _ := json.Marshal(RateLimitCooldownSettings{Enabled: true, CooldownMinutes: 3})
+	settingRepo.data[SettingKeyRateLimitCooldownSettings] = string(data)
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(settingSvc)
+
+	account := &Account{ID: 125, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "100")
+
+	before := time.Now()
+	svc.handle429(context.Background(), account, headers, nil)
+
+	require.Equal(t, account.ID, repo.rateLimitedID)
+	require.NotNil(t, repo.rateLimitedAt)
+	require.WithinDuration(t, before.Add(3*time.Minute), *repo.rateLimitedAt, 2*time.Second)
 }
 
 func TestNormalizedCodexLimits(t *testing.T) {
