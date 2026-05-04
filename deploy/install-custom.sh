@@ -1,10 +1,17 @@
 #!/bin/bash
 #
 # Sub2API Custom Fork - One-click Deploy Script
-# Usage: curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh | sudo bash
+# Usage:
+#   curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh | sudo bash
 #
-# This file on branch main tracks main (clone/pull + raw URL). Fork line i18n-seo uses the same script on branch i18n-seo.
-# Override: GITHUB_DEPLOY_BRANCH=i18n-seo
+# Which branch to clone/pull is chosen in this order:
+#   1) Environment GITHUB_DEPLOY_BRANCH (use sudo -E or sudo env ... bash if needed)
+#   2) Flags before subcommands: --deploy-branch main | i18n-seo
+#   3) Existing install at INSTALL_DIR: current git branch of that checkout
+#   4) DEFAULT_GITHUB_DEPLOY_BRANCH below (this file on GitHub main defaults to main; on i18n-seo defaults to i18n-seo)
+#
+# Note: with "curl ... | bash" the script cannot see the URL you curled; (4) matches whichever raw path you used.
 #
 # This script:
 #   1. Installs Docker & Docker Compose if missing
@@ -19,8 +26,8 @@ set -e
 # Configuration
 # =============================================================================
 GITHUB_REPO="qiangweihewu/sub2api"
-# Git branch for clone/checkout/pull and raw.githubusercontent.com/.../<branch>/deploy/...
-GITHUB_DEPLOY_BRANCH="${GITHUB_DEPLOY_BRANCH:-main}"
+# Last-resort branch when env / flags / existing checkout don't set it (see apply_default_deploy_branch).
+DEFAULT_GITHUB_DEPLOY_BRANCH="main"
 INSTALL_DIR="/opt/sub2api"
 IMAGE_NAME="sub2api-custom"
 COMPOSE_PROJECT="sub2api"
@@ -144,6 +151,22 @@ ensure_memory() {
 # =============================================================================
 # Clone & Build
 # =============================================================================
+apply_default_deploy_branch() {
+    if [ -n "${GITHUB_DEPLOY_BRANCH:-}" ]; then
+        return
+    fi
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        local detected
+        detected="$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+        if [ -n "$detected" ] && [ "$detected" != "HEAD" ]; then
+            GITHUB_DEPLOY_BRANCH="$detected"
+            print_info "Deploy branch (from existing $INSTALL_DIR checkout): $GITHUB_DEPLOY_BRANCH"
+            return
+        fi
+    fi
+    GITHUB_DEPLOY_BRANCH="$DEFAULT_GITHUB_DEPLOY_BRANCH"
+}
+
 sync_repo_to_deploy_branch() {
     git fetch origin
     if ! git rev-parse --verify "origin/$GITHUB_DEPLOY_BRANCH" >/dev/null 2>&1; then
@@ -726,6 +749,31 @@ main() {
     echo "==============================================${NC}"
     echo ""
 
+    local -a _deploy_args=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --deploy-branch=*)
+                GITHUB_DEPLOY_BRANCH="${1#*=}"
+                shift
+                ;;
+            --deploy-branch)
+                if [ -z "${2:-}" ]; then
+                    print_error "--deploy-branch requires a value (e.g. main or i18n-seo)"
+                    exit 1
+                fi
+                GITHUB_DEPLOY_BRANCH="$2"
+                shift 2
+                ;;
+            *)
+                _deploy_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    set -- "${_deploy_args[@]}"
+
+    apply_default_deploy_branch
+
     case "${1:-}" in
         upgrade|update)
             check_root
@@ -760,7 +808,10 @@ main() {
             exit 0
             ;;
         --help|-h)
-            echo "Usage: $0 [command]"
+            echo "Usage: $0 [--deploy-branch <name>] [command]"
+            echo ""
+            echo "Deploy branch (clone/pull): env GITHUB_DEPLOY_BRANCH, or --deploy-branch, or"
+            echo "existing checkout under $INSTALL_DIR, else baked default for this script."
             echo ""
             echo "Commands:"
             echo "  (none)                Install Sub2API (clone, build, start)"

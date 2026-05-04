@@ -651,7 +651,7 @@ curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/ins
   | sudo bash -s -- upgrade-from-source
 ```
 
-On branch **`main`**, this fork’s install script tracks **`main`** for `git clone` / `git pull` and matches the raw URL path above. The **`i18n-seo`** branch carries the same script with **`i18n-seo`** as the default. Override anytime with **`GITHUB_DEPLOY_BRANCH`**.
+The install script picks the git branch to clone/pull in this order: **`GITHUB_DEPLOY_BRANCH`** (environment), **`--deploy-branch`** (e.g. `curl ... | sudo bash -s -- --deploy-branch i18n-seo upgrade`), the **current branch of an existing** `/opt/sub2api` checkout, then a **baked default** that matches the raw path you curled (`main` vs `i18n-seo` file on GitHub). Piped scripts cannot read the curl URL; use env/flags or curl the matching raw branch.
 
 ### What the fast upgrade does
 
