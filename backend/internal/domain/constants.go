@@ -26,12 +26,14 @@ const (
 
 // Account type constants
 const (
-	AccountTypeOAuth      = "oauth"       // OAuth类型账号（full scope: profile + inference）
-	AccountTypeSetupToken = "setup-token" // Setup Token类型账号（inference only scope）
-	AccountTypeAPIKey     = "apikey"      // API Key类型账号
-	AccountTypeUpstream   = "upstream"    // 上游透传类型账号（通过 Base URL + API Key 连接上游）
-	AccountTypeBedrock    = "bedrock"     // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
-	AccountTypeVertex     = "vertex"      // Google Vertex AI 类型账号（通过 GCP Service Account JSON 鉴权，访问 Vertex 上托管的 Anthropic Claude 模型）
+	AccountTypeOAuth          = "oauth"           // OAuth类型账号（full scope: profile + inference）
+	AccountTypeSetupToken     = "setup-token"     // Setup Token类型账号（inference only scope）
+	AccountTypeAPIKey         = "apikey"          // API Key类型账号
+	AccountTypeUpstream       = "upstream"        // 上游透传类型账号（通过 Base URL + API Key 连接上游）
+	AccountTypeBedrock        = "bedrock"         // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
+	AccountTypeServiceAccount = "service_account" // Google Service Account 类型账号（用于 Vertex AI）
+	// AccountTypeVertex 为历史存储/旧客户端使用的类型值，与 Vertex AI Service Account 等价。
+	AccountTypeVertex = "vertex"
 )
 
 // SupportsAccountQuotaType 返回给定账号类型是否支持账号级配额与池模式。
@@ -39,7 +41,7 @@ const (
 // 与 (*Account).SupportsAccountQuota() 保持一致。
 func SupportsAccountQuotaType(accountType string) bool {
 	switch accountType {
-	case AccountTypeAPIKey, AccountTypeBedrock, AccountTypeVertex:
+	case AccountTypeAPIKey, AccountTypeBedrock, AccountTypeServiceAccount, AccountTypeVertex:
 		return true
 	default:
 		return false

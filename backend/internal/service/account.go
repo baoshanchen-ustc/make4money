@@ -1007,10 +1007,11 @@ func (a *Account) IsBedrockAPIKey() bool {
 	return a.IsBedrock() && a.GetCredential("auth_mode") == "apikey"
 }
 
-// IsVertex 判断账号是否为 Google Vertex AI 类型（Platform=anthropic + Type=vertex）。
+// IsVertex 判断账号是否为 Google Vertex AI 上的 Anthropic Claude（Anthropic 平台 + service_account / 历史 vertex 类型）。
 // Vertex 提供托管的 Anthropic Claude 模型，与 Bedrock 同构但鉴权走 GCP OAuth2。
 func (a *Account) IsVertex() bool {
-	return a.Platform == PlatformAnthropic && a.Type == AccountTypeVertex
+	return a.Platform == PlatformAnthropic &&
+		(a.Type == AccountTypeVertex || a.Type == AccountTypeServiceAccount)
 }
 
 // SupportsAccountQuota 返回账号类型是否支持账号级配额、池模式等"用户配置上游凭据"特性。

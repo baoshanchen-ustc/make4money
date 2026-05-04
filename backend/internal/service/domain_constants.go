@@ -41,20 +41,22 @@ const (
 
 // Account type constants
 const (
-	AccountTypeOAuth      = domain.AccountTypeOAuth      // OAuth类型账号（full scope: profile + inference）
-	AccountTypeSetupToken = domain.AccountTypeSetupToken // Setup Token类型账号（inference only scope）
-	AccountTypeAPIKey     = domain.AccountTypeAPIKey     // API Key类型账号
-	AccountTypeUpstream   = domain.AccountTypeUpstream   // 上游透传类型账号（通过 Base URL + API Key 连接上游）
-	AccountTypeBedrock    = domain.AccountTypeBedrock    // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
-	AccountTypeVertex     = domain.AccountTypeVertex     // Google Vertex AI 类型账号（通过 GCP Service Account JSON 鉴权，访问 Vertex 上托管的 Anthropic Claude 模型）
+	AccountTypeOAuth          = domain.AccountTypeOAuth          // OAuth类型账号（full scope: profile + inference）
+	AccountTypeSetupToken     = domain.AccountTypeSetupToken     // Setup Token类型账号（inference only scope）
+	AccountTypeAPIKey         = domain.AccountTypeAPIKey         // API Key类型账号
+	AccountTypeUpstream       = domain.AccountTypeUpstream       // 上游透传类型账号（通过 Base URL + API Key 连接上游）
+	AccountTypeBedrock        = domain.AccountTypeBedrock        // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
+	AccountTypeServiceAccount = domain.AccountTypeServiceAccount // Google Service Account 类型账号（用于 Vertex AI）
+	AccountTypeVertex         = domain.AccountTypeVertex         // 历史 Vertex 类型值（与 Service Account 等价）
 )
 
 // Redeem type constants
 const (
-	RedeemTypeBalance      = domain.RedeemTypeBalance
-	RedeemTypeConcurrency  = domain.RedeemTypeConcurrency
-	RedeemTypeSubscription = domain.RedeemTypeSubscription
-	RedeemTypeInvitation   = domain.RedeemTypeInvitation
+	RedeemTypeBalance          = domain.RedeemTypeBalance
+	RedeemTypeConcurrency      = domain.RedeemTypeConcurrency
+	RedeemTypeSubscription     = domain.RedeemTypeSubscription
+	RedeemTypeInvitation       = domain.RedeemTypeInvitation
+	RedeemTypeAffiliateBalance = "affiliate_balance"
 )
 
 // PromoCode status constants
@@ -317,6 +319,12 @@ const (
 	// SettingKeyBetaPolicySettings stores JSON config for beta policy rules.
 	SettingKeyBetaPolicySettings = "beta_policy_settings"
 
+	// SettingKeyOpenAIFastPolicySettings stores JSON config for OpenAI
+	// service_tier (fast/flex) policy rules. Mirrors BetaPolicySettings but
+	// targets OpenAI's body-level service_tier field instead of Claude's
+	// anthropic-beta header.
+	SettingKeyOpenAIFastPolicySettings = "openai_fast_policy_settings"
+
 	// =========================
 	// Claude Code Version Check
 	// =========================
@@ -345,6 +353,8 @@ const (
 	// 入口会跳过 OAuth 账号调度，强制走 API-key 账号，用于根治 "Extra usage
 	// required" 400。代价：若 API-key 池容量不足会返回 503，见第 6 条改进建议。
 	SettingKeyDisableOAuthOnCCResponses = "disable_oauth_on_cc_responses"
+	// SettingKeyEnableAnthropicCacheTTL1hInjection 是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl（默认 false）
+	SettingKeyEnableAnthropicCacheTTL1hInjection = "enable_anthropic_cache_ttl_1h_injection"
 
 	// Balance Low Notification
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关
