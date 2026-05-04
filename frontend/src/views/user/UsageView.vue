@@ -97,7 +97,11 @@
                 v-model="filters.api_key_id"
                 :options="apiKeyOptions"
                 :placeholder="t('usage.allApiKeys')"
-                @change="applyFilters"
+                :empty-text="apiKeyOptionsLoading ? t('common.loading') : t('common.noOptionsFound')"
+                searchable
+                :search-placeholder="t('keys.searchPlaceholder')"
+                @change="onApiKeyChange"
+                @search="searchApiKeys"
               />
             </div>
 
@@ -504,7 +508,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { usageAPI, keysAPI } from '@/api'
@@ -516,7 +520,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse } from '@/types'
+import type { UsageLog, UsageQueryParams, UsageStatsResponse } from '@/types'
 import type { Column } from '@/components/common/types'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -559,19 +563,41 @@ const columns = computed<Column[]>(() => [
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false }
 ])
 
+type ApiKeyOption = {
+  value: number | null
+  label: string
+}
+
+const getDefaultApiKeyOption = (): ApiKeyOption => ({
+  value: null,
+  label: t('usage.allApiKeys')
+})
+
 const usageLogs = ref<UsageLog[]>([])
-const apiKeys = ref<ApiKey[]>([])
+const apiKeyOptionsState = ref<ApiKeyOption[]>([])
+const selectedApiKeyOption = ref<ApiKeyOption | null>(null)
 const loading = ref(false)
 const exporting = ref(false)
+const apiKeyOptionsLoading = ref(false)
+let apiKeySearchAbortController: AbortController | null = null
+let apiKeySearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const apiKeyOptions = computed(() => {
-  return [
-    { value: null, label: t('usage.allApiKeys') },
-    ...apiKeys.value.map((key) => ({
-      value: key.id,
-      label: key.name
-    }))
+  const defaultOption = getDefaultApiKeyOption()
+  const options = [defaultOption]
+  const seenValues = new Set<number | null>([defaultOption.value])
+  const candidateOptions = [
+    ...(selectedApiKeyOption.value ? [selectedApiKeyOption.value] : []),
+    ...apiKeyOptionsState.value
   ]
+
+  for (const option of candidateOptions) {
+    if (seenValues.has(option.value)) continue
+    options.push(option)
+    seenValues.add(option.value)
+  }
+
+  return options
 })
 
 // Helper function to format date in local timezone
@@ -718,13 +744,77 @@ const loadUsageLogs = async () => {
   }
 }
 
-const loadApiKeys = async () => {
-  try {
-    const response = await keysAPI.list(1, 100)
-    apiKeys.value = response.items
-  } catch (error) {
-    console.error('Failed to load API keys:', error)
+const buildApiKeySearchFilters = (query: string) => {
+  const trimmedQuery = query.trim()
+  if (trimmedQuery) {
+    return {
+      search: trimmedQuery,
+      sort_by: 'name',
+      sort_order: 'asc' as const
+    }
   }
+
+  return {
+    sort_by: 'created_at',
+    sort_order: 'desc' as const
+  }
+}
+
+const fetchApiKeyOptions = async (query: string) => {
+  apiKeySearchAbortController?.abort()
+  const controller = new AbortController()
+  apiKeySearchAbortController = controller
+  const { signal } = controller
+  apiKeyOptionsLoading.value = true
+
+  try {
+    const response = await keysAPI.list(1, 20, buildApiKeySearchFilters(query), { signal })
+    if (signal.aborted) {
+      return
+    }
+
+    apiKeyOptionsState.value = response.items.map((key) => ({
+      value: key.id,
+      label: key.name
+    }))
+  } catch (error) {
+    if (signal.aborted) {
+      return
+    }
+    apiKeyOptionsState.value = []
+    console.error('Failed to search API keys:', error)
+  } finally {
+    if (apiKeySearchAbortController === controller) {
+      apiKeyOptionsLoading.value = false
+    }
+  }
+}
+
+const searchApiKeys = (query: string) => {
+  if (apiKeySearchTimer) {
+    clearTimeout(apiKeySearchTimer)
+  }
+
+  apiKeySearchTimer = setTimeout(() => {
+    apiKeySearchTimer = null
+    fetchApiKeyOptions(query)
+  }, 300)
+}
+
+const onApiKeyChange = (
+  value: string | number | boolean | null,
+  option: { value?: string | number | boolean | null; label?: string } | null
+) => {
+  if (value == null) {
+    selectedApiKeyOption.value = null
+  } else if (typeof value === 'number' && option && typeof option.label === 'string') {
+    selectedApiKeyOption.value = {
+      value,
+      label: option.label
+    }
+  }
+
+  applyFilters()
 }
 
 const loadUsageStats = async () => {
@@ -748,6 +838,11 @@ const applyFilters = () => {
 }
 
 const resetFilters = () => {
+  apiKeySearchAbortController?.abort()
+  if (apiKeySearchTimer) {
+    clearTimeout(apiKeySearchTimer)
+    apiKeySearchTimer = null
+  }
   filters.value = {
     api_key_id: undefined,
     start_date: undefined,
@@ -761,6 +856,8 @@ const resetFilters = () => {
   endDate.value = formatLocalDate(now)
   filters.value.start_date = startDate.value
   filters.value.end_date = endDate.value
+  selectedApiKeyOption.value = null
+  apiKeyOptionsState.value = []
   pagination.page = 1
   loadUsageLogs()
   loadUsageStats()
@@ -925,8 +1022,16 @@ const hideTokenTooltip = () => {
 }
 
 onMounted(() => {
-  loadApiKeys()
   loadUsageLogs()
   loadUsageStats()
+})
+
+onUnmounted(() => {
+  abortController?.abort()
+  apiKeySearchAbortController?.abort()
+  if (apiKeySearchTimer) {
+    clearTimeout(apiKeySearchTimer)
+    apiKeySearchTimer = null
+  }
 })
 </script>

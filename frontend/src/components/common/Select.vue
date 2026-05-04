@@ -140,6 +140,7 @@ interface Props {
 interface Emits {
   (e: 'update:modelValue', value: string | number | boolean | null): void
   (e: 'change', value: string | number | boolean | null, option: SelectOption | null): void
+  (e: 'search', query: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -329,6 +330,7 @@ watch(isOpen, (open) => {
     }
 
     if (props.searchable) {
+      emit('search', searchQuery.value)
       nextTick(() => searchInputRef.value?.focus())
     }
     // Add scroll listener to update position
@@ -340,6 +342,11 @@ watch(isOpen, (open) => {
     window.removeEventListener('scroll', updateTriggerRect, { capture: true })
     window.removeEventListener('resize', calculateDropdownPosition)
   }
+})
+
+watch(searchQuery, (query) => {
+  if (!props.searchable || !isOpen.value) return
+  emit('search', query)
 })
 
 const selectOption = (option: any) => {
