@@ -378,6 +378,14 @@ var allowedHeaders = map[string]bool{
 	"accept-encoding":                           true,
 	"x-claude-code-session-id":                  true,
 	"x-client-request-id":                       true,
+	// Claude Code Remote / Agent SDK / additional-protection 条件头：
+	// 仅在客户端发送时透传，代理端不合成默认值。
+	// 真实 Claude Code 在 Remote / Agent SDK 模式下会带 remote container/session 标识；
+	// x-anthropic-additional-protection 是 SDK 在特定 beta 流量下补的保护标记。
+	"x-claude-remote-container-id":     true,
+	"x-claude-remote-session-id":       true,
+	"x-client-app":                     true,
+	"x-anthropic-additional-protection": true,
 }
 
 // GatewayCache 定义网关服务的缓存操作接口。
