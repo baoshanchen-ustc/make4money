@@ -5609,7 +5609,7 @@ export default {
         presetConservative: 'Conservative (default)',
         presetClaudeCodeCompat: 'Claude Code Compat',
         presetConservativeHint: 'Conservative: rules below are applied verbatim; matches historical behavior.',
-        presetCompatWarning: '⚠ Compat preset lets newer Claude Code betas (fast-mode-2026-02-01, context-1m-2025-08-07, etc.) pass through to upstream. This may incur extra priority quota or 1M context costs — enable only if your account quota can absorb it.'
+        presetCompatWarning: '⚠ Compat preset lets newer Claude Code betas (fast-mode-2026-02-01, context-1m-2025-08-07, etc.) pass through to upstream — **including overriding any Filter or Block rules you may have set for these tokens**: an explicit Block becomes a no-op once compat is selected. This may incur extra priority quota or 1M context costs — enable only if your account quota can absorb it.'
       },
       openaiFastPolicy: {
         title: 'OpenAI Fast/Flex Policy',
