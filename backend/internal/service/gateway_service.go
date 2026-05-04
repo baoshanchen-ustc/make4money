@@ -6393,6 +6393,23 @@ type betaPolicyResult struct {
 	filterSet map[string]struct{} // tokens to filter (may be nil)
 }
 
+// claudeCodeCompatAllowedBetas 是 claude_code_compat preset 下默认放行的 beta token 集合。
+// 当 BetaPolicySettings.Preset == BetaPolicyPresetClaudeCodeCompat 时，rules 中针对这些
+// token 的 Filter / Block 规则会被忽略，使其在请求中正常透传。
+//
+// 选型理由：
+//   - fast-mode-2026-02-01：Claude Code "/fast" 模式必需的 beta；conservative 预设默认
+//     filter 是为避免成本失控，但用户在 Claude Code 客户端期望能用就用，UI 中显式选择
+//     compat 预设即视为接受额外配额开销。
+//   - context-1m-2025-08-07：1M context 容量；同上理由，conservative 默认 filter 以防误用，
+//     compat 预设面向需要较新能力的运维。
+//
+// 该列表故意保持小而精：每加入一项都意味着默认配额行为可能改变，应在维护文档说明。
+var claudeCodeCompatAllowedBetas = map[string]struct{}{
+	"fast-mode-2026-02-01":  {},
+	"context-1m-2025-08-07": {},
+}
+
 // evaluateBetaPolicy loads settings once and evaluates all rules against the given request.
 func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account, model string) betaPolicyResult {
 	if s.settingService == nil {
@@ -6404,10 +6421,19 @@ func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader stri
 	}
 	isOAuth := account.IsOAuth()
 	isBedrock := account.IsBedrock()
+	// preset=claude_code_compat 时，已知 compat-allow 列表中的 token 跳过 Filter / Block，
+	// 让上游"看到"完整 beta header 并按需提供更新能力。
+	compatPreset := settings.Preset == BetaPolicyPresetClaudeCodeCompat
 	var result betaPolicyResult
 	for _, rule := range settings.Rules {
 		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
+		}
+		if compatPreset {
+			if _, allowed := claudeCodeCompatAllowedBetas[rule.BetaToken]; allowed {
+				// 兼容预设：忽略 Filter / Block，让 token 透传。
+				continue
+			}
 		}
 		effectiveAction, effectiveErrMsg := resolveRuleAction(rule, model)
 		switch effectiveAction {

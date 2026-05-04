@@ -5764,7 +5764,12 @@ export default {
         quickPresets: '快捷预设',
         presetOpusOnly: '仅 Opus 允许 1M',
         presetOpusOnlyDesc: 'Opus 透传，其他模型过滤',
-        commonPatterns: '常用模式'
+        commonPatterns: '常用模式',
+        preset: '策略预设',
+        presetConservative: '保守默认',
+        presetClaudeCodeCompat: 'Claude Code 兼容优先',
+        presetConservativeHint: '保守默认：按照下方规则过滤；与历史版本行为一致。',
+        presetCompatWarning: '⚠ 兼容预设会让 fast-mode-2026-02-01、context-1m-2025-08-07 等 Claude Code 较新 beta 透传至上游，可能产生额外 priority 配额或 1M context 成本。仅在确认账号配额可承受时启用。'
       },
       openaiFastPolicy: {
         title: 'OpenAI Fast/Flex 策略',
