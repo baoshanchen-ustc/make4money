@@ -50,6 +50,40 @@ describe('buildOpenAIUsageRefreshKey', () => {
     expect(buildOpenAIUsageRefreshKey(base)).not.toBe(buildOpenAIUsageRefreshKey(next))
   })
 
+  it('会在 Spark 模型限流变化时生成不同 key', () => {
+    const base = {
+      id: 4,
+      platform: 'openai',
+      type: 'oauth',
+      updated_at: '2026-03-07T10:00:00Z',
+      last_used_at: '2026-03-07T10:00:00Z',
+      rate_limit_reset_at: null,
+      extra: {
+        model_rate_limits: {
+          'gpt-5.3-codex-spark': {
+            rate_limited_at: '2026-03-07T10:00:00Z',
+            rate_limit_reset_at: '2026-03-07T10:20:00Z'
+          }
+        }
+      }
+    } as any
+
+    const next = {
+      ...base,
+      extra: {
+        ...base.extra,
+        model_rate_limits: {
+          'gpt-5.3-codex-spark': {
+            rate_limited_at: '2026-03-07T10:05:00Z',
+            rate_limit_reset_at: '2026-03-07T10:30:00Z'
+          }
+        }
+      }
+    }
+
+    expect(buildOpenAIUsageRefreshKey(base)).not.toBe(buildOpenAIUsageRefreshKey(next))
+  })
+
   it('非 OpenAI OAuth 账号返回空 key', () => {
     expect(buildOpenAIUsageRefreshKey({
       id: 2,

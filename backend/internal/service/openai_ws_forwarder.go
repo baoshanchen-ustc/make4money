@@ -1880,7 +1880,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		)
 		var dialErr *openAIWSDialError
 		if errors.As(err, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
-			s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
+			s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()), UpstreamErrorOptions{
+				RequestedModel: originalModel,
+				UpstreamModel:  mappedModel,
+			})
 		}
 		return nil, wrapOpenAIWSFallback(classifyOpenAIWSAcquireError(err), err)
 	}
@@ -2174,7 +2177,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
-			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw)
+			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, UpstreamErrorOptions{
+				RequestedModel: originalModel,
+				UpstreamModel:  mappedModel,
+			})
 			errMsg := strings.TrimSpace(errMsgRaw)
 			if errMsg == "" {
 				errMsg = "Upstream websocket error"
@@ -2449,6 +2455,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		promptCacheKey     string
 		previousResponseID string
 		originalModel      string
+		upstreamModel      string
 		payloadBytes       int
 	}
 
@@ -2591,6 +2598,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			promptCacheKey:     promptCacheKey,
 			previousResponseID: previousResponseID,
 			originalModel:      originalModel,
+			upstreamModel:      upstreamModel,
 			payloadBytes:       len(normalized),
 		}, nil
 	}
@@ -2694,7 +2702,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		acquireTimeout = 30 * time.Second
 	}
 
-	acquireTurnLease := func(turn int, preferred string, forcePreferredConn bool) (*openAIWSConnLease, error) {
+	acquireTurnLease := func(turn int, preferred string, forcePreferredConn bool, options UpstreamErrorOptions) (*openAIWSConnLease, error) {
 		req := cloneOpenAIWSAcquireRequest(baseAcquireReq)
 		req.PreferredConnID = strings.TrimSpace(preferred)
 		req.ForcePreferredConn = forcePreferredConn
@@ -2727,7 +2735,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 			var dialErr *openAIWSDialError
 			if errors.As(acquireErr, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
-				s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()))
+				s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()), options)
 			}
 			if errors.Is(acquireErr, errOpenAIWSPreferredConnUnavailable) {
 				return nil, NewOpenAIWSClientCloseError(
@@ -2864,7 +2872,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if eventType == "error" {
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
-				s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw)
+				s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw, UpstreamErrorOptions{
+					RequestedModel: originalModel,
+					UpstreamModel:  mappedModel,
+				})
 				fallbackReason, _ := classifyOpenAIWSErrorEventFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				errCode, errType, errMessage := summarizeOpenAIWSErrorEventFieldsFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				recoverablePrevNotFound := fallbackReason == openAIWSIngressStagePreviousResponseNotFound &&
@@ -3016,6 +3027,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 	currentPayload := firstPayload.payloadRaw
 	currentOriginalModel := firstPayload.originalModel
+	currentUpstreamModel := firstPayload.upstreamModel
 	currentPayloadBytes := firstPayload.payloadBytes
 	isStrictAffinityTurn := func(payload []byte) bool {
 		if !storeDisabled {
@@ -3341,8 +3353,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		forcePreferredConn := isStrictAffinityTurn(currentPayload)
+		currentErrorOptions := UpstreamErrorOptions{
+			RequestedModel: currentOriginalModel,
+			UpstreamModel:  currentUpstreamModel,
+		}
 		if sessionLease == nil {
-			acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn)
+			acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn, currentErrorOptions)
 			if acquireErr != nil {
 				return fmt.Errorf("acquire upstream websocket: %w", acquireErr)
 			}
@@ -3426,7 +3442,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				resetSessionLease(true)
 
-				acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn)
+				acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn, currentErrorOptions)
 				if acquireErr != nil {
 					return fmt.Errorf("acquire upstream websocket after preflight ping fail: %w", acquireErr)
 				}
@@ -3582,6 +3598,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		currentPayload = nextPayload.payloadRaw
 		currentOriginalModel = nextPayload.originalModel
+		currentUpstreamModel = nextPayload.upstreamModel
 		currentPayloadBytes = nextPayload.payloadBytes
 		storeDisabled = s.isOpenAIWSStoreDisabledInRequestRaw(currentPayload, account)
 		if !storeDisabled {
@@ -3708,7 +3725,11 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
-			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw)
+			model := strings.TrimSpace(firstNonEmptyString(payload["model"], reqBody["model"]))
+			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, UpstreamErrorOptions{
+				RequestedModel: model,
+				UpstreamModel:  normalizeOpenAIModelForUpstream(account, account.GetMappedModel(model)),
+			})
 			errMsg := strings.TrimSpace(errMsgRaw)
 			if errMsg == "" {
 				errMsg = "OpenAI websocket prewarm error"
@@ -4003,14 +4024,14 @@ func isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw string) bool {
 	return false
 }
 
-func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string) {
+func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string, options UpstreamErrorOptions) {
 	if s == nil || s.rateLimitService == nil || account == nil || account.Platform != PlatformOpenAI {
 		return
 	}
 	if !isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw) {
 		return
 	}
-	s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody)
+	s.rateLimitService.HandleUpstreamErrorWithOptions(ctx, account, http.StatusTooManyRequests, headers, responseBody, options)
 }
 
 func classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, msgRaw string) (string, bool) {

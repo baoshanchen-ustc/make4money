@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -149,12 +150,24 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 
 type openAI429SnapshotRepo struct {
 	mockAccountRepoForGemini
-	rateLimitedID int64
-	updatedExtra  map[string]any
+	rateLimitedID        int64
+	modelRateLimitID     int64
+	modelRateLimitScope  string
+	modelRateLimitReset  time.Time
+	modelRateLimitCalled bool
+	updatedExtra         map[string]any
 }
 
 func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
 	r.rateLimitedID = id
+	return nil
+}
+
+func (r *openAI429SnapshotRepo) SetModelRateLimit(_ context.Context, id int64, scope string, resetAt time.Time) error {
+	r.modelRateLimitID = id
+	r.modelRateLimitScope = scope
+	r.modelRateLimitReset = resetAt
+	r.modelRateLimitCalled = true
 	return nil
 }
 
@@ -176,7 +189,7 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	headers.Set("x-codex-secondary-reset-after-seconds", "18000")
 	headers.Set("x-codex-secondary-window-minutes", "300")
 
-	svc.handle429(context.Background(), account, headers, nil)
+	svc.handle429(context.Background(), account, headers, nil, UpstreamErrorOptions{})
 
 	if repo.rateLimitedID != account.ID {
 		t.Fatalf("rateLimitedID = %d, want %d", repo.rateLimitedID, account.ID)
@@ -190,6 +203,57 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	if got := repo.updatedExtra["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
 	}
+}
+
+func TestHandle429_OpenAISparkUsesModelRateLimitFromBody(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "52")
+	headers.Set("x-codex-primary-reset-after-seconds", "492253")
+	headers.Set("x-codex-primary-window-minutes", "10080")
+	headers.Set("x-codex-secondary-used-percent", "5")
+	headers.Set("x-codex-secondary-reset-after-seconds", "18000")
+	headers.Set("x-codex-secondary-window-minutes", "300")
+	resetAt := time.Now().Add(20 * time.Minute).Unix()
+	body := []byte(fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%d,"resets_in_seconds":1200}}`, resetAt))
+
+	svc.handle429(context.Background(), account, headers, body, UpstreamErrorOptions{
+		RequestedModel: "gpt-5.3-codex-spark-high",
+		UpstreamModel:  "gpt-5.3-codex-spark",
+	})
+
+	require.Zero(t, repo.rateLimitedID, "Spark 429 must not mark the whole OpenAI account rate-limited")
+	require.True(t, repo.modelRateLimitCalled)
+	require.Equal(t, account.ID, repo.modelRateLimitID)
+	require.Equal(t, openAICodexSparkModel, repo.modelRateLimitScope)
+	require.Equal(t, time.Unix(resetAt, 0), repo.modelRateLimitReset)
+	require.NotEmpty(t, repo.updatedExtra, "Codex snapshot should still be persisted for diagnostics")
+}
+
+func TestHandle429_OpenAINonSparkStillUsesAccountRateLimit(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{ID: 123, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	headers := http.Header{}
+	headers.Set("x-codex-primary-used-percent", "52")
+	headers.Set("x-codex-primary-reset-after-seconds", "492253")
+	headers.Set("x-codex-primary-window-minutes", "10080")
+	headers.Set("x-codex-secondary-used-percent", "5")
+	headers.Set("x-codex-secondary-reset-after-seconds", "18000")
+	headers.Set("x-codex-secondary-window-minutes", "300")
+	body := []byte(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_in_seconds":1200}}`)
+
+	svc.handle429(context.Background(), account, headers, body, UpstreamErrorOptions{
+		RequestedModel: "gpt-5.5",
+		UpstreamModel:  "gpt-5.5",
+	})
+
+	require.Equal(t, account.ID, repo.rateLimitedID)
+	require.False(t, repo.modelRateLimitCalled)
 }
 
 func TestNormalizedCodexLimits(t *testing.T) {

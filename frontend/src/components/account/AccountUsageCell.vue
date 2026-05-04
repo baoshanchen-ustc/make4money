@@ -126,6 +126,13 @@
           :show-now-when-idle="true"
           color="emerald"
         />
+        <UsageProgressBar
+          v-if="openAISparkLimitBar"
+          label="Spark"
+          :utilization="openAISparkLimitBar.utilization"
+          :resets-at="openAISparkLimitBar.resetsAt"
+          color="purple"
+        />
       </div>
       <div v-else-if="loading" class="space-y-1.5">
         <div class="flex items-center gap-1">
@@ -515,6 +522,7 @@ const isDesktopViewport = ref(
 const hasEnteredViewport = ref(false)
 const pendingAutoLoad = ref(false)
 const pendingAutoLoadSource = ref<'passive' | 'active' | undefined>(undefined)
+const pendingAutoLoadBypassCache = ref(false)
 
 let desktopViewportMediaQuery: MediaQueryList | null = null
 let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
@@ -560,10 +568,24 @@ const geminiUsageAvailable = computed(() => {
 
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day || !!openAISparkLimitBar.value
 })
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
+
+const OPENAI_CODEX_SPARK_MODEL = 'gpt-5.3-codex-spark'
+
+const openAISparkLimitBar = computed((): { utilization: number; resetsAt: string } | null => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return null
+  const limit = props.account.extra?.model_rate_limits?.[OPENAI_CODEX_SPARK_MODEL]
+  const resetAt = limit?.rate_limit_reset_at
+  if (!resetAt) return null
+  if (new Date(resetAt) <= new Date()) return null
+  return {
+    utilization: 100,
+    resetsAt: resetAt
+  }
+})
 
 const shouldAutoLoadUsageOnMount = computed(() => {
   return shouldFetchUsage.value
@@ -1020,21 +1042,27 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
 const flushPendingAutoLoad = () => {
   if (!pendingAutoLoad.value) return
   const source = pendingAutoLoadSource.value
+  const bypassCache = pendingAutoLoadBypassCache.value
   pendingAutoLoad.value = false
   pendingAutoLoadSource.value = undefined
-  loadUsage({ source }).catch((e) => {
+  pendingAutoLoadBypassCache.value = false
+  loadUsage({ source, bypassCache }).catch((e) => {
     console.error('Failed to load deferred usage:', e)
   })
 }
 
-const requestAutoLoad = (source?: 'passive' | 'active') => {
+const requestAutoLoad = (
+  source?: 'passive' | 'active',
+  options?: { bypassCache?: boolean }
+) => {
   if (!shouldFetchUsage.value) return
   if (shouldLazyLoadOnMobile.value && !hasEnteredViewport.value) {
     pendingAutoLoad.value = true
     pendingAutoLoadSource.value = source
+    pendingAutoLoadBypassCache.value = pendingAutoLoadBypassCache.value || !!options?.bypassCache
     return
   }
-  loadUsage({ source }).catch((e) => {
+  loadUsage({ source, bypassCache: options?.bypassCache }).catch((e) => {
     console.error('Failed to auto load usage:', e)
   })
 }
@@ -1188,7 +1216,8 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  requestAutoLoad()
+  _usageCache.delete(props.account.id)
+  requestAutoLoad(undefined, { bypassCache: true })
 })
 
 watch(

@@ -103,6 +103,11 @@ const (
 	ErrorPolicyTempUnscheduled                          // 临时不可调度规则命中
 )
 
+type UpstreamErrorOptions struct {
+	RequestedModel string
+	UpstreamModel  string
+}
+
 // CheckErrorPolicy 检查自定义错误码和临时不可调度规则。
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
 func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte) ErrorPolicyResult {
@@ -125,6 +130,12 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
+	return s.HandleUpstreamErrorWithOptions(ctx, account, statusCode, headers, responseBody, UpstreamErrorOptions{})
+}
+
+// HandleUpstreamErrorWithOptions 处理上游错误响应，带请求模型上下文用于模型级限流。
+// 返回是否应该停止该账号的调度。
+func (s *RateLimitService) HandleUpstreamErrorWithOptions(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, options UpstreamErrorOptions) (shouldDisable bool) {
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
@@ -266,7 +277,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		)
 		shouldDisable = s.handle403(ctx, account, upstreamMsg, responseBody)
 	case 429:
-		s.handle429(ctx, account, headers, responseBody)
+		s.handle429(ctx, account, headers, responseBody, options)
 		shouldDisable = false
 	case 529:
 		s.handle529(ctx, account)
@@ -814,12 +825,17 @@ func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *A
 	slog.Warn("account_disabled_custom_error", "account_id", account.ID, "status_code", statusCode, "error", errorMsg)
 }
 
+const openAICodexSparkModel = "gpt-5.3-codex-spark"
+
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
-func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
+func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte, options UpstreamErrorOptions) {
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
+		if s.trySetOpenAISparkModelRateLimit(ctx, account, responseBody, options) {
+			return
+		}
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
@@ -927,6 +943,42 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	}
 
 	slog.Info("account_rate_limited", "account_id", account.ID, "reset_at", resetAt)
+}
+
+func (s *RateLimitService) trySetOpenAISparkModelRateLimit(ctx context.Context, account *Account, responseBody []byte, options UpstreamErrorOptions) bool {
+	if s == nil || s.accountRepo == nil || account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
+	if !isOpenAISparkLimitModel(options.UpstreamModel) && !isOpenAISparkLimitModel(options.RequestedModel) {
+		return false
+	}
+	resetAtUnix := parseOpenAIRateLimitResetTime(responseBody)
+	if resetAtUnix == nil {
+		return false
+	}
+	resetAt := time.Unix(*resetAtUnix, 0)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, openAICodexSparkModel, resetAt); err != nil {
+		slog.Warn("openai_spark_model_rate_limit_set_failed", "account_id", account.ID, "model", openAICodexSparkModel, "error", err)
+		return true
+	}
+	slog.Info(
+		"openai_spark_model_rate_limited",
+		"account_id", account.ID,
+		"model", openAICodexSparkModel,
+		"requested_model", options.RequestedModel,
+		"upstream_model", options.UpstreamModel,
+		"reset_at", resetAt,
+		"reset_in", time.Until(resetAt).Truncate(time.Second),
+	)
+	return true
+}
+
+func isOpenAISparkLimitModel(model string) bool {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return false
+	}
+	return isCodexSparkModel(model)
 }
 
 // calculateOpenAI429ResetTime 从 OpenAI 429 响应头计算正确的重置时间

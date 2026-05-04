@@ -33,6 +33,9 @@ func (a *Account) isModelRateLimitedWithContext(ctx context.Context, requestedMo
 	}
 
 	modelKey := a.GetMappedModel(requestedModel)
+	if a.Platform == PlatformOpenAI {
+		modelKey = normalizeOpenAIModelForUpstream(a, modelKey)
+	}
 	if a.Platform == PlatformAntigravity {
 		modelKey = resolveFinalAntigravityModelKey(ctx, a, requestedModel)
 	}
@@ -55,6 +58,9 @@ func (a *Account) GetModelRateLimitRemainingTimeWithContext(ctx context.Context,
 	}
 
 	modelKey := a.GetMappedModel(requestedModel)
+	if a.Platform == PlatformOpenAI {
+		modelKey = normalizeOpenAIModelForUpstream(a, modelKey)
+	}
 	if a.Platform == PlatformAntigravity {
 		modelKey = resolveFinalAntigravityModelKey(ctx, a, requestedModel)
 	}

@@ -206,7 +206,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2000)
+    expect(getUsage).toHaveBeenCalledWith(2000, undefined)
     expect(wrapper.text()).toContain('5h|15|300')
     expect(wrapper.text()).toContain('7d|77|300')
   })
@@ -267,10 +267,58 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2001)
+    expect(getUsage).toHaveBeenCalledWith(2001, undefined)
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
+  })
+
+  it('OpenAI OAuth 有 Spark 模型限流时显示 Spark 窗口条', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 18,
+        resets_at: '2099-03-07T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: null
+      },
+      seven_day: {
+        utilization: 36,
+        resets_at: '2099-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: null
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 2002,
+          platform: 'openai',
+          type: 'oauth',
+          extra: {
+            model_rate_limits: {
+              'gpt-5.3-codex-spark': {
+                rate_limited_at: '2099-03-07T10:00:00Z',
+                rate_limit_reset_at: '2099-03-07T10:20:00Z'
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ color }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Spark|100|purple')
   })
 
   it('OpenAI OAuth 有现成快照时，手动刷新信号会触发 usage 重拉', async () => {
@@ -338,7 +386,7 @@ describe('AccountUsageCell', () => {
 
     // 手动刷新再拉一次
     expect(getUsage).toHaveBeenCalledTimes(2)
-    expect(getUsage).toHaveBeenCalledWith(2010)
+    expect(getUsage).toHaveBeenCalledWith(2010, undefined)
     // 单一数据源：始终使用 /usage API 值
     expect(wrapper.text()).toContain('5h|18|900')
   })
@@ -393,7 +441,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-	expect(getUsage).toHaveBeenCalledWith(2002)
+	expect(getUsage).toHaveBeenCalledWith(2002, undefined)
 	expect(wrapper.text()).toContain('5h|0|27700')
 	expect(wrapper.text()).toContain('7d|0|27700')
   })
@@ -457,13 +505,13 @@ describe('AccountUsageCell', () => {
 	expect(getUsage).toHaveBeenCalledTimes(1)
 
 	await wrapper.setProps({
-	  account: {
+	  account: makeAccount({
 	    id: 2003,
 	    platform: 'openai',
 	    type: 'oauth',
 	    updated_at: '2026-03-07T10:01:00Z',
 	    extra: {}
-	  }
+	  })
 	})
 
 	await flushPromises()
@@ -525,7 +573,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-  expect(getUsage).toHaveBeenCalledWith(2004)
+  expect(getUsage).toHaveBeenCalledWith(2004, undefined)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
   })
