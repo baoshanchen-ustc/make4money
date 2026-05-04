@@ -537,6 +537,17 @@ type ResponseHeaderConfig struct {
 	Enabled           bool     `mapstructure:"enabled"`
 	AdditionalAllowed []string `mapstructure:"additional_allowed"`
 	ForceRemove       []string `mapstructure:"force_remove"`
+	// AllowGatewayTraceHeaders: 危险诊断 override，默认 false。
+	//
+	// 关闭（默认）：内置的 gateway 痕迹 prefix denylist（x-litellm- / helicone- /
+	//   x-portkey- / cf-aig- / x-kong- / x-bt-）会在 additional_allowed 之后再次过滤，
+	//   即使管理员误把 gateway header 加入 additional_allowed 也不会透传到客户端。
+	//
+	// 开启：跳过 prefix denylist。仅用于本地诊断 / 抓包对比；开启后客户端可能看到
+	//   gateway 痕迹响应头，进而被 Claude Code gateway detection 命中。
+	//
+	// 仅作为静态 config / env 暴露，不接入 admin UI，避免运营误开。
+	AllowGatewayTraceHeaders bool `mapstructure:"allow_gateway_trace_headers"`
 }
 
 type CSPConfig struct {
@@ -674,6 +685,21 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+
+	// ClaudeRequestID: 控制 first-party Anthropic 上游缺失 x-client-request-id 时的自动生成行为。
+	// OAuth/SetupToken normal path 默认开启；API key passthrough 默认关闭以保持透明。
+	// 详见 backend/internal/service/claude_request_id.go 中的 first-party 判定逻辑。
+	ClaudeRequestID ClaudeRequestIDConfig `mapstructure:"claude_request_id"`
+}
+
+// ClaudeRequestIDConfig 控制 first-party Anthropic 上游 x-client-request-id 自动生成。
+type ClaudeRequestIDConfig struct {
+	// AutoGenerateOAuth: OAuth / SetupToken normal path 在请求缺失时是否自动生成 UUID。
+	// 默认 true（贴合真实 Claude Code CLI 行为）；如出现兼容性问题可设为 false。
+	AutoGenerateOAuth bool `mapstructure:"auto_generate_oauth"`
+	// AutoGenerateAPIKeyPassthrough: Anthropic API key passthrough 在请求缺失时是否自动生成 UUID。
+	// 默认 false（保持 passthrough 透明语义；仅在管理员明确需要更接近 Claude Code 形态时启用）。
+	AutoGenerateAPIKeyPassthrough bool `mapstructure:"auto_generate_api_key_passthrough"`
 }
 
 // UserMessageQueueConfig 用户消息串行队列配置
@@ -1420,6 +1446,8 @@ func setDefaults() {
 	viper.SetDefault("security.response_headers.enabled", true)
 	viper.SetDefault("security.response_headers.additional_allowed", []string{})
 	viper.SetDefault("security.response_headers.force_remove", []string{})
+	// 危险诊断 override：默认关闭，开启会绕过 gateway 痕迹 prefix denylist（详见 ResponseHeaderConfig 注释）
+	viper.SetDefault("security.response_headers.allow_gateway_trace_headers", false)
 	viper.SetDefault("security.csp.enabled", true)
 	viper.SetDefault("security.csp.policy", DefaultCSPPolicy)
 	viper.SetDefault("security.proxy_probe.insecure_skip_verify", false)
@@ -1678,6 +1706,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
+	// Claude Code first-party x-client-request-id 自动生成（详见 ClaudeRequestIDConfig 注释）
+	viper.SetDefault("gateway.claude_request_id.auto_generate_oauth", true)
+	viper.SetDefault("gateway.claude_request_id.auto_generate_api_key_passthrough", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）

@@ -355,6 +355,11 @@ const (
 	BetaPolicyScopeOAuth   = "oauth"   // 仅 OAuth 账号
 	BetaPolicyScopeAPIKey  = "apikey"  // 仅 API Key 账号
 	BetaPolicyScopeBedrock = "bedrock" // 仅 AWS Bedrock 账号
+
+	// Beta Policy preset：用于以"产品策略"维度切换默认行为，独立于 rules 列表。
+	// rules 列表始终保留并继续生效；preset 仅影响默认放行/过滤的策略层。
+	BetaPolicyPresetConservative     = "conservative"       // 保守默认（历史行为）
+	BetaPolicyPresetClaudeCodeCompat = "claude_code_compat" // Claude Code 兼容优先（具体行为见 T8）
 )
 
 // BetaPolicyRule 单条 Beta 策略规则
@@ -369,8 +374,15 @@ type BetaPolicyRule struct {
 }
 
 // BetaPolicySettings Beta 策略配置
+//
+// Preset:
+//   - ""（缺失）→ 在 GetBetaPolicySettings 中 fallback 为 BetaPolicyPresetConservative，
+//     不会回写 DB；这样旧数据无需 migration 也能正确展示。
+//   - "conservative" / "claude_code_compat"：合法值。
+//   - 其他值 → SetBetaPolicySettings 拒绝；GetBetaPolicySettings 视为脏数据 fallback 到 conservative。
 type BetaPolicySettings struct {
-	Rules []BetaPolicyRule `json:"rules"`
+	Preset string           `json:"preset,omitempty"`
+	Rules  []BetaPolicyRule `json:"rules"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置
@@ -392,6 +404,7 @@ func DefaultOverloadCooldownSettings() *OverloadCooldownSettings {
 // DefaultBetaPolicySettings 返回默认的 Beta 策略配置
 func DefaultBetaPolicySettings() *BetaPolicySettings {
 	return &BetaPolicySettings{
+		Preset: BetaPolicyPresetConservative,
 		Rules: []BetaPolicyRule{
 			{
 				BetaToken: "fast-mode-2026-02-01",
@@ -404,6 +417,17 @@ func DefaultBetaPolicySettings() *BetaPolicySettings {
 				Scope:     BetaPolicyScopeAll,
 			},
 		},
+	}
+}
+
+// IsValidBetaPolicyPreset 校验 preset 是否为已识别值。
+// 空字符串视为"未指定"，由 caller 决定是否归一化为 conservative。
+func IsValidBetaPolicyPreset(preset string) bool {
+	switch preset {
+	case BetaPolicyPresetConservative, BetaPolicyPresetClaudeCodeCompat:
+		return true
+	default:
+		return false
 	}
 }
 

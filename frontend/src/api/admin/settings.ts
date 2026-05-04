@@ -922,9 +922,21 @@ export interface BetaPolicyRule {
 }
 
 /**
+ * Beta policy preset.
+ *
+ * - `conservative`: legacy behavior; default rules + admin-defined rules.
+ * - `claude_code_compat`: Claude Code compatibility-first preset (T8 implements semantics).
+ *
+ * Old payloads without a `preset` field are accepted and treated as `conservative`
+ * by the backend. Sending an empty string is allowed and persists as `conservative`.
+ */
+export type BetaPolicyPreset = "conservative" | "claude_code_compat";
+
+/**
  * Beta policy settings interface
  */
 export interface BetaPolicySettings {
+  preset?: BetaPolicyPreset | "";
   rules: BetaPolicyRule[];
 }
 

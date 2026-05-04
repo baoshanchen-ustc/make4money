@@ -3241,6 +3241,17 @@ func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicy
 		return DefaultBetaPolicySettings(), nil
 	}
 
+	// 旧数据缺 preset 字段，或 preset 为脏数据时，按 conservative 解释；
+	// 不回写 DB，避免静默修改管理员持久化的配置。
+	if settings.Preset == "" || !IsValidBetaPolicyPreset(settings.Preset) {
+		if settings.Preset != "" {
+			slog.Warn("beta_policy_settings has unrecognized preset, falling back to conservative for this read",
+				"preset", settings.Preset,
+				"key", SettingKeyBetaPolicySettings)
+		}
+		settings.Preset = BetaPolicyPresetConservative
+	}
+
 	return &settings, nil
 }
 
@@ -3248,6 +3259,17 @@ func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicy
 func (s *SettingService) SetBetaPolicySettings(ctx context.Context, settings *BetaPolicySettings) error {
 	if settings == nil {
 		return fmt.Errorf("settings cannot be nil")
+	}
+
+	// Preset 归一化与校验：空值保存为 conservative；未识别值直接拒绝。
+	if settings.Preset == "" {
+		settings.Preset = BetaPolicyPresetConservative
+	}
+	if !IsValidBetaPolicyPreset(settings.Preset) {
+		return fmt.Errorf("invalid beta policy preset %q (allowed: %q, %q)",
+			settings.Preset,
+			BetaPolicyPresetConservative,
+			BetaPolicyPresetClaudeCodeCompat)
 	}
 
 	validActions := map[string]bool{

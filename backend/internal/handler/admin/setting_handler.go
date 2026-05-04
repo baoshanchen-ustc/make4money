@@ -2586,12 +2586,16 @@ func (h *SettingHandler) GetBetaPolicySettings(c *gin.Context) {
 	for i, r := range settings.Rules {
 		rules[i] = dto.BetaPolicyRule(r)
 	}
-	response.Success(c, dto.BetaPolicySettings{Rules: rules})
+	response.Success(c, dto.BetaPolicySettings{
+		Preset: settings.Preset,
+		Rules:  rules,
+	})
 }
 
 // UpdateBetaPolicySettingsRequest 更新 Beta 策略配置请求
 type UpdateBetaPolicySettingsRequest struct {
-	Rules []dto.BetaPolicyRule `json:"rules"`
+	Preset string               `json:"preset,omitempty"`
+	Rules  []dto.BetaPolicyRule `json:"rules"`
 }
 
 // UpdateBetaPolicySettings 更新 Beta 策略配置
@@ -2608,7 +2612,10 @@ func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 		rules[i] = service.BetaPolicyRule(r)
 	}
 
-	settings := &service.BetaPolicySettings{Rules: rules}
+	settings := &service.BetaPolicySettings{
+		Preset: req.Preset,
+		Rules:  rules,
+	}
 	if err := h.settingService.SetBetaPolicySettings(c.Request.Context(), settings); err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -2625,7 +2632,10 @@ func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 	for i, r := range updated.Rules {
 		outRules[i] = dto.BetaPolicyRule(r)
 	}
-	response.Success(c, dto.BetaPolicySettings{Rules: outRules})
+	response.Success(c, dto.BetaPolicySettings{
+		Preset: updated.Preset,
+		Rules:  outRules,
+	})
 }
 
 // UpdateStreamTimeoutSettingsRequest 更新流超时配置请求
