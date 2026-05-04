@@ -82,3 +82,33 @@ func countExtraTextPatternCacheEntries() int {
 	})
 	return count
 }
+
+
+// New defaults added by T3: cookie / set-cookie / user_id should be treated as sensitive in JSON.
+func TestRedactJSON_CookieAndUserID(t *testing.T) {
+	in := []byte(`{"cookie":"session=abc","user_id":"session_xyz","metadata":{"user_id":"session_inner"},"safe":"keep"}`)
+	out := RedactJSON(in)
+	if strings.Contains(out, "session=abc") {
+		t.Fatalf("cookie value leaked: %s", out)
+	}
+	if strings.Contains(out, "session_xyz") {
+		t.Fatalf("top-level user_id leaked: %s", out)
+	}
+	if strings.Contains(out, "session_inner") {
+		t.Fatalf("nested metadata.user_id leaked: %s", out)
+	}
+	if !strings.Contains(out, `"safe":"keep"`) {
+		t.Fatalf("non-sensitive field should be preserved; got %s", out)
+	}
+}
+
+func TestRedactText_CookieAndUserID(t *testing.T) {
+	in := `cookie=session=abc&user_id=session_xyz&safe=ok`
+	out := RedactText(in)
+	if strings.Contains(out, "session=abc") {
+		t.Fatalf("cookie value leaked: %s", out)
+	}
+	if strings.Contains(out, "session_xyz") {
+		t.Fatalf("user_id leaked: %s", out)
+	}
+}

@@ -20,6 +20,12 @@ var defaultSensitiveKeys = map[string]struct{}{
 	"id_token":           {},
 	"client_secret":      {},
 	"password":           {},
+	// HTTP cookie 头：可能携带 session token / OAuth refresh / SSO ticket
+	"cookie":     {},
+	"set-cookie": {},
+	// claude metadata 中的 user_id 可定位到具体会话 + 用户，结构化日志中应当 hash / 脱敏；
+	// 业务上无意义但攻击者可用作交叉关联 id。
+	"user_id": {},
 }
 
 var defaultSensitiveKeyList = []string{
@@ -31,6 +37,9 @@ var defaultSensitiveKeyList = []string{
 	"id_token",
 	"client_secret",
 	"password",
+	"cookie",
+	"set-cookie",
+	"user_id",
 }
 
 type textRedactPatterns struct {

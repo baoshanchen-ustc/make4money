@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -212,11 +213,32 @@ func redactAuthHeaderValue(v string) string {
 	return "[redacted]"
 }
 
+// hashSummary 返回适合日志的短摘要：sha256:<前 8 hex 字符>...
+// 空输入返回空串。用于把可识别标识符（如 metadata.user_id、remote-container-id）
+// 转成稳定但不可逆的指纹，便于排障同时不泄漏原始值。
+func hashSummary(value string) string {
+	if value == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(h[:])[:8] + "..."
+}
+
 func safeHeaderValueForLog(key string, v string) string {
 	key = strings.ToLower(strings.TrimSpace(key))
 	switch key {
 	case "authorization", "x-api-key":
 		return redactAuthHeaderValue(v)
+	case "cookie", "set-cookie":
+		// cookie 完全不进日志：可能携带 session token / OAuth refresh
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return ""
+		}
+		return "[redacted]"
+	case "x-claude-remote-container-id", "x-claude-remote-session-id", "x-anthropic-additional-protection":
+		// 这些条件头本身可能是稳定标识符，hash 后再进日志，便于按 fingerprint 排障。
+		return hashSummary(strings.TrimSpace(v))
 	default:
 		return strings.TrimSpace(v)
 	}
@@ -257,9 +279,12 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 	}
 
 	// Only log a minimal fingerprint to avoid leaking user content.
+	// 条件头（remote container/session、additional-protection）通过 safeHeaderValueForLog
+	// 自动 hash，不会以原文进入日志；x-client-app 是非敏感的应用标识，可原样保留。
 	interesting := []string{
 		"user-agent",
 		"x-app",
+		"x-client-app",
 		"anthropic-dangerous-direct-browser-access",
 		"anthropic-version",
 		"anthropic-beta",
@@ -276,6 +301,11 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 		"content-type",
 		"accept",
 		"x-stainless-helper-method",
+		"x-claude-code-session-id",
+		"x-client-request-id",
+		"x-claude-remote-container-id",
+		"x-claude-remote-session-id",
+		"x-anthropic-additional-protection",
 	}
 
 	h := make([]string, 0, len(interesting))
@@ -288,9 +318,11 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 	metaUserID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
 	sysPreview := strings.TrimSpace(extractSystemPreviewFromBody(body))
 
-	// Truncate preview to keep logs sane.
-	if len(sysPreview) > 300 {
-		sysPreview = sysPreview[:300] + "..."
+	// 把 system 内容稳定 hash 化作为主记录，附带 80 字符截断预览作为排障辅助。
+	// 80 字符预览仍可能包含部分用户文本，但 SUB2API_DEBUG_GATEWAY_BODY 之外不写完整 body。
+	sysHash := hashSummary(sysPreview)
+	if len(sysPreview) > 80 {
+		sysPreview = sysPreview[:80] + "..."
 	}
 	sysPreview = strings.ReplaceAll(sysPreview, "\n", "\\n")
 	sysPreview = strings.ReplaceAll(sysPreview, "\r", "\\r")
@@ -303,13 +335,14 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 	}
 
 	return fmt.Sprintf(
-		"url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id=%q system.preview=%q headers={%s}",
+		"url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id.hash=%q system.hash=%q system.preview=%q headers={%s}",
 		req.URL.String(),
 		aid,
 		aname,
 		tokenType,
 		mimicClaudeCode,
-		metaUserID,
+		hashSummary(metaUserID),
+		sysHash,
 		sysPreview,
 		strings.Join(h, " "),
 	)
@@ -9500,6 +9533,17 @@ func (s *GatewayService) initDebugGatewayBodyFile(path string) {
 //
 //	SUB2API_DEBUG_GATEWAY_BODY=1                          # 写入 gateway_debug.log
 //	SUB2API_DEBUG_GATEWAY_BODY=/tmp/gateway_debug.log     # 写入指定路径
+//
+// ⚠️  安全警告：本开关写出的是**未脱敏**的完整 request body 与 headers，
+//
+//	可能包含 OAuth token、API key、metadata.user_id、完整 system prompt、
+//	完整工具调用结果等敏感数据。
+//
+//	- 仅限本地短期排障使用，不得在共享 / 生产环境开启；
+//	- 文件以明文落盘，没有自动 rotation 或自动 redaction；
+//	- 启用后必须由运维手工管理 / 删除产生的 log 文件，并避免被备份系统 / 日志收集器抓走；
+//	- 默认 Gateway log（buildClaudeMimicDebugLine）已 hash metadata.user_id 与
+//	  remote-* 标识符；不需要 full body 时请优先用默认日志。
 //
 // tag: "CLIENT_ORIGINAL" 或 "UPSTREAM_FORWARD"
 func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra map[string]string) {
