@@ -243,6 +243,78 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 	require.Equal(t, "true", repo.updates[openAIAdvancedSchedulerSettingKey])
 }
 
+func TestSettingService_UpdateSettings_AccountSharingHardeningSettingsRefreshRuntimeConfig(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	cfg := &config.Config{}
+	svc := NewSettingService(repo, cfg)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		AccountDefaultConcurrency:             3,
+		AccountDefaultRPM:                     60,
+		LongTermBindingTTLDays:                14,
+		LongTermBindingCleanupIntervalSeconds: 3600,
+		SessionAccountFanoutLimit:             2,
+		SessionAccountFanoutWindowSec:         60,
+		BoundSessionSwitchJitterMinMs:         2000,
+		BoundSessionSwitchJitterMaxMs:         10000,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "3", repo.updates[SettingKeyGatewayAccountDefaultConcurrency])
+	require.Equal(t, "60", repo.updates[SettingKeyGatewayAccountDefaultRPM])
+	require.Equal(t, "14", repo.updates[SettingKeyGatewayLongTermBindingTTLDays])
+	require.Equal(t, "3600", repo.updates[SettingKeyGatewayLongTermBindingCleanupIntervalSeconds])
+	require.Equal(t, "2", repo.updates[SettingKeyGatewaySessionAccountFanoutLimit])
+	require.Equal(t, "60", repo.updates[SettingKeyGatewaySessionAccountFanoutWindowSec])
+	require.Equal(t, "2000", repo.updates[SettingKeyGatewayBoundSessionSwitchJitterMinMs])
+	require.Equal(t, "10000", repo.updates[SettingKeyGatewayBoundSessionSwitchJitterMaxMs])
+
+	require.Equal(t, 3, cfg.Gateway.AccountDefaultConcurrency)
+	require.Equal(t, 60, cfg.Gateway.AccountDefaultRPM)
+	require.Equal(t, 14, cfg.Gateway.LongTermBindingTTLDays)
+	require.Equal(t, 3600, cfg.Gateway.LongTermBindingCleanupIntervalSeconds)
+	require.Equal(t, 2, cfg.Gateway.SessionAccountFanoutLimit)
+	require.Equal(t, 60, cfg.Gateway.SessionAccountFanoutWindowSec)
+	require.Equal(t, 2000, cfg.Gateway.BoundSessionSwitchJitterMinMs)
+	require.Equal(t, 10000, cfg.Gateway.BoundSessionSwitchJitterMaxMs)
+}
+
+func TestSettingService_UpdateSettings_AccountSharingHardeningSettingsClampInvalidValues(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	cfg := &config.Config{}
+	svc := NewSettingService(repo, cfg)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		AccountDefaultConcurrency:             -1,
+		AccountDefaultRPM:                     -2,
+		LongTermBindingTTLDays:                -3,
+		LongTermBindingCleanupIntervalSeconds: -4,
+		SessionAccountFanoutLimit:             -5,
+		SessionAccountFanoutWindowSec:         -6,
+		BoundSessionSwitchJitterMinMs:         -7,
+		BoundSessionSwitchJitterMaxMs:         100,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "0", repo.updates[SettingKeyGatewayAccountDefaultConcurrency])
+	require.Equal(t, "0", repo.updates[SettingKeyGatewayAccountDefaultRPM])
+	require.Equal(t, "0", repo.updates[SettingKeyGatewayLongTermBindingTTLDays])
+	require.Equal(t, "0", repo.updates[SettingKeyGatewayLongTermBindingCleanupIntervalSeconds])
+	require.Equal(t, "0", repo.updates[SettingKeyGatewaySessionAccountFanoutLimit])
+	require.Equal(t, "0", repo.updates[SettingKeyGatewaySessionAccountFanoutWindowSec])
+	require.Equal(t, "0", repo.updates[SettingKeyGatewayBoundSessionSwitchJitterMinMs])
+	require.Equal(t, "100", repo.updates[SettingKeyGatewayBoundSessionSwitchJitterMaxMs])
+
+	require.Zero(t, cfg.Gateway.AccountDefaultConcurrency)
+	require.Zero(t, cfg.Gateway.AccountDefaultRPM)
+	require.Zero(t, cfg.Gateway.LongTermBindingTTLDays)
+	require.Zero(t, cfg.Gateway.LongTermBindingCleanupIntervalSeconds)
+	require.Zero(t, cfg.Gateway.SessionAccountFanoutLimit)
+	require.Zero(t, cfg.Gateway.SessionAccountFanoutWindowSec)
+	require.Zero(t, cfg.Gateway.BoundSessionSwitchJitterMinMs)
+	require.Equal(t, 100, cfg.Gateway.BoundSessionSwitchJitterMaxMs)
+}
+
 func TestSettingService_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

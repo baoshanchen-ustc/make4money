@@ -510,6 +510,7 @@ type adminServiceImpl struct {
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	userSubRepo          UserSubscriptionRepository
 	privacyClientFactory PrivacyClientFactory
+	bindingRepo          UserAccountBindingRepository // P0-2: 删除账号时一并清理长期绑定
 }
 
 type userGroupRateBatchReader interface {
@@ -535,6 +536,7 @@ func NewAdminService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
+	bindingRepo UserAccountBindingRepository,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -554,6 +556,7 @@ func NewAdminService(
 		defaultSubAssigner:   defaultSubAssigner,
 		userSubRepo:          userSubRepo,
 		privacyClientFactory: privacyClientFactory,
+		bindingRepo:          bindingRepo,
 	}
 }
 
@@ -2404,6 +2407,17 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
 	if err := s.accountRepo.Delete(ctx, id); err != nil {
 		return err
+	}
+	// P0-2: 账号被删除后，必须连带清理指向它的长期 user→account 绑定，
+	// 否则后续请求会持续在 ResolveLongTermBinding 命中已不存在的 accountID，
+	// 直到 lazy 删除或后台 cleanup 才会自愈，污染调度路径。
+	// 失败开放：仅记日志，不阻断主流程（账号已经从 accounts 表删除是事实）。
+	if s.bindingRepo != nil {
+		if deleted, err := s.bindingRepo.DeleteByAccountID(ctx, id); err != nil {
+			logger.LegacyPrintf("service.admin", "delete user_account_bindings for account %d failed: %v", id, err)
+		} else if deleted > 0 {
+			logger.LegacyPrintf("service.admin", "cleaned %d user_account_bindings on account %d delete", deleted, id)
+		}
 	}
 	return nil
 }

@@ -115,6 +115,16 @@ type SystemSettings struct {
 	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
 
+	// Account sharing hardening runtime knobs.
+	AccountDefaultConcurrency             int `json:"account_default_concurrency"`
+	AccountDefaultRPM                     int `json:"account_default_rpm"`
+	LongTermBindingTTLDays                int `json:"ltb_ttl_days"`
+	LongTermBindingCleanupIntervalSeconds int `json:"ltb_cleanup_interval_seconds"`
+	SessionAccountFanoutLimit             int `json:"session_account_fanout_limit"`
+	SessionAccountFanoutWindowSec         int `json:"session_account_fanout_window_sec"`
+	BoundSessionSwitchJitterMinMs         int `json:"bound_session_switch_jitter_min_ms"`
+	BoundSessionSwitchJitterMaxMs         int `json:"bound_session_switch_jitter_max_ms"`
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`

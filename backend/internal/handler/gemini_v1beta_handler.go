@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -284,6 +285,35 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		}
 	}
 
+	// === P0-2: 长期 user→account 绑定（账号共享加固） ===
+	// Gemini 不携带 metadata.user_id，因此 ExtractProjectFPRaw 走 IP+APIKey fallback。
+	// 仅在短期粘性会话未命中时使用绑定，避免与 sticky session / digest fallback 冲突。
+	geminiLTBGroupID := int64(0)
+	if apiKey.GroupID != nil {
+		geminiLTBGroupID = *apiKey.GroupID
+	}
+	geminiProjectFP, geminiIsStableFP := h.gatewayService.ExtractProjectFPRaw(
+		"", // Gemini 客户端没有 Claude-style metadata.user_id
+		apiKey.ID,
+		ip.GetClientIP(c),
+		geminiLTBGroupID,
+	)
+	if geminiProjectFP != "" {
+		// 把 fp 放到 context，service 层在切号 / 失效时可以用来清理绑定。
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.PrefetchedProjectFP, geminiProjectFP))
+		if sessionBoundAccountID == 0 {
+			if ltbAccountID := h.gatewayService.ResolveLongTermBinding(c.Request.Context(), geminiProjectFP, geminiLTBGroupID); ltbAccountID > 0 {
+				sessionBoundAccountID = ltbAccountID
+				ctx := service.WithPrefetchedStickySession(c.Request.Context(), ltbAccountID, geminiLTBGroupID, h.metadataBridgeEnabled())
+				c.Request = c.Request.WithContext(ctx)
+				reqLog.Debug("gemini.ltb_resolved",
+					zap.Int64("account_id", ltbAccountID),
+					zap.Bool("stable_fp", geminiIsStableFP),
+				)
+			}
+		}
+	}
+
 	// === Gemini 内容摘要会话 Fallback 逻辑 ===
 	// 当原有会话标识无效时（sessionBoundAccountID == 0），尝试基于内容摘要链匹配
 	var geminiDigestChain string
@@ -354,7 +384,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 	cleanedForUnknownBinding := false
 
-	fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+	fs := newFailoverStateWithGatewayFanout(
+		h.maxAccountSwitchesGemini,
+		hasBoundSession,
+		sessionKey,
+		apiKey.GroupID,
+		h.gatewayService,
+	)
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -546,6 +582,12 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				).Error("gemini.record_usage_failed", zap.Error(err))
 			}
 		})
+		// P0-2: 成功响应后写入/刷新长期 user→account 绑定。
+		// 不稳定 fp（IP+APIKey）需要 30min 内 ≥2 次同 fp 才会真正写入，详见 MaybeWriteBinding。
+		if geminiProjectFP != "" {
+			h.gatewayService.MaybeWriteBinding(c.Request.Context(), geminiProjectFP, geminiIsStableFP, account.ID, geminiLTBGroupID)
+		}
+
 		reqLog.Debug("gemini.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", fs.SwitchCount),

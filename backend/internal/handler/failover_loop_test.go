@@ -28,6 +28,33 @@ func (m *mockTempUnscheduler) TempUnscheduleRetryableError(_ context.Context, ac
 	m.calls = append(m.calls, tempUnscheduleCall{accountID: accountID, failoverErr: failoverErr})
 }
 
+// mockSessionFanoutLimiter 实现 SessionFanoutLimiter 接口用于 P0-3 fanout 测试
+type mockSessionFanoutLimiter struct {
+	mockTempUnscheduler
+	fanoutSets map[string]map[int64]struct{} // sessionHash -> set of accountIDs
+	limit      int
+}
+
+func newMockSessionFanoutLimiter(limit int) *mockSessionFanoutLimiter {
+	return &mockSessionFanoutLimiter{
+		fanoutSets: make(map[string]map[int64]struct{}),
+		limit:      limit,
+	}
+}
+
+func (m *mockSessionFanoutLimiter) RecordSessionFanout(_ context.Context, _ *int64, sessionHash string, accountID int64) error {
+	if m.fanoutSets[sessionHash] == nil {
+		m.fanoutSets[sessionHash] = make(map[int64]struct{})
+	}
+	m.fanoutSets[sessionHash][accountID] = struct{}{}
+	return nil
+}
+
+func (m *mockSessionFanoutLimiter) IsSessionFanoutExhausted(_ context.Context, _ *int64, sessionHash string) (bool, int) {
+	count := len(m.fanoutSets[sessionHash])
+	return count >= m.limit, count
+}
+
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
@@ -68,6 +95,50 @@ func TestNewFailoverState(t *testing.T) {
 		fs := NewFailoverState(0, false)
 		require.Equal(t, 0, fs.MaxSwitches)
 	})
+}
+
+func TestNewFailoverStateWithGatewayFanout(t *testing.T) {
+	t.Run("使用 provider 配置 fanout 和 bound jitter", func(t *testing.T) {
+		groupID := int64(7)
+		fs := newFailoverStateWithGatewayFanout(
+			4,
+			true,
+			"session-hash",
+			&groupID,
+			staticSessionFanoutConfigProvider{
+				limit: 3,
+				min:   2 * time.Second,
+				max:   10 * time.Second,
+			},
+		)
+
+		require.Equal(t, 4, fs.MaxSwitches)
+		require.True(t, fs.hasBoundSession)
+		require.Equal(t, "session-hash", fs.sessionHash)
+		require.Equal(t, &groupID, fs.groupID)
+		require.Equal(t, 3, fs.fanoutLimit)
+		require.Equal(t, 2*time.Second, fs.boundJitterMin)
+		require.Equal(t, 10*time.Second, fs.boundJitterMax)
+	})
+
+	t.Run("provider 为空时退回普通 failover state", func(t *testing.T) {
+		fs := newFailoverStateWithGatewayFanout(2, false, "session-hash", nil, nil)
+
+		require.Equal(t, 2, fs.MaxSwitches)
+		require.False(t, fs.hasBoundSession)
+		require.Empty(t, fs.sessionHash)
+		require.Zero(t, fs.fanoutLimit)
+	})
+}
+
+type staticSessionFanoutConfigProvider struct {
+	limit int
+	min   time.Duration
+	max   time.Duration
+}
+
+func (p staticSessionFanoutConfigProvider) GetSessionFanoutConfig() (int, time.Duration, time.Duration) {
+	return p.limit, p.min, p.max
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +709,47 @@ func TestHandleFailoverError_EdgeCases(t *testing.T) {
 		require.Equal(t, 1, fs.SameAccountRetryCount[-1])
 	})
 
+	t.Run("非Antigravity_第2次切换触发跨账号抖动", func(t *testing.T) {
+		// 验证 2026-04 加固：非 Antigravity 平台第 2 次起的切换会引入 0-600ms
+		// 抖动，避免"扫荡式切号"暴露账号关联。多次运行收集一组样本，断言至少
+		// 有一次出现非零延迟（概率 1 - (1/65536)^N ≈ 1）。
+		mock := &mockTempUnscheduler{}
+		anyJitterSeen := false
+		const samples = 5
+		for i := 0; i < samples; i++ {
+			fs := NewFailoverState(10, false)
+			fs.SwitchCount = 1 // 下一次切换将是第 2 次
+			err := newTestFailoverErr(500, false, false)
+
+			start := time.Now()
+			action := fs.HandleFailoverError(context.Background(), mock, int64(100+i), "openai", err)
+			elapsed := time.Since(start)
+
+			require.Equal(t, FailoverContinue, action)
+			require.Less(t, elapsed, 700*time.Millisecond, "抖动上限应在 600ms 内（含调度噪声）")
+			if elapsed >= 5*time.Millisecond {
+				anyJitterSeen = true
+			}
+		}
+		require.True(t, anyJitterSeen, "%d 次采样应至少观察到一次非零抖动", samples)
+	})
+
+	t.Run("非Antigravity_第1次切换不引入跨账号抖动", func(t *testing.T) {
+		// 抖动仅从第 2 次切换起生效，第 1 次切换保持 0 延迟（避免单纯 token
+		// 失效场景被无谓拖慢）。
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(500, false, false)
+
+		start := time.Now()
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		elapsed := time.Since(start)
+
+		require.Equal(t, FailoverContinue, action)
+		require.Equal(t, 1, fs.SwitchCount)
+		require.Less(t, elapsed, 50*time.Millisecond, "第 1 次切换不应有抖动")
+	})
+
 	t.Run("空平台名称不触发Antigravity延迟", func(t *testing.T) {
 		mock := &mockTempUnscheduler{}
 		fs := NewFailoverState(3, false)
@@ -649,7 +761,193 @@ func TestHandleFailoverError_EdgeCases(t *testing.T) {
 		elapsed := time.Since(start)
 
 		require.Equal(t, FailoverContinue, action)
-		require.Less(t, elapsed, 200*time.Millisecond, "空平台不应触发 Antigravity 延迟")
+		// 注：自 2026-04 起，非 Antigravity 平台在第 2 次起的切换会触发 0-600ms
+		// 跨账号抖动（用于消除"扫荡式切号"信号），所以这里不再断言 <200ms。
+		// 关键不变量是"空平台 ≠ Antigravity 路径"，因此 elapsed 必须显著小于
+		// Antigravity 第二次切换的 1s 线性退避。
+		require.Less(t, elapsed, 1*time.Second, "空平台不应触发 Antigravity 1s 线性退避")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// P0-3: Session Fanout Limiting Tests
+// ---------------------------------------------------------------------------
+
+func TestNewFailoverStateWithFanout(t *testing.T) {
+	t.Run("初始化所有字段正确", func(t *testing.T) {
+		groupID := int64(42)
+		fs := NewFailoverStateWithFanout(5, true, "session123", &groupID, 2, 2*time.Second, 10*time.Second)
+
+		require.Equal(t, 5, fs.MaxSwitches)
+		require.Equal(t, 0, fs.SwitchCount)
+		require.True(t, fs.hasBoundSession)
+		require.Equal(t, "session123", fs.sessionHash)
+		require.Equal(t, int64(42), *fs.groupID)
+		require.Equal(t, 2, fs.fanoutLimit)
+		require.Equal(t, 2*time.Second, fs.boundJitterMin)
+		require.Equal(t, 10*time.Second, fs.boundJitterMax)
+	})
+}
+
+func TestHandleFailoverError_FanoutCap(t *testing.T) {
+	t.Run("第一次失败_记录fanout并继续", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(2)
+		groupID := int64(1)
+		fs := NewFailoverStateWithFanout(5, false, "sess1", &groupID, 2, 0, 0)
+		err := newTestFailoverErr(429, false, false)
+
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+
+		require.Equal(t, FailoverContinue, action)
+		require.Len(t, mock.fanoutSets["sess1"], 1)
+		require.Contains(t, mock.fanoutSets["sess1"], int64(100))
+	})
+
+	t.Run("第二次失败不同账号_记录fanout并继续", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(3) // limit=3 so 2 failures don't exhaust
+		groupID := int64(1)
+		fs := NewFailoverStateWithFanout(5, false, "sess1", &groupID, 3, 0, 0)
+		err := newTestFailoverErr(429, false, false)
+
+		// 第一次
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		// 第二次 - 不同账号
+		action := fs.HandleFailoverError(context.Background(), mock, 200, "openai", err)
+
+		require.Equal(t, FailoverContinue, action)
+		require.Len(t, mock.fanoutSets["sess1"], 2)
+	})
+
+	t.Run("第三次失败_fanout超限返回Exhausted", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(2)
+		groupID := int64(1)
+		fs := NewFailoverStateWithFanout(5, false, "sess1", &groupID, 2, 0, 0)
+		err := newTestFailoverErr(429, false, false)
+
+		// 前两次
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		fs.HandleFailoverError(context.Background(), mock, 200, "openai", err)
+		// 第三次 - 超限
+		action := fs.HandleFailoverError(context.Background(), mock, 300, "openai", err)
+
+		require.Equal(t, FailoverExhausted, action)
+		// 第三个账号也应该被记录
+		require.Len(t, mock.fanoutSets["sess1"], 3)
+	})
+
+	t.Run("同一账号多次重试不消耗fanout配额", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(2)
+		groupID := int64(1)
+		fs := NewFailoverStateWithFanout(5, false, "sess1", &groupID, 2, 0, 0)
+		err := newTestFailoverErr(429, false, false)
+
+		// 账号100失败多次
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+
+		// fanout set 仍只有 1 个账号
+		require.Len(t, mock.fanoutSets["sess1"], 1)
+	})
+
+	t.Run("fanoutLimit为0时禁用fanout检查", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(0) // limit=0 会导致 fs.fanoutLimit=0
+		groupID := int64(1)
+		fs := NewFailoverStateWithFanout(5, false, "sess1", &groupID, 0, 0, 0) // fanoutLimit=0
+		err := newTestFailoverErr(429, false, false)
+
+		// 即使多个账号也不会触发 fanout exhausted
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		fs.HandleFailoverError(context.Background(), mock, 200, "openai", err)
+		action := fs.HandleFailoverError(context.Background(), mock, 300, "openai", err)
+
+		require.Equal(t, FailoverContinue, action) // 没有触发 fanout exhausted
+	})
+
+	t.Run("空sessionHash时禁用fanout检查", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(2)
+		groupID := int64(1)
+		fs := NewFailoverStateWithFanout(5, false, "", &groupID, 2, 0, 0) // sessionHash=""
+		err := newTestFailoverErr(429, false, false)
+
+		// 即使多个账号也不会触发 fanout exhausted
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		fs.HandleFailoverError(context.Background(), mock, 200, "openai", err)
+		action := fs.HandleFailoverError(context.Background(), mock, 300, "openai", err)
+
+		require.Equal(t, FailoverContinue, action)
+	})
+
+	t.Run("使用旧版NewFailoverState时不触发fanout检查", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(2)
+		fs := NewFailoverState(5, false) // 旧版，无 fanout 字段
+		err := newTestFailoverErr(429, false, false)
+
+		// 多个账号
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		fs.HandleFailoverError(context.Background(), mock, 200, "openai", err)
+		action := fs.HandleFailoverError(context.Background(), mock, 300, "openai", err)
+
+		require.Equal(t, FailoverContinue, action)
+		// fanout set 应为空（未调用 RecordSessionFanout）
+		require.Empty(t, mock.fanoutSets)
+	})
+}
+
+func TestHandleFailoverError_BoundSessionJitter(t *testing.T) {
+	t.Run("绑定会话切号使用配置的抖动范围", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(10)
+		groupID := int64(1)
+		fs := NewFailoverStateWithFanout(5, true, "sess1", &groupID, 10, 2*time.Second, 10*time.Second)
+		fs.SwitchCount = 1 // 下一次是第2次切换
+		err := newTestFailoverErr(500, false, false)
+
+		start := time.Now()
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		elapsed := time.Since(start)
+
+		require.Equal(t, FailoverContinue, action)
+		// 延迟应在 2-10s 范围内
+		require.GreaterOrEqual(t, elapsed, 1800*time.Millisecond, "抖动应 >= 2s (减去调度噪声)")
+		require.Less(t, elapsed, 12*time.Second, "抖动应 < 10s + 调度噪声")
+	})
+
+	t.Run("非绑定会话仍使用0-600ms抖动", func(t *testing.T) {
+		mock := newMockSessionFanoutLimiter(10)
+		groupID := int64(1)
+		fs := NewFailoverStateWithFanout(5, false, "sess1", &groupID, 10, 2*time.Second, 10*time.Second)
+		fs.SwitchCount = 1
+		err := newTestFailoverErr(500, false, false)
+
+		start := time.Now()
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		elapsed := time.Since(start)
+
+		require.Equal(t, FailoverContinue, action)
+		require.Less(t, elapsed, 1*time.Second, "非绑定会话应使用0-600ms抖动")
+	})
+}
+
+func TestBoundSessionJitterDelay(t *testing.T) {
+	t.Run("返回值在min-max范围内", func(t *testing.T) {
+		min := 2 * time.Second
+		max := 10 * time.Second
+
+		for i := 0; i < 100; i++ {
+			d := boundSessionJitterDelay(min, max)
+			require.GreaterOrEqual(t, d, min)
+			require.LessOrEqual(t, d, max)
+		}
+	})
+
+	t.Run("max等于min时返回min", func(t *testing.T) {
+		d := boundSessionJitterDelay(5*time.Second, 5*time.Second)
+		require.Equal(t, 5*time.Second, d)
+	})
+
+	t.Run("max小于min时返回min", func(t *testing.T) {
+		d := boundSessionJitterDelay(5*time.Second, 2*time.Second)
+		require.Equal(t, 5*time.Second, d)
 	})
 }
 

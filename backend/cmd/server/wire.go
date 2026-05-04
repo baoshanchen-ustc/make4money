@@ -90,6 +90,7 @@ func provideCleanup(
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
+	userAccountBindingCleanup *service.UserAccountBindingCleanupService,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
@@ -104,6 +105,7 @@ func provideCleanup(
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
+	cliVersionTracker *service.CLIVersionTrackerService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -167,6 +169,12 @@ func provideCleanup(
 			{"IdempotencyCleanupService", func() error {
 				if idempotencyCleanup != nil {
 					idempotencyCleanup.Stop()
+				}
+				return nil
+			}},
+			{"UserAccountBindingCleanupService", func() error {
+				if userAccountBindingCleanup != nil {
+					userAccountBindingCleanup.Stop()
 				}
 				return nil
 			}},
@@ -249,6 +257,12 @@ func provideCleanup(
 			{"ChannelMonitorRunner", func() error {
 				if channelMonitorRunner != nil {
 					channelMonitorRunner.Stop()
+				}
+				return nil
+			}},
+			{"CLIVersionTrackerService", func() error {
+				if cliVersionTracker != nil {
+					cliVersionTracker.Stop()
 				}
 				return nil
 			}},

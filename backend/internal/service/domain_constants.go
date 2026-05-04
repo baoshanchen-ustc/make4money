@@ -194,6 +194,16 @@ const (
 	SettingKeyDefaultSubscriptions = "default_subscriptions"  // 新用户默认订阅列表（JSON）
 	SettingKeyDefaultUserRPMLimit  = "default_user_rpm_limit" // 新用户默认 RPM 限制（0 = 不限制）
 
+	// 账号共享加固（运行时同步到 cfg.Gateway，下次请求生效）
+	SettingKeyGatewayAccountDefaultConcurrency             = "account_default_concurrency"
+	SettingKeyGatewayAccountDefaultRPM                     = "account_default_rpm"
+	SettingKeyGatewayLongTermBindingTTLDays                = "ltb_ttl_days"
+	SettingKeyGatewayLongTermBindingCleanupIntervalSeconds = "ltb_cleanup_interval_seconds"
+	SettingKeyGatewaySessionAccountFanoutLimit             = "session_account_fanout_limit"
+	SettingKeyGatewaySessionAccountFanoutWindowSec         = "session_account_fanout_window_sec"
+	SettingKeyGatewayBoundSessionSwitchJitterMinMs         = "bound_session_switch_jitter_min_ms"
+	SettingKeyGatewayBoundSessionSwitchJitterMaxMs         = "bound_session_switch_jitter_max_ms"
+
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance            = "auth_source_default_email_balance"
 	SettingKeyAuthSourceDefaultEmailConcurrency        = "auth_source_default_email_concurrency"
@@ -347,6 +357,18 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+
+	// =========================
+	// CLI Version Tracking (P1-2)
+	// =========================
+
+	// SettingKeyCLICurrentVersion 当前 sub2api 对外伪装的 Claude Code CLI 版本号（semver）。
+	// 由 CLIVersionTrackerService 周期性从 npm 拉取并写入；启动时回填到 claude.CLICurrentVersion。
+	SettingKeyCLICurrentVersion = "cli_current_version"
+
+	// SettingKeyCLIRecentVersions 最近 3 个 Claude Code CLI 版本（JSON 数组，最新在前）。
+	// 用于 per-account 版本扰动：75% 用 [0]、20% 用 [1]、5% 用 [2]。
+	SettingKeyCLIRecentVersions = "cli_recent_versions"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

@@ -89,6 +89,34 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	CLIVersionTracker       CLIVersionTrackerConfig       `mapstructure:"cli_version_tracker"`
+}
+
+// CLIVersionTrackerConfig 配置 P1-2 的 Claude Code CLI 版本追踪器。
+//
+// 用途：周期性从 npm registry 拉取 @anthropic-ai/claude-code 的最新版本号，
+// 写入 system_settings.cli_current_version；同时维护 cli_recent_versions 列表
+// 供 per-account 版本扰动使用。
+type CLIVersionTrackerConfig struct {
+	// Enabled 是否启用周期性拉取（默认 true）。
+	// 关闭后启动时仍会从 DB 回填一次，但不会主动拉 npm。
+	Enabled bool `mapstructure:"enabled"`
+
+	// IntervalHours 拉取间隔（小时），默认 24。
+	// 设为 0 或负数等同于禁用。
+	IntervalHours int `mapstructure:"interval_hours"`
+
+	// NpmRegistryURL npm registry 基础 URL（含 dist-tags 路径前缀）。
+	// 默认 "https://registry.npmjs.org/-/package/@anthropic-ai/claude-code/dist-tags"。
+	// 内网环境可指向私有镜像。
+	NpmRegistryURL string `mapstructure:"npm_registry_url"`
+
+	// RequestTimeoutSec 单次拉取请求的超时（秒），默认 15。
+	RequestTimeoutSec int `mapstructure:"request_timeout_sec"`
+
+	// MaxRecentVersions 在 system_settings.cli_recent_versions 中保留的最大版本数。
+	// 默认 3（latest / N-1 / N-2）。
+	MaxRecentVersions int `mapstructure:"max_recent_versions"`
 }
 
 type LogConfig struct {
@@ -685,6 +713,70 @@ type GatewayConfig struct {
 	// ResponseCache: 响应级精确匹配缓存配置
 	// 对 temperature=0 的确定性请求缓存完整响应（含 SSE 流），命中时零 API 调用
 	ResponseCache ResponseCacheConfig `mapstructure:"response_cache"`
+
+	// AccountDefaultConcurrency: 全局账号并发上限的"安全垫"（2026-04 加固，P0-1）。
+	//
+	// 语义：当 account.Concurrency == 0（admin 未为该账号显式设置上限）时，acquire-slot
+	// 路径用这个默认值兜底；> 0 则尊重 per-account 设置。0 = 关闭兜底（向后兼容）。
+	//
+	// 推荐生产值：OAuth/SetupToken 账号 1，APIKey 账号 2。让单个账号在上游侧的瞬时
+	// in-flight 严格 ≤ 真实 CC 客户端上限，是抑制"账号共享"被 Anthropic 聚类识别
+	// 的最直接手段。该值仅影响共享池（account.Concurrency==0 的账号），独立账号
+	// 一旦 admin 显式设置 Concurrency 就完全按管理员意图执行。
+	AccountDefaultConcurrency int `mapstructure:"account_default_concurrency"`
+
+	// AccountDefaultRPM: 全局账号 RPM 上限的"安全垫"（2026-04 加固，P0-1）。
+	//
+	// 语义：当 account.extra.base_rpm 未配置或 ≤ 0 时使用此默认值。0 = 关闭兜底。
+	// 推荐生产值：8（真实重度 CC 用户峰值约 8-15 RPM；保守取下沿避免误伤）。
+	//
+	// 该值进入 CheckRPMSchedulability 的"红/黄区"判定：> base_rpm 红区（停调度）、
+	// 介于 base_rpm 与 base_rpm+sticky_buffer 之间黄区（仅粘性会话）。
+	AccountDefaultRPM int `mapstructure:"account_default_rpm"`
+
+	// LongTermBindingTTLDays: 长期绑定 TTL（天），（2026-04 加固，P0-2）。
+	//
+	// 语义：用户→账号长期绑定的默认过期时间。当 device_id 稳定时，用户的请求
+	// 会绑定到同一个账号长达此天数，以提高上游 prompt cache 命中率并减少
+	// 账号切换信号。每次成功请求会刷新过期时间。
+	//
+	// 推荐生产值：14（折中 7-30 天，可根据实际需求调整）。0 = 禁用长期绑定。
+	LongTermBindingTTLDays int `mapstructure:"ltb_ttl_days"`
+
+	// LongTermBindingCleanupIntervalSeconds: 后台清理过期绑定的轮询间隔（秒），（P0-2）。
+	//
+	// 语义：每隔 N 秒扫描 user_account_bindings 表并物理删除过期记录。
+	// `ResolveLongTermBinding` 仅在命中过期记录时 lazy 删除，未被访问的过期项
+	// 会无限堆积，需此后台任务兜底。
+	//
+	// 推荐生产值：3600（1 小时）。0 或负数则使用默认 3600。
+	LongTermBindingCleanupIntervalSeconds int `mapstructure:"ltb_cleanup_interval_seconds"`
+
+	// SessionAccountFanoutLimit: 同 sessionHash 60s 内最多触达的不同账号数（P0-3）。
+	//
+	// 语义：防止"扫荡式切号"——同一会话在短时间窗口内打到过多不同账号，
+	// 让上游能用内容 hash 关联多个账号。超限后直接返回上游错误，让客户端自然重试。
+	//
+	// 推荐生产值：2（计划要求）。0 = 禁用此限制。
+	SessionAccountFanoutLimit int `mapstructure:"session_account_fanout_limit"`
+
+	// SessionAccountFanoutWindowSec: fanout 限制的时间窗口（秒）（P0-3）。
+	//
+	// 推荐生产值：60。
+	SessionAccountFanoutWindowSec int `mapstructure:"session_account_fanout_window_sec"`
+
+	// BoundSessionSwitchJitterMinMs: 绑定会话切号时的最小抖动延迟（毫秒）（P0-3）。
+	//
+	// 语义：当 hasBoundSession=true 时（已有粘性绑定的会话被迫切号），
+	// 跨账号延迟从 0-600ms 提升到此范围，进一步打散内容关联信号。
+	//
+	// 推荐生产值：2000（2秒）。
+	BoundSessionSwitchJitterMinMs int `mapstructure:"bound_session_switch_jitter_min_ms"`
+
+	// BoundSessionSwitchJitterMaxMs: 绑定会话切号时的最大抖动延迟（毫秒）（P0-3）。
+	//
+	// 推荐生产值：10000（10秒）。
+	BoundSessionSwitchJitterMaxMs int `mapstructure:"bound_session_switch_jitter_max_ms"`
 }
 
 // UserMessageQueueConfig 用户消息串行队列配置
@@ -1651,6 +1743,18 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
+	// 账号共享暴露面加固（P0-1，2026-04）：默认关（0）保持向后兼容；运维需要的时候
+	// 在配置里显式开启。推荐生产值：account_default_concurrency=1（OAuth）/2（APIKey），
+	// account_default_rpm=8。
+	viper.SetDefault("gateway.account_default_concurrency", 0)
+	viper.SetDefault("gateway.account_default_rpm", 0)
+
+	// CLI Version Tracker (P1-2)：周期性追随 npm @anthropic-ai/claude-code 最新版本。
+	viper.SetDefault("cli_version_tracker.enabled", true)
+	viper.SetDefault("cli_version_tracker.interval_hours", 24)
+	viper.SetDefault("cli_version_tracker.npm_registry_url", "https://registry.npmjs.org/-/package/@anthropic-ai/claude-code/dist-tags")
+	viper.SetDefault("cli_version_tracker.request_timeout_sec", 15)
+	viper.SetDefault("cli_version_tracker.max_recent_versions", 3)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)

@@ -1,6 +1,50 @@
 // Package claude provides constants and helpers for Claude API integration.
 package claude
 
+import (
+	"fmt"
+	"regexp"
+	"strings"
+	"sync"
+)
+
+// init 在启动时校验 CLIDefaultVersion 与 DefaultHeaders["User-Agent"] 中携带的版本号
+// 必须严格一致。Anthropic 上游会比对 UA 与 billing block 中的 cc_version；若错位
+// 就会判定为第三方调用（"Third-party apps now draw from your extra usage"）。
+//
+// 用 panic 而不是日志 warn 是故意的：一个 cc_version 错位的二进制上线，不会被监控
+// 立刻发现，但每个 OAuth 账号都会持续被打 third-party 标。让进程 fail-fast 比让
+// 共享池静默劣化更安全。
+//
+// 注意（P1-2 后）：这只校验编译期"默认版本"对齐，运行时的 cliCurrentVersion 由
+// CLIVersionTrackerService 周期性更新，写入时通过 SetCLICurrentVersion 同步刷新
+// DefaultHeaders["User-Agent"]，保持运行时不变量。
+func init() {
+	ua, ok := DefaultHeaders["User-Agent"]
+	if !ok {
+		panic("claude.DefaultHeaders missing User-Agent")
+	}
+	const prefix = "claude-cli/"
+	idx := strings.Index(ua, prefix)
+	if idx < 0 {
+		panic(fmt.Sprintf("claude.DefaultHeaders[\"User-Agent\"]=%q is not a claude-cli UA", ua))
+	}
+	rest := ua[idx+len(prefix):]
+	end := strings.IndexAny(rest, " (")
+	if end < 0 {
+		end = len(rest)
+	}
+	uaVersion := strings.TrimSpace(rest[:end])
+	if uaVersion != CLIDefaultVersion {
+		panic(fmt.Sprintf(
+			"claude version mismatch: CLIDefaultVersion=%q vs DefaultHeaders[\"User-Agent\"]=%q (extracted=%q). "+
+				"Both must be bumped together; see CLIDefaultVersion docstring.",
+			CLIDefaultVersion, ua, uaVersion))
+	}
+	// 初始化运行时变量
+	cliCurrentVersion = CLIDefaultVersion
+}
+
 // Claude Code 客户端相关常量
 
 // Beta header 常量
@@ -62,10 +106,69 @@ const APIKeyHaikuBetaHeader = BetaInterleavedThinking
 // 客户端缺省时统一使用 5m"，这样既不浪费 1h 缓存额度，也保留客户端自定义能力。
 const DefaultCacheControlTTL = "5m"
 
-// CLICurrentVersion 是 sub2api 当前对外伪装的 Claude Code CLI 版本号（三段 semver）。
-// 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。
-// 必须与 DefaultHeaders["User-Agent"] 中的版本号严格一致；不一致会被 Anthropic 判第三方。
-const CLICurrentVersion = "2.1.92"
+// CLIDefaultVersion 是源码层硬编码的"出厂默认"Claude Code CLI 版本号，
+// 在 init() 中用于校验源码层 DefaultHeaders["User-Agent"] 与之一致（fail-fast）。
+//
+// 真正运行时使用的版本号请走 GetCLICurrentVersion() / SetCLICurrentVersion() —
+// CLIVersionTrackerService 启动时会从 system_settings.cli_current_version 回填，
+// 每隔可配置周期从 npm 拉取最新版本并更新。
+//
+// **源码不变量**：CLIDefaultVersion 必须与 DefaultHeaders["User-Agent"] 中的版本号严格
+// 一致；不一致 init() 直接 panic。升级流程：在同一个 PR 里修改下面两处常量，并跑一次
+// `go test ./internal/pkg/claude/...`。
+const CLIDefaultVersion = "2.1.116"
+
+// CLICurrentVersion Deprecated：保留以兼容老调用方；返回当前运行时版本。
+// 新代码请使用 GetCLICurrentVersion()。
+//
+// Deprecated: use GetCLICurrentVersion() instead.
+func CLICurrentVersion() string { //nolint:revive // legacy name kept for compatibility
+	return GetCLICurrentVersion()
+}
+
+var (
+	// cliCurrentVersion 是运行时版本号，受 cliVersionMu 保护。
+	cliCurrentVersion string
+	cliVersionMu      sync.RWMutex
+
+	// uaVersionRewriteRe 用于在 DefaultHeaders["User-Agent"] 中替换版本号片段。
+	uaVersionRewriteRe = regexp.MustCompile(`claude-cli/\d+\.\d+\.\d+`)
+)
+
+// GetCLICurrentVersion 返回当前运行时的 CLI 版本号（线程安全）。
+func GetCLICurrentVersion() string {
+	cliVersionMu.RLock()
+	defer cliVersionMu.RUnlock()
+	if cliCurrentVersion == "" {
+		return CLIDefaultVersion
+	}
+	return cliCurrentVersion
+}
+
+// SetCLICurrentVersion 更新运行时 CLI 版本号；同步刷新 DefaultHeaders["User-Agent"]。
+// 传入空字符串视为重置为 CLIDefaultVersion。
+//
+// 仅在严格 semver `X.Y.Z` 格式时接受，否则返回 false 并保持原值（防止 npm 偶发返回
+// pre-release / 错误格式时污染 UA）。
+func SetCLICurrentVersion(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		v = CLIDefaultVersion
+	}
+	if !semverRe.MatchString(v) {
+		return false
+	}
+	cliVersionMu.Lock()
+	defer cliVersionMu.Unlock()
+	cliCurrentVersion = v
+	if ua, ok := DefaultHeaders["User-Agent"]; ok {
+		DefaultHeaders["User-Agent"] = uaVersionRewriteRe.ReplaceAllString(ua, "claude-cli/"+v)
+	}
+	return true
+}
+
+// semverRe 严格 X.Y.Z 三段 semver。
+var semverRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 // FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
 // 用于 OAuth 账号伪装成 Claude Code 时使用。

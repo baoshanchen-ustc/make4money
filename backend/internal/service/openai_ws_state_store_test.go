@@ -193,6 +193,19 @@ func (c *openAIWSStateStoreTimeoutProbeCache) DeleteSessionAccountID(ctx context
 	return nil
 }
 
+// P0-3: Fanout limiting stubs
+func (c *openAIWSStateStoreTimeoutProbeCache) RecordSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	return nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) GetSessionAccountFanoutCount(ctx context.Context, groupID int64, sessionHash string) (int, error) {
+	return 0, nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) DeleteSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string) error {
+	return nil
+}
+
 func TestOpenAIWSStateStore_RedisOpsUseShortTimeout(t *testing.T) {
 	probe := &openAIWSStateStoreTimeoutProbeCache{}
 	store := NewOpenAIWSStateStore(probe)

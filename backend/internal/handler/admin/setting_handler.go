@@ -191,6 +191,14 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
+		AccountDefaultConcurrency:              settings.AccountDefaultConcurrency,
+		AccountDefaultRPM:                      settings.AccountDefaultRPM,
+		LongTermBindingTTLDays:                 settings.LongTermBindingTTLDays,
+		LongTermBindingCleanupIntervalSeconds:  settings.LongTermBindingCleanupIntervalSeconds,
+		SessionAccountFanoutLimit:              settings.SessionAccountFanoutLimit,
+		SessionAccountFanoutWindowSec:          settings.SessionAccountFanoutWindowSec,
+		BoundSessionSwitchJitterMinMs:          settings.BoundSessionSwitchJitterMinMs,
+		BoundSessionSwitchJitterMaxMs:          settings.BoundSessionSwitchJitterMaxMs,
 		EnableModelFallback:                    settings.EnableModelFallback,
 		FallbackModelAnthropic:                 settings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                    settings.FallbackModelOpenAI,
@@ -351,6 +359,14 @@ type UpdateSettingsRequest struct {
 	AffiliateRebatePerInviteeCap             *float64                          `json:"affiliate_rebate_per_invitee_cap"`
 	DefaultUserRPMLimit                      int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                     []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
+	AccountDefaultConcurrency                *int                              `json:"account_default_concurrency"`
+	AccountDefaultRPM                        *int                              `json:"account_default_rpm"`
+	LongTermBindingTTLDays                   *int                              `json:"ltb_ttl_days"`
+	LongTermBindingCleanupIntervalSeconds    *int                              `json:"ltb_cleanup_interval_seconds"`
+	SessionAccountFanoutLimit                *int                              `json:"session_account_fanout_limit"`
+	SessionAccountFanoutWindowSec            *int                              `json:"session_account_fanout_window_sec"`
+	BoundSessionSwitchJitterMinMs            *int                              `json:"bound_session_switch_jitter_min_ms"`
+	BoundSessionSwitchJitterMaxMs            *int                              `json:"bound_session_switch_jitter_max_ms"`
 	AuthSourceDefaultEmailBalance            *float64                          `json:"auth_source_default_email_balance"`
 	AuthSourceDefaultEmailConcurrency        *int                              `json:"auth_source_default_email_concurrency"`
 	AuthSourceDefaultEmailSubscriptions      *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_email_subscriptions"`
@@ -1094,100 +1110,141 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	accountDefaultConcurrency := previousSettings.AccountDefaultConcurrency
+	if req.AccountDefaultConcurrency != nil {
+		accountDefaultConcurrency = *req.AccountDefaultConcurrency
+	}
+	accountDefaultRPM := previousSettings.AccountDefaultRPM
+	if req.AccountDefaultRPM != nil {
+		accountDefaultRPM = *req.AccountDefaultRPM
+	}
+	longTermBindingTTLDays := previousSettings.LongTermBindingTTLDays
+	if req.LongTermBindingTTLDays != nil {
+		longTermBindingTTLDays = *req.LongTermBindingTTLDays
+	}
+	longTermBindingCleanupIntervalSeconds := previousSettings.LongTermBindingCleanupIntervalSeconds
+	if req.LongTermBindingCleanupIntervalSeconds != nil {
+		longTermBindingCleanupIntervalSeconds = *req.LongTermBindingCleanupIntervalSeconds
+	}
+	sessionAccountFanoutLimit := previousSettings.SessionAccountFanoutLimit
+	if req.SessionAccountFanoutLimit != nil {
+		sessionAccountFanoutLimit = *req.SessionAccountFanoutLimit
+	}
+	sessionAccountFanoutWindowSec := previousSettings.SessionAccountFanoutWindowSec
+	if req.SessionAccountFanoutWindowSec != nil {
+		sessionAccountFanoutWindowSec = *req.SessionAccountFanoutWindowSec
+	}
+	boundSessionSwitchJitterMinMs := previousSettings.BoundSessionSwitchJitterMinMs
+	if req.BoundSessionSwitchJitterMinMs != nil {
+		boundSessionSwitchJitterMinMs = *req.BoundSessionSwitchJitterMinMs
+	}
+	boundSessionSwitchJitterMaxMs := previousSettings.BoundSessionSwitchJitterMaxMs
+	if req.BoundSessionSwitchJitterMaxMs != nil {
+		boundSessionSwitchJitterMaxMs = *req.BoundSessionSwitchJitterMaxMs
+	}
+
 	settings := &service.SystemSettings{
-		RegistrationEnabled:              req.RegistrationEnabled,
-		EmailVerifyEnabled:               req.EmailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
-		PromoCodeEnabled:                 req.PromoCodeEnabled,
-		PasswordResetEnabled:             req.PasswordResetEnabled,
-		FrontendURL:                      req.FrontendURL,
-		InvitationCodeEnabled:            req.InvitationCodeEnabled,
-		TotpEnabled:                      req.TotpEnabled,
-		SMTPHost:                         req.SMTPHost,
-		SMTPPort:                         req.SMTPPort,
-		SMTPUsername:                     req.SMTPUsername,
-		SMTPPassword:                     req.SMTPPassword,
-		SMTPFrom:                         req.SMTPFrom,
-		SMTPFromName:                     req.SMTPFromName,
-		SMTPUseTLS:                       req.SMTPUseTLS,
-		TurnstileEnabled:                 req.TurnstileEnabled,
-		TurnstileSiteKey:                 req.TurnstileSiteKey,
-		TurnstileSecretKey:               req.TurnstileSecretKey,
-		LinuxDoConnectEnabled:            req.LinuxDoConnectEnabled,
-		LinuxDoConnectClientID:           req.LinuxDoConnectClientID,
-		LinuxDoConnectClientSecret:       req.LinuxDoConnectClientSecret,
-		LinuxDoConnectRedirectURL:        req.LinuxDoConnectRedirectURL,
-		WeChatConnectEnabled:             req.WeChatConnectEnabled,
-		WeChatConnectAppID:               req.WeChatConnectAppID,
-		WeChatConnectAppSecret:           req.WeChatConnectAppSecret,
-		WeChatConnectOpenAppID:           req.WeChatConnectOpenAppID,
-		WeChatConnectOpenAppSecret:       req.WeChatConnectOpenAppSecret,
-		WeChatConnectMPAppID:             req.WeChatConnectMPAppID,
-		WeChatConnectMPAppSecret:         req.WeChatConnectMPAppSecret,
-		WeChatConnectMobileAppID:         req.WeChatConnectMobileAppID,
-		WeChatConnectMobileAppSecret:     req.WeChatConnectMobileAppSecret,
-		WeChatConnectOpenEnabled:         req.WeChatConnectOpenEnabled,
-		WeChatConnectMPEnabled:           req.WeChatConnectMPEnabled,
-		WeChatConnectMobileEnabled:       req.WeChatConnectMobileEnabled,
-		WeChatConnectMode:                req.WeChatConnectMode,
-		WeChatConnectScopes:              req.WeChatConnectScopes,
-		WeChatConnectRedirectURL:         req.WeChatConnectRedirectURL,
-		WeChatConnectFrontendRedirectURL: req.WeChatConnectFrontendRedirectURL,
-		OIDCConnectEnabled:               req.OIDCConnectEnabled,
-		OIDCConnectProviderName:          req.OIDCConnectProviderName,
-		OIDCConnectClientID:              req.OIDCConnectClientID,
-		OIDCConnectClientSecret:          req.OIDCConnectClientSecret,
-		OIDCConnectIssuerURL:             req.OIDCConnectIssuerURL,
-		OIDCConnectDiscoveryURL:          req.OIDCConnectDiscoveryURL,
-		OIDCConnectAuthorizeURL:          req.OIDCConnectAuthorizeURL,
-		OIDCConnectTokenURL:              req.OIDCConnectTokenURL,
-		OIDCConnectUserInfoURL:           req.OIDCConnectUserInfoURL,
-		OIDCConnectJWKSURL:               req.OIDCConnectJWKSURL,
-		OIDCConnectScopes:                req.OIDCConnectScopes,
-		OIDCConnectRedirectURL:           req.OIDCConnectRedirectURL,
-		OIDCConnectFrontendRedirectURL:   req.OIDCConnectFrontendRedirectURL,
-		OIDCConnectTokenAuthMethod:       req.OIDCConnectTokenAuthMethod,
-		OIDCConnectUsePKCE:               oidcUsePKCE,
-		OIDCConnectValidateIDToken:       oidcValidateIDToken,
-		OIDCConnectAllowedSigningAlgs:    req.OIDCConnectAllowedSigningAlgs,
-		OIDCConnectClockSkewSeconds:      req.OIDCConnectClockSkewSeconds,
-		OIDCConnectRequireEmailVerified:  req.OIDCConnectRequireEmailVerified,
-		OIDCConnectUserInfoEmailPath:     req.OIDCConnectUserInfoEmailPath,
-		OIDCConnectUserInfoIDPath:        req.OIDCConnectUserInfoIDPath,
-		OIDCConnectUserInfoUsernamePath:  req.OIDCConnectUserInfoUsernamePath,
-		SiteName:                         req.SiteName,
-		SiteLogo:                         req.SiteLogo,
-		SiteSubtitle:                     req.SiteSubtitle,
-		APIBaseURL:                       req.APIBaseURL,
-		ContactInfo:                      req.ContactInfo,
-		DocURL:                           req.DocURL,
-		HomeContent:                      req.HomeContent,
-		HideCcsImportButton:              req.HideCcsImportButton,
-		PurchaseSubscriptionEnabled:      purchaseEnabled,
-		PurchaseSubscriptionURL:          purchaseURL,
-		TableDefaultPageSize:             req.TableDefaultPageSize,
-		TablePageSizeOptions:             req.TablePageSizeOptions,
-		CustomMenuItems:                  customMenuJSON,
-		CustomEndpoints:                  customEndpointsJSON,
-		DefaultConcurrency:               req.DefaultConcurrency,
-		DefaultBalance:                   req.DefaultBalance,
-		AffiliateRebateRate:              affiliateRebateRate,
-		AffiliateRebateFreezeHours:       affiliateRebateFreezeHours,
-		AffiliateRebateDurationDays:      affiliateRebateDurationDays,
-		AffiliateRebatePerInviteeCap:     affiliateRebatePerInviteeCap,
-		DefaultUserRPMLimit:              req.DefaultUserRPMLimit,
-		DefaultSubscriptions:             defaultSubscriptions,
-		EnableModelFallback:              req.EnableModelFallback,
-		FallbackModelAnthropic:           req.FallbackModelAnthropic,
-		FallbackModelOpenAI:              req.FallbackModelOpenAI,
-		FallbackModelGemini:              req.FallbackModelGemini,
-		FallbackModelAntigravity:         req.FallbackModelAntigravity,
-		EnableIdentityPatch:              req.EnableIdentityPatch,
-		IdentityPatchPrompt:              req.IdentityPatchPrompt,
-		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
-		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:               req.BackendModeEnabled,
+		RegistrationEnabled:                   req.RegistrationEnabled,
+		EmailVerifyEnabled:                    req.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:      req.RegistrationEmailSuffixWhitelist,
+		PromoCodeEnabled:                      req.PromoCodeEnabled,
+		PasswordResetEnabled:                  req.PasswordResetEnabled,
+		FrontendURL:                           req.FrontendURL,
+		InvitationCodeEnabled:                 req.InvitationCodeEnabled,
+		TotpEnabled:                           req.TotpEnabled,
+		SMTPHost:                              req.SMTPHost,
+		SMTPPort:                              req.SMTPPort,
+		SMTPUsername:                          req.SMTPUsername,
+		SMTPPassword:                          req.SMTPPassword,
+		SMTPFrom:                              req.SMTPFrom,
+		SMTPFromName:                          req.SMTPFromName,
+		SMTPUseTLS:                            req.SMTPUseTLS,
+		TurnstileEnabled:                      req.TurnstileEnabled,
+		TurnstileSiteKey:                      req.TurnstileSiteKey,
+		TurnstileSecretKey:                    req.TurnstileSecretKey,
+		LinuxDoConnectEnabled:                 req.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:                req.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecret:            req.LinuxDoConnectClientSecret,
+		LinuxDoConnectRedirectURL:             req.LinuxDoConnectRedirectURL,
+		WeChatConnectEnabled:                  req.WeChatConnectEnabled,
+		WeChatConnectAppID:                    req.WeChatConnectAppID,
+		WeChatConnectAppSecret:                req.WeChatConnectAppSecret,
+		WeChatConnectOpenAppID:                req.WeChatConnectOpenAppID,
+		WeChatConnectOpenAppSecret:            req.WeChatConnectOpenAppSecret,
+		WeChatConnectMPAppID:                  req.WeChatConnectMPAppID,
+		WeChatConnectMPAppSecret:              req.WeChatConnectMPAppSecret,
+		WeChatConnectMobileAppID:              req.WeChatConnectMobileAppID,
+		WeChatConnectMobileAppSecret:          req.WeChatConnectMobileAppSecret,
+		WeChatConnectOpenEnabled:              req.WeChatConnectOpenEnabled,
+		WeChatConnectMPEnabled:                req.WeChatConnectMPEnabled,
+		WeChatConnectMobileEnabled:            req.WeChatConnectMobileEnabled,
+		WeChatConnectMode:                     req.WeChatConnectMode,
+		WeChatConnectScopes:                   req.WeChatConnectScopes,
+		WeChatConnectRedirectURL:              req.WeChatConnectRedirectURL,
+		WeChatConnectFrontendRedirectURL:      req.WeChatConnectFrontendRedirectURL,
+		OIDCConnectEnabled:                    req.OIDCConnectEnabled,
+		OIDCConnectProviderName:               req.OIDCConnectProviderName,
+		OIDCConnectClientID:                   req.OIDCConnectClientID,
+		OIDCConnectClientSecret:               req.OIDCConnectClientSecret,
+		OIDCConnectIssuerURL:                  req.OIDCConnectIssuerURL,
+		OIDCConnectDiscoveryURL:               req.OIDCConnectDiscoveryURL,
+		OIDCConnectAuthorizeURL:               req.OIDCConnectAuthorizeURL,
+		OIDCConnectTokenURL:                   req.OIDCConnectTokenURL,
+		OIDCConnectUserInfoURL:                req.OIDCConnectUserInfoURL,
+		OIDCConnectJWKSURL:                    req.OIDCConnectJWKSURL,
+		OIDCConnectScopes:                     req.OIDCConnectScopes,
+		OIDCConnectRedirectURL:                req.OIDCConnectRedirectURL,
+		OIDCConnectFrontendRedirectURL:        req.OIDCConnectFrontendRedirectURL,
+		OIDCConnectTokenAuthMethod:            req.OIDCConnectTokenAuthMethod,
+		OIDCConnectUsePKCE:                    oidcUsePKCE,
+		OIDCConnectValidateIDToken:            oidcValidateIDToken,
+		OIDCConnectAllowedSigningAlgs:         req.OIDCConnectAllowedSigningAlgs,
+		OIDCConnectClockSkewSeconds:           req.OIDCConnectClockSkewSeconds,
+		OIDCConnectRequireEmailVerified:       req.OIDCConnectRequireEmailVerified,
+		OIDCConnectUserInfoEmailPath:          req.OIDCConnectUserInfoEmailPath,
+		OIDCConnectUserInfoIDPath:             req.OIDCConnectUserInfoIDPath,
+		OIDCConnectUserInfoUsernamePath:       req.OIDCConnectUserInfoUsernamePath,
+		SiteName:                              req.SiteName,
+		SiteLogo:                              req.SiteLogo,
+		SiteSubtitle:                          req.SiteSubtitle,
+		APIBaseURL:                            req.APIBaseURL,
+		ContactInfo:                           req.ContactInfo,
+		DocURL:                                req.DocURL,
+		HomeContent:                           req.HomeContent,
+		HideCcsImportButton:                   req.HideCcsImportButton,
+		PurchaseSubscriptionEnabled:           purchaseEnabled,
+		PurchaseSubscriptionURL:               purchaseURL,
+		TableDefaultPageSize:                  req.TableDefaultPageSize,
+		TablePageSizeOptions:                  req.TablePageSizeOptions,
+		CustomMenuItems:                       customMenuJSON,
+		CustomEndpoints:                       customEndpointsJSON,
+		DefaultConcurrency:                    req.DefaultConcurrency,
+		DefaultBalance:                        req.DefaultBalance,
+		AffiliateRebateRate:                   affiliateRebateRate,
+		AffiliateRebateFreezeHours:            affiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:           affiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:          affiliateRebatePerInviteeCap,
+		DefaultUserRPMLimit:                   req.DefaultUserRPMLimit,
+		DefaultSubscriptions:                  defaultSubscriptions,
+		AccountDefaultConcurrency:             accountDefaultConcurrency,
+		AccountDefaultRPM:                     accountDefaultRPM,
+		LongTermBindingTTLDays:                longTermBindingTTLDays,
+		LongTermBindingCleanupIntervalSeconds: longTermBindingCleanupIntervalSeconds,
+		SessionAccountFanoutLimit:             sessionAccountFanoutLimit,
+		SessionAccountFanoutWindowSec:         sessionAccountFanoutWindowSec,
+		BoundSessionSwitchJitterMinMs:         boundSessionSwitchJitterMinMs,
+		BoundSessionSwitchJitterMaxMs:         boundSessionSwitchJitterMaxMs,
+		EnableModelFallback:                   req.EnableModelFallback,
+		FallbackModelAnthropic:                req.FallbackModelAnthropic,
+		FallbackModelOpenAI:                   req.FallbackModelOpenAI,
+		FallbackModelGemini:                   req.FallbackModelGemini,
+		FallbackModelAntigravity:              req.FallbackModelAntigravity,
+		EnableIdentityPatch:                   req.EnableIdentityPatch,
+		IdentityPatchPrompt:                   req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:                  req.MinClaudeCodeVersion,
+		MaxClaudeCodeVersion:                  req.MaxClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:           req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:                    req.BackendModeEnabled,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -1507,6 +1564,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
+		AccountDefaultConcurrency:              updatedSettings.AccountDefaultConcurrency,
+		AccountDefaultRPM:                      updatedSettings.AccountDefaultRPM,
+		LongTermBindingTTLDays:                 updatedSettings.LongTermBindingTTLDays,
+		LongTermBindingCleanupIntervalSeconds:  updatedSettings.LongTermBindingCleanupIntervalSeconds,
+		SessionAccountFanoutLimit:              updatedSettings.SessionAccountFanoutLimit,
+		SessionAccountFanoutWindowSec:          updatedSettings.SessionAccountFanoutWindowSec,
+		BoundSessionSwitchJitterMinMs:          updatedSettings.BoundSessionSwitchJitterMinMs,
+		BoundSessionSwitchJitterMaxMs:          updatedSettings.BoundSessionSwitchJitterMaxMs,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:                 updatedSettings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                    updatedSettings.FallbackModelOpenAI,
@@ -1827,6 +1892,30 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")
+	}
+	if before.AccountDefaultConcurrency != after.AccountDefaultConcurrency {
+		changed = append(changed, "account_default_concurrency")
+	}
+	if before.AccountDefaultRPM != after.AccountDefaultRPM {
+		changed = append(changed, "account_default_rpm")
+	}
+	if before.LongTermBindingTTLDays != after.LongTermBindingTTLDays {
+		changed = append(changed, "ltb_ttl_days")
+	}
+	if before.LongTermBindingCleanupIntervalSeconds != after.LongTermBindingCleanupIntervalSeconds {
+		changed = append(changed, "ltb_cleanup_interval_seconds")
+	}
+	if before.SessionAccountFanoutLimit != after.SessionAccountFanoutLimit {
+		changed = append(changed, "session_account_fanout_limit")
+	}
+	if before.SessionAccountFanoutWindowSec != after.SessionAccountFanoutWindowSec {
+		changed = append(changed, "session_account_fanout_window_sec")
+	}
+	if before.BoundSessionSwitchJitterMinMs != after.BoundSessionSwitchJitterMinMs {
+		changed = append(changed, "bound_session_switch_jitter_min_ms")
+	}
+	if before.BoundSessionSwitchJitterMaxMs != after.BoundSessionSwitchJitterMaxMs {
+		changed = append(changed, "bound_session_switch_jitter_max_ms")
 	}
 	if before.EnableModelFallback != after.EnableModelFallback {
 		changed = append(changed, "enable_model_fallback")

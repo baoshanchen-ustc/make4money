@@ -36,6 +36,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/useraccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
@@ -1833,6 +1834,47 @@ func init() {
 	userDescRpmLimit := userFields[19].Descriptor()
 	// user.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	user.DefaultRpmLimit = userDescRpmLimit.Default.(int)
+	useraccountbindingMixin := schema.UserAccountBinding{}.Mixin()
+	useraccountbindingMixinFields0 := useraccountbindingMixin[0].Fields()
+	_ = useraccountbindingMixinFields0
+	useraccountbindingFields := schema.UserAccountBinding{}.Fields()
+	_ = useraccountbindingFields
+	// useraccountbindingDescCreatedAt is the schema descriptor for created_at field.
+	useraccountbindingDescCreatedAt := useraccountbindingMixinFields0[0].Descriptor()
+	// useraccountbinding.DefaultCreatedAt holds the default value on creation for the created_at field.
+	useraccountbinding.DefaultCreatedAt = useraccountbindingDescCreatedAt.Default.(func() time.Time)
+	// useraccountbindingDescUpdatedAt is the schema descriptor for updated_at field.
+	useraccountbindingDescUpdatedAt := useraccountbindingMixinFields0[1].Descriptor()
+	// useraccountbinding.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	useraccountbinding.DefaultUpdatedAt = useraccountbindingDescUpdatedAt.Default.(func() time.Time)
+	// useraccountbinding.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	useraccountbinding.UpdateDefaultUpdatedAt = useraccountbindingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// useraccountbindingDescProjectFp is the schema descriptor for project_fp field.
+	useraccountbindingDescProjectFp := useraccountbindingFields[0].Descriptor()
+	// useraccountbinding.ProjectFpValidator is a validator for the "project_fp" field. It is called by the builders before save.
+	useraccountbinding.ProjectFpValidator = func() func(string) error {
+		validators := useraccountbindingDescProjectFp.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(project_fp string) error {
+			for _, fn := range fns {
+				if err := fn(project_fp); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// useraccountbindingDescGroupID is the schema descriptor for group_id field.
+	useraccountbindingDescGroupID := useraccountbindingFields[2].Descriptor()
+	// useraccountbinding.DefaultGroupID holds the default value on creation for the group_id field.
+	useraccountbinding.DefaultGroupID = useraccountbindingDescGroupID.Default.(int64)
+	// useraccountbindingDescExpiresAt is the schema descriptor for expires_at field.
+	useraccountbindingDescExpiresAt := useraccountbindingFields[3].Descriptor()
+	// useraccountbinding.DefaultExpiresAt holds the default value on creation for the expires_at field.
+	useraccountbinding.DefaultExpiresAt = useraccountbindingDescExpiresAt.Default.(func() time.Time)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

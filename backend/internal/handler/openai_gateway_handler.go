@@ -28,6 +28,7 @@ import (
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
 	gatewayService          *service.OpenAIGatewayService
+	coreGateway             *service.GatewayService // 用于 P0-2 长期 user→account 绑定（账号共享加固）
 	billingCacheService     *service.BillingCacheService
 	apiKeyService           *service.APIKeyService
 	usageRecordWorkerPool   *service.UsageRecordWorkerPool
@@ -54,9 +55,11 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
 }
 
-// NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
+// NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler.
+// coreGateway 用于 P0-2 长期 user→account 绑定；可空（仅会让 P0-2 在 OpenAI 路径上 noop）。
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
+	coreGateway *service.GatewayService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 	apiKeyService *service.APIKeyService,
@@ -74,6 +77,7 @@ func NewOpenAIGatewayHandler(
 	}
 	return &OpenAIGatewayHandler{
 		gatewayService:          gatewayService,
+		coreGateway:             coreGateway,
 		billingCacheService:     billingCacheService,
 		apiKeyService:           apiKeyService,
 		usageRecordWorkerPool:   usageRecordWorkerPool,
@@ -239,6 +243,37 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
 	requireCompact := isOpenAIRemoteCompactPath(c)
+
+	// === P0-2: 长期 user→account 绑定（账号共享加固） ===
+	// OpenAI 客户端没有 Claude-style metadata.user_id，因此走 IP+APIKey fallback。
+	// 命中绑定时把 (sessionHash → accountID) 写入 sticky 缓存，让调度器在
+	// SelectAccountWithScheduler 内部自然挑到这个账号；与现有 sticky session
+	// 机制完全一致，无需改动调度器。
+	openaiLTBGroupID := int64(0)
+	if apiKey.GroupID != nil {
+		openaiLTBGroupID = *apiKey.GroupID
+	}
+	openaiProjectFP, openaiIsStableFP := "", false
+	if h.coreGateway != nil {
+		openaiProjectFP, openaiIsStableFP = h.coreGateway.ExtractProjectFPRaw(
+			"",
+			apiKey.ID,
+			ip.GetClientIP(c),
+			openaiLTBGroupID,
+		)
+		if openaiProjectFP != "" && sessionHash != "" {
+			if ltbAccountID := h.coreGateway.ResolveLongTermBinding(c.Request.Context(), openaiProjectFP, openaiLTBGroupID); ltbAccountID > 0 {
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, ltbAccountID); err != nil {
+					reqLog.Debug("openai.ltb_warm_sticky_failed", zap.Int64("account_id", ltbAccountID), zap.Error(err))
+				} else {
+					reqLog.Debug("openai.ltb_resolved",
+						zap.Int64("account_id", ltbAccountID),
+						zap.Bool("stable_fp", openaiIsStableFP),
+					)
+				}
+			}
+		}
+	}
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -420,6 +455,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				).Error("openai.record_usage_failed", zap.Error(err))
 			}
 		})
+		// P0-2: 成功响应后写入/刷新长期 user→account 绑定。
+		// 不稳定 fp（IP+APIKey）需要 30min 内 ≥2 次同 fp 才会真正写入，详见 MaybeWriteBinding。
+		if h.coreGateway != nil && openaiProjectFP != "" {
+			h.coreGateway.MaybeWriteBinding(c.Request.Context(), openaiProjectFP, openaiIsStableFP, account.ID, openaiLTBGroupID)
+		}
 		reqLog.Debug("openai.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
@@ -617,14 +657,44 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	// Anthropic 格式的请求在 metadata.user_id 中携带 session 标识，
 	// 而非 OpenAI 的 session_id/conversation_id headers。
 	// 从中派生 sessionHash（sticky session）和 promptCacheKey（upstream cache）。
+	metadataUserID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
 	if sessionHash == "" || promptCacheKey == "" {
-		if userID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String()); userID != "" {
-			seed := reqModel + "-" + userID
+		if metadataUserID != "" {
+			seed := reqModel + "-" + metadataUserID
 			if promptCacheKey == "" {
 				promptCacheKey = service.GenerateSessionUUID(seed)
 			}
 			if sessionHash == "" {
 				sessionHash = service.DeriveSessionHashFromSeed(seed)
+			}
+		}
+	}
+
+	// === P0-2: 长期 user→account 绑定（账号共享加固） ===
+	// /openai/v1/messages 是 Anthropic-shape 兼容入口，请求体里通常带 metadata.user_id，
+	// 因此可以走稳定 fp 路径（device_id），命中率会比 /v1/responses 高很多。
+	openaiMsgLTBGroupID := int64(0)
+	if apiKey.GroupID != nil {
+		openaiMsgLTBGroupID = *apiKey.GroupID
+	}
+	openaiMsgProjectFP, openaiMsgIsStableFP := "", false
+	if h.coreGateway != nil {
+		openaiMsgProjectFP, openaiMsgIsStableFP = h.coreGateway.ExtractProjectFPRaw(
+			metadataUserID,
+			apiKey.ID,
+			ip.GetClientIP(c),
+			openaiMsgLTBGroupID,
+		)
+		if openaiMsgProjectFP != "" && sessionHash != "" {
+			if ltbAccountID := h.coreGateway.ResolveLongTermBinding(c.Request.Context(), openaiMsgProjectFP, openaiMsgLTBGroupID); ltbAccountID > 0 {
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, ltbAccountID); err != nil {
+					reqLog.Debug("openai_messages.ltb_warm_sticky_failed", zap.Int64("account_id", ltbAccountID), zap.Error(err))
+				} else {
+					reqLog.Debug("openai_messages.ltb_resolved",
+						zap.Int64("account_id", ltbAccountID),
+						zap.Bool("stable_fp", openaiMsgIsStableFP),
+					)
+				}
 			}
 		}
 	}
@@ -793,6 +863,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				).Error("openai_messages.record_usage_failed", zap.Error(err))
 			}
 		})
+		// P0-2: 成功响应后写入/刷新长期 user→account 绑定。
+		if h.coreGateway != nil && openaiMsgProjectFP != "" {
+			h.coreGateway.MaybeWriteBinding(c.Request.Context(), openaiMsgProjectFP, openaiMsgIsStableFP, account.ID, openaiMsgLTBGroupID)
+		}
 		reqLog.Debug("openai_messages.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
@@ -1187,7 +1261,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 
 	account := selection.Account
-	accountMaxConcurrency := account.Concurrency
+	accountMaxConcurrency := h.gatewayService.EffectiveAccountConcurrency(account)
 	if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 		accountMaxConcurrency = selection.WaitPlan.MaxConcurrency
 	}

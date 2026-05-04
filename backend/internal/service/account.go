@@ -94,6 +94,7 @@ func (a *Account) BillingRateMultiplier() float64 {
 	return *a.RateMultiplier
 }
 
+// EffectiveLoadFactor 获取账号在调度评分时使用的负载因子。
 func (a *Account) EffectiveLoadFactor() int {
 	if a == nil {
 		return 1
@@ -105,6 +106,53 @@ func (a *Account) EffectiveLoadFactor() int {
 		return a.Concurrency
 	}
 	return 1
+}
+
+// EffectiveConcurrency 返回账号实际生效的并发上限（acquire-slot / WaitPlan 用）。
+//
+// 语义（2026-04 加固，P0-1）：
+//   - account.Concurrency > 0：尊重 admin 显式设置，直接返回该值。
+//   - account.Concurrency == 0 且 fleetDefault > 0：使用全局默认（"安全垫"）。
+//   - 两者都为 0：返回 0（无上限），保持向后兼容。
+//
+// 该方法只在并发槽位获取与 WaitPlan 计算路径使用；调度评分继续走
+// EffectiveLoadFactor（语义不同，不受影响）。
+func (a *Account) EffectiveConcurrency(fleetDefault int) int {
+	if a == nil {
+		if fleetDefault > 0 {
+			return fleetDefault
+		}
+		return 0
+	}
+	if a.Concurrency > 0 {
+		return a.Concurrency
+	}
+	if fleetDefault > 0 {
+		return fleetDefault
+	}
+	return 0
+}
+
+// EffectiveBaseRPM 返回账号实际生效的基础 RPM 上限。
+//
+// 语义（2026-04 加固，P0-1）：
+//   - extra.base_rpm > 0：尊重 per-account 配置。
+//   - 未设置或 ≤ 0 且 fleetDefault > 0：使用全局默认。
+//   - 两者都缺失：返回 0（不启用 RPM 限流），保持向后兼容。
+func (a *Account) EffectiveBaseRPM(fleetDefault int) int {
+	if a == nil {
+		if fleetDefault > 0 {
+			return fleetDefault
+		}
+		return 0
+	}
+	if v := a.GetBaseRPM(); v > 0 {
+		return v
+	}
+	if fleetDefault > 0 {
+		return fleetDefault
+	}
+	return 0
 }
 
 func (a *Account) IsSchedulable() bool {
@@ -2063,20 +2111,29 @@ func (a *Account) GetRPMStrategy() string {
 // Cache-driven: buffer = concurrency + maxSessions（覆盖幽灵窗口 + 稳态会话需求）
 // floor = baseRPM / 5（向后兼容 maxSessions=0 且 concurrency=0 场景）
 func (a *Account) GetRPMStickyBuffer() int {
-	if a.Extra == nil {
+	return a.GetRPMStickyBufferWithBase(a.GetBaseRPM())
+}
+
+// GetRPMStickyBufferWithBase 与 GetRPMStickyBuffer 行为一致，但允许调用方
+// 显式传入"已生效"的 baseRPM（例如来自 EffectiveBaseRPM 的全局默认）。
+// 当 P0-1 安全垫生效（per-account 未配置但 fleetDefault > 0）时，
+// 调度路径需要按 fleetDefault 计算 buffer，而不是 0。
+func (a *Account) GetRPMStickyBufferWithBase(baseRPM int) int {
+	if a == nil {
 		return 0
 	}
 
 	// 手动 override 最高优先级
-	if v, ok := a.Extra["rpm_sticky_buffer"]; ok {
-		val := parseExtraInt(v)
-		if val > 0 {
-			return val
+	if a.Extra != nil {
+		if v, ok := a.Extra["rpm_sticky_buffer"]; ok {
+			val := parseExtraInt(v)
+			if val > 0 {
+				return val
+			}
 		}
 	}
 
-	base := a.GetBaseRPM()
-	if base <= 0 {
+	if baseRPM <= 0 {
 		return 0
 	}
 
@@ -2093,7 +2150,7 @@ func (a *Account) GetRPMStickyBuffer() int {
 	buffer := conc + sess
 
 	// floor: 向后兼容
-	floor := base / 5
+	floor := baseRPM / 5
 	if floor < 1 {
 		floor = 1
 	}
@@ -2107,7 +2164,14 @@ func (a *Account) GetRPMStickyBuffer() int {
 // CheckRPMSchedulability 根据当前 RPM 计数检查调度状态
 // 复用 WindowCostSchedulability 三态：Schedulable / StickyOnly / NotSchedulable
 func (a *Account) CheckRPMSchedulability(currentRPM int) WindowCostSchedulability {
-	baseRPM := a.GetBaseRPM()
+	return a.CheckRPMSchedulabilityWithLimit(currentRPM, a.GetBaseRPM())
+}
+
+// CheckRPMSchedulabilityWithLimit 与 CheckRPMSchedulability 行为一致，但允许
+// 调用方显式传入已生效的 baseRPM（per-account 优先 + 全局默认兜底）。
+// 当 P0-1 安全垫生效（per-account 未配置但 fleetDefault > 0）时，调度路径
+// 应按 fleetDefault 进行三区判定，而不是直接放行。
+func (a *Account) CheckRPMSchedulabilityWithLimit(currentRPM, baseRPM int) WindowCostSchedulability {
 	if baseRPM <= 0 {
 		return WindowCostSchedulable
 	}
@@ -2122,7 +2186,7 @@ func (a *Account) CheckRPMSchedulability(currentRPM int) WindowCostSchedulabilit
 	}
 
 	// tiered: 黄区 + 红区
-	buffer := a.GetRPMStickyBuffer()
+	buffer := a.GetRPMStickyBufferWithBase(baseRPM)
 	if currentRPM < baseRPM+buffer {
 		return WindowCostStickyOnly
 	}

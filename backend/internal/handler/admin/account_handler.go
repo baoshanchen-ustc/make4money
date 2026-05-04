@@ -515,6 +515,20 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
+	// P1-1: Capture registration fingerprint from browser User-Agent for OAuth accounts.
+	// This lets us serve per-account OS/arch hints to non-CC clients later, matching
+	// the device used during OAuth registration (instead of falling back to a global Linux/arm64).
+	// Skipped for apikey accounts since there's no "registration browser" concept.
+	if req.Type == service.AccountTypeOAuth || req.Type == service.AccountTypeSetupToken {
+		if _, alreadySet := req.Extra[service.ExtraKeyRegistrationFingerprint]; !alreadySet {
+			if ua := c.Request.Header.Get("User-Agent"); ua != "" {
+				if regFp := service.ParseRegistrationFingerprintFromUA(ua); regFp != nil {
+					req.Extra = service.SetRegistrationFingerprintInExtra(req.Extra, regFp)
+				}
+			}
+		}
+	}
+
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 

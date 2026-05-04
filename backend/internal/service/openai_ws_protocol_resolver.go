@@ -77,7 +77,10 @@ func (r *defaultOpenAIWSProtocolResolver) Resolve(account *Account) OpenAIWSProt
 		default:
 			return openAIWSHTTPDecision("account_mode_off")
 		}
-		if account.Concurrency <= 0 {
+		// P0-1：用 EffectiveAccountConcurrencyFromCfg 兜底，避免 admin 未显式设置
+		// account.Concurrency 时被强制 fallback 到 HTTP；启用全局
+		// gateway.account_default_concurrency 后即可让该账号正常走 WSv2。
+		if EffectiveAccountConcurrencyFromCfg(r.cfg, account) <= 0 {
 			return openAIWSHTTPDecision("account_concurrency_invalid")
 		}
 		if wsCfg.ResponsesWebsocketsV2 {

@@ -61,6 +61,14 @@ func isOpenAIImageModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(model), "gpt-image-")
 }
 
+// isOfficialOpenAIBaseURL returns true if the base URL points to the official OpenAI API.
+// Third-party OpenAI-compatible providers typically only support /chat/completions,
+// not the newer /responses endpoint.
+func isOfficialOpenAIBaseURL(baseURL string) bool {
+	lower := strings.ToLower(baseURL)
+	return strings.Contains(lower, "api.openai.com")
+}
+
 // AccountTestService handles account testing operations
 type AccountTestService struct {
 	accountRepo               AccountRepository
@@ -600,7 +608,14 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		apiURL = strings.TrimSuffix(normalizedBaseURL, "/") + "/responses"
+		// Use /chat/completions for non-official OpenAI base URLs (third-party compatible APIs).
+		// Official OpenAI API uses /responses; third-party providers only support /chat/completions.
+		baseHost := strings.TrimSuffix(normalizedBaseURL, "/")
+		if isOfficialOpenAIBaseURL(baseHost) {
+			apiURL = baseHost + "/responses"
+		} else {
+			apiURL = baseHost + "/chat/completions"
+		}
 	} else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -612,9 +627,16 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Create OpenAI Responses API payload
-	payload := createOpenAITestPayload(testModelID, isOAuth)
-	payloadBytes, _ := json.Marshal(payload)
+	// Use Responses API format for OAuth and official OpenAI; Chat Completions for third-party.
+	useResponsesAPI := isOAuth || strings.Contains(apiURL, "/responses")
+	var payloadBytes []byte
+	if useResponsesAPI {
+		payload := createOpenAITestPayload(testModelID, isOAuth)
+		payloadBytes, _ = json.Marshal(payload)
+	} else {
+		payload := createOpenAIChatTestPayload(testModelID)
+		payloadBytes, _ = json.Marshal(payload)
+	}
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -670,7 +692,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	return s.processOpenAIStream(c, resp.Body)
+	if useResponsesAPI {
+		return s.processOpenAIStream(c, resp.Body)
+	}
+	return s.processOpenAIChatStream(c, resp.Body)
 }
 
 // testOpenAICompactConnection probes /responses/compact and persists the
@@ -1206,6 +1231,79 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 	payload["instructions"] = openai.DefaultInstructions
 
 	return payload
+}
+
+// createOpenAIChatTestPayload creates a /chat/completions compatible test payload.
+// Used for third-party OpenAI-compatible APIs that don't support the Responses API.
+func createOpenAIChatTestPayload(modelID string) map[string]any {
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": "hi",
+			},
+		},
+		"stream":     true,
+		"max_tokens": 50,
+	}
+}
+
+// processOpenAIChatStream processes SSE stream from /chat/completions endpoint.
+func (s *AccountTestService) processOpenAIChatStream(c *gin.Context, body io.Reader) error {
+	reader := bufio.NewReader(body)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" || !sseDataPrefix.MatchString(line) {
+			continue
+		}
+
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		if jsonStr == "[DONE]" {
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+
+		// Extract text from choices[0].delta.content
+		if choices, ok := data["choices"].([]any); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]any); ok {
+				if delta, ok := choice["delta"].(map[string]any); ok {
+					if content, ok := delta["content"].(string); ok && content != "" {
+						s.sendEvent(c, TestEvent{Type: "content", Text: content})
+					}
+				}
+				// finish_reason signals end of stream
+				if reason, ok := choice["finish_reason"].(string); ok && reason != "" {
+					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+					return nil
+				}
+			}
+		}
+
+		// Handle error events
+		if errData, ok := data["error"].(map[string]any); ok {
+			errMsg := "Unknown error"
+			if msg, ok := errData["message"].(string); ok && msg != "" {
+				errMsg = msg
+			}
+			return s.sendErrorAndEnd(c, errMsg)
+		}
+	}
 }
 
 // processClaudeStream processes the SSE stream from Claude API

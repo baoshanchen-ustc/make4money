@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	mathrand "math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -360,30 +362,30 @@ var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
-	"accept":                                    true,
-	"x-stainless-retry-count":                   true,
-	"x-stainless-timeout":                       true,
-	"x-stainless-lang":                          true,
-	"x-stainless-package-version":               true,
-	"x-stainless-os":                            true,
-	"x-stainless-arch":                          true,
-	"x-stainless-runtime":                       true,
-	"x-stainless-runtime-version":               true,
-	"x-stainless-helper-method":                 true,
+	"accept":                      true,
+	"x-stainless-retry-count":     true,
+	"x-stainless-timeout":         true,
+	"x-stainless-lang":            true,
+	"x-stainless-package-version": true,
+	"x-stainless-os":              true,
+	"x-stainless-arch":            true,
+	"x-stainless-runtime":         true,
+	"x-stainless-runtime-version": true,
+	"x-stainless-helper-method":   true,
 	// Intentionally NOT whitelisted: anthropic-dangerous-direct-browser-access.
 	// That header is for browser-origin SDK use; the real Claude Code CLI does
 	// not emit it, so leaking it from a third-party client would mark the
 	// request as non-CLI at Anthropic's detector.
-	"anthropic-version": true,
-	"x-app":             true,
-	"anthropic-beta":                            true,
-	"accept-language":                           true,
-	"sec-fetch-mode":                            true,
-	"user-agent":                                true,
-	"content-type":                              true,
-	"accept-encoding":                           true,
-	"x-claude-code-session-id":                  true,
-	"x-client-request-id":                       true,
+	"anthropic-version":        true,
+	"x-app":                    true,
+	"anthropic-beta":           true,
+	"accept-language":          true,
+	"sec-fetch-mode":           true,
+	"user-agent":               true,
+	"content-type":             true,
+	"accept-encoding":          true,
+	"x-claude-code-session-id": true,
+	"x-client-request-id":      true,
 }
 
 // GatewayCache 定义网关服务的缓存操作接口。
@@ -404,6 +406,16 @@ type GatewayCache interface {
 	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
+
+	// RecordSessionAccountFanout 记录会话触达的账号（P0-3 反扫荡）
+	// Records an account that a session has touched for fanout limiting
+	RecordSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error
+	// GetSessionAccountFanoutCount 获取会话已触达的不同账号数
+	// Gets the count of distinct accounts a session has touched
+	GetSessionAccountFanoutCount(ctx context.Context, groupID int64, sessionHash string) (int, error)
+	// DeleteSessionAccountFanout 清除会话的 fanout 记录（成功完成时可选调用）
+	// Clears the fanout record for a session
+	DeleteSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string) error
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
@@ -581,6 +593,10 @@ type GatewayService struct {
 	// 通过 sync.Once 懒加载，避免修改 NewGatewayService 签名（与现网部署兼容）。
 	vertexTokenProviderOnce sync.Once
 	vertexTokenProvider     *VertexTokenProvider
+
+	// P0-2: 长期绑定相关字段
+	bindingRepo           UserAccountBindingRepository
+	bindingThresholdCache *gocache.Cache // in-process counter for unstable FP write threshold
 }
 
 // NewGatewayService creates a new GatewayService
@@ -611,41 +627,44 @@ func NewGatewayService(
 	channelService *ChannelService,
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
+	bindingRepo UserAccountBindingRepository,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
 
 	svc := &GatewayService{
-		accountRepo:          accountRepo,
-		groupRepo:            groupRepo,
-		usageLogRepo:         usageLogRepo,
-		usageBillingRepo:     usageBillingRepo,
-		userRepo:             userRepo,
-		userSubRepo:          userSubRepo,
-		userGroupRateRepo:    userGroupRateRepo,
-		cache:                cache,
-		digestStore:          digestStore,
-		cfg:                  cfg,
-		schedulerSnapshot:    schedulerSnapshot,
-		concurrencyService:   concurrencyService,
-		billingService:       billingService,
-		rateLimitService:     rateLimitService,
-		billingCacheService:  billingCacheService,
-		identityService:      identityService,
-		httpUpstream:         httpUpstream,
-		deferredService:      deferredService,
-		claudeTokenProvider:  claudeTokenProvider,
-		sessionLimitCache:    sessionLimitCache,
-		rpmCache:             rpmCache,
-		userGroupRateCache:   gocache.New(userGroupRateTTL, time.Minute),
-		settingService:       settingService,
-		modelsListCache:      gocache.New(modelsListTTL, time.Minute),
-		modelsListCacheTTL:   modelsListTTL,
-		responseHeaderFilter: compileResponseHeaderFilter(cfg),
-		tlsFPProfileService:  tlsFPProfileService,
-		channelService:       channelService,
-		resolver:             resolver,
-		balanceNotifyService: balanceNotifyService,
+		accountRepo:           accountRepo,
+		groupRepo:             groupRepo,
+		usageLogRepo:          usageLogRepo,
+		usageBillingRepo:      usageBillingRepo,
+		userRepo:              userRepo,
+		userSubRepo:           userSubRepo,
+		userGroupRateRepo:     userGroupRateRepo,
+		cache:                 cache,
+		digestStore:           digestStore,
+		cfg:                   cfg,
+		schedulerSnapshot:     schedulerSnapshot,
+		concurrencyService:    concurrencyService,
+		billingService:        billingService,
+		rateLimitService:      rateLimitService,
+		billingCacheService:   billingCacheService,
+		identityService:       identityService,
+		httpUpstream:          httpUpstream,
+		deferredService:       deferredService,
+		claudeTokenProvider:   claudeTokenProvider,
+		sessionLimitCache:     sessionLimitCache,
+		rpmCache:              rpmCache,
+		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
+		settingService:        settingService,
+		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
+		modelsListCacheTTL:    modelsListTTL,
+		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
+		tlsFPProfileService:   tlsFPProfileService,
+		channelService:        channelService,
+		resolver:              resolver,
+		balanceNotifyService:  balanceNotifyService,
+		bindingRepo:           bindingRepo,
+		bindingThresholdCache: gocache.New(30*time.Minute, 5*time.Minute),
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -831,6 +850,294 @@ func (s *GatewayService) GetCachedSessionAccountID(ctx context.Context, groupID 
 		return 0, err
 	}
 	return accountID, nil
+}
+
+// ============ P0-3: Session account fanout limiting (anti-sweep) ============
+
+// RecordSessionFanout 记录会话触达的账号（P0-3 反扫荡）。
+// 同一账号被多次重试不会重复计数（Redis Set 去重）。
+func (s *GatewayService) RecordSessionFanout(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	if sessionHash == "" || accountID <= 0 || s.cache == nil {
+		return nil
+	}
+	fanoutWindowSec := 0
+	if s.cfg != nil {
+		fanoutWindowSec = s.cfg.Gateway.SessionAccountFanoutWindowSec
+	}
+	if fanoutWindowSec <= 0 {
+		fanoutWindowSec = 60 // default 60s
+	}
+	ttl := time.Duration(fanoutWindowSec) * time.Second
+	return s.cache.RecordSessionAccountFanout(ctx, derefGroupID(groupID), sessionHash, accountID, ttl)
+}
+
+// IsSessionFanoutExhausted 检查会话是否已达到 fanout 上限。
+// 返回 (exhausted, currentCount)。limit=0 时始终返回 (false, 0)。
+func (s *GatewayService) IsSessionFanoutExhausted(ctx context.Context, groupID *int64, sessionHash string) (bool, int) {
+	limit := 0
+	if s.cfg != nil {
+		limit = s.cfg.Gateway.SessionAccountFanoutLimit
+	}
+	if limit <= 0 || sessionHash == "" || s.cache == nil {
+		return false, 0
+	}
+	count, err := s.cache.GetSessionAccountFanoutCount(ctx, derefGroupID(groupID), sessionHash)
+	if err != nil {
+		return false, 0
+	}
+	return count >= limit, count
+}
+
+// ClearSessionFanout 清除会话的 fanout 记录（成功完成时可选调用）。
+func (s *GatewayService) ClearSessionFanout(ctx context.Context, groupID *int64, sessionHash string) {
+	if sessionHash == "" || s.cache == nil {
+		return
+	}
+	_ = s.cache.DeleteSessionAccountFanout(ctx, derefGroupID(groupID), sessionHash)
+}
+
+// GetSessionFanoutConfig 返回 fanout 限制配置，供 handler 层传递给 FailoverState。
+func (s *GatewayService) GetSessionFanoutConfig() (limit int, boundJitterMin, boundJitterMax time.Duration) {
+	if s.cfg != nil {
+		limit = s.cfg.Gateway.SessionAccountFanoutLimit
+	}
+
+	minMs := 0
+	if s.cfg != nil {
+		minMs = s.cfg.Gateway.BoundSessionSwitchJitterMinMs
+	}
+	if minMs <= 0 {
+		minMs = 2000 // default 2s
+	}
+	maxMs := 0
+	if s.cfg != nil {
+		maxMs = s.cfg.Gateway.BoundSessionSwitchJitterMaxMs
+	}
+	if maxMs <= 0 {
+		maxMs = 10000 // default 10s
+	}
+	if maxMs < minMs {
+		maxMs = minMs
+	}
+	return limit, time.Duration(minMs) * time.Millisecond, time.Duration(maxMs) * time.Millisecond
+}
+
+// ============ P0-2: Long-term user→account bindings ============
+
+// P0-2 long-term binding metrics. These counters are read by
+// SnapshotLongTermBindingMetrics and exposed in /admin/metrics.
+var (
+	longTermBindingResolveHitTotal     atomic.Int64 // 解析时命中
+	longTermBindingResolveMissTotal    atomic.Int64 // 解析时未命中（含没有 fp / 没有绑定）
+	longTermBindingResolveExpiredTotal atomic.Int64 // 解析时命中但已过期（lazy 删除）
+	longTermBindingWriteFirstTotal     atomic.Int64 // 第一次写入（accountID 视图首次出现）
+	longTermBindingWriteRebindTotal    atomic.Int64 // 重绑（accountID 与上次写入不同）
+	longTermBindingWriteRefreshTotal   atomic.Int64 // 续期（accountID 不变，仅刷新 TTL）
+	longTermBindingWriteSkippedTotal   atomic.Int64 // 因不稳定 fp 阈值未达 / disabled 等原因被跳过
+	longTermBindingDeleteTotal         atomic.Int64 // 主动删除（含 lazy delete）
+)
+
+// LongTermBindingMetricsSnapshot 是 P0-2 绑定层的运行时计数快照。
+type LongTermBindingMetricsSnapshot struct {
+	ResolveHitTotal     int64 `json:"resolve_hit_total"`
+	ResolveMissTotal    int64 `json:"resolve_miss_total"`
+	ResolveExpiredTotal int64 `json:"resolve_expired_total"`
+	WriteFirstTotal     int64 `json:"write_first_total"`
+	WriteRebindTotal    int64 `json:"write_rebind_total"`
+	WriteRefreshTotal   int64 `json:"write_refresh_total"`
+	WriteSkippedTotal   int64 `json:"write_skipped_total"`
+	DeleteTotal         int64 `json:"delete_total"`
+	// HitRate = hit / (hit + miss)，便于直接读出。
+	HitRate float64 `json:"hit_rate"`
+}
+
+// SnapshotLongTermBindingMetrics returns a copy of the current P0-2 binding counters.
+func SnapshotLongTermBindingMetrics() LongTermBindingMetricsSnapshot {
+	hit := longTermBindingResolveHitTotal.Load()
+	miss := longTermBindingResolveMissTotal.Load()
+	rate := float64(0)
+	if total := hit + miss; total > 0 {
+		rate = float64(hit) / float64(total)
+	}
+	return LongTermBindingMetricsSnapshot{
+		ResolveHitTotal:     hit,
+		ResolveMissTotal:    miss,
+		ResolveExpiredTotal: longTermBindingResolveExpiredTotal.Load(),
+		WriteFirstTotal:     longTermBindingWriteFirstTotal.Load(),
+		WriteRebindTotal:    longTermBindingWriteRebindTotal.Load(),
+		WriteRefreshTotal:   longTermBindingWriteRefreshTotal.Load(),
+		WriteSkippedTotal:   longTermBindingWriteSkippedTotal.Load(),
+		DeleteTotal:         longTermBindingDeleteTotal.Load(),
+		HitRate:             rate,
+	}
+}
+
+// ExtractProjectFP computes a project fingerprint from a ParsedRequest.
+// Returns (fingerprint, isStable) where isStable=true means device_id was available.
+// The fingerprint is used as the key for long-term user→account bindings.
+//
+// 这是 Anthropic 路径的便捷入口；OpenAI / Gemini 等没有 ParsedRequest 的调用者
+// 应使用 ExtractProjectFPRaw。
+func (s *GatewayService) ExtractProjectFP(parsed *ParsedRequest) (string, bool) {
+	if parsed == nil {
+		return "", false
+	}
+	metadataUserID := parsed.MetadataUserID
+	groupID := derefGroupID(parsed.GroupID)
+	apiKeyID := int64(0)
+	clientIP := ""
+	if parsed.SessionContext != nil {
+		apiKeyID = parsed.SessionContext.APIKeyID
+		clientIP = parsed.SessionContext.ClientIP
+	}
+	return s.ExtractProjectFPRaw(metadataUserID, apiKeyID, clientIP, groupID)
+}
+
+// ExtractProjectFPRaw computes a project fingerprint from raw inputs.
+// 用于 Gemini / OpenAI 等不构造 ParsedRequest 的路径。语义与 ExtractProjectFP
+// 等价：优先用 metadata.user_id 里的 device_id（稳定路径），否则退化到
+// api_key_id + IPv4 /24 子网（不稳定路径，需要阈值才会持久化）。
+//
+// metadataUserID 为空 / 不含 device_id 时自动走 fallback；非 Claude 客户端
+// 直接传 "" 即可。
+func (s *GatewayService) ExtractProjectFPRaw(metadataUserID string, apiKeyID int64, clientIP string, groupID int64) (string, bool) {
+	// Stable path: device_id from metadata.user_id (Claude Code clients)
+	if metadataUserID != "" {
+		if uid := ParseMetadataUserID(metadataUserID); uid != nil && uid.DeviceID != "" {
+			raw := uid.DeviceID + ":" + strconv.FormatInt(groupID, 10)
+			return sha256hex(raw)[:32], true
+		}
+	}
+
+	// Fallback path: api_key_id + /24 subnet
+	if apiKeyID > 0 {
+		ip24 := toIPNet24(clientIP)
+		raw := fmt.Sprintf("ip:%d:%s:%d", apiKeyID, ip24, groupID)
+		return sha256hex(raw)[:32], false
+	}
+
+	return "", false
+}
+
+// ResolveLongTermBinding looks up the persistent user→account binding.
+// Returns the bound account ID, or 0 if no valid binding exists.
+func (s *GatewayService) ResolveLongTermBinding(ctx context.Context, projectFP string, groupID int64) int64 {
+	if s.bindingRepo == nil || projectFP == "" {
+		longTermBindingResolveMissTotal.Add(1)
+		return 0
+	}
+	binding, err := s.bindingRepo.GetBinding(ctx, projectFP, groupID)
+	if err != nil || binding == nil {
+		longTermBindingResolveMissTotal.Add(1)
+		return 0
+	}
+	if time.Now().After(binding.ExpiresAt) {
+		// Expired binding, clean it up
+		_ = s.bindingRepo.DeleteBinding(ctx, projectFP, groupID)
+		longTermBindingResolveExpiredTotal.Add(1)
+		longTermBindingDeleteTotal.Add(1)
+		longTermBindingResolveMissTotal.Add(1)
+		return 0
+	}
+	longTermBindingResolveHitTotal.Add(1)
+	return binding.AccountID
+}
+
+// MaybeWriteBinding writes or refreshes a long-term user→account binding.
+// For stable (device_id) fingerprints: writes immediately on first request.
+// For unstable (ip-based) fingerprints: writes only after 2+ requests in 30min.
+func (s *GatewayService) MaybeWriteBinding(ctx context.Context, projectFP string, isStable bool, accountID int64, groupID int64) {
+	if s.bindingRepo == nil || projectFP == "" || accountID <= 0 {
+		longTermBindingWriteSkippedTotal.Add(1)
+		return
+	}
+	ttlDays := s.cfg.Gateway.LongTermBindingTTLDays
+	if ttlDays <= 0 {
+		longTermBindingWriteSkippedTotal.Add(1)
+		return // Disabled
+	}
+
+	if !isStable {
+		// Check threshold: need 2+ requests for unstable fp
+		cacheKey := "ltb_threshold:" + projectFP
+		cnt := s.incrBindingThreshold(cacheKey)
+		if cnt < 2 {
+			longTermBindingWriteSkippedTotal.Add(1)
+			return
+		}
+	}
+
+	// 用一次 GetBinding 区分 first / rebind / refresh —— 用以观察上游对外用户数 P95。
+	// 此调用对 hit/miss 计数没有影响（不走 ResolveLongTermBinding）。
+	prev, _ := s.bindingRepo.GetBinding(ctx, projectFP, groupID)
+
+	expiresAt := time.Now().Add(time.Duration(ttlDays) * 24 * time.Hour)
+	if err := s.bindingRepo.UpsertBinding(ctx, projectFP, accountID, groupID, expiresAt); err != nil {
+		longTermBindingWriteSkippedTotal.Add(1)
+		return
+	}
+
+	switch {
+	case prev == nil:
+		longTermBindingWriteFirstTotal.Add(1)
+	case prev.AccountID != accountID:
+		longTermBindingWriteRebindTotal.Add(1)
+	default:
+		longTermBindingWriteRefreshTotal.Add(1)
+	}
+}
+
+// DeleteLongTermBinding removes a specific user→account binding.
+// Called when the bound account becomes unschedulable.
+func (s *GatewayService) DeleteLongTermBinding(ctx context.Context, projectFP string, groupID int64) {
+	if s.bindingRepo == nil || projectFP == "" {
+		return
+	}
+	if err := s.bindingRepo.DeleteBinding(ctx, projectFP, groupID); err == nil {
+		longTermBindingDeleteTotal.Add(1)
+	}
+}
+
+// incrBindingThreshold atomically increments the threshold counter for a given key.
+func (s *GatewayService) incrBindingThreshold(key string) int {
+	if s.bindingThresholdCache == nil {
+		return 1
+	}
+	val, found := s.bindingThresholdCache.Get(key)
+	if !found {
+		s.bindingThresholdCache.Set(key, 1, 30*time.Minute)
+		return 1
+	}
+	cnt, ok := val.(int)
+	if !ok {
+		cnt = 0
+	}
+	cnt++
+	s.bindingThresholdCache.Set(key, cnt, 30*time.Minute)
+	return cnt
+}
+
+// sha256hex computes SHA256 and returns the hex string.
+func sha256hex(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+// toIPNet24 extracts the /24 subnet from an IP address.
+// For IPv4: "1.2.3.4" -> "1.2.3.0/24"
+// For IPv6: returns the full address (no /24 equivalent applied)
+func toIPNet24(ip string) string {
+	if ip == "" {
+		return ""
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return ip
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		return fmt.Sprintf("%d.%d.%d.0/24", v4[0], v4[1], v4[2])
+	}
+	return ip // IPv6: use full address
 }
 
 // FindGeminiSession 查找 Gemini 会话（基于内容摘要链的 Fallback 匹配）
@@ -1461,7 +1768,7 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 	normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
 
 	if s.identityService != nil && c != nil && c.Request != nil {
-		if fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header); err == nil && fp != nil {
+		if fp, err := s.identityService.GetOrCreateFingerprintForAccount(ctx, account, c.Request.Header); err == nil && fp != nil {
 			mimicMPT := false
 			if s.settingService != nil {
 				_, mimicMPT, _ = s.settingService.GetGatewayForwardingSettings(ctx)
@@ -1694,7 +2001,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				return nil, err
 			}
 
-			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, account.ID, s.effectiveAccountConcurrency(account))
 			if err == nil && result.Acquired {
 				// 获取槽位后检查会话限制（使用 sessionHash 作为会话标识符）
 				if !s.checkAndRegisterSession(ctx, account, sessionHash) {
@@ -1716,7 +2023,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if waitingCount < cfg.StickySessionMaxWaiting {
 					return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 						AccountID:      account.ID,
-						MaxConcurrency: account.Concurrency,
+						MaxConcurrency: s.effectiveAccountConcurrency(account),
 						Timeout:        cfg.StickySessionWaitTimeout,
 						MaxWaiting:     cfg.StickySessionMaxWaiting,
 					})
@@ -1724,7 +2031,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 			return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 				AccountID:      account.ID,
-				MaxConcurrency: account.Concurrency,
+				MaxConcurrency: s.effectiveAccountConcurrency(account),
 				Timeout:        cfg.FallbackWaitTimeout,
 				MaxWaiting:     cfg.FallbackMaxWaiting,
 			})
@@ -1862,7 +2169,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
 
 						if rpmPass { // 粘性会话窗口费用+RPM 检查
-							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
+							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, s.effectiveAccountConcurrency(stickyAccount))
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
 								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
@@ -1889,7 +2196,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 											Account: stickyAccount,
 											WaitPlan: &AccountWaitPlan{
 												AccountID:      stickyAccountID,
-												MaxConcurrency: stickyAccount.Concurrency,
+												MaxConcurrency: s.effectiveAccountConcurrency(stickyAccount),
 												Timeout:        cfg.StickySessionWaitTimeout,
 												MaxWaiting:     cfg.StickySessionMaxWaiting,
 											},
@@ -1908,7 +2215,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 						// 记录粘性缓存未命中的结构化日志
 						if stickyCacheMissReason != "" {
-							baseRPM := stickyAccount.GetBaseRPM()
+							baseRPM := s.effectiveAccountBaseRPM(stickyAccount)
 							var currentRPM int
 							if count, ok := rpmFromPrefetchContext(ctx, stickyAccount.ID); ok {
 								currentRPM = count
@@ -1918,6 +2225,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						}
 					} else {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+						// P0-2: Also clear long-term binding when account is cleared
+						if fp, _ := ctx.Value(ctxkey.PrefetchedProjectFP).(string); fp != "" {
+							s.DeleteLongTermBinding(ctx, fp, derefGroupID(groupID))
+						}
 						logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=account_cleared account_id=%d session=%s current_rpm=0 base_rpm=0",
 							stickyAccountID, shortSessionHash(sessionHash))
 					}
@@ -1971,7 +2282,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 				// 4. 尝试获取槽位
 				for _, item := range routingAvailable {
-					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
+					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, s.effectiveAccountConcurrency(item.account))
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
@@ -1999,7 +2310,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					}
 					return s.newSelectionResult(ctx, item.account, false, nil, &AccountWaitPlan{
 						AccountID:      item.account.ID,
-						MaxConcurrency: item.account.Concurrency,
+						MaxConcurrency: s.effectiveAccountConcurrency(item.account),
 						Timeout:        cfg.StickySessionWaitTimeout,
 						MaxWaiting:     cfg.StickySessionMaxWaiting,
 					})
@@ -2021,6 +2332,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
 					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+					// P0-2: Also clear long-term binding
+					if fp, _ := ctx.Value(ctxkey.PrefetchedProjectFP).(string); fp != "" {
+						s.DeleteLongTermBinding(ctx, fp, derefGroupID(groupID))
+					}
 				}
 				if !clearSticky && s.isAccountInGroup(account, groupID) &&
 					s.isAccountAllowedForPlatform(account, platform, useMixed) &&
@@ -2030,7 +2345,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					s.isAccountSchedulableForWindowCost(ctx, account, true) &&
 
 					s.isAccountSchedulableForRPM(ctx, account, true) { // 粘性会话窗口费用+RPM 检查
-					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+					result, err := s.tryAcquireAccountSlot(ctx, accountID, s.effectiveAccountConcurrency(account))
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
@@ -2051,7 +2366,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						} else {
 							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 								AccountID:      accountID,
-								MaxConcurrency: account.Concurrency,
+								MaxConcurrency: s.effectiveAccountConcurrency(account),
 								Timeout:        cfg.StickySessionWaitTimeout,
 								MaxWaiting:     cfg.StickySessionMaxWaiting,
 							})
@@ -2145,7 +2460,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				break
 			}
 
-			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, s.effectiveAccountConcurrency(selected.account))
 			if err == nil && result.Acquired {
 				// 会话数量限制检查
 				if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
@@ -2179,7 +2494,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
 			AccountID:      acc.ID,
-			MaxConcurrency: acc.Concurrency,
+			MaxConcurrency: s.effectiveAccountConcurrency(acc),
 			Timeout:        cfg.FallbackWaitTimeout,
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})
@@ -2192,7 +2507,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
 	for _, acc := range ordered {
-		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
+		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, s.effectiveAccountConcurrency(acc))
 		if err == nil && result.Acquired {
 			// 会话数量限制检查
 			if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
@@ -2514,6 +2829,65 @@ func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID in
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 }
 
+// effectiveAccountConcurrency 返回 acquire-slot 与 WaitPlan 应使用的并发上限。
+// 当 account.Concurrency == 0（admin 未显式覆盖）时回退到全局默认
+// gateway.account_default_concurrency；admin 显式设置时按设置值生效。
+//
+// 该方法是 P0-1 引入的"账号级硬限"安全垫的单一入口。所有计算
+// WaitPlan.MaxConcurrency 或调用 tryAcquireAccountSlot 的位置都应使用它，
+// 不要再直接读取 account.Concurrency。
+func (s *GatewayService) effectiveAccountConcurrency(account *Account) int {
+	fleetDefault := 0
+	if s != nil && s.cfg != nil {
+		fleetDefault = s.cfg.Gateway.AccountDefaultConcurrency
+	}
+	return account.EffectiveConcurrency(fleetDefault)
+}
+
+// effectiveAccountBaseRPM 返回账号实际生效的 RPM 上限（per-account 优先，
+// 全局默认 gateway.account_default_rpm 兜底）。
+func (s *GatewayService) effectiveAccountBaseRPM(account *Account) int {
+	fleetDefault := 0
+	if s != nil && s.cfg != nil {
+		fleetDefault = s.cfg.Gateway.AccountDefaultRPM
+	}
+	return account.EffectiveBaseRPM(fleetDefault)
+}
+
+// EffectiveAccountConcurrency 是 effectiveAccountConcurrency 的导出版本，
+// 供 handler / 其它包查询账号实际生效的并发上限。
+func (s *GatewayService) EffectiveAccountConcurrency(account *Account) int {
+	return s.effectiveAccountConcurrency(account)
+}
+
+// EffectiveAccountConcurrencyFromCfg 提供给同 service 包内、没有持有 *GatewayService
+// 的其它 service（Gemini/Antigravity/Ops 等）使用的辅助函数：从全局 *config.Config
+// 读取 gateway.account_default_concurrency 兜底，并与账号自身设置组合得到实际
+// 生效的并发上限。
+func EffectiveAccountConcurrencyFromCfg(cfg *config.Config, account *Account) int {
+	fleetDefault := 0
+	if cfg != nil {
+		fleetDefault = cfg.Gateway.AccountDefaultConcurrency
+	}
+	return account.EffectiveConcurrency(fleetDefault)
+}
+
+// EffectiveAccountBaseRPMFromCfg 是 RPM 版本的同名辅助函数。
+func EffectiveAccountBaseRPMFromCfg(cfg *config.Config, account *Account) int {
+	fleetDefault := 0
+	if cfg != nil {
+		fleetDefault = cfg.Gateway.AccountDefaultRPM
+	}
+	return account.EffectiveBaseRPM(fleetDefault)
+}
+
+// EffectiveAccountBaseRPM 是 effectiveAccountBaseRPM 的导出版本，
+// 供 handler 在做 RPM gating / 计数判定时使用，避免直接读取
+// account.GetBaseRPM() 而绕过全局兜底。
+func (s *GatewayService) EffectiveAccountBaseRPM(account *Account) int {
+	return s.effectiveAccountBaseRPM(account)
+}
+
 type usageLogWindowStatsBatchProvider interface {
 	GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error)
 }
@@ -2728,7 +3102,9 @@ func (s *GatewayService) withRPMPrefetch(ctx context.Context, accounts []Account
 
 	var ids []int64
 	for i := range accounts {
-		if accounts[i].IsAnthropicOAuthOrSetupToken() && accounts[i].GetBaseRPM() > 0 {
+		// P0-1：使用 effectiveAccountBaseRPM 兜底，确保即使账号未显式
+		// 配置 base_rpm，但全局 fleetDefault 启用时也会被预取并参与调度判定。
+		if accounts[i].IsAnthropicOAuthOrSetupToken() && s.effectiveAccountBaseRPM(&accounts[i]) > 0 {
 			ids = append(ids, accounts[i].ID)
 		}
 	}
@@ -2745,11 +3121,15 @@ func (s *GatewayService) withRPMPrefetch(ctx context.Context, accounts []Account
 
 // isAccountSchedulableForRPM 检查账号是否可根据 RPM 进行调度
 // 仅适用于 Anthropic OAuth/SetupToken 账号
+//
+// P0-1（2026-04 加固）：使用 effectiveAccountBaseRPM 而非 account.GetBaseRPM()，
+// 这样即便 admin 没有为某账号显式设置 base_rpm，也会按全局
+// gateway.account_default_rpm 兜底进行三区判定，而不是直接放行。
 func (s *GatewayService) isAccountSchedulableForRPM(ctx context.Context, account *Account, isSticky bool) bool {
 	if !account.IsAnthropicOAuthOrSetupToken() {
 		return true
 	}
-	baseRPM := account.GetBaseRPM()
+	baseRPM := s.effectiveAccountBaseRPM(account)
 	if baseRPM <= 0 {
 		return true
 	}
@@ -2765,7 +3145,7 @@ func (s *GatewayService) isAccountSchedulableForRPM(ctx context.Context, account
 		// 失败开放：GetRPM 错误时允许调度
 	}
 
-	schedulability := account.CheckRPMSchedulability(currentRPM)
+	schedulability := account.CheckRPMSchedulabilityWithLimit(currentRPM, baseRPM)
 	switch schedulability {
 	case WindowCostSchedulable:
 		return true
@@ -3155,6 +3535,10 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						clearSticky := shouldClearStickySession(account, requestedModel)
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+							// P0-2: Also clear long-term binding
+							if fp, _ := ctx.Value(ctxkey.PrefetchedProjectFP).(string); fp != "" {
+								s.DeleteLongTermBinding(ctx, fp, derefGroupID(groupID))
+							}
 						}
 						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
@@ -3274,6 +3658,10 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					clearSticky := shouldClearStickySession(account, requestedModel)
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+						// P0-2: Also clear long-term binding
+						if fp, _ := ctx.Value(ctxkey.PrefetchedProjectFP).(string); fp != "" {
+							s.DeleteLongTermBinding(ctx, fp, derefGroupID(groupID))
+						}
 					}
 					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
@@ -3413,6 +3801,10 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						clearSticky := shouldClearStickySession(account, requestedModel)
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+							// P0-2: Also clear long-term binding
+							if fp, _ := ctx.Value(ctxkey.PrefetchedProjectFP).(string); fp != "" {
+								s.DeleteLongTermBinding(ctx, fp, derefGroupID(groupID))
+							}
 						}
 						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
@@ -3534,6 +3926,10 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					clearSticky := shouldClearStickySession(account, requestedModel)
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+						// P0-2: Also clear long-term binding
+						if fp, _ := ctx.Value(ctxkey.PrefetchedProjectFP).(string); fp != "" {
+							s.DeleteLongTermBinding(ctx, fp, derefGroupID(groupID))
+						}
 					}
 					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
@@ -4186,7 +4582,9 @@ func rewriteSystemForNonClaudeCode(body []byte, system any) []byte {
 	//    billing block 的 cch=00000 是占位符，会被 buildUpstreamRequest 里的
 	//    signBillingHeaderCCH 替换成 xxhash64 签名。缺失 billing block 的系统 payload
 	//    是 Anthropic 判定第三方的关键信号之一（真实 CLI 每个请求都带）。
-	billingBlock, billingErr := buildBillingAttributionBlockJSON(body, claude.CLICurrentVersion)
+	// P1-2: 用运行时当前版本而非硬编码 const；syncBillingHeaderVersion 在
+	// 后续流程中会把 cc_version 进一步替换为该账号实际使用的（dithered）UA 版本。
+	billingBlock, billingErr := buildBillingAttributionBlockJSON(body, claude.GetCLICurrentVersion())
 	ccPromptBlock, ccErr := marshalAnthropicSystemTextBlock(claudeCodeSystemPrompt, true)
 	if billingErr != nil || ccErr != nil {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to build system blocks (billing=%v, cc=%v)", billingErr, ccErr)
@@ -4471,7 +4869,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
 		if s.identityService != nil {
-			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+			fp, err := s.identityService.GetOrCreateFingerprintForAccount(ctx, account, c.Request.Header)
 			if err == nil && fp != nil {
 				// metadata 透传开启时跳过 metadata 注入
 				_, mimicMPT, _ := s.settingService.GetGatewayForwardingSettings(ctx)
@@ -4576,7 +4974,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 
 		// 发送请求
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), tlsProfile)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -4658,7 +5056,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
-						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), tlsProfile)
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
 								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
@@ -4693,7 +5091,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
-										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, tlsProfile)
+										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, s.effectiveAccountConcurrency(account), tlsProfile)
 										if retryErr2 == nil {
 											resp = retryResp2
 											break
@@ -4772,7 +5170,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						budgetRetryReq, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 						releaseBudgetRetryCtx()
 						if buildErr == nil {
-							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), tlsProfile)
 							if retryErr == nil {
 								resp = budgetRetryResp
 								break
@@ -5078,7 +5476,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			return nil, err
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -5788,7 +6186,7 @@ func (s *GatewayService) executeBedrockUpstream(
 			return nil, err
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, nil)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), nil)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -6132,7 +6530,7 @@ func (s *GatewayService) executeVertexUpstream(
 			return nil, buildErr
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, nil)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), nil)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -6371,7 +6769,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
+		fp, err := s.identityService.GetOrCreateFingerprintForAccount(ctx, account, clientHeaders)
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Warning: failed to get fingerprint for account %d: %v", account.ID, err)
 			// 失败时降级为透传原始headers
@@ -9194,7 +9592,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	}
 
 	// 发送请求
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
@@ -9223,7 +9621,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		filteredBody := FilterThinkingBlocksForRetry(body)
 		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
 		if buildErr == nil {
-			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), s.tlsFPProfileService.ResolveTLSProfile(account))
 			if retryErr == nil {
 				resp = retryResp
 				respBody, err = ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
@@ -9315,7 +9713,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, s.effectiveAccountConcurrency(account), s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -9497,7 +9895,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	}
 	var ctFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
+		fp, err := s.identityService.GetOrCreateFingerprintForAccount(ctx, account, clientHeaders)
 		if err == nil {
 			ctFingerprint = fp
 			if !ctEnableMPT {

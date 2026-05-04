@@ -136,12 +136,17 @@ var DefaultAntigravityModelMapping = map[string]string{
 // 模型可用性按 region 不同；本表不区分 region，由账号 gcp_region 决定实际命中。
 // 若 region 不支持映射后的模型 ID，Vertex 会返回 404，调用方应在错误信息中提示。
 var DefaultVertexModelMapping = map[string]string{
-	// Claude Opus 4.x
+	// Claude Opus 4.x — 新模型使用 @default 版本，直接用模型名即可
+	"claude-opus-4-7":          "claude-opus-4-7",
+	"claude-opus-4-6":          "claude-opus-4-6",
+	"claude-opus-4-6-thinking": "claude-opus-4-6",
 	"claude-opus-4-1":          "claude-opus-4-1@20250805",
 	"claude-opus-4-1-20250805": "claude-opus-4-1@20250805",
 	"claude-opus-4":            "claude-opus-4@20250514",
 	"claude-opus-4-20250514":   "claude-opus-4@20250514",
-	// Claude Sonnet 4.x
+	// Claude Sonnet 4.x — 新模型使用 @default 版本，直接用模型名即可
+	"claude-sonnet-4-6":          "claude-sonnet-4-6",
+	"claude-sonnet-4-6-thinking": "claude-sonnet-4-6",
 	"claude-sonnet-4-5":          "claude-sonnet-4-5@20250929",
 	"claude-sonnet-4-5-thinking": "claude-sonnet-4-5@20250929",
 	"claude-sonnet-4-5-20250929": "claude-sonnet-4-5@20250929",

@@ -17,6 +17,9 @@ func RegisterAdminRoutes(
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
 	{
+		// 运行时指标（JSON / Prometheus text）
+		admin.GET("/metrics", h.Admin.Dashboard.GetRuntimeMetrics)
+
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
 

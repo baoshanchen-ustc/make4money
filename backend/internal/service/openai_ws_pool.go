@@ -1564,19 +1564,23 @@ func (p *openAIWSConnPool) effectiveMaxConnsByAccount(account *Account) int {
 	if hardCap <= 0 {
 		return 0
 	}
+	// P0-1：使用 EffectiveAccountConcurrencyFromCfg 兜底，让 admin 未显式设置
+	// account.Concurrency 但开启了全局 gateway.account_default_concurrency 的账号
+	// 也能拿到合理的连接池上限。
+	accConc := EffectiveAccountConcurrencyFromCfg(p.cfg, account)
 	if p.modeRouterV2Enabled() {
 		if account == nil {
 			return hardCap
 		}
-		if account.Concurrency <= 0 {
+		if accConc <= 0 {
 			return 0
 		}
-		return account.Concurrency
+		return accConc
 	}
 	if account == nil || !p.dynamicMaxConnsEnabled() {
 		return hardCap
 	}
-	if account.Concurrency <= 0 {
+	if accConc <= 0 {
 		// 0/-1 等“无限制”并发场景下，仍由全局硬上限兜底。
 		return hardCap
 	}
@@ -1584,7 +1588,7 @@ func (p *openAIWSConnPool) effectiveMaxConnsByAccount(account *Account) int {
 	if factor <= 0 {
 		factor = 1.0
 	}
-	effective := int(math.Ceil(float64(account.Concurrency) * factor))
+	effective := int(math.Ceil(float64(accConc) * factor))
 	if effective < 1 {
 		effective = 1
 	}

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -84,13 +85,60 @@ func NewIdentityService(cache IdentityCache) *IdentityService {
 //   - 缓存存在且 UA 仍是 claude-cli → 走原升级合并逻辑
 //   - 缓存存在但 UA 被污染 (非 claude-cli) → 丢弃并重建
 //   - 缓存不存在 → 从当前请求头创建并落盘
+//
+// Deprecated: 使用 GetOrCreateFingerprintForAccount，它支持 P1-1 的 per-account
+// registration fingerprint。本方法保留向后兼容，对非 CC 客户端走 defaultFingerprint。
 func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID int64, headers http.Header) (*Fingerprint, error) {
+	return s.getOrCreateFingerprintInternal(ctx, accountID, nil, headers)
+}
+
+// GetOrCreateFingerprintForAccount 获取或创建账号的指纹 (P1-1)。
+//
+// 与 GetOrCreateFingerprint 的关键区别：对非 claude-cli 客户端，会从 account.Extra 中
+// 读取 registration_fingerprint 并覆盖 OS/Arch 字段。这样一个 macOS 浏览器注册的账号
+// 即使被 OpenClaw 等非 CC 客户端使用，对外报告的 x-stainless-os 仍然是 MacOS，与
+// Anthropic OAuth 流程记录的设备特征一致。
+//
+// 对 claude-cli 客户端，行为与 GetOrCreateFingerprint 完全一致（registration fp 被忽略，
+// 因为 CC 客户端有自己的真实 stainless headers）。
+func (s *IdentityService) GetOrCreateFingerprintForAccount(ctx context.Context, account *Account, headers http.Header) (*Fingerprint, error) {
+	if account == nil {
+		return s.getOrCreateFingerprintInternal(ctx, 0, nil, headers)
+	}
+	return s.getOrCreateFingerprintInternal(ctx, account.ID, account, headers)
+}
+
+// getOrCreateFingerprintInternal 是 GetOrCreateFingerprint 和 GetOrCreateFingerprintForAccount
+// 的公共实现。account 可以为 nil（旧 API 调用方）；非 nil 时启用 registration_fingerprint。
+func (s *IdentityService) getOrCreateFingerprintInternal(ctx context.Context, accountID int64, account *Account, headers http.Header) (*Fingerprint, error) {
 	clientUA := headers.Get("User-Agent")
 
 	// 非 claude-cli 客户端: 每次返回 defaultFingerprint 副本 (带随机 ClientID),
 	// 不读不写共享缓存,防止跨客户端污染。
+	// P1-1: 优先使用 account.Extra 中的 registration_fingerprint 覆盖 OS/Arch。
+	// P1-2: 使用 PickCLIVersionForAccount 做 per-account 版本扰动（75/20/5 latest/N-1/N-2）。
 	if !claudeCliUserAgentRe.MatchString(clientUA) {
 		fp := defaultFingerprint
+		if account != nil {
+			// P1-2: 用账号 ID 稳定地从 cli_recent_versions 中选一个版本号，
+			// 避免所有 OAuth 账号在同一时刻被打上完全一致的 UA 指纹。
+			if v := PickCLIVersionForAccount(account.ID); v != "" {
+				fp.UserAgent = claude.BuildUserAgentForVersion(v)
+			}
+			if regFp := GetRegistrationFingerprint(account); regFp != nil {
+				if regFp.OS != "" {
+					fp.StainlessOS = regFp.OS
+				}
+				if regFp.Arch != "" {
+					fp.StainlessArch = regFp.Arch
+				}
+				// runtime/runtime_version 故意保持 default (node/v22.11.0)，因为我们要
+				// mimic Claude CLI；浏览器真实 runtime 反而会暴露代理身份。
+			}
+		} else {
+			// 无 account 时（旧 API 兼容），使用全局当前版本。
+			fp.UserAgent = claude.BuildUserAgentForVersion(claude.GetCLICurrentVersion())
+		}
 		fp.ClientID = generateClientID()
 		fp.UpdatedAt = time.Now().Unix()
 		return &fp, nil
@@ -336,13 +384,22 @@ func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []b
 	if maskedSessionID == "" {
 		// 首次或已过期，生成新的伪装 session ID
 		maskedSessionID = generateRandomUUID()
-		
-		// 结合真实客户端模式：不应无限期续订会话，随机生成 30～285 分钟（最高不到 5 小时）生命周期。
-		// 让其自然过期，避免账号变成 7x24 小时不间断通话的僵尸特征。
+
+		// TTL 选型理由（2026-04 调整）：
+		// 旧值是 30～285 分钟（< 5h），平均 ~2.6h。这个分布会让上游看到的
+		// metadata.user_id session 段平均每 2-3 小时就翻新一次 → 像"用户在反复
+		// 启停 CLI"，本身就是合流账号的特征之一（真实重度用户单个 IDE session
+		// 一般持续半个工作日：4-10 小时）。
+		//
+		// 改为 240～600 分钟（4-10h），平均 ~7h，匹配真实 IDE workday 形态。
+		// 上限 10h 避免 24/7 不间断的僵尸会话特征；下限 4h 保证短工作日也合理。
+		// 256 个桶（uint8）映射到 360 分钟跨度 ≈ 每桶 84 秒，足够分散。
 		b := make([]byte, 1)
 		_, _ = rand.Read(b)
-		ttl := time.Duration(30+int(b[0])) * time.Minute
-		
+		const minMinutes = 240
+		const spanMinutes = 360 // [240, 600] minutes = 4–10 h
+		ttl := time.Duration(minMinutes+int(b[0])*spanMinutes/256) * time.Minute
+
 		if err := s.cache.SetMaskedSessionID(ctx, account.ID, maskedSessionID, ttl); err != nil {
 			logger.LegacyPrintf("service.identity", "Warning: failed to set masked session ID for account %d: %v", account.ID, err)
 		}

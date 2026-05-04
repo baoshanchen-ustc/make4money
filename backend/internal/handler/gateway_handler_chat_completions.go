@@ -158,7 +158,13 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
 	// 3. Account selection + failover loop
-	fs := NewFailoverState(h.maxAccountSwitches, false)
+	fs := newFailoverStateWithGatewayFanout(
+		h.maxAccountSwitches,
+		false,
+		sessionHash,
+		apiKey.GroupID,
+		h.gatewayService,
+	)
 
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))

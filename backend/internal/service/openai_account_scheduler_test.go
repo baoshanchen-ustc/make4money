@@ -149,6 +149,19 @@ func (c *schedulerTestGatewayCache) DeleteSessionAccountID(ctx context.Context, 
 	return nil
 }
 
+// P0-3: Fanout limiting stubs
+func (c *schedulerTestGatewayCache) RecordSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	return nil
+}
+
+func (c *schedulerTestGatewayCache) GetSessionAccountFanoutCount(ctx context.Context, groupID int64, sessionHash string) (int, error) {
+	return 0, nil
+}
+
+func (c *schedulerTestGatewayCache) DeleteSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string) error {
+	return nil
+}
+
 func newSchedulerTestOpenAIWSV2Config() *config.Config {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.Enabled = true

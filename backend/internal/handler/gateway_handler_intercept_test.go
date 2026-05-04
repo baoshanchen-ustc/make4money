@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -62,4 +63,23 @@ func TestSendMockInterceptResponse_MaxTokensOneHaiku(t *testing.T) {
 	usage, ok := response["usage"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, float64(1), usage["output_tokens"])
+}
+
+func TestClaudeProbeDedupCache_DeduplicatesWithinTTL(t *testing.T) {
+	now := time.Date(2026, 5, 2, 5, 0, 0, 0, time.UTC)
+	cache := newClaudeProbeDedupCache(time.Minute)
+	cache.now = func() time.Time { return now }
+
+	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1}`)
+
+	require.False(t, cache.SeenOrStore(11, 22, "claude-haiku-4-5", body))
+	require.True(t, cache.SeenOrStore(11, 22, "claude-haiku-4-5", body))
+
+	require.False(t, cache.SeenOrStore(12, 22, "claude-haiku-4-5", body), "api key must isolate probe cache")
+	require.False(t, cache.SeenOrStore(11, 23, "claude-haiku-4-5", body), "group must isolate probe cache")
+	require.False(t, cache.SeenOrStore(11, 22, "claude-haiku-4-5-20251001", body), "model must isolate probe cache")
+	require.False(t, cache.SeenOrStore(11, 22, "claude-haiku-4-5", []byte(`{"model":"claude-haiku-4-5","max_tokens":1,"metadata":{"user_id":"other"}}`)), "body hash must isolate probe cache")
+
+	now = now.Add(61 * time.Second)
+	require.False(t, cache.SeenOrStore(11, 22, "claude-haiku-4-5", body), "expired probes should be treated as new")
 }

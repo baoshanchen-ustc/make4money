@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -19,14 +20,20 @@ import (
 type DashboardHandler struct {
 	dashboardService   *service.DashboardService
 	aggregationService *service.DashboardAggregationService
+	bindingRepo        service.UserAccountBindingRepository
 	startTime          time.Time // Server start time for uptime calculation
 }
 
 // NewDashboardHandler creates a new admin dashboard handler
-func NewDashboardHandler(dashboardService *service.DashboardService, aggregationService *service.DashboardAggregationService) *DashboardHandler {
+func NewDashboardHandler(
+	dashboardService *service.DashboardService,
+	aggregationService *service.DashboardAggregationService,
+	bindingRepo service.UserAccountBindingRepository,
+) *DashboardHandler {
 	return &DashboardHandler{
 		dashboardService:   dashboardService,
 		aggregationService: aggregationService,
+		bindingRepo:        bindingRepo,
 		startTime:          time.Now(),
 	}
 }
@@ -185,6 +192,70 @@ func (h *DashboardHandler) GetRealtimeMetrics(c *gin.Context) {
 		"average_response_time": 0,
 		"error_rate":            0.0,
 	})
+}
+
+// GetRuntimeMetrics exposes in-process runtime counters.
+// GET /api/v1/admin/metrics
+// Add ?format=prometheus to return Prometheus text exposition.
+func (h *DashboardHandler) GetRuntimeMetrics(c *gin.Context) {
+	ltb := service.SnapshotLongTermBindingMetrics()
+	accountUserFanout, fanoutErr := h.snapshotAccountUserFanout(c)
+	if strings.EqualFold(strings.TrimSpace(c.Query("format")), "prometheus") {
+		c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		c.String(200, formatRuntimeMetricsPrometheus(ltb, accountUserFanout))
+		return
+	}
+
+	data := gin.H{
+		"long_term_binding": ltb,
+	}
+	if accountUserFanout != nil {
+		data["account_user_fanout"] = accountUserFanout
+	}
+	if fanoutErr != nil {
+		data["account_user_fanout_available"] = false
+	}
+	response.Success(c, data)
+}
+
+func (h *DashboardHandler) snapshotAccountUserFanout(c *gin.Context) (*service.AccountUserFanoutSnapshot, error) {
+	if h == nil || h.bindingRepo == nil {
+		return nil, nil
+	}
+	return h.bindingRepo.SnapshotAccountUserFanout(c.Request.Context())
+}
+
+func formatRuntimeMetricsPrometheus(m service.LongTermBindingMetricsSnapshot, fanout *service.AccountUserFanoutSnapshot) string {
+	var b strings.Builder
+	writeMetric := func(name, help string, value any) {
+		fmt.Fprintf(&b, "# HELP %s %s\n", name, help)
+		fmt.Fprintf(&b, "# TYPE %s counter\n", name)
+		fmt.Fprintf(&b, "%s %v\n", name, value)
+	}
+
+	writeMetric("sub2api_long_term_binding_resolve_hit_total", "Long-term binding resolve hits.", m.ResolveHitTotal)
+	writeMetric("sub2api_long_term_binding_resolve_miss_total", "Long-term binding resolve misses.", m.ResolveMissTotal)
+	writeMetric("sub2api_long_term_binding_resolve_expired_total", "Long-term binding resolves that found expired bindings.", m.ResolveExpiredTotal)
+	writeMetric("sub2api_long_term_binding_write_first_total", "Long-term binding first writes.", m.WriteFirstTotal)
+	writeMetric("sub2api_long_term_binding_write_rebind_total", "Long-term binding writes that changed account ID.", m.WriteRebindTotal)
+	writeMetric("sub2api_long_term_binding_write_refresh_total", "Long-term binding writes that refreshed an existing account binding.", m.WriteRefreshTotal)
+	writeMetric("sub2api_long_term_binding_write_skipped_total", "Long-term binding writes skipped by disabled settings, invalid input, or unstable thresholds.", m.WriteSkippedTotal)
+	writeMetric("sub2api_long_term_binding_delete_total", "Long-term binding deletes.", m.DeleteTotal)
+	fmt.Fprintf(&b, "# HELP sub2api_long_term_binding_hit_rate Long-term binding resolve hit rate.\n")
+	fmt.Fprintf(&b, "# TYPE sub2api_long_term_binding_hit_rate gauge\n")
+	fmt.Fprintf(&b, "sub2api_long_term_binding_hit_rate %g\n", m.HitRate)
+	if fanout != nil {
+		fmt.Fprintf(&b, "# HELP sub2api_account_user_fanout_account_count Accounts with active long-term bindings.\n")
+		fmt.Fprintf(&b, "# TYPE sub2api_account_user_fanout_account_count gauge\n")
+		fmt.Fprintf(&b, "sub2api_account_user_fanout_account_count %d\n", fanout.AccountCount)
+		fmt.Fprintf(&b, "# HELP sub2api_account_user_fanout_external_users_p95 P95 downstream users/projects per upstream account.\n")
+		fmt.Fprintf(&b, "# TYPE sub2api_account_user_fanout_external_users_p95 gauge\n")
+		fmt.Fprintf(&b, "sub2api_account_user_fanout_external_users_p95 %g\n", fanout.ExternalUsersP95)
+		fmt.Fprintf(&b, "# HELP sub2api_account_user_fanout_external_users_max Max downstream users/projects per upstream account.\n")
+		fmt.Fprintf(&b, "# TYPE sub2api_account_user_fanout_external_users_max gauge\n")
+		fmt.Fprintf(&b, "sub2api_account_user_fanout_external_users_max %d\n", fanout.ExternalUsersMax)
+	}
+	return b.String()
 }
 
 // GetUsageTrend handles getting usage trend data

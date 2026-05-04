@@ -45,6 +45,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/useraccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
@@ -118,6 +119,8 @@ type Client struct {
 	UsageLog *UsageLogClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// UserAccountBinding is the client for interacting with the UserAccountBinding builders.
+	UserAccountBinding *UserAccountBindingClient
 	// UserAllowedGroup is the client for interacting with the UserAllowedGroup builders.
 	UserAllowedGroup *UserAllowedGroupClient
 	// UserAttributeDefinition is the client for interacting with the UserAttributeDefinition builders.
@@ -167,6 +170,7 @@ func (c *Client) init() {
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
 	c.User = NewUserClient(c.config)
+	c.UserAccountBinding = NewUserAccountBindingClient(c.config)
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
@@ -293,6 +297,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
 		UsageLog:                      NewUsageLogClient(cfg),
 		User:                          NewUserClient(cfg),
+		UserAccountBinding:            NewUserAccountBindingClient(cfg),
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
@@ -346,6 +351,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
 		UsageLog:                      NewUsageLogClient(cfg),
 		User:                          NewUserClient(cfg),
+		UserAccountBinding:            NewUserAccountBindingClient(cfg),
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
@@ -387,8 +393,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.User, c.UserAccountBinding, c.UserAllowedGroup, c.UserAttributeDefinition,
+		c.UserAttributeValue, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -406,8 +412,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.User, c.UserAccountBinding, c.UserAllowedGroup, c.UserAttributeDefinition,
+		c.UserAttributeValue, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -476,6 +482,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UsageLog.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
+	case *UserAccountBindingMutation:
+		return c.UserAccountBinding.mutate(ctx, m)
 	case *UserAllowedGroupMutation:
 		return c.UserAllowedGroup.mutate(ctx, m)
 	case *UserAttributeDefinitionMutation:
@@ -5384,6 +5392,139 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 	}
 }
 
+// UserAccountBindingClient is a client for the UserAccountBinding schema.
+type UserAccountBindingClient struct {
+	config
+}
+
+// NewUserAccountBindingClient returns a client for the UserAccountBinding from the given config.
+func NewUserAccountBindingClient(c config) *UserAccountBindingClient {
+	return &UserAccountBindingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `useraccountbinding.Hooks(f(g(h())))`.
+func (c *UserAccountBindingClient) Use(hooks ...Hook) {
+	c.hooks.UserAccountBinding = append(c.hooks.UserAccountBinding, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `useraccountbinding.Intercept(f(g(h())))`.
+func (c *UserAccountBindingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserAccountBinding = append(c.inters.UserAccountBinding, interceptors...)
+}
+
+// Create returns a builder for creating a UserAccountBinding entity.
+func (c *UserAccountBindingClient) Create() *UserAccountBindingCreate {
+	mutation := newUserAccountBindingMutation(c.config, OpCreate)
+	return &UserAccountBindingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserAccountBinding entities.
+func (c *UserAccountBindingClient) CreateBulk(builders ...*UserAccountBindingCreate) *UserAccountBindingCreateBulk {
+	return &UserAccountBindingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserAccountBindingClient) MapCreateBulk(slice any, setFunc func(*UserAccountBindingCreate, int)) *UserAccountBindingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserAccountBindingCreateBulk{err: fmt.Errorf("calling to UserAccountBindingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserAccountBindingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserAccountBindingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserAccountBinding.
+func (c *UserAccountBindingClient) Update() *UserAccountBindingUpdate {
+	mutation := newUserAccountBindingMutation(c.config, OpUpdate)
+	return &UserAccountBindingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserAccountBindingClient) UpdateOne(_m *UserAccountBinding) *UserAccountBindingUpdateOne {
+	mutation := newUserAccountBindingMutation(c.config, OpUpdateOne, withUserAccountBinding(_m))
+	return &UserAccountBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserAccountBindingClient) UpdateOneID(id int64) *UserAccountBindingUpdateOne {
+	mutation := newUserAccountBindingMutation(c.config, OpUpdateOne, withUserAccountBindingID(id))
+	return &UserAccountBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserAccountBinding.
+func (c *UserAccountBindingClient) Delete() *UserAccountBindingDelete {
+	mutation := newUserAccountBindingMutation(c.config, OpDelete)
+	return &UserAccountBindingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserAccountBindingClient) DeleteOne(_m *UserAccountBinding) *UserAccountBindingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserAccountBindingClient) DeleteOneID(id int64) *UserAccountBindingDeleteOne {
+	builder := c.Delete().Where(useraccountbinding.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserAccountBindingDeleteOne{builder}
+}
+
+// Query returns a query builder for UserAccountBinding.
+func (c *UserAccountBindingClient) Query() *UserAccountBindingQuery {
+	return &UserAccountBindingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserAccountBinding},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserAccountBinding entity by its id.
+func (c *UserAccountBindingClient) Get(ctx context.Context, id int64) (*UserAccountBinding, error) {
+	return c.Query().Where(useraccountbinding.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserAccountBindingClient) GetX(ctx context.Context, id int64) *UserAccountBinding {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *UserAccountBindingClient) Hooks() []Hook {
+	return c.hooks.UserAccountBinding
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserAccountBindingClient) Interceptors() []Interceptor {
+	return c.inters.UserAccountBinding
+}
+
+func (c *UserAccountBindingClient) mutate(ctx context.Context, m *UserAccountBindingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserAccountBindingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserAccountBindingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserAccountBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserAccountBindingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserAccountBinding mutation op: %q", m.Op())
+	}
+}
+
 // UserAllowedGroupClient is a client for the UserAllowedGroup schema.
 type UserAllowedGroupClient struct {
 	config
@@ -6024,8 +6165,9 @@ type (
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAccountBinding,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -6034,8 +6176,9 @@ type (
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAccountBinding,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserSubscription []ent.Interceptor
 	}
 )
 

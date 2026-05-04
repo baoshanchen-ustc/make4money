@@ -10,6 +10,7 @@ import (
 )
 
 const stickySessionPrefix = "sticky_session:"
+const sessionFanoutPrefix = "session_fanout:"
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -49,5 +50,38 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 // or unschedulable), allowing subsequent requests to select a new available account.
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
+	return c.rdb.Del(ctx, key).Err()
+}
+
+// buildFanoutKey 构建 fanout key，用于 P0-3 反扫荡
+// 格式: session_fanout:{groupID}:{sessionHash}
+func buildFanoutKey(groupID int64, sessionHash string) string {
+	return fmt.Sprintf("%s%d:%s", sessionFanoutPrefix, groupID, sessionHash)
+}
+
+// RecordSessionAccountFanout 记录会话触达的账号到 Redis Set（P0-3 反扫荡）。
+// 使用 SADD 确保同一账号被多次重试时不会重复计数。
+func (c *gatewayCache) RecordSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	key := buildFanoutKey(groupID, sessionHash)
+	pipe := c.rdb.Pipeline()
+	pipe.SAdd(ctx, key, accountID)
+	pipe.Expire(ctx, key, ttl)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+// GetSessionAccountFanoutCount 获取会话已触达的不同账号数。
+func (c *gatewayCache) GetSessionAccountFanoutCount(ctx context.Context, groupID int64, sessionHash string) (int, error) {
+	key := buildFanoutKey(groupID, sessionHash)
+	count, err := c.rdb.SCard(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+// DeleteSessionAccountFanout 清除会话的 fanout 记录。
+func (c *gatewayCache) DeleteSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string) error {
+	key := buildFanoutKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()
 }

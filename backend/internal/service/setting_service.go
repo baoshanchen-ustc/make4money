@@ -1199,6 +1199,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, fmt.Errorf("marshal default subscriptions: %w", err)
 	}
 	updates[SettingKeyDefaultSubscriptions] = string(defaultSubsJSON)
+	normalizeAccountSharingHardeningSettings(settings)
+	updates[SettingKeyGatewayAccountDefaultConcurrency] = strconv.Itoa(settings.AccountDefaultConcurrency)
+	updates[SettingKeyGatewayAccountDefaultRPM] = strconv.Itoa(settings.AccountDefaultRPM)
+	updates[SettingKeyGatewayLongTermBindingTTLDays] = strconv.Itoa(settings.LongTermBindingTTLDays)
+	updates[SettingKeyGatewayLongTermBindingCleanupIntervalSeconds] = strconv.Itoa(settings.LongTermBindingCleanupIntervalSeconds)
+	updates[SettingKeyGatewaySessionAccountFanoutLimit] = strconv.Itoa(settings.SessionAccountFanoutLimit)
+	updates[SettingKeyGatewaySessionAccountFanoutWindowSec] = strconv.Itoa(settings.SessionAccountFanoutWindowSec)
+	updates[SettingKeyGatewayBoundSessionSwitchJitterMinMs] = strconv.Itoa(settings.BoundSessionSwitchJitterMinMs)
+	updates[SettingKeyGatewayBoundSessionSwitchJitterMaxMs] = strconv.Itoa(settings.BoundSessionSwitchJitterMaxMs)
 
 	// Model fallback configuration
 	updates[SettingKeyEnableModelFallback] = strconv.FormatBool(settings.EnableModelFallback)
@@ -1291,6 +1300,17 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if settings == nil {
 		return
 	}
+	if s.cfg != nil {
+		normalizeAccountSharingHardeningSettings(settings)
+		s.cfg.Gateway.AccountDefaultConcurrency = settings.AccountDefaultConcurrency
+		s.cfg.Gateway.AccountDefaultRPM = settings.AccountDefaultRPM
+		s.cfg.Gateway.LongTermBindingTTLDays = settings.LongTermBindingTTLDays
+		s.cfg.Gateway.LongTermBindingCleanupIntervalSeconds = settings.LongTermBindingCleanupIntervalSeconds
+		s.cfg.Gateway.SessionAccountFanoutLimit = settings.SessionAccountFanoutLimit
+		s.cfg.Gateway.SessionAccountFanoutWindowSec = settings.SessionAccountFanoutWindowSec
+		s.cfg.Gateway.BoundSessionSwitchJitterMinMs = settings.BoundSessionSwitchJitterMinMs
+		s.cfg.Gateway.BoundSessionSwitchJitterMaxMs = settings.BoundSessionSwitchJitterMaxMs
+	}
 
 	// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 	versionBoundsSF.Forget("version_bounds")
@@ -1319,6 +1339,41 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}
+}
+
+func normalizeAccountSharingHardeningSettings(settings *SystemSettings) {
+	if settings == nil {
+		return
+	}
+	settings.AccountDefaultConcurrency = nonNegativeInt(settings.AccountDefaultConcurrency)
+	settings.AccountDefaultRPM = nonNegativeInt(settings.AccountDefaultRPM)
+	settings.LongTermBindingTTLDays = nonNegativeInt(settings.LongTermBindingTTLDays)
+	settings.LongTermBindingCleanupIntervalSeconds = nonNegativeInt(settings.LongTermBindingCleanupIntervalSeconds)
+	settings.SessionAccountFanoutLimit = nonNegativeInt(settings.SessionAccountFanoutLimit)
+	settings.SessionAccountFanoutWindowSec = nonNegativeInt(settings.SessionAccountFanoutWindowSec)
+	settings.BoundSessionSwitchJitterMinMs = nonNegativeInt(settings.BoundSessionSwitchJitterMinMs)
+	settings.BoundSessionSwitchJitterMaxMs = nonNegativeInt(settings.BoundSessionSwitchJitterMaxMs)
+}
+
+func nonNegativeInt(v int) int {
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
+func parseNonNegativeIntSetting(raw string, fallback int) int {
+	if v, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+		return nonNegativeInt(v)
+	}
+	return nonNegativeInt(fallback)
+}
+
+func gatewayConfigValue(cfg *config.Config, pick func(config.GatewayConfig) int) int {
+	if cfg == nil {
+		return 0
+	}
+	return pick(cfg.Gateway)
 }
 
 func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, items []DefaultSubscriptionSetting) error {
@@ -1807,87 +1862,95 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 	// 初始化默认设置
 	defaults := map[string]string{
-		SettingKeyRegistrationEnabled:                      "true",
-		SettingKeyEmailVerifyEnabled:                       "false",
-		SettingKeyRegistrationEmailSuffixWhitelist:         "[]",
-		SettingKeyPromoCodeEnabled:                         "true", // 默认启用优惠码功能
-		SettingKeySiteName:                                 "Sub2API",
-		SettingKeySiteLogo:                                 "",
-		SettingKeyPurchaseSubscriptionEnabled:              "false",
-		SettingKeyPurchaseSubscriptionURL:                  "",
-		SettingKeyTableDefaultPageSize:                     "20",
-		SettingKeyTablePageSizeOptions:                     "[10,20,50,100]",
-		SettingKeyCustomMenuItems:                          "[]",
-		SettingKeyCustomEndpoints:                          "[]",
-		SettingKeyWeChatConnectEnabled:                     "false",
-		SettingKeyWeChatConnectAppID:                       "",
-		SettingKeyWeChatConnectAppSecret:                   "",
-		SettingKeyWeChatConnectOpenAppID:                   "",
-		SettingKeyWeChatConnectOpenAppSecret:               "",
-		SettingKeyWeChatConnectMPAppID:                     "",
-		SettingKeyWeChatConnectMPAppSecret:                 "",
-		SettingKeyWeChatConnectMobileAppID:                 "",
-		SettingKeyWeChatConnectMobileAppSecret:             "",
-		SettingKeyWeChatConnectOpenEnabled:                 "false",
-		SettingKeyWeChatConnectMPEnabled:                   "false",
-		SettingKeyWeChatConnectMobileEnabled:               "false",
-		SettingKeyWeChatConnectMode:                        "open",
-		SettingKeyWeChatConnectScopes:                      "snsapi_login",
-		SettingKeyWeChatConnectRedirectURL:                 "",
-		SettingKeyWeChatConnectFrontendRedirectURL:         defaultWeChatConnectFrontend,
-		SettingKeyOIDCConnectEnabled:                       "false",
-		SettingKeyOIDCConnectProviderName:                  "OIDC",
-		SettingKeyOIDCConnectClientID:                      "",
-		SettingKeyOIDCConnectClientSecret:                  "",
-		SettingKeyOIDCConnectIssuerURL:                     "",
-		SettingKeyOIDCConnectDiscoveryURL:                  "",
-		SettingKeyOIDCConnectAuthorizeURL:                  "",
-		SettingKeyOIDCConnectTokenURL:                      "",
-		SettingKeyOIDCConnectUserInfoURL:                   "",
-		SettingKeyOIDCConnectJWKSURL:                       "",
-		SettingKeyOIDCConnectScopes:                        "openid email profile",
-		SettingKeyOIDCConnectRedirectURL:                   "",
-		SettingKeyOIDCConnectFrontendRedirectURL:           "/auth/oidc/callback",
-		SettingKeyOIDCConnectTokenAuthMethod:               "client_secret_post",
-		SettingKeyOIDCConnectUsePKCE:                       strconv.FormatBool(oidcUsePKCEDefault),
-		SettingKeyOIDCConnectValidateIDToken:               strconv.FormatBool(oidcValidateIDTokenDefault),
-		SettingKeyOIDCConnectAllowedSigningAlgs:            "RS256,ES256,PS256",
-		SettingKeyOIDCConnectClockSkewSeconds:              "120",
-		SettingKeyOIDCConnectRequireEmailVerified:          "false",
-		SettingKeyOIDCConnectUserInfoEmailPath:             "",
-		SettingKeyOIDCConnectUserInfoIDPath:                "",
-		SettingKeyOIDCConnectUserInfoUsernamePath:          "",
-		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
-		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
-		SettingKeyAffiliateRebateRate:                      strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
-		SettingKeyAffiliateRebateFreezeHours:               strconv.Itoa(AffiliateRebateFreezeHoursDefault),
-		SettingKeyAffiliateRebateDurationDays:              strconv.Itoa(AffiliateRebateDurationDaysDefault),
-		SettingKeyAffiliateRebatePerInviteeCap:             strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
-		SettingKeyDefaultUserRPMLimit:                      "0",
-		SettingKeyDefaultSubscriptions:                     "[]",
-		SettingKeyAuthSourceDefaultEmailBalance:            "0",
-		SettingKeyAuthSourceDefaultEmailConcurrency:        "5",
-		SettingKeyAuthSourceDefaultEmailSubscriptions:      "[]",
-		SettingKeyAuthSourceDefaultEmailGrantOnSignup:      "false",
-		SettingKeyAuthSourceDefaultEmailGrantOnFirstBind:   "false",
-		SettingKeyAuthSourceDefaultLinuxDoBalance:          "0",
-		SettingKeyAuthSourceDefaultLinuxDoConcurrency:      "5",
-		SettingKeyAuthSourceDefaultLinuxDoSubscriptions:    "[]",
-		SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup:    "false",
-		SettingKeyAuthSourceDefaultLinuxDoGrantOnFirstBind: "false",
-		SettingKeyAuthSourceDefaultOIDCBalance:             "0",
-		SettingKeyAuthSourceDefaultOIDCConcurrency:         "5",
-		SettingKeyAuthSourceDefaultOIDCSubscriptions:       "[]",
-		SettingKeyAuthSourceDefaultOIDCGrantOnSignup:       "false",
-		SettingKeyAuthSourceDefaultOIDCGrantOnFirstBind:    "false",
-		SettingKeyAuthSourceDefaultWeChatBalance:           "0",
-		SettingKeyAuthSourceDefaultWeChatConcurrency:       "5",
-		SettingKeyAuthSourceDefaultWeChatSubscriptions:     "[]",
-		SettingKeyAuthSourceDefaultWeChatGrantOnSignup:     "false",
-		SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind:  "false",
-		SettingKeyForceEmailOnThirdPartySignup:             "false",
-		SettingKeySMTPPort:                                 "587",
-		SettingKeySMTPUseTLS:                               "false",
+		SettingKeyRegistrationEnabled:                          "true",
+		SettingKeyEmailVerifyEnabled:                           "false",
+		SettingKeyRegistrationEmailSuffixWhitelist:             "[]",
+		SettingKeyPromoCodeEnabled:                             "true", // 默认启用优惠码功能
+		SettingKeySiteName:                                     "Sub2API",
+		SettingKeySiteLogo:                                     "",
+		SettingKeyPurchaseSubscriptionEnabled:                  "false",
+		SettingKeyPurchaseSubscriptionURL:                      "",
+		SettingKeyTableDefaultPageSize:                         "20",
+		SettingKeyTablePageSizeOptions:                         "[10,20,50,100]",
+		SettingKeyCustomMenuItems:                              "[]",
+		SettingKeyCustomEndpoints:                              "[]",
+		SettingKeyWeChatConnectEnabled:                         "false",
+		SettingKeyWeChatConnectAppID:                           "",
+		SettingKeyWeChatConnectAppSecret:                       "",
+		SettingKeyWeChatConnectOpenAppID:                       "",
+		SettingKeyWeChatConnectOpenAppSecret:                   "",
+		SettingKeyWeChatConnectMPAppID:                         "",
+		SettingKeyWeChatConnectMPAppSecret:                     "",
+		SettingKeyWeChatConnectMobileAppID:                     "",
+		SettingKeyWeChatConnectMobileAppSecret:                 "",
+		SettingKeyWeChatConnectOpenEnabled:                     "false",
+		SettingKeyWeChatConnectMPEnabled:                       "false",
+		SettingKeyWeChatConnectMobileEnabled:                   "false",
+		SettingKeyWeChatConnectMode:                            "open",
+		SettingKeyWeChatConnectScopes:                          "snsapi_login",
+		SettingKeyWeChatConnectRedirectURL:                     "",
+		SettingKeyWeChatConnectFrontendRedirectURL:             defaultWeChatConnectFrontend,
+		SettingKeyOIDCConnectEnabled:                           "false",
+		SettingKeyOIDCConnectProviderName:                      "OIDC",
+		SettingKeyOIDCConnectClientID:                          "",
+		SettingKeyOIDCConnectClientSecret:                      "",
+		SettingKeyOIDCConnectIssuerURL:                         "",
+		SettingKeyOIDCConnectDiscoveryURL:                      "",
+		SettingKeyOIDCConnectAuthorizeURL:                      "",
+		SettingKeyOIDCConnectTokenURL:                          "",
+		SettingKeyOIDCConnectUserInfoURL:                       "",
+		SettingKeyOIDCConnectJWKSURL:                           "",
+		SettingKeyOIDCConnectScopes:                            "openid email profile",
+		SettingKeyOIDCConnectRedirectURL:                       "",
+		SettingKeyOIDCConnectFrontendRedirectURL:               "/auth/oidc/callback",
+		SettingKeyOIDCConnectTokenAuthMethod:                   "client_secret_post",
+		SettingKeyOIDCConnectUsePKCE:                           strconv.FormatBool(oidcUsePKCEDefault),
+		SettingKeyOIDCConnectValidateIDToken:                   strconv.FormatBool(oidcValidateIDTokenDefault),
+		SettingKeyOIDCConnectAllowedSigningAlgs:                "RS256,ES256,PS256",
+		SettingKeyOIDCConnectClockSkewSeconds:                  "120",
+		SettingKeyOIDCConnectRequireEmailVerified:              "false",
+		SettingKeyOIDCConnectUserInfoEmailPath:                 "",
+		SettingKeyOIDCConnectUserInfoIDPath:                    "",
+		SettingKeyOIDCConnectUserInfoUsernamePath:              "",
+		SettingKeyDefaultConcurrency:                           strconv.Itoa(s.cfg.Default.UserConcurrency),
+		SettingKeyDefaultBalance:                               strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyAffiliateRebateRate:                          strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
+		SettingKeyAffiliateRebateFreezeHours:                   strconv.Itoa(AffiliateRebateFreezeHoursDefault),
+		SettingKeyAffiliateRebateDurationDays:                  strconv.Itoa(AffiliateRebateDurationDaysDefault),
+		SettingKeyAffiliateRebatePerInviteeCap:                 strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
+		SettingKeyDefaultUserRPMLimit:                          "0",
+		SettingKeyDefaultSubscriptions:                         "[]",
+		SettingKeyGatewayAccountDefaultConcurrency:             strconv.Itoa(nonNegativeInt(s.cfg.Gateway.AccountDefaultConcurrency)),
+		SettingKeyGatewayAccountDefaultRPM:                     strconv.Itoa(nonNegativeInt(s.cfg.Gateway.AccountDefaultRPM)),
+		SettingKeyGatewayLongTermBindingTTLDays:                strconv.Itoa(nonNegativeInt(s.cfg.Gateway.LongTermBindingTTLDays)),
+		SettingKeyGatewayLongTermBindingCleanupIntervalSeconds: strconv.Itoa(nonNegativeInt(s.cfg.Gateway.LongTermBindingCleanupIntervalSeconds)),
+		SettingKeyGatewaySessionAccountFanoutLimit:             strconv.Itoa(nonNegativeInt(s.cfg.Gateway.SessionAccountFanoutLimit)),
+		SettingKeyGatewaySessionAccountFanoutWindowSec:         strconv.Itoa(nonNegativeInt(s.cfg.Gateway.SessionAccountFanoutWindowSec)),
+		SettingKeyGatewayBoundSessionSwitchJitterMinMs:         strconv.Itoa(nonNegativeInt(s.cfg.Gateway.BoundSessionSwitchJitterMinMs)),
+		SettingKeyGatewayBoundSessionSwitchJitterMaxMs:         strconv.Itoa(nonNegativeInt(s.cfg.Gateway.BoundSessionSwitchJitterMaxMs)),
+		SettingKeyAuthSourceDefaultEmailBalance:                "0",
+		SettingKeyAuthSourceDefaultEmailConcurrency:            "5",
+		SettingKeyAuthSourceDefaultEmailSubscriptions:          "[]",
+		SettingKeyAuthSourceDefaultEmailGrantOnSignup:          "false",
+		SettingKeyAuthSourceDefaultEmailGrantOnFirstBind:       "false",
+		SettingKeyAuthSourceDefaultLinuxDoBalance:              "0",
+		SettingKeyAuthSourceDefaultLinuxDoConcurrency:          "5",
+		SettingKeyAuthSourceDefaultLinuxDoSubscriptions:        "[]",
+		SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup:        "false",
+		SettingKeyAuthSourceDefaultLinuxDoGrantOnFirstBind:     "false",
+		SettingKeyAuthSourceDefaultOIDCBalance:                 "0",
+		SettingKeyAuthSourceDefaultOIDCConcurrency:             "5",
+		SettingKeyAuthSourceDefaultOIDCSubscriptions:           "[]",
+		SettingKeyAuthSourceDefaultOIDCGrantOnSignup:           "false",
+		SettingKeyAuthSourceDefaultOIDCGrantOnFirstBind:        "false",
+		SettingKeyAuthSourceDefaultWeChatBalance:               "0",
+		SettingKeyAuthSourceDefaultWeChatConcurrency:           "5",
+		SettingKeyAuthSourceDefaultWeChatSubscriptions:         "[]",
+		SettingKeyAuthSourceDefaultWeChatGrantOnSignup:         "false",
+		SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind:      "false",
+		SettingKeyForceEmailOnThirdPartySignup:                 "false",
+		SettingKeySMTPPort:                                     "587",
+		SettingKeySMTPUseTLS:                                   "false",
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -1917,6 +1980,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
 		SettingKeyMaxClaudeCodeVersion: "",
+
+		// CLI version tracking (P1-2; defaults empty so claude package built-in is used)
+		SettingKeyCLICurrentVersion: "",
+		SettingKeyCLIRecentVersions: "",
 
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:    "false",
@@ -2014,6 +2081,30 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.AffiliateRebatePerInviteeCap = perInviteeCap
 	}
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
+	result.AccountDefaultConcurrency = parseNonNegativeIntSetting(settings[SettingKeyGatewayAccountDefaultConcurrency], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.AccountDefaultConcurrency
+	}))
+	result.AccountDefaultRPM = parseNonNegativeIntSetting(settings[SettingKeyGatewayAccountDefaultRPM], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.AccountDefaultRPM
+	}))
+	result.LongTermBindingTTLDays = parseNonNegativeIntSetting(settings[SettingKeyGatewayLongTermBindingTTLDays], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.LongTermBindingTTLDays
+	}))
+	result.LongTermBindingCleanupIntervalSeconds = parseNonNegativeIntSetting(settings[SettingKeyGatewayLongTermBindingCleanupIntervalSeconds], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.LongTermBindingCleanupIntervalSeconds
+	}))
+	result.SessionAccountFanoutLimit = parseNonNegativeIntSetting(settings[SettingKeyGatewaySessionAccountFanoutLimit], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.SessionAccountFanoutLimit
+	}))
+	result.SessionAccountFanoutWindowSec = parseNonNegativeIntSetting(settings[SettingKeyGatewaySessionAccountFanoutWindowSec], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.SessionAccountFanoutWindowSec
+	}))
+	result.BoundSessionSwitchJitterMinMs = parseNonNegativeIntSetting(settings[SettingKeyGatewayBoundSessionSwitchJitterMinMs], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.BoundSessionSwitchJitterMinMs
+	}))
+	result.BoundSessionSwitchJitterMaxMs = parseNonNegativeIntSetting(settings[SettingKeyGatewayBoundSessionSwitchJitterMaxMs], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.BoundSessionSwitchJitterMaxMs
+	}))
 
 	// 敏感信息直接返回，方便测试连接时使用
 	result.SMTPPassword = settings[SettingKeySMTPPassword]
@@ -2296,6 +2387,18 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	if result.AccountQuotaNotifyEmails == nil {
 		result.AccountQuotaNotifyEmails = []NotifyEmailEntry{}
+	}
+
+	// CLI Version Tracking (P1-2)
+	result.CLICurrentVersion = strings.TrimSpace(settings[SettingKeyCLICurrentVersion])
+	if raw := strings.TrimSpace(settings[SettingKeyCLIRecentVersions]); raw != "" {
+		var versions []string
+		if err := json.Unmarshal([]byte(raw), &versions); err == nil {
+			result.CLIRecentVersions = versions
+		}
+	}
+	if result.CLIRecentVersions == nil {
+		result.CLIRecentVersions = []string{}
 	}
 
 	return result

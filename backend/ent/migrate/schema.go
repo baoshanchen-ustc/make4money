@@ -1475,6 +1475,39 @@ var (
 			},
 		},
 	}
+	// UserAccountBindingsColumns holds the columns for the "user_account_bindings" table.
+	UserAccountBindingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "project_fp", Type: field.TypeString, Size: 64},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64, Default: 0},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// UserAccountBindingsTable holds the schema information for the "user_account_bindings" table.
+	UserAccountBindingsTable = &schema.Table{
+		Name:       "user_account_bindings",
+		Columns:    UserAccountBindingsColumns,
+		PrimaryKey: []*schema.Column{UserAccountBindingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "useraccountbinding_project_fp_group_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserAccountBindingsColumns[3], UserAccountBindingsColumns[5]},
+			},
+			{
+				Name:    "useraccountbinding_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserAccountBindingsColumns[4]},
+			},
+			{
+				Name:    "useraccountbinding_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{UserAccountBindingsColumns[6]},
+			},
+		},
+	}
 	// UserAllowedGroupsColumns holds the columns for the "user_allowed_groups" table.
 	UserAllowedGroupsColumns = []*schema.Column{
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -1715,6 +1748,7 @@ var (
 		UsageCleanupTasksTable,
 		UsageLogsTable,
 		UsersTable,
+		UserAccountBindingsTable,
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
@@ -1837,6 +1871,9 @@ func init() {
 	}
 	UsersTable.Annotation = &entsql.Annotation{
 		Table: "users",
+	}
+	UserAccountBindingsTable.Annotation = &entsql.Annotation{
+		Table: "user_account_bindings",
 	}
 	UserAllowedGroupsTable.ForeignKeys[0].RefTable = UsersTable
 	UserAllowedGroupsTable.ForeignKeys[1].RefTable = GroupsTable

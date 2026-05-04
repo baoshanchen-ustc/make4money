@@ -113,6 +113,33 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
 
+	// === P0-2: 长期 user→account 绑定（账号共享加固） ===
+	chatLTBGroupID := int64(0)
+	if apiKey.GroupID != nil {
+		chatLTBGroupID = *apiKey.GroupID
+	}
+	chatProjectFP, chatIsStableFP := "", false
+	if h.coreGateway != nil {
+		chatProjectFP, chatIsStableFP = h.coreGateway.ExtractProjectFPRaw(
+			"", // ChatCompletions 没有 metadata.user_id 约定，走 IP fallback
+			apiKey.ID,
+			ip.GetClientIP(c),
+			chatLTBGroupID,
+		)
+		if chatProjectFP != "" && sessionHash != "" {
+			if ltbAccountID := h.coreGateway.ResolveLongTermBinding(c.Request.Context(), chatProjectFP, chatLTBGroupID); ltbAccountID > 0 {
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, ltbAccountID); err != nil {
+					reqLog.Debug("openai_chat_completions.ltb_warm_sticky_failed", zap.Int64("account_id", ltbAccountID), zap.Error(err))
+				} else {
+					reqLog.Debug("openai_chat_completions.ltb_resolved",
+						zap.Int64("account_id", ltbAccountID),
+						zap.Bool("stable_fp", chatIsStableFP),
+					)
+				}
+			}
+		}
+	}
+
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
@@ -292,6 +319,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				).Error("openai_chat_completions.record_usage_failed", zap.Error(err))
 			}
 		})
+		// P0-2: 成功响应后写入/刷新长期 user→account 绑定。
+		if h.coreGateway != nil && chatProjectFP != "" {
+			h.coreGateway.MaybeWriteBinding(c.Request.Context(), chatProjectFP, chatIsStableFP, account.ID, chatLTBGroupID)
+		}
 		reqLog.Debug("openai_chat_completions.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),

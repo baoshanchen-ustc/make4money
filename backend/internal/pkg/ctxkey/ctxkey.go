@@ -55,4 +55,8 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
+
+	// PrefetchedProjectFP stores the project fingerprint computed by the handler for long-term binding (P0-2).
+	// Used for binding invalidation when shouldClearStickySession() is triggered.
+	PrefetchedProjectFP Key = "ctx_prefetched_project_fp"
 )

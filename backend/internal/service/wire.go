@@ -329,6 +329,27 @@ func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Co
 	return svc
 }
 
+// ProvideIdentityProfileService 构造 P0-3 (sub2api_user, platform) 维度的伪
+// 指纹画像服务。secret 取 cfg.JWT.Secret（已通过 security_secrets bootstrap 持久化），
+// 旋转周期复用 cfg.Gateway.LongTermBindingTTLDays，让 P0-2 / P0-3 同步轮换。
+func ProvideIdentityProfileService(cfg *config.Config) *IdentityProfileService {
+	secret := ""
+	rotation := 0
+	if cfg != nil {
+		secret = cfg.JWT.Secret
+		rotation = cfg.Gateway.LongTermBindingTTLDays
+	}
+	return NewIdentityProfileService(secret, rotation)
+}
+
+// ProvideUserAccountBindingCleanupService 创建并启动 P0-2 长期绑定后台清理任务。
+// 与 IdempotencyCleanupService 同形态：构造时即 Start()，Stop 由全局 cleanup 调度。
+func ProvideUserAccountBindingCleanupService(repo UserAccountBindingRepository, cfg *config.Config) *UserAccountBindingCleanupService {
+	svc := NewUserAccountBindingCleanupService(repo, cfg)
+	svc.Start()
+	return svc
+}
+
 // ProvideScheduledTestService creates ScheduledTestService.
 func ProvideScheduledTestService(
 	planRepo ScheduledTestPlanRepository,
@@ -462,6 +483,7 @@ var ProviderSet = wire.NewSet(
 	NewUsageRecordWorkerPool,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
+	ProvideIdentityProfileService,
 	NewCRSSyncService,
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
@@ -481,6 +503,7 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
+	ProvideUserAccountBindingCleanupService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
@@ -495,7 +518,15 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
+	ProvideCLIVersionTrackerService,
 )
+
+// ProvideCLIVersionTrackerService 创建并启动 CLIVersionTrackerService (P1-2)。
+func ProvideCLIVersionTrackerService(settingRepo SettingRepository, cfg *config.Config) *CLIVersionTrackerService {
+	svc := NewCLIVersionTrackerService(settingRepo, cfg.CLIVersionTracker)
+	svc.Start()
+	return svc
+}
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
 // payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.

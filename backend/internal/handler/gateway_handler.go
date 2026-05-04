@@ -52,6 +52,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	claudeProbeDedupCache     *claudeProbeDedupCache
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -107,6 +108,7 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+		claudeProbeDedupCache:     newClaudeProbeDedupCache(defaultClaudeProbeDedupTTL),
 	}
 }
 
@@ -207,6 +209,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 验证 model 必填
 	if reqModel == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+	}
+	if h.maybeServeClaudeHaikuProbe(c, apiKey, body, reqModel, parsedReq.MaxTokens, reqStream, isClaudeCodeClient) {
 		return
 	}
 
@@ -312,7 +317,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 
 	if platform == service.PlatformGemini {
-		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+		fs := newFailoverStateWithGatewayFanout(
+			h.maxAccountSwitchesGemini,
+			hasBoundSession,
+			sessionKey,
+			apiKey.GroupID,
+			h.gatewayService,
+		)
 
 		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -487,7 +498,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
 			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
-			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
+			if account.IsAnthropicOAuthOrSetupToken() && h.gatewayService.EffectiveAccountBaseRPM(account) > 0 {
 				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
@@ -551,8 +562,33 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		c.Request = c.Request.WithContext(ctx)
 	}
 
+	// P0-2: Long-term binding pre-resolution
+	// Compute project fingerprint and resolve any existing binding before account selection.
+	projectFP, isStableFP := h.gatewayService.ExtractProjectFP(parsedReq)
+	var ltbGroupID int64
+	if currentAPIKey.GroupID != nil {
+		ltbGroupID = *currentAPIKey.GroupID
+	}
+	if projectFP != "" {
+		reqCtx := c.Request.Context()
+		if ltbAccountID := h.gatewayService.ResolveLongTermBinding(reqCtx, projectFP, ltbGroupID); ltbAccountID > 0 {
+			// Inject as prefetched sticky account (highest priority in SelectAccountWithLoadAwareness)
+			reqCtx = context.WithValue(reqCtx, ctxkey.PrefetchedStickyAccountID, ltbAccountID)
+			reqCtx = context.WithValue(reqCtx, ctxkey.PrefetchedStickyGroupID, ltbGroupID)
+			c.Request = c.Request.WithContext(reqCtx)
+		}
+		// Store projectFP in context for binding invalidation in service layer
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.PrefetchedProjectFP, projectFP))
+	}
+
 	for {
-		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
+		fs := newFailoverStateWithGatewayFanout(
+			h.maxAccountSwitches,
+			hasBoundSession,
+			sessionKey,
+			currentAPIKey.GroupID,
+			h.gatewayService,
+		)
 		retryWithFallback := false
 
 		for {
@@ -670,7 +706,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			switch umqMode {
 			case config.UMQModeSerialize:
 				// 串行模式：获取锁 + RPM 延迟 + 释放（当前行为不变）
-				baseRPM := account.GetBaseRPM()
+				baseRPM := h.gatewayService.EffectiveAccountBaseRPM(account)
 				release, qErr := h.userMsgQueueHelper.AcquireWithWait(
 					c, account.ID, baseRPM, reqStream, &streamStarted,
 					h.cfg.Gateway.UserMessageQueue.WaitTimeout(),
@@ -688,7 +724,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			case config.UMQModeThrottle:
 				// 软性限速：仅施加 RPM 自适应延迟，不阻塞并发
-				baseRPM := account.GetBaseRPM()
+				baseRPM := h.gatewayService.EffectiveAccountBaseRPM(account)
 				if tErr := h.userMsgQueueHelper.ThrottleWithPing(
 					c, account.ID, baseRPM, reqStream, &streamStarted,
 					h.cfg.Gateway.UserMessageQueue.WaitTimeout(),
@@ -858,7 +894,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
 			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
-			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
+			if account.IsAnthropicOAuthOrSetupToken() && h.gatewayService.EffectiveAccountBaseRPM(account) > 0 {
 				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
@@ -910,6 +946,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			if captureWriter != nil {
 				c.Writer = captureWriter.ResponseWriter
+			}
+
+			// P0-2: Write long-term binding on successful request
+			if projectFP != "" && account != nil {
+				var writeGroupID int64
+				if currentAPIKey.GroupID != nil {
+					writeGroupID = *currentAPIKey.GroupID
+				}
+				h.gatewayService.MaybeWriteBinding(c.Request.Context(), projectFP, isStableFP, account.ID, writeGroupID)
 			}
 			return
 		}
@@ -1804,6 +1849,21 @@ func (h *GatewayHandler) metadataBridgeEnabled() bool {
 	return h.cfg.Gateway.OpenAIWS.MetadataBridgeEnabled
 }
 
+func (h *GatewayHandler) maybeServeClaudeHaikuProbe(c *gin.Context, apiKey *service.APIKey, body []byte, model string, maxTokens int, isStream bool, isClaudeCodeClient bool) bool {
+	if h == nil || c == nil || apiKey == nil || !isClaudeCodeClient || !isMaxTokensOneHaikuRequest(model, maxTokens, isStream) {
+		return false
+	}
+	groupID := int64(0)
+	if apiKey.GroupID != nil {
+		groupID = *apiKey.GroupID
+	}
+	if h.claudeProbeDedupCache != nil {
+		_ = h.claudeProbeDedupCache.SeenOrStore(apiKey.ID, groupID, model, body)
+	}
+	sendMockInterceptResponse(c, model, InterceptTypeMaxTokensOneHaiku)
+	return true
+}
+
 func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger) {
 	if reqLog == nil {
 		return
@@ -1818,6 +1878,24 @@ func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger
 		zap.Int64("session_hash_legacy_dual_write_total", metrics.SessionHashLegacyDualWriteTotal),
 		zap.Float64("session_hash_legacy_read_hit_rate", metrics.SessionHashLegacyReadHitRate),
 		zap.Int64("metadata_legacy_fallback_total", metrics.MetadataLegacyFallbackTotal),
+	)
+
+	// P0-2: 长期 user→account 绑定指标（账号共享加固）。与上面共用同一周期，
+	// 避免再加一个独立计数器。理想观察值：
+	//   - hit_rate 越高越好（> 0.9 为目标）
+	//   - rebind 越低越好（接近 0 表示用户长期粘住一个账号）
+	//   - skipped 高 + first 低 = 多数 fp 是 IP 不稳定的，阈值未触发
+	ltb := service.SnapshotLongTermBindingMetrics()
+	reqLog.Info("gateway.long_term_binding_metrics",
+		zap.Int64("resolve_hit_total", ltb.ResolveHitTotal),
+		zap.Int64("resolve_miss_total", ltb.ResolveMissTotal),
+		zap.Int64("resolve_expired_total", ltb.ResolveExpiredTotal),
+		zap.Int64("write_first_total", ltb.WriteFirstTotal),
+		zap.Int64("write_rebind_total", ltb.WriteRebindTotal),
+		zap.Int64("write_refresh_total", ltb.WriteRefreshTotal),
+		zap.Int64("write_skipped_total", ltb.WriteSkippedTotal),
+		zap.Int64("delete_total", ltb.DeleteTotal),
+		zap.Float64("hit_rate", ltb.HitRate),
 	)
 }
 

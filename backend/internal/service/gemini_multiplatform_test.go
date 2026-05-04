@@ -264,6 +264,7 @@ var _ GroupRepository = (*mockGroupRepoForGemini)(nil)
 type mockGatewayCacheForGemini struct {
 	sessionBindings map[string]int64
 	deletedSessions map[string]int
+	fanoutBindings  map[string]map[int64]struct{}
 }
 
 func (m *mockGatewayCacheForGemini) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
@@ -294,6 +295,26 @@ func (m *mockGatewayCacheForGemini) DeleteSessionAccountID(ctx context.Context, 
 	}
 	m.deletedSessions[sessionHash]++
 	delete(m.sessionBindings, sessionHash)
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) RecordSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	if m.fanoutBindings == nil {
+		m.fanoutBindings = make(map[string]map[int64]struct{})
+	}
+	if m.fanoutBindings[sessionHash] == nil {
+		m.fanoutBindings[sessionHash] = make(map[int64]struct{})
+	}
+	m.fanoutBindings[sessionHash][accountID] = struct{}{}
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) GetSessionAccountFanoutCount(ctx context.Context, groupID int64, sessionHash string) (int, error) {
+	return len(m.fanoutBindings[sessionHash]), nil
+}
+
+func (m *mockGatewayCacheForGemini) DeleteSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string) error {
+	delete(m.fanoutBindings, sessionHash)
 	return nil
 }
 

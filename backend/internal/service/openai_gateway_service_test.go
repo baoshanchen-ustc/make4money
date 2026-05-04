@@ -379,6 +379,19 @@ func (c *stubGatewayCache) DeleteSessionAccountID(ctx context.Context, groupID i
 	return nil
 }
 
+// P0-3: Fanout limiting stubs
+func (c *stubGatewayCache) RecordSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	return nil
+}
+
+func (c *stubGatewayCache) GetSessionAccountFanoutCount(ctx context.Context, groupID int64, sessionHash string) (int, error) {
+	return 0, nil
+}
+
+func (c *stubGatewayCache) DeleteSessionAccountFanout(ctx context.Context, groupID int64, sessionHash string) error {
+	return nil
+}
+
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
 	now := time.Now()
 	resetAt := now.Add(10 * time.Minute)

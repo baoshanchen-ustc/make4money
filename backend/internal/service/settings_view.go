@@ -114,6 +114,16 @@ type SystemSettings struct {
 	DefaultUserRPMLimit          int
 	DefaultSubscriptions         []DefaultSubscriptionSetting
 
+	// Account sharing hardening runtime knobs.
+	AccountDefaultConcurrency             int
+	AccountDefaultRPM                     int
+	LongTermBindingTTLDays                int
+	LongTermBindingCleanupIntervalSeconds int
+	SessionAccountFanoutLimit             int
+	SessionAccountFanoutWindowSec         int
+	BoundSessionSwitchJitterMinMs         int
+	BoundSessionSwitchJitterMaxMs         int
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`
@@ -174,6 +184,13 @@ type SystemSettings struct {
 	// Account quota notification
 	AccountQuotaNotifyEnabled bool
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
+
+	// CLI Version Tracking (P1-2)
+	// CLICurrentVersion 当前 sub2api 对外伪装的 Claude Code CLI 版本号（semver）。
+	// 由 CLIVersionTrackerService 维护；空值意味着尚未初始化，使用 claude 包内编译期默认值。
+	CLICurrentVersion string
+	// CLIRecentVersions 最近 3 个版本（最新在前）。用于 per-account 版本扰动。
+	CLIRecentVersions []string
 }
 
 type DefaultSubscriptionSetting struct {

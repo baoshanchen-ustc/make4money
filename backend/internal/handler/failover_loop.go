@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
 	"net/http"
 	"time"
 
@@ -14,6 +15,18 @@ import (
 // GatewayService 隐式实现此接口。
 type TempUnscheduler interface {
 	TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *service.UpstreamFailoverError)
+}
+
+// SessionFanoutLimiter 扩展 TempUnscheduler，添加 P0-3 反扫荡能力。
+// GatewayService 隐式实现此接口。
+type SessionFanoutLimiter interface {
+	TempUnscheduler
+	RecordSessionFanout(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error
+	IsSessionFanoutExhausted(ctx context.Context, groupID *int64, sessionHash string) (bool, int)
+}
+
+type sessionFanoutConfigProvider interface {
+	GetSessionFanoutConfig() (limit int, boundJitterMin, boundJitterMax time.Duration)
 }
 
 // FailoverAction 表示 failover 错误处理后的下一步动作
@@ -48,6 +61,13 @@ type FailoverState struct {
 	LastFailoverErr       *service.UpstreamFailoverError
 	ForceCacheBilling     bool
 	hasBoundSession       bool
+
+	// P0-3: Session fanout limiting
+	sessionHash    string
+	groupID        *int64
+	fanoutLimit    int
+	boundJitterMin time.Duration
+	boundJitterMax time.Duration
 }
 
 // NewFailoverState 创建 failover 状态
@@ -58,6 +78,50 @@ func NewFailoverState(maxSwitches int, hasBoundSession bool) *FailoverState {
 		SameAccountRetryCount: make(map[int64]int),
 		hasBoundSession:       hasBoundSession,
 	}
+}
+
+// NewFailoverStateWithFanout 创建带有 fanout 限制的 failover 状态 (P0-3)
+func NewFailoverStateWithFanout(
+	maxSwitches int,
+	hasBoundSession bool,
+	sessionHash string,
+	groupID *int64,
+	fanoutLimit int,
+	boundJitterMin, boundJitterMax time.Duration,
+) *FailoverState {
+	return &FailoverState{
+		MaxSwitches:           maxSwitches,
+		FailedAccountIDs:      make(map[int64]struct{}),
+		SameAccountRetryCount: make(map[int64]int),
+		hasBoundSession:       hasBoundSession,
+		sessionHash:           sessionHash,
+		groupID:               groupID,
+		fanoutLimit:           fanoutLimit,
+		boundJitterMin:        boundJitterMin,
+		boundJitterMax:        boundJitterMax,
+	}
+}
+
+func newFailoverStateWithGatewayFanout(
+	maxSwitches int,
+	hasBoundSession bool,
+	sessionHash string,
+	groupID *int64,
+	provider sessionFanoutConfigProvider,
+) *FailoverState {
+	if provider == nil {
+		return NewFailoverState(maxSwitches, hasBoundSession)
+	}
+	fanoutLimit, boundJitterMin, boundJitterMax := provider.GetSessionFanoutConfig()
+	return NewFailoverStateWithFanout(
+		maxSwitches,
+		hasBoundSession,
+		sessionHash,
+		groupID,
+		fanoutLimit,
+		boundJitterMin,
+		boundJitterMax,
+	)
 }
 
 // HandleFailoverError 处理 UpstreamFailoverError，返回下一步动作。
@@ -99,6 +163,24 @@ func (s *FailoverState) HandleFailoverError(
 	// 加入失败列表
 	s.FailedAccountIDs[accountID] = struct{}{}
 
+	// P0-3: 检查 session fanout 限制（需要切号前先记录当前账号）
+	if limiter, ok := gatewayService.(SessionFanoutLimiter); ok && s.fanoutLimit > 0 && s.sessionHash != "" {
+		// 记录当前失败账号到 fanout set
+		_ = limiter.RecordSessionFanout(ctx, s.groupID, s.sessionHash, accountID)
+
+		// 检查是否超限
+		if exhausted, count := limiter.IsSessionFanoutExhausted(ctx, s.groupID, s.sessionHash); exhausted {
+			logger.FromContext(ctx).Warn("gateway.failover_fanout_exhausted",
+				zap.Int64("account_id", accountID),
+				zap.String("session_hash", shortSessionHash(s.sessionHash)),
+				zap.Int("fanout_count", count),
+				zap.Int("fanout_limit", s.fanoutLimit),
+				zap.Int("upstream_status", failoverErr.StatusCode),
+			)
+			return FailoverExhausted
+		}
+	}
+
 	// 检查是否耗尽
 	if s.SwitchCount >= s.MaxSwitches {
 		return FailoverExhausted
@@ -119,9 +201,77 @@ func (s *FailoverState) HandleFailoverError(
 		if !sleepWithContext(ctx, delay) {
 			return FailoverCanceled
 		}
+	} else if s.SwitchCount >= 2 {
+		// P0-3: 绑定会话切号时使用更长的抖动延迟（2-10s），普通会话维持 0-600ms
+		var jitterDelay time.Duration
+		if s.hasBoundSession && s.boundJitterMax > 0 {
+			jitterDelay = boundSessionJitterDelay(s.boundJitterMin, s.boundJitterMax)
+			logger.FromContext(ctx).Debug("gateway.failover_bound_session_jitter",
+				zap.Duration("jitter_delay", jitterDelay),
+			)
+		} else {
+			// 非 Antigravity 平台的跨账号抖动（2026-04 加固）：
+			//
+			// 真实 Claude Code CLI 在收到 4xx/5xx 后的重试节奏是几百毫秒到几秒级
+			// 的"自然"间隔（受 Node fetch + 用户操作影响）。sub2api 网关在多账号
+			// 共享池里如果接到 429/limit 后立刻打到下一个账号，上游能看到：
+			//   - 同一上游 prompt / sessionHash
+			//   - 在 A 账号 429 后 < 50ms 出现在 B 账号
+			// 这是"扫荡式切号"的标志性信号，直接帮 Anthropic 把账号关联起来。
+			//
+			// 我们对第 2 次起的切换加 0-600ms 抖动（首次切换不加延迟，避免一个简单
+			// 的 token 失效就拖慢正常用户）。和 Antigravity 的线性退避不冲突。
+			jitterDelay = crossAccountJitterDelay()
+		}
+		if !sleepWithContext(ctx, jitterDelay) {
+			return FailoverCanceled
+		}
 	}
 
 	return FailoverContinue
+}
+
+// shortSessionHash returns at most first 8 chars of sessionHash for logging
+func shortSessionHash(sessionHash string) string {
+	if len(sessionHash) <= 8 {
+		return sessionHash
+	}
+	return sessionHash[:8]
+}
+
+// crossAccountJitterDelay 返回 0-600ms 之间的随机抖动延迟，用于跨账号 failover。
+// 使用 crypto/rand 是因为本进程其它路径已普遍依赖它，不引入新的 PRNG 状态；
+// 调用频率低（仅 failover 切号路径），开销可忽略。
+//
+// 选型 600ms 上限：足以打散"切号即重试"的薄尾分布特征，又不会显著影响用户体感
+// （对端在等待一次失败重试时，0-600ms 抖动 + 网络往返 ≈ 1-2s 总体）。
+func crossAccountJitterDelay() time.Duration {
+	var b [2]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// 极罕见：crypto/rand 失败时退化为固定 200ms（仍优于零延迟）
+		return 200 * time.Millisecond
+	}
+	// 0..65535 -> 0..600ms
+	n := int(b[0])<<8 | int(b[1])
+	return time.Duration(n*600/65536) * time.Millisecond
+}
+
+// boundSessionJitterDelay 返回 min-max 范围内的随机抖动延迟，用于绑定会话切号 (P0-3)。
+// 绑定会话切号需要更长的延迟（默认 2-10s）以进一步打散内容关联信号。
+func boundSessionJitterDelay(min, max time.Duration) time.Duration {
+	if max <= min {
+		return min
+	}
+	var b [2]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// fallback: 返回中间值
+		return (min + max) / 2
+	}
+	// 0..65535 -> min..max
+	n := int(b[0])<<8 | int(b[1])
+	rangeMs := int64(max-min) / int64(time.Millisecond)
+	offsetMs := int64(n) * rangeMs / 65536
+	return min + time.Duration(offsetMs)*time.Millisecond
 }
 
 // HandleSelectionExhausted 处理选号失败（所有候选账号都在排除列表中）时的退避重试决策。

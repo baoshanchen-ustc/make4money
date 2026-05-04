@@ -2707,6 +2707,150 @@
             </div>
           </div>
 
+          <!-- Account Sharing Hardening -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                账号共享加固
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                调整账号级安全垫、长期绑定和切号反扫荡策略。保存后下次请求生效，无需重启。
+              </p>
+            </div>
+            <div class="space-y-6 p-6">
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    默认账号并发上限
+                  </label>
+                  <input
+                    v-model.number="form.account_default_concurrency"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="0"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    当账号未单独配置并发时使用；0 表示关闭全局兜底。
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    默认账号 RPM 上限
+                  </label>
+                  <input
+                    v-model.number="form.account_default_rpm"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="0"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    当账号未单独配置 base_rpm 时使用；0 表示不限制。
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    长期绑定 TTL（天）
+                  </label>
+                  <input
+                    v-model.number="form.ltb_ttl_days"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="14"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    用户到上游账号绑定的续期时长；0 表示禁用写入。
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    绑定清理间隔（秒）
+                  </label>
+                  <input
+                    v-model.number="form.ltb_cleanup_interval_seconds"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="3600"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    后台清理过期绑定的轮询间隔；0 使用服务默认值。
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Session 账号 fanout 上限
+                  </label>
+                  <input
+                    v-model.number="form.session_account_fanout_limit"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="2"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    同一 session 在窗口内最多触达的不同账号数；0 表示关闭。
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Fanout 窗口（秒）
+                  </label>
+                  <input
+                    v-model.number="form.session_account_fanout_window_sec"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="60"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    统计 session 触达账号数量的时间窗口。
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    绑定切号最小抖动（毫秒）
+                  </label>
+                  <input
+                    v-model.number="form.bound_session_switch_jitter_min_ms"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="2000"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    绑定切号最大抖动（毫秒）
+                  </label>
+                  <input
+                    v-model.number="form.bound_session_switch_jitter_max_ms"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="10000"
+                  />
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                生效预览：保存后，账号选择、RPM gating、长期绑定写入和 failover fanout 判断会在后续请求中读取新值；已在处理中的请求不受影响。
+              </div>
+            </div>
+          </div>
+
           <!-- Gateway Forwarding Behavior -->
           <div class="card">
             <div
@@ -5388,6 +5532,14 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_per_invitee_cap: 0,
   default_concurrency: 1,
   default_subscriptions: [],
+  account_default_concurrency: 0,
+  account_default_rpm: 0,
+  ltb_ttl_days: 0,
+  ltb_cleanup_interval_seconds: 3600,
+  session_account_fanout_limit: 0,
+  session_account_fanout_window_sec: 60,
+  bound_session_switch_jitter_min_ms: 2000,
+  bound_session_switch_jitter_max_ms: 10000,
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
   site_name: "Sub2API",
@@ -6319,6 +6471,20 @@ async function saveSettings() {
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
+      account_default_concurrency:
+        Number(form.account_default_concurrency) || 0,
+      account_default_rpm: Number(form.account_default_rpm) || 0,
+      ltb_ttl_days: Number(form.ltb_ttl_days) || 0,
+      ltb_cleanup_interval_seconds:
+        Number(form.ltb_cleanup_interval_seconds) || 0,
+      session_account_fanout_limit:
+        Number(form.session_account_fanout_limit) || 0,
+      session_account_fanout_window_sec:
+        Number(form.session_account_fanout_window_sec) || 0,
+      bound_session_switch_jitter_min_ms:
+        Number(form.bound_session_switch_jitter_min_ms) || 0,
+      bound_session_switch_jitter_max_ms:
+        Number(form.bound_session_switch_jitter_max_ms) || 0,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
       site_name: form.site_name,
