@@ -11,10 +11,17 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
 )
+
+// Shared IPv4-only dialer to avoid IPv6 timeout when the host cannot reach IPv6 networks.
+var ipv4Dialer = &net.Dialer{
+	Timeout:   30 * time.Second,
+	KeepAlive: 30 * time.Second,
+}
 
 // Profile contains TLS fingerprint configuration.
 // All slice fields use built-in defaults when empty.
@@ -118,10 +125,10 @@ var (
 
 // NewDialer creates a new TLS fingerprint dialer.
 // baseDialer is used for TCP connection establishment (supports proxy scenarios).
-// If baseDialer is nil, direct TCP dial is used.
+// If baseDialer is nil, IPv4-only direct TCP dial is used.
 func NewDialer(profile *Profile, baseDialer func(ctx context.Context, network, addr string) (net.Conn, error)) *Dialer {
 	if baseDialer == nil {
-		baseDialer = (&net.Dialer{}).DialContext
+		baseDialer = ipv4Dialer.DialContext
 	}
 	return &Dialer{profile: profile, baseDialer: baseDialer}
 }
@@ -197,8 +204,7 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		}
 	}
 
-	dialer := &net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
+	conn, err := ipv4Dialer.DialContext(ctx, "tcp4", proxyAddr)
 	if err != nil {
 		slog.Debug("tls_fingerprint_http_proxy_connect_failed", "error", err)
 		return nil, fmt.Errorf("connect to proxy: %w", err)

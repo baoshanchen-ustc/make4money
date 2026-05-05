@@ -3,6 +3,7 @@ package repository
 import (
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -52,6 +53,36 @@ const (
 )
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
+
+// ipv4DialContext forces IPv4-only connections with custom DNS resolver
+// to avoid DNS poisoning (e.g., Clash proxy returning wrong IPs for chatgpt.com).
+var customResolver = &net.Resolver{
+	PreferGo: true,
+	Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+		d := &net.Dialer{Timeout: 5 * time.Second}
+		return d.DialContext(ctx, "udp", "8.8.8.8:53")
+	},
+}
+
+var ipv4Dialer = &net.Dialer{
+	Timeout:   30 * time.Second,
+	KeepAlive: 30 * time.Second,
+}
+
+func ipv4DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+		port = "443"
+	}
+	// Resolve using Google DNS to avoid DNS poisoning
+	addrs, err := customResolver.LookupIP(ctx, "ip4", host)
+	if err != nil || len(addrs) == 0 {
+		return nil, &net.OpError{Op: "dial", Net: "tcp4", Source: nil, Addr: nil, Err: fmt.Errorf("DNS lookup failed for %s: %w", host, err)}
+	}
+	target := net.JoinHostPort(addrs[0].String(), port)
+	return ipv4Dialer.DialContext(ctx, "tcp4", target)
+}
 
 // poolSettings 连接池配置参数
 // 封装 Transport 所需的各项连接池参数
@@ -766,6 +797,7 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) (*http.Tra
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+		DialContext:           ipv4DialContext,
 	}
 	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 		return nil, err

@@ -2129,7 +2129,11 @@ func (s *GatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*
 }
 
 func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
-	if groupID == nil || requestedModel == "" || platform != PlatformAnthropic {
+	if groupID == nil || requestedModel == "" {
+		return nil
+	}
+	// Model routing 仅适用于 anthropic 和 universal 组
+	if platform != PlatformAnthropic && platform != PlatformUniversal {
 		return nil
 	}
 	group, err := s.resolveGroupByID(ctx, *groupID)
@@ -2139,10 +2143,10 @@ func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupI
 		}
 		return nil
 	}
-	// Preserve existing behavior: model routing only applies to anthropic groups.
-	if group.Platform != PlatformAnthropic {
+	// universal 组允许任意平台路由；anthropic 组保持原有校验
+	if group.Platform != PlatformAnthropic && group.Platform != PlatformUniversal {
 		if s.debugModelRoutingEnabled() {
-			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] skip: non-anthropic group platform: group_id=%d group_platform=%s model=%s", group.ID, group.Platform, requestedModel)
+			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] skip: unsupported group platform: group_id=%d group_platform=%s model=%s", group.ID, group.Platform, requestedModel)
 		}
 		return nil
 	}
@@ -2287,6 +2291,42 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 		return filtered, useMixed, nil
 	}
 
+	// universal 平台：不限平台，返回分组内所有可调度账号
+	if platform == PlatformUniversal {
+		var accounts []Account
+		var err error
+		if groupID != nil {
+			accounts, err = s.accountRepo.ListSchedulableByGroupID(ctx, *groupID)
+		} else if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+			accounts, err = s.accountRepo.ListSchedulable(ctx)
+		} else {
+			// 无分组 universal 模式：查询所有平台的可调度账号
+			allPlatforms := []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity}
+			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, allPlatforms)
+		}
+		if err != nil {
+			slog.Debug("account_scheduling_list_failed",
+				"group_id", derefGroupID(groupID),
+				"platform", platform,
+				"error", err)
+			return nil, false, err
+		}
+		slog.Debug("account_scheduling_list_universal",
+			"group_id", derefGroupID(groupID),
+			"platform", platform,
+			"count", len(accounts))
+		for _, acc := range accounts {
+			slog.Debug("account_scheduling_account_detail",
+				"account_id", acc.ID,
+				"name", acc.Name,
+				"platform", acc.Platform,
+				"type", acc.Type,
+				"status", acc.Status,
+				"tls_fingerprint", acc.IsTLSFingerprintEnabled())
+		}
+		return accounts, false, nil
+	}
+
 	var accounts []Account
 	var err error
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
@@ -2334,6 +2374,9 @@ func (s *GatewayService) IsSingleAntigravityAccountGroup(ctx context.Context, gr
 func (s *GatewayService) isAccountAllowedForPlatform(account *Account, platform string, useMixed bool) bool {
 	if account == nil {
 		return false
+	}
+	if platform == PlatformUniversal {
+		return true // universal 组允许任意平台账号
 	}
 	if useMixed {
 		if account.Platform == platform {
@@ -3025,7 +3068,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && (account.Platform == platform || platform == PlatformUniversal) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -3144,7 +3187,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (account.Platform == platform || platform == PlatformUniversal) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
 					}
 				}
@@ -3724,6 +3767,15 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
 		return true
 	}
+	// OpenAI API Key 但使用自定义 base_url（如 DashScope 兼容接口），
+	// 不认为它支持 OpenAI 原生模型（如 gpt-*），除非配置了显式映射。
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+		baseURL := account.GetOpenAIBaseURL()
+		if baseURL != "" && !strings.Contains(baseURL, "api.openai.com") {
+			// 自定义 upstream，需要显式模型映射
+			return account.IsModelSupported(requestedModel)
+		}
+	}
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
 		if account.Type == AccountTypeServiceAccount {
@@ -3813,7 +3865,7 @@ func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode i
 // shouldFailoverUpstreamError determines whether an upstream error should trigger account failover.
 func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 403, 429, 529:
+	case 401, 403, 404, 429, 529:
 		return true
 	default:
 		return statusCode >= 500
@@ -9360,8 +9412,8 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		return nil
 	}
 
-	// Filter by platform if specified
-	if platform != "" {
+	// Filter by platform if specified (universal platform skips filtering)
+	if platform != "" && platform != PlatformUniversal {
 		filtered := make([]Account, 0)
 		for _, acc := range accounts {
 			if acc.Platform == platform {

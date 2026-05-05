@@ -473,6 +473,10 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 			firstErr = err
 		}
 	}
+	// 账号变更可能影响 universal 组的调度快照，需要同步重建
+	if err := s.rebuildBucketsForPlatform(ctx, PlatformUniversal, groupIDs, reason, seen); err != nil && firstErr == nil {
+		firstErr = err
+	}
 	return firstErr
 }
 
@@ -481,7 +485,7 @@ func (s *SchedulerSnapshotService) rebuildByGroupIDs(ctx context.Context, groupI
 	if len(groupIDs) == 0 {
 		return nil
 	}
-	platforms := []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity}
+	platforms := []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformUniversal}
 	var firstErr error
 	for _, platform := range platforms {
 		if err := s.rebuildBucketsForPlatform(ctx, platform, groupIDs, reason, seen); err != nil && firstErr == nil {
@@ -516,6 +520,11 @@ func (s *SchedulerSnapshotService) rebuildBucketsForPlatform(ctx context.Context
 		}
 		if platform == PlatformAnthropic || platform == PlatformGemini {
 			if err := s.rebuildBucket(ctx, SchedulerBucket{GroupID: gid, Platform: platform, Mode: SchedulerModeMixed}, reason); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		if platform == PlatformUniversal {
+			if err := s.rebuildBucket(ctx, SchedulerBucket{GroupID: gid, Platform: platform, Mode: SchedulerModeUniversal}, reason); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		}
@@ -666,6 +675,18 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return filtered, nil
 	}
 
+	// universal 模式：不限平台
+	if bucket.Mode == SchedulerModeUniversal {
+		if groupID > 0 {
+			return s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
+		}
+		if s.isRunModeSimple() {
+			return s.accountRepo.ListSchedulable(ctx)
+		}
+		allPlatforms := []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity}
+		return s.accountRepo.ListSchedulableByPlatforms(ctx, allPlatforms)
+	}
+
 	if groupID > 0 {
 		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, bucket.Platform)
 	}
@@ -721,6 +742,9 @@ func (s *SchedulerSnapshotService) normalizeGroupIDs(groupIDs []int64) []int64 {
 func (s *SchedulerSnapshotService) resolveMode(platform string, hasForcePlatform bool) string {
 	if hasForcePlatform {
 		return SchedulerModeForced
+	}
+	if platform == PlatformUniversal {
+		return SchedulerModeUniversal
 	}
 	if platform == PlatformAnthropic || platform == PlatformGemini {
 		return SchedulerModeMixed
@@ -808,6 +832,9 @@ func (s *SchedulerSnapshotService) defaultBuckets(ctx context.Context) ([]Schedu
 		buckets = append(buckets, SchedulerBucket{GroupID: group.ID, Platform: group.Platform, Mode: SchedulerModeForced})
 		if group.Platform == PlatformAnthropic || group.Platform == PlatformGemini {
 			buckets = append(buckets, SchedulerBucket{GroupID: group.ID, Platform: group.Platform, Mode: SchedulerModeMixed})
+		}
+		if group.Platform == PlatformUniversal {
+			buckets = append(buckets, SchedulerBucket{GroupID: group.ID, Platform: group.Platform, Mode: SchedulerModeUniversal})
 		}
 	}
 	return dedupeBuckets(buckets), nil

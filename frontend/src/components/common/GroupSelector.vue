@@ -70,8 +70,8 @@ const filteredGroups = computed(() => {
       (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
     )
   }
-  // 默认：只能选择同 platform 的分组
-  return props.groups.filter((g) => g.platform === props.platform)
+  // 默认：可选择同 platform 或 universal 分组（universal 分组允许任何平台账号加入）
+  return props.groups.filter((g) => g.platform === props.platform || g.platform === 'universal')
 })
 
 const handleChange = (groupId: number, checked: boolean) => {

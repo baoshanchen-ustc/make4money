@@ -22,6 +22,7 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformUniversal   = "universal" // 跨平台组：允许组内包含任意平台的账号，按模型名自动路由
 )
 
 // Account type constants
