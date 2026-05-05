@@ -178,7 +178,11 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 
 	if config.UseTLS {
-		return s.sendMailTLS(addr, auth, config.From, to, []byte(msg), config.Host)
+		// Port 465 uses implicit TLS (SMTPS); other ports (e.g. 587) use STARTTLS.
+		if config.Port == 465 {
+			return s.sendMailImplicitTLS(addr, auth, config.From, to, []byte(msg), config.Host)
+		}
+		return s.sendMailSTARTTLS(addr, auth, config.From, to, []byte(msg), config.Host)
 	}
 
 	return s.sendMailPlain(addr, auth, config.From, to, []byte(msg), config.Host)
@@ -231,8 +235,8 @@ func (s *EmailService) sendMailPlain(addr string, auth smtp.Auth, from, to strin
 	return nil
 }
 
-// sendMailTLS 使用TLS发送邮件
-func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string, msg []byte, host string) error {
+// sendMailImplicitTLS sends email over an implicit TLS connection (port 465 / SMTPS).
+func (s *EmailService) sendMailImplicitTLS(addr string, auth smtp.Auth, from, to string, msg []byte, host string) error {
 	tlsConfig := &tls.Config{
 		ServerName: host,
 		// 强制 TLS 1.2+，避免协议降级导致的弱加密风险。
@@ -247,6 +251,64 @@ func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string,
 	_ = conn.SetDeadline(time.Now().Add(smtpIOTimeout))
 	defer func() { _ = conn.Close() }()
 
+	return s.sendMailOverConn(conn, auth, from, to, msg, host)
+}
+
+// sendMailSTARTTLS sends email using STARTTLS (plain TCP that upgrades to TLS, e.g. port 587).
+func (s *EmailService) sendMailSTARTTLS(addr string, auth smtp.Auth, from, to string, msg []byte, host string) error {
+	tlsConfig := &tls.Config{
+		ServerName: host,
+		MinVersion: tls.VersionTLS12,
+	}
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("tcp dial: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("new smtp client: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	if err = client.StartTLS(tlsConfig); err != nil {
+		return fmt.Errorf("starttls: %w", err)
+	}
+
+	if err = client.Auth(auth); err != nil {
+		return fmt.Errorf("smtp auth: %w", err)
+	}
+
+	if err = client.Mail(from); err != nil {
+		return fmt.Errorf("smtp mail: %w", err)
+	}
+
+	if err = client.Rcpt(to); err != nil {
+		return fmt.Errorf("smtp rcpt: %w", err)
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("smtp data: %w", err)
+	}
+
+	if _, err = w.Write(msg); err != nil {
+		return fmt.Errorf("write msg: %w", err)
+	}
+
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("close writer: %w", err)
+	}
+
+	// Email is sent successfully after w.Close(), ignore Quit errors.
+	_ = client.Quit()
+	return nil
+}
+
+// sendMailOverConn sends email over an already-established net.Conn (used by implicit TLS path).
+func (s *EmailService) sendMailOverConn(conn net.Conn, auth smtp.Auth, from, to string, msg []byte, host string) error {
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("new smtp client: %w", err)
@@ -270,17 +332,15 @@ func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string,
 		return fmt.Errorf("smtp data: %w", err)
 	}
 
-	_, err = w.Write(msg)
-	if err != nil {
+	if _, err = w.Write(msg); err != nil {
 		return fmt.Errorf("write msg: %w", err)
 	}
 
-	err = w.Close()
-	if err != nil {
+	if err = w.Close(); err != nil {
 		return fmt.Errorf("close writer: %w", err)
 	}
 
-	// Email is sent successfully after w.Close(), ignore Quit errors
+	// Email is sent successfully after w.Close(), ignore Quit errors.
 	// Some SMTP servers return non-standard responses on QUIT
 	_ = client.Quit()
 	return nil
