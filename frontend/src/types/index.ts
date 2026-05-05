@@ -217,6 +217,7 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
   affiliate_enabled: boolean
+  use_key_custom_template: string
 }
 
 export interface AuthResponse {

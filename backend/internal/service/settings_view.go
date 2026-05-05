@@ -103,6 +103,7 @@ type SystemSettings struct {
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	UseKeyCustomTemplate        string // 自定义使用密钥模板
 
 	DefaultConcurrency           int
 	DefaultBalance               float64
@@ -207,6 +208,7 @@ type PublicSettings struct {
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	UseKeyCustomTemplate        string // 自定义使用密钥模板
 
 	LinuxDoOAuthEnabled      bool
 	WeChatOAuthEnabled       bool
