@@ -4069,6 +4069,139 @@
             </div>
           </div>
         </div>
+
+        <!-- Custom Use Key Templates -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t("admin.settings.useKeyTemplate.title") }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t("admin.settings.useKeyTemplate.description") }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <!-- Selectors -->
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.useKeyTemplate.client") }}
+                </label>
+                <select
+                  v-model="useKeyTemplateClient"
+                  class="input w-full"
+                >
+                  <option
+                    v-for="opt in CLIENT_OPTIONS"
+                    :key="opt.id"
+                    :value="opt.id"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.useKeyTemplate.system") }}
+                </label>
+                <select
+                  v-model="useKeyTemplateSystem"
+                  class="input w-full"
+                >
+                  <option
+                    v-for="opt in useKeyTemplateSystems"
+                    :key="opt.id"
+                    :value="opt.id"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.useKeyTemplate.file") }}
+                </label>
+                <select
+                  v-model="useKeyTemplateFile"
+                  class="input w-full"
+                >
+                  <option
+                    v-for="opt in useKeyTemplateFiles"
+                    :key="opt.id"
+                    :value="opt.id"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Editor -->
+            <div>
+              <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t("admin.settings.useKeyTemplate.editorLabel") }}
+                <span class="ml-2 text-xs font-normal text-gray-400">
+                  {{ useKeyTemplateCurrentKey }}
+                </span>
+              </label>
+              <textarea
+                v-model="useKeyTemplateDraft"
+                rows="8"
+                class="input font-mono text-sm"
+                :placeholder="useKeyTemplateDefault"
+              ></textarea>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.useKeyTemplate.placeholderHint") }}
+              </p>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-3">
+              <button
+                type="button"
+                class="btn btn-primary"
+                @click="saveUseKeyTemplate"
+              >
+                {{ t("admin.settings.useKeyTemplate.save") }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                @click="resetUseKeyTemplate"
+              >
+                {{ t("admin.settings.useKeyTemplate.resetToDefault") }}
+              </button>
+            </div>
+            <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+              {{ t("admin.settings.useKeyTemplate.saveHint") }}
+            </p>
+
+            <!-- Saved list -->
+            <div v-if="useKeyTemplateSavedKeys.length > 0" class="border-t border-gray-100 pt-4 dark:border-dark-700">
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                {{ t("admin.settings.useKeyTemplate.savedList") }}
+              </h3>
+              <div class="space-y-2">
+                <div
+                  v-for="key in useKeyTemplateSavedKeys"
+                  :key="key"
+                  class="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-800"
+                >
+                  <span class="text-sm text-gray-700 dark:text-gray-300">
+                    {{ getTemplateLabel(key) }}
+                  </span>
+                  <button
+                    type="button"
+                    class="text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                    @click="deleteUseKeyTemplate(key)"
+                  >
+                    {{ t("common.delete") }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <!-- /Tab: General -->
 
         <!-- Tab: Features (功能开关) -->
@@ -5522,6 +5655,16 @@ import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
+import {
+  CLIENT_OPTIONS,
+  SYSTEM_OPTIONS,
+  FILE_OPTIONS,
+  getTemplateKey,
+  getDefaultTemplate,
+  parseCustomTemplates,
+  serializeCustomTemplates,
+  getTemplateLabel,
+} from "@/components/keys/useKeyTemplateDefaults";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
@@ -5588,6 +5731,74 @@ const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
+
+// Use Key Custom Templates 编辑器状态
+const useKeyTemplateClient = ref("claude");
+const useKeyTemplateSystem = ref("unix");
+const useKeyTemplateFile = ref("terminal");
+const useKeyTemplateDraft = ref("");
+const useKeyTemplateSavedKeys = computed(() => {
+  const templates = parseCustomTemplates(form.use_key_custom_template);
+  return Object.keys(templates);
+});
+
+const useKeyTemplateSystems = computed(() =>
+  SYSTEM_OPTIONS[useKeyTemplateClient.value] || []
+);
+const useKeyTemplateFiles = computed(() =>
+  FILE_OPTIONS[useKeyTemplateClient.value]?.[useKeyTemplateSystem.value] || []
+);
+const useKeyTemplateCurrentKey = computed(() =>
+  getTemplateKey(useKeyTemplateClient.value, useKeyTemplateSystem.value, useKeyTemplateFile.value)
+);
+const useKeyTemplateDefault = computed(() =>
+  getDefaultTemplate(useKeyTemplateCurrentKey.value) || ""
+);
+
+watch(useKeyTemplateClient, () => {
+  const systems = SYSTEM_OPTIONS[useKeyTemplateClient.value];
+  if (systems && systems.length > 0) {
+    useKeyTemplateSystem.value = systems[0].id;
+  }
+});
+
+watch(useKeyTemplateSystem, () => {
+  const files = FILE_OPTIONS[useKeyTemplateClient.value]?.[useKeyTemplateSystem.value];
+  if (files && files.length > 0) {
+    useKeyTemplateFile.value = files[0].id;
+  }
+});
+
+watch(useKeyTemplateCurrentKey, () => {
+  const templates = parseCustomTemplates(form.use_key_custom_template);
+  useKeyTemplateDraft.value = templates[useKeyTemplateCurrentKey.value] || "";
+});
+
+function saveUseKeyTemplate() {
+  const templates = parseCustomTemplates(form.use_key_custom_template);
+  const key = useKeyTemplateCurrentKey.value;
+  const draft = useKeyTemplateDraft.value.trim();
+  if (draft) {
+    templates[key] = draft;
+  } else {
+    delete templates[key];
+  }
+  form.use_key_custom_template = serializeCustomTemplates(templates);
+  appStore.showSuccess(t("admin.settings.useKeyTemplate.saved"));
+}
+
+function resetUseKeyTemplate() {
+  useKeyTemplateDraft.value = useKeyTemplateDefault.value;
+}
+
+function deleteUseKeyTemplate(key: string) {
+  const templates = parseCustomTemplates(form.use_key_custom_template);
+  delete templates[key];
+  form.use_key_custom_template = serializeCustomTemplates(templates);
+  if (key === useKeyTemplateCurrentKey.value) {
+    useKeyTemplateDraft.value = "";
+  }
+}
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true);
@@ -5710,6 +5921,7 @@ const form = reactive<SettingsForm>({
   contact_info: "",
   doc_url: "",
   home_content: "",
+  use_key_custom_template: "",
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
   payment_enabled: false,
@@ -6665,6 +6877,7 @@ async function saveSettings() {
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
+      use_key_custom_template: form.use_key_custom_template,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
