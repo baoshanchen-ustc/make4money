@@ -43,6 +43,7 @@ export interface ChannelMonitor {
   extra_headers: Record<string, string>
   body_override_mode: BodyOverrideMode
   body_override: Record<string, unknown> | null
+  compatibility_probe_enabled: boolean
 }
 
 export interface ExtraModelStatus {
@@ -81,6 +82,7 @@ export interface CreateParams {
   extra_headers?: Record<string, string>
   body_override_mode?: BodyOverrideMode
   body_override?: Record<string, unknown> | null
+  compatibility_probe_enabled?: boolean
 }
 
 // Update request: api_key 空串 = 不修改；clear_template=true 时把 template_id 置空

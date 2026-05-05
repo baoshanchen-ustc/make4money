@@ -2446,6 +2446,8 @@ export default {
       advanced: {
         section: '高级（可选）',
         sectionHint: '自定义请求头和请求体，用于突破上游的客户端识别限制（如仅允许 Claude Code 客户端）。',
+        compatibilityProbe: '兼容探测请求',
+        compatibilityProbeHint: '开启后，Claude 监控使用 Claude Code 流式探测请求，Gemini 监控增加 thinking 模型输出预算；用于处理偶发空响应、502 或 challenge mismatch。',
         headers: '自定义请求头',
         headersPlaceholder: 'User-Agent: claude-cli/1.0.83 (external, cli)\nx-app: cli\nanthropic-beta: claude-code-20250219',
         headerNamePlaceholder: 'Header 名',

@@ -49,6 +49,8 @@ const (
 	FieldBodyOverrideMode = "body_override_mode"
 	// FieldBodyOverride holds the string denoting the body_override field in the database.
 	FieldBodyOverride = "body_override"
+	// FieldCompatibilityProbeEnabled holds the string denoting the compatibility_probe_enabled field in the database.
+	FieldCompatibilityProbeEnabled = "compatibility_probe_enabled"
 	// EdgeHistory holds the string denoting the history edge name in mutations.
 	EdgeHistory = "history"
 	// EdgeDailyRollups holds the string denoting the daily_rollups edge name in mutations.
@@ -100,6 +102,7 @@ var Columns = []string{
 	FieldExtraHeaders,
 	FieldBodyOverrideMode,
 	FieldBodyOverride,
+	FieldCompatibilityProbeEnabled,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -143,6 +146,8 @@ var (
 	DefaultBodyOverrideMode string
 	// BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	BodyOverrideModeValidator func(string) error
+	// DefaultCompatibilityProbeEnabled holds the default value on creation for the "compatibility_probe_enabled" field.
+	DefaultCompatibilityProbeEnabled bool
 )
 
 // Provider defines the type for the "provider" enum field.
@@ -245,6 +250,11 @@ func ByTemplateID(opts ...sql.OrderTermOption) OrderOption {
 // ByBodyOverrideMode orders the results by the body_override_mode field.
 func ByBodyOverrideMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBodyOverrideMode, opts...).ToFunc()
+}
+
+// ByCompatibilityProbeEnabled orders the results by the compatibility_probe_enabled field.
+func ByCompatibilityProbeEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCompatibilityProbeEnabled, opts...).ToFunc()
 }
 
 // ByHistoryCount orders the results by history count.

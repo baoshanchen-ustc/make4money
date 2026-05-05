@@ -120,6 +120,11 @@ func BodyOverrideMode(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldBodyOverrideMode, v))
 }
 
+// CompatibilityProbeEnabled applies equality check predicate on the "compatibility_probe_enabled" field. It's identical to CompatibilityProbeEnabledEQ.
+func CompatibilityProbeEnabled(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldCompatibilityProbeEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldCreatedAt, v))
@@ -798,6 +803,16 @@ func BodyOverrideIsNil() predicate.ChannelMonitor {
 // BodyOverrideNotNil applies the NotNil predicate on the "body_override" field.
 func BodyOverrideNotNil() predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldNotNull(FieldBodyOverride))
+}
+
+// CompatibilityProbeEnabledEQ applies the EQ predicate on the "compatibility_probe_enabled" field.
+func CompatibilityProbeEnabledEQ(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldCompatibilityProbeEnabled, v))
+}
+
+// CompatibilityProbeEnabledNEQ applies the NEQ predicate on the "compatibility_probe_enabled" field.
+func CompatibilityProbeEnabledNEQ(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldCompatibilityProbeEnabled, v))
 }
 
 // HasHistory applies the HasEdge predicate on the "history" edge.

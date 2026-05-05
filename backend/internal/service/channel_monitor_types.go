@@ -37,6 +37,9 @@ type ChannelMonitor struct {
 	ExtraHeaders     map[string]string // 与 adapter 默认 headers 合并，用户优先
 	BodyOverrideMode string            // off / merge / replace
 	BodyOverride     map[string]any    // 仅 mode != off 时使用
+	// CompatibilityProbeEnabled 启用更像官方客户端的探测请求体/响应解析。
+	// 用于 Claude Code / Gemini thinking 这类普通 challenge body 不稳定的上游。
+	CompatibilityProbeEnabled bool
 
 	// APIKeyDecryptFailed 表示 APIKey 字段无法解密（密钥不一致或损坏）。
 	// 此时 APIKey 为空字符串，runner / RunCheck 必须跳过该监控并提示重填。
@@ -54,20 +57,21 @@ type ChannelMonitorListParams struct {
 
 // ChannelMonitorCreateParams 创建参数。
 type ChannelMonitorCreateParams struct {
-	Name             string
-	Provider         string
-	Endpoint         string
-	APIKey           string
-	PrimaryModel     string
-	ExtraModels      []string
-	GroupName        string
-	Enabled          bool
-	IntervalSeconds  int
-	CreatedBy        int64
-	TemplateID       *int64
-	ExtraHeaders     map[string]string
-	BodyOverrideMode string
-	BodyOverride     map[string]any
+	Name                      string
+	Provider                  string
+	Endpoint                  string
+	APIKey                    string
+	PrimaryModel              string
+	ExtraModels               []string
+	GroupName                 string
+	Enabled                   bool
+	IntervalSeconds           int
+	CreatedBy                 int64
+	TemplateID                *int64
+	ExtraHeaders              map[string]string
+	BodyOverrideMode          string
+	BodyOverride              map[string]any
+	CompatibilityProbeEnabled bool
 }
 
 // ChannelMonitorUpdateParams 更新参数（指针字段表示"未提供则不更新"）。
@@ -84,11 +88,12 @@ type ChannelMonitorUpdateParams struct {
 	// 自定义快照字段：指针为 nil 表示不更新，非 nil 覆盖
 	// TemplateID *(*int64)：用 ** 表达三态：nil=不更新；&nil=清空；&&id=设为 id。
 	// 简化处理：用 ClearTemplate 显式标志 + TemplateID（普通指针）
-	TemplateID       *int64
-	ClearTemplate    bool // true 时无视 TemplateID，把监控的 template_id 置空
-	ExtraHeaders     *map[string]string
-	BodyOverrideMode *string
-	BodyOverride     *map[string]any
+	TemplateID                *int64
+	ClearTemplate             bool // true 时无视 TemplateID，把监控的 template_id 置空
+	ExtraHeaders              *map[string]string
+	BodyOverrideMode          *string
+	BodyOverride              *map[string]any
+	CompatibilityProbeEnabled *bool
 }
 
 // CheckResult 单个模型一次检测的结果。

@@ -2369,6 +2369,8 @@ export default {
       advanced: {
         section: 'Advanced (optional)',
         sectionHint: 'Customize request headers and body to bypass upstream client-detection (e.g. "only Claude Code clients allowed").',
+        compatibilityProbe: 'Compatibility probe request',
+        compatibilityProbeHint: 'When enabled, Claude checks use a Claude Code-style streaming probe and Gemini checks get a larger output budget for thinking models. Use this for intermittent empty responses, 502s, or challenge mismatches.',
         headers: 'Custom request headers',
         headersPlaceholder: 'User-Agent: claude-cli/1.0.83 (external, cli)\nx-app: cli\nanthropic-beta: claude-code-20250219',
         headerNamePlaceholder: 'Header name',

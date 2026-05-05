@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -47,6 +49,8 @@ type CheckOptions struct {
 	// BodyOverride 在 merge 模式下做浅合并（key 命中黑名单时静默丢弃），
 	// 在 replace 模式下直接当作完整 body。
 	BodyOverride map[string]any
+	// CompatibilityProbeEnabled 启用 provider-specific 兼容探测请求体。
+	CompatibilityProbeEnabled bool
 }
 
 // runCheckForModel 对单个 (provider, model) 做一次完整检测。
@@ -84,7 +88,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	}
 
 	// Replace 模式：跳过 challenge 校验（用户 body 是静态的，challenge 没法嵌入）。
-	// 改用「HTTP 2xx + 响应文本（adapter.textPath 抽取）非空」作为 operational 判定。
+	// 改用「HTTP 2xx + 响应文本（adapter.extractText 抽取）非空」作为 operational 判定。
 	// 响应文本为空则降级为 failed（视为上游回了 200 但没实际内容）。
 	if mode == MonitorBodyOverrideModeReplace {
 		if strings.TrimSpace(respText) == "" {
@@ -150,14 +154,14 @@ func pingEndpointOrigin(ctx context.Context, endpoint string) *int {
 //   - 拼出请求路径（含 model 占位）
 //   - 序列化请求体
 //   - 构造鉴权头
-//   - 从响应 JSON 中按 path 提取文本（gjson path）
+//   - 从响应 JSON 中提取可校验文本
 //
 // 加新 provider 只需要在 providerAdapters 里增加一个条目，无需触碰 callProvider / validateProvider。
 type providerAdapter struct {
 	buildPath    func(model string) string
 	buildBody    func(model, prompt string) ([]byte, error)
 	buildHeaders func(apiKey string) map[string]string
-	textPath     string // gjson 提取响应文本的 path
+	extractText  func([]byte) string
 }
 
 // providerAdapters 全部已支持的 provider。键值即 MonitorProvider* 字符串。
@@ -177,7 +181,7 @@ var providerAdapters = map[string]providerAdapter{
 		buildHeaders: func(apiKey string) map[string]string {
 			return map[string]string{"Authorization": "Bearer " + apiKey}
 		},
-		textPath: "choices.0.message.content",
+		extractText: extractOpenAIResponseText,
 	},
 	MonitorProviderAnthropic: {
 		buildPath: func(string) string { return providerAnthropicPath },
@@ -194,10 +198,10 @@ var providerAdapters = map[string]providerAdapter{
 				"anthropic-version": monitorAnthropicAPIVersion,
 			}
 		},
-		textPath: "content.0.text",
+		extractText: extractAnthropicResponseText,
 	},
 	MonitorProviderGemini: {
-		// Gemini 把 model 名写在 URL path 上：/v1beta/models/{model}:generateContent
+		// Gemini 把 model 名写在 URL path 上；监控使用流式接口，避免部分 Code Assist 非流式 2xx 空内容。
 		buildPath: func(model string) string { return fmt.Sprintf(providerGeminiPathTemplate, model) },
 		buildBody: func(_, prompt string) ([]byte, error) {
 			return json.Marshal(map[string]any{
@@ -211,7 +215,7 @@ var providerAdapters = map[string]providerAdapter{
 		buildHeaders: func(apiKey string) map[string]string {
 			return map[string]string{"x-goog-api-key": apiKey}
 		},
-		textPath: "candidates.0.content.parts.0.text",
+		extractText: extractGeminiResponseText,
 	},
 }
 
@@ -226,7 +230,7 @@ func isSupportedProvider(p string) bool {
 // opts 承载用户的自定义 headers / body 覆盖（可为 nil）。
 //
 // 返回值：
-//   - extractedText: 按 textPath 抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
+//   - extractedText: 按 provider 响应结构抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
 //   - rawBody: 完整响应体的字符串形式（已被 monitorResponseMaxBytes 截断），用于错误路径保留上游真实回包
 //   - status: HTTP 状态码
 //   - err: 网络 / 序列化错误
@@ -239,32 +243,306 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err != nil {
 		return "", "", 0, err
 	}
+	activeOpts := opts
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
+	applyCompatibilityProbeHeaders(provider, headers, opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	if shouldFallbackToAnthropicCompatibilityProbe(provider, opts, status, err, respBytes) {
+		activeOpts = &CheckOptions{
+			ExtraHeaders:              extraHeadersForCompatibilityFallback(opts),
+			CompatibilityProbeEnabled: true,
+		}
+		body, err = buildRequestBody(adapter, provider, model, prompt, activeOpts)
+		if err != nil {
+			return "", "", 0, err
+		}
+		headers = mergeHeaders(adapter.buildHeaders(apiKey), activeOpts)
+		applyCompatibilityProbeHeaders(provider, headers, activeOpts)
+		respBytes, status, err = postRawJSON(ctx, full, body, headers)
+	}
+	for attempt := 0; attempt < monitorClaudeCodeRejectionMaxRetries &&
+		shouldRetryAnthropicCompatibilityProbe(provider, activeOpts, status, err, respBytes); attempt++ {
+		if waitErr := waitMonitorRequestRetry(ctx); waitErr != nil {
+			break
+		}
+		body, err = buildRequestBody(adapter, provider, model, prompt, activeOpts)
+		if err != nil {
+			return "", "", 0, err
+		}
+		headers = mergeHeaders(adapter.buildHeaders(apiKey), activeOpts)
+		applyCompatibilityProbeHeaders(provider, headers, activeOpts)
+		respBytes, status, err = postRawJSON(ctx, full, body, headers)
+	}
 	if err != nil {
 		return "", "", status, err
 	}
-	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
+	return adapter.extractText(respBytes), string(respBytes), status, nil
+}
+
+func shouldFallbackToAnthropicCompatibilityProbe(provider string, opts *CheckOptions, status int, err error, body []byte) bool {
+	if opts != nil && opts.CompatibilityProbeEnabled {
+		return false
+	}
+	if bodyOverrideMode(opts) == MonitorBodyOverrideModeReplace {
+		return false
+	}
+	return isAnthropicClaudeCodeRejection(provider, status, err, body)
+}
+
+func shouldRetryAnthropicCompatibilityProbe(provider string, opts *CheckOptions, status int, err error, body []byte) bool {
+	if opts == nil || !opts.CompatibilityProbeEnabled {
+		return false
+	}
+	if bodyOverrideMode(opts) == MonitorBodyOverrideModeReplace {
+		return false
+	}
+	return isAnthropicClaudeCodeRejection(provider, status, err, body)
+}
+
+func isAnthropicClaudeCodeRejection(provider string, status int, err error, body []byte) bool {
+	if provider != MonitorProviderAnthropic || err != nil {
+		return false
+	}
+	if status != http.StatusBadRequest && status != http.StatusForbidden {
+		return false
+	}
+	msg := strings.ToLower(string(body))
+	return strings.Contains(msg, "only for use in claude code") ||
+		strings.Contains(msg, "client not allowed")
+}
+
+func extraHeadersForCompatibilityFallback(opts *CheckOptions) map[string]string {
+	if opts == nil || len(opts.ExtraHeaders) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(opts.ExtraHeaders))
+	for k, v := range opts.ExtraHeaders {
+		out[k] = v
+	}
+	return out
+}
+
+func applyCompatibilityProbeHeaders(provider string, headers map[string]string, opts *CheckOptions) {
+	if opts == nil || !opts.CompatibilityProbeEnabled || provider != MonitorProviderAnthropic {
+		return
+	}
+	for k, v := range claude.DefaultHeaders {
+		monitorSetHeaderIfMissing(headers, k, v)
+	}
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(monitorHeaderValue(headers, "User-Agent"))), "claude-cli/") {
+		monitorSetHeader(headers, "User-Agent", claude.DefaultHeaders["User-Agent"])
+	}
+	if strings.TrimSpace(monitorHeaderValue(headers, "X-App")) != "cli" {
+		monitorSetHeader(headers, "X-App", "cli")
+	}
+	if strings.TrimSpace(monitorHeaderValue(headers, "anthropic-version")) == "" {
+		monitorSetHeader(headers, "anthropic-version", monitorAnthropicAPIVersion)
+	}
+	if !containsBetaToken(monitorHeaderValue(headers, "anthropic-beta"), claude.BetaClaudeCode) {
+		monitorSetHeader(headers, "anthropic-beta", claude.APIKeyBetaHeader)
+	}
+	monitorSetHeader(headers, "Accept", "application/json")
+	monitorSetHeader(headers, "x-stainless-helper-method", "stream")
+	monitorSetHeader(headers, "x-client-request-id", uuid.NewString())
+}
+
+func buildAnthropicCompatibilityChallengeBody(model, prompt string) ([]byte, error) {
+	sessionID, err := generateSessionString()
+	if err != nil {
+		return nil, fmt.Errorf("generate claude-code session id: %w", err)
+	}
+	return json.Marshal(map[string]any{
+		"model": model,
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": prompt,
+						"cache_control": map[string]string{
+							"type": "ephemeral",
+						},
+					},
+				},
+			},
+		},
+		"system": []map[string]any{
+			{
+				"type": "text",
+				"text": claudeCodeSystemPrompt,
+				"cache_control": map[string]string{
+					"type": "ephemeral",
+				},
+			},
+		},
+		"metadata":    map[string]string{"user_id": sessionID},
+		"max_tokens":  monitorAnthropicChallengeMaxTokens,
+		"temperature": 1,
+		"stream":      true,
+	})
+}
+
+func extractOpenAIResponseText(respBytes []byte) string {
+	return gjson.GetBytes(respBytes, "choices.0.message.content").String()
+}
+
+func extractAnthropicResponseText(respBytes []byte) string {
+	if text := extractAnthropicSSEText(respBytes); text != "" {
+		return text
+	}
+	return extractAnthropicJSONResponseText(respBytes)
+}
+
+func extractAnthropicJSONResponseText(respBytes []byte) string {
+	return joinNonEmptyGJSONStrings(gjson.GetBytes(respBytes, "content").Array(), func(item gjson.Result) string {
+		if typ := item.Get("type").String(); typ != "" && typ != "text" {
+			return ""
+		}
+		return item.Get("text").String()
+	})
+}
+
+func extractAnthropicSSEText(respBytes []byte) string {
+	var texts []string
+	for _, line := range strings.Split(string(respBytes), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		item := gjson.Parse(payload)
+		for _, path := range []string{"delta.text", "content.0.text", "text"} {
+			if text := strings.TrimSpace(item.Get(path).String()); text != "" {
+				texts = append(texts, text)
+				break
+			}
+		}
+	}
+	return strings.Join(texts, "")
+}
+
+func extractGeminiResponseText(respBytes []byte) string {
+	if text := extractGeminiSSEText(respBytes); text != "" {
+		return text
+	}
+	return extractGeminiJSONResponseText(respBytes)
+}
+
+func extractGeminiSSEText(respBytes []byte) string {
+	var texts []string
+	for _, line := range strings.Split(string(respBytes), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		if text := extractGeminiJSONResponseText([]byte(payload)); text != "" {
+			texts = append(texts, text)
+		}
+	}
+	return strings.Join(texts, "")
+}
+
+func extractGeminiJSONResponseText(respBytes []byte) string {
+	return extractGeminiResultText(gjson.ParseBytes(respBytes))
+}
+
+func extractGeminiResultText(root gjson.Result) string {
+	if root.IsArray() {
+		var texts []string
+		for _, item := range root.Array() {
+			if text := extractGeminiResultText(item); text != "" {
+				texts = append(texts, text)
+			}
+		}
+		return strings.Join(texts, "")
+	}
+	if response := root.Get("response"); response.Exists() {
+		root = response
+	}
+	return joinGeminiPartText(root.Get("candidates").Array())
+}
+
+func joinGeminiPartText(candidates []gjson.Result) string {
+	var texts []string
+	for _, candidate := range candidates {
+		for _, part := range candidate.Get("content.parts").Array() {
+			if part.Get("thought").Bool() {
+				continue
+			}
+			if text := strings.TrimSpace(part.Get("text").String()); text != "" {
+				texts = append(texts, text)
+			}
+		}
+	}
+	return strings.Join(texts, "\n")
+}
+
+func joinNonEmptyGJSONStrings(items []gjson.Result, extract func(gjson.Result) string) string {
+	texts := make([]string, 0, len(items))
+	for _, item := range items {
+		if text := strings.TrimSpace(extract(item)); text != "" {
+			texts = append(texts, text)
+		}
+	}
+	return strings.Join(texts, "\n")
 }
 
 // mergeHeaders 把用户自定义 headers 合并到 adapter 默认 headers 上。
 // 用户值覆盖默认；命中黑名单（hop-by-hop / 由 http.Client 自管的）的 key 静默丢弃。
 func mergeHeaders(base map[string]string, opts *CheckOptions) map[string]string {
-	if opts == nil || len(opts.ExtraHeaders) == 0 {
-		return base
+	extraLen := 0
+	if opts != nil {
+		extraLen = len(opts.ExtraHeaders)
 	}
-	out := make(map[string]string, len(base)+len(opts.ExtraHeaders))
+	out := make(map[string]string, len(base)+extraLen)
 	for k, v := range base {
-		out[k] = v
+		monitorSetHeader(out, k, v)
+	}
+	if opts == nil || len(opts.ExtraHeaders) == 0 {
+		return out
 	}
 	for k, v := range opts.ExtraHeaders {
 		if IsForbiddenHeaderName(k) {
 			continue
 		}
-		out[k] = v
+		monitorSetHeader(out, k, v)
 	}
 	return out
+}
+
+func monitorHeaderValue(headers map[string]string, name string) string {
+	for k, v := range headers {
+		if strings.EqualFold(k, name) {
+			return v
+		}
+	}
+	return ""
+}
+
+func monitorSetHeaderIfMissing(headers map[string]string, name, value string) {
+	if strings.TrimSpace(monitorHeaderValue(headers, name)) != "" {
+		return
+	}
+	monitorSetHeader(headers, name, value)
+}
+
+func monitorSetHeader(headers map[string]string, name, value string) {
+	name = strings.TrimSpace(name)
+	for k := range headers {
+		if strings.EqualFold(k, name) {
+			delete(headers, k)
+		}
+	}
+	headers[resolveWireCasing(name)] = value
 }
 
 // buildRequestBody 根据 body_override_mode 构造请求 body。
@@ -289,7 +567,7 @@ func buildRequestBody(adapter providerAdapter, provider, model, prompt string, o
 		return body, nil
 	}
 
-	defaultBody, err := adapter.buildBody(model, prompt)
+	defaultBody, err := buildDefaultRequestBody(adapter, provider, model, prompt, opts)
 	if err != nil {
 		return nil, fmt.Errorf("marshal default body: %w", err)
 	}
@@ -315,6 +593,27 @@ func buildRequestBody(adapter providerAdapter, provider, model, prompt string, o
 	return merged, nil
 }
 
+func buildDefaultRequestBody(adapter providerAdapter, provider, model, prompt string, opts *CheckOptions) ([]byte, error) {
+	if opts != nil && opts.CompatibilityProbeEnabled {
+		switch provider {
+		case MonitorProviderAnthropic:
+			return buildAnthropicCompatibilityChallengeBody(model, prompt)
+		case MonitorProviderGemini:
+			return buildGeminiCompatibilityChallengeBody(prompt)
+		}
+	}
+	return adapter.buildBody(model, prompt)
+}
+
+func buildGeminiCompatibilityChallengeBody(prompt string) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"contents": []map[string]any{
+			{"parts": []map[string]any{{"text": prompt}}},
+		},
+		"generationConfig": map[string]any{"maxOutputTokens": monitorGeminiChallengeMaxOutputTokens},
+	})
+}
+
 // bodyMergeKeyDenyList 在 merge 模式下，禁止用户覆盖这些 provider-specific 的关键字段。
 // 思路抄 check-cx 的 EXCLUDED_METADATA_KEYS：保护 challenge / model 路由不被用户误伤。
 // 用户想动这些字段就用 replace 模式（已知会跳 challenge 校验）。
@@ -329,6 +628,22 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
 func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
+	var lastBody []byte
+	var lastStatus int
+	var lastErr error
+	for attempt := 0; attempt <= monitorRequestRetryMaxRetries; attempt++ {
+		lastBody, lastStatus, lastErr = postRawJSONOnce(ctx, fullURL, payload, headers)
+		if !shouldRetryMonitorRequest(lastStatus, lastErr) || attempt == monitorRequestRetryMaxRetries {
+			return lastBody, lastStatus, lastErr
+		}
+		if err := waitMonitorRequestRetry(ctx); err != nil {
+			return lastBody, lastStatus, lastErr
+		}
+	}
+	return lastBody, lastStatus, lastErr
+}
+
+func postRawJSONOnce(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, fmt.Errorf("build request: %w", err)
@@ -350,6 +665,62 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
 	}
 	return respBody, resp.StatusCode, nil
+}
+
+func shouldRetryMonitorRequest(status int, err error) bool {
+	if err != nil {
+		return isTransientMonitorRequestError(err)
+	}
+	return isTransientMonitorStatus(status)
+}
+
+func isTransientMonitorStatus(status int) bool {
+	switch status {
+	case http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+		520, // Cloudflare: unknown error
+		521, // Cloudflare: web server is down
+		522, // Cloudflare: connection timed out
+		523, // Cloudflare: origin is unreachable
+		524, // Cloudflare: timeout occurred
+		529: // common upstream overload code
+		return true
+	default:
+		return false
+	}
+}
+
+func isTransientMonitorRequestError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, fragment := range []string{
+		"timeout awaiting response headers",
+		"client.timeout exceeded while awaiting headers",
+		"server closed idle connection",
+		"connection reset by peer",
+		"unexpected eof",
+		"stream error",
+	} {
+		if strings.Contains(msg, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func waitMonitorRequestRetry(ctx context.Context) error {
+	timer := time.NewTimer(monitorRequestRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // joinURL 把 base origin 与 path 拼成完整 URL。

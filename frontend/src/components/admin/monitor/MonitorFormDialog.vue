@@ -114,6 +114,14 @@
             <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.templateField.applyHint') }}</p>
           </div>
 
+          <div class="flex items-start justify-between gap-4 rounded-md border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-800">
+            <div>
+              <label class="input-label mb-1">{{ t('admin.channelMonitor.advanced.compatibilityProbe') }}</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channelMonitor.advanced.compatibilityProbeHint') }}</p>
+            </div>
+            <Toggle v-model="form.compatibility_probe_enabled" />
+          </div>
+
           <MonitorAdvancedRequestConfig
             :extra-headers="form.extra_headers"
             :body-override-mode="form.body_override_mode"
@@ -236,6 +244,7 @@ interface MonitorForm {
   extra_headers: Record<string, string>
   body_override_mode: BodyOverrideMode
   body_override: Record<string, unknown> | null
+  compatibility_probe_enabled: boolean
 }
 
 const form = reactive<MonitorForm>({
@@ -252,6 +261,7 @@ const form = reactive<MonitorForm>({
   extra_headers: {},
   body_override_mode: 'off',
   body_override: null,
+  compatibility_probe_enabled: false,
 })
 
 // 可用模板列表（进入 dialog 时一次性拉取 cache；按 provider 过滤）。
@@ -336,6 +346,7 @@ function resetForm() {
   form.extra_headers = {}
   form.body_override_mode = 'off'
   form.body_override = null
+  form.compatibility_probe_enabled = false
 }
 
 function loadFromMonitor(m: ChannelMonitor) {
@@ -352,6 +363,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.extra_headers = { ...(m.extra_headers || {}) }
   form.body_override_mode = m.body_override_mode || 'off'
   form.body_override = m.body_override ? { ...m.body_override } : null
+  form.compatibility_probe_enabled = !!m.compatibility_probe_enabled
 }
 
 // Re-sync form whenever the dialog is opened or the target monitor changes.
@@ -415,6 +427,7 @@ function buildPayload(): CreateParams {
     extra_headers: form.extra_headers,
     body_override_mode: form.body_override_mode,
     body_override: form.body_override,
+    compatibility_probe_enabled: form.compatibility_probe_enabled,
   }
 }
 

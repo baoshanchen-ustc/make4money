@@ -268,6 +268,20 @@ func (_u *ChannelMonitorUpdate) ClearBodyOverride() *ChannelMonitorUpdate {
 	return _u
 }
 
+// SetCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field.
+func (_u *ChannelMonitorUpdate) SetCompatibilityProbeEnabled(v bool) *ChannelMonitorUpdate {
+	_u.mutation.SetCompatibilityProbeEnabled(v)
+	return _u
+}
+
+// SetNillableCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableCompatibilityProbeEnabled(v *bool) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetCompatibilityProbeEnabled(*v)
+	}
+	return _u
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by IDs.
 func (_u *ChannelMonitorUpdate) AddHistoryIDs(ids ...int64) *ChannelMonitorUpdate {
 	_u.mutation.AddHistoryIDs(ids...)
@@ -527,6 +541,9 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if _u.mutation.BodyOverrideCleared() {
 		_spec.ClearField(channelmonitor.FieldBodyOverride, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CompatibilityProbeEnabled(); ok {
+		_spec.SetField(channelmonitor.FieldCompatibilityProbeEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.HistoryCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -903,6 +920,20 @@ func (_u *ChannelMonitorUpdateOne) ClearBodyOverride() *ChannelMonitorUpdateOne 
 	return _u
 }
 
+// SetCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field.
+func (_u *ChannelMonitorUpdateOne) SetCompatibilityProbeEnabled(v bool) *ChannelMonitorUpdateOne {
+	_u.mutation.SetCompatibilityProbeEnabled(v)
+	return _u
+}
+
+// SetNillableCompatibilityProbeEnabled sets the "compatibility_probe_enabled" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableCompatibilityProbeEnabled(v *bool) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetCompatibilityProbeEnabled(*v)
+	}
+	return _u
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by IDs.
 func (_u *ChannelMonitorUpdateOne) AddHistoryIDs(ids ...int64) *ChannelMonitorUpdateOne {
 	_u.mutation.AddHistoryIDs(ids...)
@@ -1192,6 +1223,9 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if _u.mutation.BodyOverrideCleared() {
 		_spec.ClearField(channelmonitor.FieldBodyOverride, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CompatibilityProbeEnabled(); ok {
+		_spec.SetField(channelmonitor.FieldCompatibilityProbeEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.HistoryCleared() {
 		edge := &sqlgraph.EdgeSpec{
