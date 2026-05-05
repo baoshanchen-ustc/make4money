@@ -43,6 +43,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/usersubscriptionquotaevent"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -1019,6 +1020,33 @@ func (f TraverseUserSubscription) Traverse(ctx context.Context, q ent.Query) err
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserSubscriptionQuery", q)
 }
 
+// The UserSubscriptionQuotaEventFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserSubscriptionQuotaEventFunc func(context.Context, *ent.UserSubscriptionQuotaEventQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserSubscriptionQuotaEventFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserSubscriptionQuotaEventQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserSubscriptionQuotaEventQuery", q)
+}
+
+// The TraverseUserSubscriptionQuotaEvent type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserSubscriptionQuotaEvent func(context.Context, *ent.UserSubscriptionQuotaEventQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserSubscriptionQuotaEvent) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserSubscriptionQuotaEvent) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserSubscriptionQuotaEventQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserSubscriptionQuotaEventQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
@@ -1090,6 +1118,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserAttributeValueQuery, predicate.UserAttributeValue, userattributevalue.OrderOption]{typ: ent.TypeUserAttributeValue, tq: q}, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: q}, nil
+	case *ent.UserSubscriptionQuotaEventQuery:
+		return &query[*ent.UserSubscriptionQuotaEventQuery, predicate.UserSubscriptionQuotaEvent, usersubscriptionquotaevent.OrderOption]{typ: ent.TypeUserSubscriptionQuotaEvent, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

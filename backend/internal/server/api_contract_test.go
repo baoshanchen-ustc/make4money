@@ -325,6 +325,7 @@ func TestAPIContracts(t *testing.T) {
 						"daily_limit_usd": null,
 						"weekly_limit_usd": null,
 						"monthly_limit_usd": null,
+						"total_limit_usd": null,
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,
@@ -388,6 +389,11 @@ func TestAPIContracts(t *testing.T) {
 						"daily_usage_usd": 1.23,
 						"weekly_usage_usd": 2.34,
 						"monthly_usage_usd": 3.45,
+						"total_limit_usd": 0,
+						"total_used_usd": 0,
+						"total_remaining_usd": 0,
+						"next_expiring_quota_usd": 0,
+						"next_quota_expire_at": null,
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 					}
@@ -1838,7 +1844,22 @@ func (stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64,
 func (stubUserSubscriptionRepo) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	return errors.New("not implemented")
 }
+func (stubUserSubscriptionRepo) CreateQuotaEvent(ctx context.Context, event *service.UserSubscriptionQuotaEvent) error {
+	return errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) RetireDepletedQuotaEventsOnAppend(ctx context.Context, subscriptionID, keepEventID int64, retireAt time.Time) error {
+	return errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) GetQuotaSummary(ctx context.Context, subscriptionID int64, now time.Time) (*service.UserSubscriptionQuotaSummary, error) {
+	return nil, errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) GetQuotaSummaryBatch(ctx context.Context, subscriptionIDs []int64, now time.Time) (map[int64]*service.UserSubscriptionQuotaSummary, error) {
+	return nil, errors.New("not implemented")
+}
 func (stubUserSubscriptionRepo) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
+	return 0, errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) DeleteExpiredQuotaEventsBatch(ctx context.Context, now time.Time, limit int) (int64, error) {
 	return 0, errors.New("not implemented")
 }
 

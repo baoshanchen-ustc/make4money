@@ -86,11 +86,24 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				status := 403
 				if errors.Is(err, service.ErrDailyLimitExceeded) ||
 					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
-					errors.Is(err, service.ErrMonthlyLimitExceeded) {
+					errors.Is(err, service.ErrMonthlyLimitExceeded) ||
+					errors.Is(err, service.ErrTotalLimitExceeded) {
 					status = 429
 				}
 				abortWithGoogleError(c, status, err.Error())
 				return
+			}
+			if apiKey.Group != nil && apiKey.Group.IsTotalQuotaSubscriptionType() {
+				if snapshot, snapErr := subscriptionService.BuildTotalQuotaSpendSnapshot(c.Request.Context(), subscription); snapErr != nil {
+					status := 403
+					if errors.Is(snapErr, service.ErrTotalLimitExceeded) {
+						status = 429
+					}
+					abortWithGoogleError(c, status, snapErr.Error())
+					return
+				} else if snapshot != nil {
+					c.Request = c.Request.WithContext(service.WithTotalQuotaSpendSnapshot(c.Request.Context(), snapshot))
+				}
 			}
 
 			c.Set(string(ContextKeySubscription), subscription)

@@ -71,6 +71,13 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 	return &zero
 }
 
+func (f optionalLimitField) ToServiceInputPreserveNull() *float64 {
+	if !f.set {
+		return nil
+	}
+	return f.value
+}
+
 // NewGroupHandler creates a new admin group handler
 func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
 	return &GroupHandler{
@@ -87,10 +94,11 @@ type CreateGroupRequest struct {
 	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
 	RateMultiplier   float64            `json:"rate_multiplier"`
 	IsExclusive      bool               `json:"is_exclusive"`
-	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription total_quota"`
 	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
 	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
+	TotalLimitUSD    optionalLimitField `json:"total_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
@@ -127,10 +135,11 @@ type UpdateGroupRequest struct {
 	RateMultiplier   *float64           `json:"rate_multiplier"`
 	IsExclusive      *bool              `json:"is_exclusive"`
 	Status           string             `json:"status" binding:"omitempty,oneof=active inactive"`
-	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription total_quota"`
 	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
 	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
+	TotalLimitUSD    optionalLimitField `json:"total_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
 	ImageRateIndependent            *bool    `json:"image_rate_independent"`
@@ -247,6 +256,15 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		return
 	}
 
+	dayLimit := req.DailyLimitUSD.ToServiceInput()
+	weekLimit := req.WeeklyLimitUSD.ToServiceInput()
+	monthLimit := req.MonthlyLimitUSD.ToServiceInput()
+	if req.SubscriptionType == service.SubscriptionTypeTotalQuota {
+		dayLimit = req.DailyLimitUSD.ToServiceInputPreserveNull()
+		weekLimit = req.WeeklyLimitUSD.ToServiceInputPreserveNull()
+		monthLimit = req.MonthlyLimitUSD.ToServiceInputPreserveNull()
+	}
+
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
@@ -254,9 +272,10 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
 		SubscriptionType:                req.SubscriptionType,
-		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
-		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
-		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
+		DailyLimitUSD:                   dayLimit,
+		WeeklyLimitUSD:                  weekLimit,
+		MonthlyLimitUSD:                 monthLimit,
+		TotalLimitUSD:                   req.TotalLimitUSD.ToServiceInput(),
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
@@ -301,6 +320,15 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		return
 	}
 
+	dayLimit := req.DailyLimitUSD.ToServiceInput()
+	weekLimit := req.WeeklyLimitUSD.ToServiceInput()
+	monthLimit := req.MonthlyLimitUSD.ToServiceInput()
+	if req.SubscriptionType == service.SubscriptionTypeTotalQuota {
+		dayLimit = req.DailyLimitUSD.ToServiceInputPreserveNull()
+		weekLimit = req.WeeklyLimitUSD.ToServiceInputPreserveNull()
+		monthLimit = req.MonthlyLimitUSD.ToServiceInputPreserveNull()
+	}
+
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
@@ -309,9 +337,10 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		IsExclusive:                     req.IsExclusive,
 		Status:                          req.Status,
 		SubscriptionType:                req.SubscriptionType,
-		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
-		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
-		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
+		DailyLimitUSD:                   dayLimit,
+		WeeklyLimitUSD:                  weekLimit,
+		MonthlyLimitUSD:                 monthLimit,
+		TotalLimitUSD:                   req.TotalLimitUSD.ToServiceInput(),
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,

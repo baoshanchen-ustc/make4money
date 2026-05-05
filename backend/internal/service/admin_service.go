@@ -184,10 +184,11 @@ type CreateGroupInput struct {
 	Platform         string
 	RateMultiplier   float64
 	IsExclusive      bool
-	SubscriptionType string   // standard/subscription
+	SubscriptionType string   // standard/subscription/total_quota
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	TotalLimitUSD    *float64 // 总额度限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool
 	ImageRateIndependent bool
@@ -224,10 +225,11 @@ type UpdateGroupInput struct {
 	RateMultiplier   *float64 // 使用指针以支持设置为0
 	IsExclusive      *bool
 	Status           string
-	SubscriptionType string   // standard/subscription
+	SubscriptionType string   // standard/subscription/total_quota
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
+	TotalLimitUSD    *float64 // 总额度限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration *bool
 	ImageRateIndependent *bool
@@ -1558,6 +1560,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
 	monthlyLimit := normalizeLimit(input.MonthlyLimitUSD)
+	totalLimit := normalizeTotalQuotaLimit(input.TotalLimitUSD)
+	if err := validateGroupQuotaConfiguration(subscriptionType, dailyLimit, weeklyLimit, monthlyLimit, totalLimit); err != nil {
+		return nil, err
+	}
 
 	// 图片价格：负数表示清除（使用默认价格），0 保留（表示免费）
 	imagePrice1K := normalizePrice(input.ImagePrice1K)
@@ -1637,6 +1643,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
+		TotalLimitUSD:                   totalLimit,
 		AllowImageGeneration:            input.AllowImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
@@ -1701,6 +1708,29 @@ func normalizeLimit(limit *float64) *float64 {
 	return limit
 }
 
+func normalizeTotalQuotaLimit(limit *float64) *float64 {
+	if limit == nil || *limit <= 0 {
+		return nil
+	}
+	return limit
+}
+
+func validateGroupQuotaConfiguration(subscriptionType string, daily, weekly, monthly, total *float64) error {
+	if subscriptionType == SubscriptionTypeTotalQuota {
+		if total == nil || *total <= 0 {
+			return infraerrors.BadRequest("TOTAL_QUOTA_LIMIT_REQUIRED", "total quota groups require total_limit_usd > 0")
+		}
+		if daily != nil || weekly != nil || monthly != nil {
+			return infraerrors.BadRequest("TOTAL_QUOTA_LIMIT_CONFLICT", "total quota groups cannot use daily/weekly/monthly limits")
+		}
+		return nil
+	}
+	if total != nil {
+		return infraerrors.BadRequest("TOTAL_QUOTA_LIMIT_CONFLICT", "only total quota groups can set total_limit_usd")
+	}
+	return nil
+}
+
 // normalizePrice 将负数转换为 nil（表示使用默认价格），0 保留（表示免费）
 func normalizePrice(price *float64) *float64 {
 	if price == nil || *price < 0 {
@@ -1755,7 +1785,7 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	if platform != PlatformAnthropic && platform != PlatformAntigravity {
 		return fmt.Errorf("invalid request fallback only supported for anthropic or antigravity groups")
 	}
-	if subscriptionType == SubscriptionTypeSubscription {
+	if subscriptionType == SubscriptionTypeSubscription || subscriptionType == SubscriptionTypeTotalQuota {
 		return fmt.Errorf("subscription groups cannot set invalid request fallback")
 	}
 	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
@@ -1769,7 +1799,7 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	if fallbackGroup.Platform != PlatformAnthropic {
 		return fmt.Errorf("fallback group must be anthropic platform")
 	}
-	if fallbackGroup.SubscriptionType == SubscriptionTypeSubscription {
+	if fallbackGroup.IsSubscriptionType() {
 		return fmt.Errorf("fallback group cannot be subscription type")
 	}
 	if fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
@@ -1815,6 +1845,10 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	group.DailyLimitUSD = normalizeLimit(input.DailyLimitUSD)
 	group.WeeklyLimitUSD = normalizeLimit(input.WeeklyLimitUSD)
 	group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
+	group.TotalLimitUSD = normalizeTotalQuotaLimit(input.TotalLimitUSD)
+	if err := validateGroupQuotaConfiguration(group.SubscriptionType, group.DailyLimitUSD, group.WeeklyLimitUSD, group.MonthlyLimitUSD, group.TotalLimitUSD); err != nil {
+		return nil, err
+	}
 	// 图片生成计费配置：负数表示清除（使用默认价格）
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
@@ -2944,6 +2978,9 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 		}
 		if !group.IsSubscriptionType() {
 			return nil, errors.New("group must be subscription type")
+		}
+		if group.IsTotalQuotaSubscriptionType() && input.ValidityDays < 0 {
+			return nil, infraerrors.BadRequest("TOTAL_QUOTA_NEGATIVE_VALIDITY_UNSUPPORTED", "total quota redeem codes do not support negative validity days")
 		}
 	}
 

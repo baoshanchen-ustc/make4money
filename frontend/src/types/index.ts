@@ -470,7 +470,7 @@ export interface PaginationConfig {
 
 export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 
-export type SubscriptionType = 'standard' | 'subscription'
+export type SubscriptionType = 'standard' | 'subscription' | 'total_quota'
 
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
@@ -492,6 +492,7 @@ export interface Group {
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  total_limit_usd: number | null
   // 图片生成计费配置
   allow_image_generation: boolean
   image_rate_independent: boolean
@@ -605,6 +606,7 @@ export interface CreateGroupRequest {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  total_limit_usd?: number | null
   allow_image_generation?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
@@ -633,6 +635,7 @@ export interface UpdateGroupRequest {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  total_limit_usd?: number | null
   allow_image_generation?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
@@ -1423,6 +1426,11 @@ export interface UserSubscription {
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  total_limit_usd: number
+  total_used_usd: number
+  total_remaining_usd: number
+  next_expiring_quota_usd: number
+  next_quota_expire_at: string | null
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null
@@ -1452,6 +1460,15 @@ export interface SubscriptionProgress {
     limit: number | null
     percentage: number
     reset_in_seconds: number | null
+  } | null
+  total: {
+    limit_usd: number
+    used_usd: number
+    remaining_usd: number
+    percentage: number
+    next_quota_expire_at: string | null
+    next_quota_expires_in_seconds: number
+    next_expiring_quota_usd: number
   } | null
   expires_at: string | null
   days_remaining: number | null
