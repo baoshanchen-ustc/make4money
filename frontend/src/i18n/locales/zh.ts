@@ -872,7 +872,7 @@ export default {
   monitorCommon: {
     status: {
       operational: '正常',
-      degraded: '降级',
+      degraded: '响应慢',
       failed: '失败',
       error: '错误',
       unknown: '-'
