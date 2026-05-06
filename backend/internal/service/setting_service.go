@@ -457,6 +457,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
+		SettingKeyBillingStatementEmailConfig,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -500,6 +501,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		balanceLowNotifyThreshold = v
 	}
+	billingStatementCfg := ParseBillingStatementEmailConfig(settings[SettingKeyBillingStatementEmailConfig])
+	billingStatementEnabled := billingStatementCfg.Enabled
 
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
@@ -546,7 +549,12 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
-		ServerTimezone:   defaultPublicServerTimezone(),
+
+		BillingStatementEmailEnabled:   billingStatementEnabled,
+		BillingStatementDailyEnabled:   billingStatementEnabled && billingStatementCfg.DailyEnabled,
+		BillingStatementWeeklyEnabled:  billingStatementEnabled && billingStatementCfg.WeeklyEnabled,
+		BillingStatementMonthlyEnabled: billingStatementEnabled && billingStatementCfg.MonthlyEnabled,
+		ServerTimezone:                 defaultPublicServerTimezone(),
 	}, nil
 }
 
@@ -706,6 +714,10 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool   `json:"available_channels_enabled"`
 	AffiliateEnabled                     bool   `json:"affiliate_enabled"`
+	BillingStatementEmailEnabled         bool   `json:"billing_statement_email_enabled"`
+	BillingStatementDailyEnabled         bool   `json:"billing_statement_daily_enabled"`
+	BillingStatementWeeklyEnabled        bool   `json:"billing_statement_weekly_enabled"`
+	BillingStatementMonthlyEnabled       bool   `json:"billing_statement_monthly_enabled"`
 	ServerTimezone                       string `json:"server_timezone"`
 }
 
@@ -760,6 +772,10 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
+		BillingStatementEmailEnabled:         settings.BillingStatementEmailEnabled,
+		BillingStatementDailyEnabled:         settings.BillingStatementDailyEnabled,
+		BillingStatementWeeklyEnabled:        settings.BillingStatementWeeklyEnabled,
+		BillingStatementMonthlyEnabled:       settings.BillingStatementMonthlyEnabled,
 		ServerTimezone:                       settings.ServerTimezone,
 	}, nil
 }
@@ -1275,6 +1291,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyBalanceLowNotifyRechargeURL] = settings.BalanceLowNotifyRechargeURL
 	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
+
+	if settings.BillingStatementEmailConfig != "" {
+		updates[SettingKeyBillingStatementEmailConfig] = settings.BillingStatementEmailConfig
+	}
 
 	return updates, nil
 }
@@ -2303,6 +2323,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if result.AccountQuotaNotifyEmails == nil {
 		result.AccountQuotaNotifyEmails = []NotifyEmailEntry{}
 	}
+
+	result.BillingStatementEmailConfig = settings[SettingKeyBillingStatementEmailConfig]
 
 	return result
 }

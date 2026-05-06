@@ -514,6 +514,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
+	ProvideBillingStatementEmailService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
@@ -544,6 +545,21 @@ func ProvideChannelMonitorService(
 	encryptor SecretEncryptor,
 ) *ChannelMonitorService {
 	return NewChannelMonitorService(repo, encryptor)
+}
+
+// ProvideBillingStatementEmailService creates and starts BillingStatementEmailService.
+func ProvideBillingStatementEmailService(
+	settingRepo SettingRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	usageRepo UsageLogRepository,
+	emailService *EmailService,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *BillingStatementEmailService {
+	svc := NewBillingStatementEmailService(settingRepo, userRepo, groupRepo, usageRepo, emailService, redisClient, cfg)
+	svc.Start()
+	return svc
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

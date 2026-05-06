@@ -174,6 +174,9 @@ type SystemSettings struct {
 	// Account quota notification
 	AccountQuotaNotifyEnabled bool
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
+
+	// Billing statement email config (JSON)
+	BillingStatementEmailConfig string
 }
 
 type DefaultSubscriptionSetting struct {
@@ -234,7 +237,13 @@ type PublicSettings struct {
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
-	ServerTimezone string `json:"server_timezone"`
+	// User-facing billing statement email availability. These expose only whether
+	// each period is globally available, not the admin cron schedule.
+	BillingStatementEmailEnabled   bool   `json:"billing_statement_email_enabled"`
+	BillingStatementDailyEnabled   bool   `json:"billing_statement_daily_enabled"`
+	BillingStatementWeeklyEnabled  bool   `json:"billing_statement_weekly_enabled"`
+	BillingStatementMonthlyEnabled bool   `json:"billing_statement_monthly_enabled"`
+	ServerTimezone                 string `json:"server_timezone"`
 }
 
 type WeChatConnectOAuthConfig struct {
