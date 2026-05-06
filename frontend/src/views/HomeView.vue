@@ -225,32 +225,65 @@
         </div>
 
         <div class="flex flex-wrap items-center justify-center gap-4">
-          <!-- GPT-4o -->
+          <!-- GPT-5.5 - April 2026 -->
           <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
-            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
-              <span class="text-sm font-bold text-white">G</span>
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 shadow-lg shadow-green-500/20">
+              <span class="text-xs font-bold text-white">5.5</span>
             </div>
             <div>
-              <span class="text-sm font-semibold text-white">GPT-4o</span>
+              <span class="text-sm font-semibold text-white">GPT-5.5</span>
+              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">最新</span>
+            </div>
+          </div>
+
+          <!-- GPT-5.4 - March 2026 -->
+          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
+              <span class="text-xs font-bold text-white">5.4</span>
+            </div>
+            <div>
+              <span class="text-sm font-semibold text-white">GPT-5.4</span>
               <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
             </div>
           </div>
 
-          <!-- GPT-4o-mini -->
+          <!-- GPT-5.3-Codex - Feb 2026 -->
           <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
             <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
-              <span class="text-sm font-bold text-white">G</span>
+              <span class="text-xs font-bold text-white">5.3</span>
             </div>
             <div>
-              <span class="text-sm font-semibold text-white">GPT-4o-mini</span>
+              <span class="text-sm font-semibold text-white">GPT-5.3-Codex</span>
               <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
             </div>
           </div>
 
-          <!-- GPT-4.1 -->
+          <!-- o4-mini - April 2025 -->
+          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/20">
+              <span class="text-xs font-bold text-white">o4</span>
+            </div>
+            <div>
+              <span class="text-sm font-semibold text-white">o4-mini</span>
+              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
+            </div>
+          </div>
+
+          <!-- o3 - April 2025 -->
+          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/20">
+              <span class="text-xs font-bold text-white">o3</span>
+            </div>
+            <div>
+              <span class="text-sm font-semibold text-white">o3</span>
+              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
+            </div>
+          </div>
+
+          <!-- GPT-4.1 - April 2025 -->
           <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
             <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
-              <span class="text-sm font-bold text-white">G</span>
+              <span class="text-xs font-bold text-white">4.1</span>
             </div>
             <div>
               <span class="text-sm font-semibold text-white">GPT-4.1</span>
@@ -258,25 +291,14 @@
             </div>
           </div>
 
-          <!-- o1 -->
-          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
-            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
-              <span class="text-sm font-bold text-white">G</span>
+          <!-- GPT-4o - May 2024 -->
+          <div class="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-5 py-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-gray-500 to-gray-600">
+              <span class="text-xs font-bold text-white">4o</span>
             </div>
             <div>
-              <span class="text-sm font-semibold text-white">o1 / o3</span>
-              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
-            </div>
-          </div>
-
-          <!-- Codex -->
-          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
-            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
-              <span class="text-sm font-bold text-white">C</span>
-            </div>
-            <div>
-              <span class="text-sm font-semibold text-white">Codex</span>
-              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
+              <span class="text-sm font-medium text-gray-300">GPT-4o</span>
+              <span class="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">可用</span>
             </div>
           </div>
 
