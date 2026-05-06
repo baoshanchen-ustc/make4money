@@ -124,6 +124,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SMTPFrom:                               settings.SMTPFrom,
 		SMTPFromName:                           settings.SMTPFromName,
 		SMTPUseTLS:                             settings.SMTPUseTLS,
+		SMTPSkipTLSVerify:                      settings.SMTPSkipTLSVerify,
 		TurnstileEnabled:                       settings.TurnstileEnabled,
 		TurnstileSiteKey:                       settings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           settings.TurnstileSecretKeyConfigured,
@@ -307,13 +308,14 @@ type UpdateSettingsRequest struct {
 	TotpEnabled                      bool     `json:"totp_enabled"` // TOTP 双因素认证
 
 	// 邮件服务设置
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	SMTPFrom     string `json:"smtp_from_email"`
-	SMTPFromName string `json:"smtp_from_name"`
-	SMTPUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost          string `json:"smtp_host"`
+	SMTPPort          int    `json:"smtp_port"`
+	SMTPUsername      string `json:"smtp_username"`
+	SMTPPassword      string `json:"smtp_password"`
+	SMTPFrom          string `json:"smtp_from_email"`
+	SMTPFromName      string `json:"smtp_from_name"`
+	SMTPUseTLS        bool   `json:"smtp_use_tls"`
+	SMTPSkipTLSVerify *bool  `json:"smtp_skip_tls_verify"`
 
 	// Cloudflare Turnstile 设置
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
@@ -595,6 +597,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.SMTPFrom = previousSettings.SMTPFrom
 		req.SMTPFromName = previousSettings.SMTPFromName
 		req.SMTPUseTLS = previousSettings.SMTPUseTLS
+		req.SMTPSkipTLSVerify = &previousSettings.SMTPSkipTLSVerify
 	}
 
 	// Turnstile 参数验证
@@ -1155,6 +1158,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                         req.SMTPFrom,
 		SMTPFromName:                     req.SMTPFromName,
 		SMTPUseTLS:                       req.SMTPUseTLS,
+		SMTPSkipTLSVerify: func() bool {
+			if req.SMTPSkipTLSVerify != nil {
+				return *req.SMTPSkipTLSVerify
+			}
+			return previousSettings.SMTPSkipTLSVerify
+		}(),
 		TurnstileEnabled:                 req.TurnstileEnabled,
 		TurnstileSiteKey:                 req.TurnstileSiteKey,
 		TurnstileSecretKey:               req.TurnstileSecretKey,
@@ -1493,6 +1502,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                               updatedSettings.SMTPFrom,
 		SMTPFromName:                           updatedSettings.SMTPFromName,
 		SMTPUseTLS:                             updatedSettings.SMTPUseTLS,
+		SMTPSkipTLSVerify:                      updatedSettings.SMTPSkipTLSVerify,
 		TurnstileEnabled:                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           updatedSettings.TurnstileSecretKeyConfigured,
@@ -1705,6 +1715,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.SMTPUseTLS != after.SMTPUseTLS {
 		changed = append(changed, "smtp_use_tls")
+	}
+	if before.SMTPSkipTLSVerify != after.SMTPSkipTLSVerify {
+		changed = append(changed, "smtp_skip_tls_verify")
 	}
 	if before.TurnstileEnabled != after.TurnstileEnabled {
 		changed = append(changed, "turnstile_enabled")
@@ -2196,11 +2209,12 @@ func equalNotifyEmailEntries(a, b []service.NotifyEmailEntry) bool {
 
 // TestSMTPRequest 测试SMTP连接请求
 type TestSMTPRequest struct {
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	SMTPUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost          string `json:"smtp_host"`
+	SMTPPort          int    `json:"smtp_port"`
+	SMTPUsername      string `json:"smtp_username"`
+	SMTPPassword      string `json:"smtp_password"`
+	SMTPUseTLS        bool   `json:"smtp_use_tls"`
+	SMTPSkipTLSVerify *bool  `json:"smtp_skip_tls_verify"`
 }
 
 // TestSMTPConnection 测试SMTP连接
@@ -2233,6 +2247,9 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	if req.SMTPUsername == "" && savedConfig != nil {
 		req.SMTPUsername = savedConfig.Username
 	}
+	if req.SMTPSkipTLSVerify == nil && savedConfig != nil {
+		req.SMTPSkipTLSVerify = &savedConfig.SkipTLSVerify
+	}
 	password := strings.TrimSpace(req.SMTPPassword)
 	if password == "" && savedConfig != nil {
 		password = savedConfig.Password
@@ -2243,11 +2260,12 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	}
 
 	config := &service.SMTPConfig{
-		Host:     req.SMTPHost,
-		Port:     req.SMTPPort,
-		Username: req.SMTPUsername,
-		Password: password,
-		UseTLS:   req.SMTPUseTLS,
+		Host:          req.SMTPHost,
+		Port:          req.SMTPPort,
+		Username:      req.SMTPUsername,
+		Password:      password,
+		UseTLS:        req.SMTPUseTLS,
+		SkipTLSVerify: req.SMTPSkipTLSVerify != nil && *req.SMTPSkipTLSVerify,
 	}
 
 	err := h.emailService.TestSMTPConnectionWithConfig(config)
@@ -2261,14 +2279,15 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 
 // SendTestEmailRequest 发送测试邮件请求
 type SendTestEmailRequest struct {
-	Email        string `json:"email" binding:"required,email"`
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	SMTPFrom     string `json:"smtp_from_email"`
-	SMTPFromName string `json:"smtp_from_name"`
-	SMTPUseTLS   bool   `json:"smtp_use_tls"`
+	Email             string `json:"email" binding:"required,email"`
+	SMTPHost          string `json:"smtp_host"`
+	SMTPPort          int    `json:"smtp_port"`
+	SMTPUsername      string `json:"smtp_username"`
+	SMTPPassword      string `json:"smtp_password"`
+	SMTPFrom          string `json:"smtp_from_email"`
+	SMTPFromName      string `json:"smtp_from_name"`
+	SMTPUseTLS        bool   `json:"smtp_use_tls"`
+	SMTPSkipTLSVerify *bool  `json:"smtp_skip_tls_verify"`
 }
 
 // SendTestEmail 发送测试邮件
@@ -2303,6 +2322,9 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	if req.SMTPUsername == "" && savedConfig != nil {
 		req.SMTPUsername = savedConfig.Username
 	}
+	if req.SMTPSkipTLSVerify == nil && savedConfig != nil {
+		req.SMTPSkipTLSVerify = &savedConfig.SkipTLSVerify
+	}
 	password := strings.TrimSpace(req.SMTPPassword)
 	if password == "" && savedConfig != nil {
 		password = savedConfig.Password
@@ -2319,13 +2341,14 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	}
 
 	config := &service.SMTPConfig{
-		Host:     req.SMTPHost,
-		Port:     req.SMTPPort,
-		Username: req.SMTPUsername,
-		Password: password,
-		From:     req.SMTPFrom,
-		FromName: req.SMTPFromName,
-		UseTLS:   req.SMTPUseTLS,
+		Host:          req.SMTPHost,
+		Port:          req.SMTPPort,
+		Username:      req.SMTPUsername,
+		Password:      password,
+		From:          req.SMTPFrom,
+		FromName:      req.SMTPFromName,
+		UseTLS:        req.SMTPUseTLS,
+		SkipTLSVerify: req.SMTPSkipTLSVerify != nil && *req.SMTPSkipTLSVerify,
 	}
 
 	siteName := h.settingService.GetSiteName(c.Request.Context())
