@@ -115,6 +115,8 @@ type SystemSettings struct {
 	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
 
+	ServiceQuotaEnabled bool `json:"service_quota_enabled"`
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`
@@ -254,6 +256,7 @@ type PublicSettings struct {
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+	ServiceQuotaEnabled      bool `json:"service_quota_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 }
@@ -286,6 +289,8 @@ type RectifierSettings struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`
 }
 
 // BetaPolicyRule Beta 策略规则 DTO

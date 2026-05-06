@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { opsAPI, type OpsAccountAvailabilityStatsResponse, type OpsConcurrencyStatsResponse, type OpsUserConcurrencyStatsResponse } from '@/api/admin/ops'
+import { getLoadBarClass, getLoadBarStyle, getLoadTextClass } from '@/utils/loadIndicator'
 
 interface Props {
   platformFilter?: string
@@ -122,6 +123,7 @@ const platformRows = computed((): SummaryRow[] => {
       available_accounts: availableAccounts,
       rate_limited_accounts: safeNumber(avail.rate_limit_count),
 
+
       error_accounts: safeNumber(avail.error_count),
       total_concurrency: totalConcurrency,
       used_concurrency: usedConcurrency,
@@ -161,7 +163,6 @@ const groupRows = computed((): SummaryRow[] => {
         total_accounts: totalAccounts,
         available_accounts: availableAccounts,
         rate_limited_accounts: safeNumber(avail.rate_limit_count),
-  
         error_accounts: safeNumber(avail.error_count),
         total_concurrency: totalConcurrency,
         used_concurrency: usedConcurrency,
@@ -301,24 +302,6 @@ watch(
   }
 )
 
-function getLoadBarClass(loadPct: number): string {
-  if (loadPct >= 90) return 'bg-red-500 dark:bg-red-600'
-  if (loadPct >= 70) return 'bg-orange-500 dark:bg-orange-600'
-  if (loadPct >= 50) return 'bg-yellow-500 dark:bg-yellow-600'
-  return 'bg-green-500 dark:bg-green-600'
-}
-
-function getLoadBarStyle(loadPct: number): string {
-  return `width: ${Math.min(100, Math.max(0, loadPct))}%`
-}
-
-function getLoadTextClass(loadPct: number): string {
-  if (loadPct >= 90) return 'text-red-600 dark:text-red-400'
-  if (loadPct >= 70) return 'text-orange-600 dark:text-orange-400'
-  if (loadPct >= 50) return 'text-yellow-600 dark:text-yellow-400'
-  return 'text-green-600 dark:text-green-400'
-}
-
 function formatDuration(seconds: number): string {
   if (seconds <= 0) return '0s'
   if (seconds < 60) return `${Math.round(seconds)}s`
@@ -327,6 +310,7 @@ function formatDuration(seconds: number): string {
   const hours = Math.floor(minutes / 60)
   return `${hours}h`
 }
+
 
 
 watch(

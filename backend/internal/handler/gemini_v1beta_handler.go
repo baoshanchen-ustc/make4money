@@ -9,7 +9,6 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -240,15 +239,20 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	}
 
 	// 2) billing eligibility check (after wait)
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// billingTicket：两阶段计费检查。Prepare 仅做 channel/account 无关检查；
+	// 选定 account 后通过 Consume 才按 channel/account scope 抢 service quota concurrency。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMapping.ChannelID},
+	)
+	if err != nil {
 		reqLog.Info("gemini.billing_eligibility_check_failed", zap.Error(err))
-		status, _, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		googleError(c, status, message)
+		status, code, message, metadata := billingErrorDetails(err)
+		googleErrorWithReason(c, status, code, message, metadata)
 		return
 	}
+	defer billingTicket.Close()
+	c.Request = c.Request.WithContext(service.WithBillingTicket(c.Request.Context(), billingTicket))
 
 	// 3) select account (sticky session based on request body)
 	// 优先使用 Gemini CLI 的会话标识（privileged-user-id + tmp 目录哈希）
@@ -462,6 +466,17 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		// 账号槽位/等待计数需要在超时或断开时安全回收
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+		// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("gemini.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			googleErrorWithReason(c, status, code, message, metadata)
+			return
+		}
+
 		// 5) forward (根据平台分流)
 		var result *service.ForwardResult
 		requestCtx := c.Request.Context()
@@ -637,13 +652,26 @@ type pathParseError struct{ msg string }
 func (e *pathParseError) Error() string { return e.msg }
 
 func googleError(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{
+	googleErrorWithReason(c, status, "", message, nil)
+}
+
+// googleErrorWithReason 带 reason + metadata 的 Google API 格式错误响应
+// （配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+func googleErrorWithReason(c *gin.Context, status int, reason, message string, metadata map[string]string) {
+	body := gin.H{
 		"error": gin.H{
 			"code":    status,
 			"message": message,
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
 		},
-	})
+	}
+	if reason != "" {
+		body["reason"] = reason
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 func writeUpstreamResponse(c *gin.Context, res *service.UpstreamHTTPResult) {

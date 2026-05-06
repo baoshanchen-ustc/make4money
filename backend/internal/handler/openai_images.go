@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -119,15 +118,18 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: parsed.Model, ChannelID: channelMapping.ChannelID},
+	)
+	if err != nil {
 		reqLog.Info("openai.images.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
+	defer billingTicket.Close()
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 
@@ -184,6 +186,17 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
 		if !acquired {
+			return
+		}
+
+		// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("openai.images.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 			return
 		}
 
@@ -287,18 +300,19 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		}
 		h.submitMandatoryUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
-				Account:            account,
-				Subscription:       subscription,
-				InboundEndpoint:    inboundEndpoint,
-				UpstreamEndpoint:   upstreamEndpoint,
-				UserAgent:          userAgent,
-				IPAddress:          clientIP,
-				RequestPayloadHash: requestPayloadHash,
-				APIKeyService:      h.apiKeyService,
-				ChannelUsageFields: channelMapping.ToUsageFields(parsed.Model, upstreamModel),
+				Result:              result,
+				APIKey:              apiKey,
+				User:                apiKey.User,
+				Account:             account,
+				Subscription:        subscription,
+				InboundEndpoint:     inboundEndpoint,
+				UpstreamEndpoint:    upstreamEndpoint,
+				UserAgent:           userAgent,
+				IPAddress:           clientIP,
+				RequestPayloadHash:  requestPayloadHash,
+				APIKeyService:       h.apiKeyService,
+				ChannelUsageFields:  channelMapping.ToUsageFields(parsed.Model, upstreamModel),
+				ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: parsed.Model, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.images"),

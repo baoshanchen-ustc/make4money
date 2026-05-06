@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -140,15 +139,20 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 2. Re-check billing
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// billingTicket：两阶段计费检查的入场票，handler 必须在所有返回路径 defer Close。
+	// 选定 account 后 Consume 才会按 channel/account scope 抢 service quota concurrency。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMapping.ChannelID},
+	)
+	if err != nil {
 		reqLog.Info("gateway.responses.billing_check_failed", zap.Error(err))
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.responsesErrorResponse(c, status, code, message)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.responsesErrorResponseWithMetadata(c, status, code, message, metadata)
 		return
 	}
+	defer billingTicket.Close()
+	c.Request = c.Request.WithContext(service.WithBillingTicket(c.Request.Context(), billingTicket))
 
 	// Parse request for session hash
 	parsedReq, _ := service.ParseGatewayRequest(body, "responses")
@@ -213,6 +217,17 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+		// 4.1 service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("gateway.responses.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			h.responsesErrorResponseWithMetadata(c, status, code, message, metadata)
+			return
+		}
+
 		// 5. Forward request
 		writerSizeBeforeForward := c.Writer.Size()
 		forwardBody := body
@@ -261,18 +276,19 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
-				Account:            account,
-				Subscription:       subscription,
-				InboundEndpoint:    inboundEndpoint,
-				UpstreamEndpoint:   upstreamEndpoint,
-				UserAgent:          userAgent,
-				IPAddress:          clientIP,
-				RequestPayloadHash: requestPayloadHash,
-				APIKeyService:      h.apiKeyService,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				Result:              result,
+				APIKey:              apiKey,
+				User:                apiKey.User,
+				Account:             account,
+				Subscription:        subscription,
+				InboundEndpoint:     inboundEndpoint,
+				UpstreamEndpoint:    upstreamEndpoint,
+				UserAgent:           userAgent,
+				IPAddress:           clientIP,
+				RequestPayloadHash:  requestPayloadHash,
+				APIKeyService:       h.apiKeyService,
+				ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
 			}); err != nil {
 				reqLog.Error("gateway.responses.record_usage_failed",
 					zap.Int64("account_id", account.ID),
@@ -286,12 +302,23 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 // responsesErrorResponse writes an error in OpenAI Responses API format.
 func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code, message string) {
-	c.JSON(status, gin.H{
+	h.responsesErrorResponseWithMetadata(c, status, code, message, nil)
+}
+
+// responsesErrorResponseWithMetadata 带 metadata + reason 的 Responses 格式错误响应
+// （配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+func (h *GatewayHandler) responsesErrorResponseWithMetadata(c *gin.Context, status int, code, message string, metadata map[string]string) {
+	body := gin.H{
+		"reason": code,
 		"error": gin.H{
 			"code":    code,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 // handleResponsesFailoverExhausted writes a failover-exhausted error in Responses format.

@@ -109,6 +109,11 @@ export const FeatureFlags = {
     mode: 'opt-out',
     label: 'Payment',
   }),
+  serviceQuota: defineFlag({
+    key: 'service_quota_enabled',
+    mode: 'opt-in',
+    label: 'Service Quota',
+  }),
   affiliate: defineFlag({
     key: 'affiliate_enabled',
     mode: 'opt-in',

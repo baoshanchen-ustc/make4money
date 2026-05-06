@@ -411,6 +411,11 @@
               </p>
             </div>
             <div class="space-y-5 p-6">
+              <!-- Passthrough notice: 账号级开启透传后整流不生效 -->
+              <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+                {{ t("admin.settings.rectifier.passthroughNotice") }}
+              </div>
+
               <!-- Loading State -->
               <div
                 v-if="streamTimeoutLoading"
@@ -591,6 +596,11 @@
               </p>
             </div>
             <div class="space-y-5 p-6">
+              <!-- Passthrough notice: 账号级开启透传后整流不生效 -->
+              <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+                {{ t("admin.settings.rectifier.passthroughNotice") }}
+              </div>
+
               <!-- Loading State -->
               <div
                 v-if="rectifierLoading"
@@ -737,6 +747,84 @@
                       + {{ t("admin.settings.rectifier.addPattern") }}
                     </button>
                   </div>
+
+                  <!-- Advisor Tool Rectifier -->
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label
+                        class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >{{
+                          t("admin.settings.rectifier.advisorTool")
+                        }}</label
+                      >
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.rectifier.advisorToolHint") }}
+                      </p>
+                    </div>
+                    <Toggle v-model="rectifierForm.advisor_tool_enabled" />
+                  </div>
+
+                  <!-- Advisor Tool Custom Patterns -->
+                  <div
+                    v-if="rectifierForm.advisor_tool_enabled"
+                    class="ml-4 space-y-3 border-l-2 border-gray-200 pl-4 dark:border-dark-600"
+                  >
+                    <div>
+                      <label
+                        class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >{{
+                          t("admin.settings.rectifier.advisorToolPatterns")
+                        }}</label
+                      >
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        {{
+                          t("admin.settings.rectifier.advisorToolPatternsHint")
+                        }}
+                      </p>
+                    </div>
+                    <div
+                      v-for="(_, index) in rectifierForm.advisor_tool_patterns"
+                      :key="index"
+                      class="flex items-center gap-2"
+                    >
+                      <input
+                        v-model="rectifierForm.advisor_tool_patterns[index]"
+                        type="text"
+                        class="input input-sm flex-1"
+                        :placeholder="
+                          t('admin.settings.rectifier.advisorToolPatternPlaceholder')
+                        "
+                      />
+                      <button
+                        type="button"
+                        @click="
+                          rectifierForm.advisor_tool_patterns.splice(index, 1)
+                        "
+                        class="btn btn-ghost btn-xs text-red-500 hover:text-red-700"
+                      >
+                        <svg
+                          class="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      @click="rectifierForm.advisor_tool_patterns.push('')"
+                      class="btn btn-ghost btn-xs text-primary-600 dark:text-primary-400"
+                    >
+                      + {{ t("admin.settings.rectifier.addPattern") }}
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Save Button -->
@@ -790,6 +878,11 @@
               </p>
             </div>
             <div class="space-y-5 p-6">
+              <!-- Passthrough notice: 账号级开启透传后整流不生效 -->
+              <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+                {{ t("admin.settings.rectifier.passthroughNotice") }}
+              </div>
+
               <!-- Loading State -->
               <div
                 v-if="betaPolicyLoading"
@@ -4180,6 +4273,36 @@
 
         <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.features.channelMonitor.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.features.channelMonitor.description") }}
+              </p>
+              <p class="mt-1.5 text-xs">
+                <router-link
+                  to="/admin/channels/monitor"
+                  class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+                >
+                  {{ t("admin.settings.features.channelMonitor.configureLink") }}
+                  <span aria-hidden="true">→</span>
+                </router-link>
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.features.channelMonitor.enabled") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.channelMonitor.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.channel_monitor_enabled" />
+              </div>
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -4204,13 +4327,27 @@
               <div>
                 <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('admin.settings.features.channelMonitor.enabled') }}
+              <div v-if="form.channel_monitor_enabled">
+                <label class="input-label">
+                  {{ t("admin.settings.features.channelMonitor.defaultInterval") }}
+                  <span class="text-red-500">*</span>
                 </label>
                 <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.settings.features.channelMonitor.enabledHint') }}
+                <input
+                  v-model.number="form.channel_monitor_default_interval_seconds"
+                  type="number"
+                  min="15"
+                  max="3600"
+                  class="input"
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t("admin.settings.features.channelMonitor.defaultIntervalHint") }}
                 </p>
               </div>
               <Toggle v-model="form.channel_monitor_enabled" />
             </div>
+          </div>
 
             <div v-if="form.channel_monitor_enabled">
               <label class="input-label">
@@ -4226,6 +4363,22 @@
               />
               <p class="mt-1 text-xs text-gray-400">
                 {{ t('admin.settings.features.channelMonitor.defaultIntervalHint') }}
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.features.availableChannels.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.features.availableChannels.description") }}
+              </p>
+              <p class="mt-1.5 text-xs">
+                <router-link
+                  to="/admin/channels/pricing"
+                  class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+                >
+                  {{ t("admin.settings.features.availableChannels.configureLink") }}
+                  <span aria-hidden="true">→</span>
+                </router-link>
               </p>
             </div>
           </div>
@@ -4258,11 +4411,51 @@
                 <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.settings.features.availableChannels.enabledHint') }}
                 </p>
+                    {{ t("admin.settings.features.availableChannels.enabled") }}
+                    {{ t("admin.settings.features.availableChannels.enabledHint") }}
+                <Toggle v-model="form.available_channels_enabled" />
               </div>
               <Toggle v-model="form.available_channels_enabled" />
             </div>
           </div>
-        </div>
+
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.features.serviceQuota.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.features.serviceQuota.description") }}
+              </p>
+              <p class="mt-1.5 text-xs">
+                <router-link
+                  to="/admin/service-quotas"
+                  class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+                >
+                  {{ t("admin.settings.features.serviceQuota.configureLink") }}
+                  <span aria-hidden="true">→</span>
+                </router-link>
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <div
+                class="rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-medium text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300"
+              >
+                {{ t("admin.settings.features.serviceQuota.unrelatedRpmWarning") }}
+              </div>
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.features.serviceQuota.enabled") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.serviceQuota.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.service_quota_enabled" />
+              </div>
+            </div>
+          </div>
 
         <!-- Affiliate (邀请返利) feature card -->
         <div class="card">
@@ -5740,6 +5933,8 @@ const rectifierForm = reactive({
   thinking_budget_enabled: true,
   apikey_signature_enabled: false,
   apikey_signature_patterns: [] as string[],
+  advisor_tool_enabled: true,
+  advisor_tool_patterns: [] as string[],
 });
 
 // Beta Policy 状态
@@ -5798,6 +5993,7 @@ type SettingsForm = Omit<
   oidc_connect_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
+  service_quota_enabled: boolean;
 };
 
 const form = reactive<SettingsForm>({
@@ -5962,6 +6158,8 @@ const form = reactive<SettingsForm>({
   channel_monitor_default_interval_seconds: 60,
   // Available Channels feature switch
   available_channels_enabled: false,
+  // Service Quota feature switch
+  service_quota_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
 });
@@ -6568,6 +6766,7 @@ async function loadSettings() {
     loadFailed.value = true;
     appStore.showError(
       extractApiErrorMessage(error, t("admin.settings.failedToLoad")),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.settings.failedToLoad")),
     );
   } finally {
     loading.value = false;
@@ -6904,6 +7103,8 @@ async function saveSettings() {
         Number(form.channel_monitor_default_interval_seconds) || 60,
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      // Service Quota feature switch
+      service_quota_enabled: form.service_quota_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
     };
@@ -7001,6 +7202,12 @@ async function saveSettings() {
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();
     // Refresh cached settings so sidebar/header update immediately
+    appStore.patchPublicSettings({
+      channel_monitor_enabled: form.channel_monitor_enabled,
+      available_channels_enabled: form.available_channels_enabled,
+      service_quota_enabled: form.service_quota_enabled,
+      payment_enabled: form.payment_enabled,
+    });
     await appStore.fetchPublicSettings(true);
     await adminSettingsStore.fetch(true);
     if (wsOk) {
@@ -7009,6 +7216,7 @@ async function saveSettings() {
   } catch (error: unknown) {
     appStore.showError(
       extractApiErrorMessage(error, t("admin.settings.failedToSave")),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.settings.failedToSave")),
     );
   } finally {
     saving.value = false;
@@ -7250,6 +7458,9 @@ async function loadRectifierSettings() {
     if (!Array.isArray(rectifierForm.apikey_signature_patterns)) {
       rectifierForm.apikey_signature_patterns = [];
     }
+    if (!Array.isArray(rectifierForm.advisor_tool_patterns)) {
+      rectifierForm.advisor_tool_patterns = [];
+    }
   } catch (_error: unknown) {
     // Silent fail - settings will use defaults
   } finally {
@@ -7265,13 +7476,38 @@ async function saveRectifierSettings() {
       thinking_signature_enabled: rectifierForm.thinking_signature_enabled,
       thinking_budget_enabled: rectifierForm.thinking_budget_enabled,
       apikey_signature_enabled: rectifierForm.apikey_signature_enabled,
+    // 总开关 enabled=false 时，UI 隐藏所有子开关，但表单内仍保留旧值。
+    // 保存时强制把所有子开关一并置 false，避免下次开总开关时旧值自动恢复（违反用户预期）。
+    const enabled = rectifierForm.enabled;
+    const payload = {
+      enabled,
+      thinking_signature_enabled: enabled
+        ? rectifierForm.thinking_signature_enabled
+        : false,
+      thinking_budget_enabled: enabled
+        ? rectifierForm.thinking_budget_enabled
+        : false,
+      apikey_signature_enabled: enabled
+        ? rectifierForm.apikey_signature_enabled
+        : false,
       apikey_signature_patterns: rectifierForm.apikey_signature_patterns.filter(
         (p) => p.trim() !== "",
       ),
     });
+      advisor_tool_enabled: enabled
+        ? rectifierForm.advisor_tool_enabled
+        : false,
+      advisor_tool_patterns: rectifierForm.advisor_tool_patterns.filter(
+        (p) => p.trim() !== "",
+      ),
+    };
+    const updated = await adminAPI.settings.updateRectifierSettings(payload);
     Object.assign(rectifierForm, updated);
     if (!Array.isArray(rectifierForm.apikey_signature_patterns)) {
       rectifierForm.apikey_signature_patterns = [];
+    }
+    if (!Array.isArray(rectifierForm.advisor_tool_patterns)) {
+      rectifierForm.advisor_tool_patterns = [];
     }
     appStore.showSuccess(t("admin.settings.rectifier.saved"));
   } catch (error: unknown) {

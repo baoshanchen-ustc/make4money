@@ -20,7 +20,10 @@ func (s *openAI403CounterResetStub) ResetOpenAI403Count(_ context.Context, accou
 	return nil
 }
 
-func TestOpenAIGatewayServiceRecordUsage_ResetsOpenAI403CounterForZeroUsage(t *testing.T) {
+// TestOpenAIGatewayServiceRecordUsage_ResetsOpenAI403CounterOnZeroUsage 验证：
+// 即便上游返回零 token 用量（如 gpt-5.4-pro 不带 usage 字段），403 计数器仍必须被重置；
+// 同时 RecordUsage 不再因零 usage 提前 return，而是继续走完 service_quota.Record 链路。
+func TestOpenAIGatewayServiceRecordUsage_ResetsOpenAI403CounterOnZeroUsage(t *testing.T) {
 	counter := &openAI403CounterResetStub{}
 	rateLimitSvc := NewRateLimitService(nil, nil, nil, nil, nil)
 	rateLimitSvc.SetOpenAI403CounterCache(counter)
@@ -33,16 +36,14 @@ func TestOpenAIGatewayServiceRecordUsage_ResetsOpenAI403CounterForZeroUsage(t *t
 	svc.rateLimitService = rateLimitSvc
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
-		Result: &OpenAIForwardResult{
-			RequestID: "resp_zero_usage_reset_403",
-			Model:     "gpt-5.1",
-		},
-		APIKey:  &APIKey{ID: 1001, Group: &Group{RateMultiplier: 1}},
-		User:    &User{ID: 2001},
+		Result:  &OpenAIForwardResult{RequestID: "resp_zero_usage_403", Model: "gpt-5.1"},
+		APIKey:  &APIKey{ID: 1},
+		User:    &User{ID: 2},
 		Account: &Account{ID: 777, Platform: PlatformOpenAI},
 	})
 
 	require.NoError(t, err)
 	require.Equal(t, []int64{777}, counter.resetCalls)
-	require.Equal(t, 1, usageRepo.calls)
+	// 零 token 用量场景下 DB usage_log 仍跳过写入
+	require.Equal(t, 0, usageRepo.calls)
 }

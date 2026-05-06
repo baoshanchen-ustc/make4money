@@ -2837,6 +2837,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
+import { extractI18nErrorMessage } from "@/utils/apiError";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
 import type { AdminGroup, GroupPlatform, SubscriptionType } from "@/types";
@@ -3527,14 +3528,21 @@ const loadGroups = async () => {
     loadUsageSummary();
     loadCapacitySummary();
   } catch (error: any) {
+  } catch (error: unknown) {
+    const errInfo = error as { name?: string; code?: string }
     if (
       signal.aborted ||
       error?.name === "AbortError" ||
       error?.code === "ERR_CANCELED"
+      errInfo?.name === "AbortError" ||
+      errInfo?.code === "ERR_CANCELED"
     ) {
       return;
     }
     appStore.showError(t("admin.groups.failedToLoad"));
+    appStore.showError(
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToLoad")),
+    );
     console.error("Error loading groups:", error);
   } finally {
     if (abortController === currentController && !signal.aborted) {
@@ -3738,8 +3746,10 @@ const handleCreateGroup = async () => {
       onboardingStore.nextStep(500);
     }
   } catch (error: any) {
+  } catch (error: unknown) {
     appStore.showError(
       error.response?.data?.detail || t("admin.groups.failedToCreate"),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToCreate")),
     );
     console.error("Error creating group:", error);
     // Don't advance tour on error
@@ -3865,8 +3875,10 @@ const handleUpdateGroup = async () => {
     closeEditModal();
     loadGroups();
   } catch (error: any) {
+  } catch (error: unknown) {
     appStore.showError(
       error.response?.data?.detail || t("admin.groups.failedToUpdate"),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToUpdate")),
     );
     console.error("Error updating group:", error);
   } finally {
@@ -3923,8 +3935,10 @@ const confirmDelete = async () => {
     deletingGroup.value = null;
     loadGroups();
   } catch (error: any) {
+  } catch (error: unknown) {
     appStore.showError(
       error.response?.data?.detail || t("admin.groups.failedToDelete"),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToDelete")),
     );
     console.error("Error deleting group:", error);
   }
@@ -4009,6 +4023,10 @@ const openSortModal = async () => {
     showSortModal.value = true;
   } catch (error) {
     appStore.showError(t("admin.groups.failedToLoad"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToLoad")),
+    );
     console.error("Error loading groups for sorting:", error);
   }
 };
@@ -4032,8 +4050,10 @@ const saveSortOrder = async () => {
     closeSortModal();
     loadGroups();
   } catch (error: any) {
+  } catch (error: unknown) {
     appStore.showError(
       error.response?.data?.detail || t("admin.groups.failedToUpdateSortOrder"),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToUpdateSortOrder")),
     );
     console.error("Error updating sort order:", error);
   } finally {

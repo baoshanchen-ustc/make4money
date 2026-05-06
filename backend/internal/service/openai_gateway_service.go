@@ -1641,7 +1641,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if !acc.IsSchedulable() {
 			continue
 		}
-		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+		if requestedModel != "" && !acc.IsOpenAIPassthroughEnabled() && !acc.IsModelSupported(requestedModel) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
@@ -5169,17 +5169,18 @@ func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel
 
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
-	Result             *OpenAIForwardResult
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription
-	InboundEndpoint    string
-	UpstreamEndpoint   string
-	UserAgent          string // 请求的 User-Agent
-	IPAddress          string // 请求的客户端 IP 地址
-	RequestPayloadHash string
-	APIKeyService      APIKeyQuotaUpdater
+	Result              *OpenAIForwardResult
+	APIKey              *APIKey
+	User                *User
+	Account             *Account
+	Subscription        *UserSubscription
+	InboundEndpoint     string
+	UpstreamEndpoint    string
+	UserAgent           string // 请求的 User-Agent
+	IPAddress           string // 请求的客户端 IP 地址
+	RequestPayloadHash  string
+	APIKeyService       APIKeyQuotaUpdater
+	ServiceQuotaRequest ServiceQuotaCheckRequest
 	ChannelUsageFields
 }
 
@@ -5195,6 +5196,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
 	}
+
+	// 注意：此处不再因为 token 全 0 提前返回。
+	// 早返会跳过 applyUsageBilling → finalizePostUsageBilling → service_quota.Record，
+	// 导致上游不返回 usage 的模型（如 gpt-5.4-pro）下 RPM/TPD 等服务限额完全不计数。
+	// "跳过 DB usage_log 写入"的旧语义改到 cost 计算之后再判定（见下方 zero-usage skip-db 块）。
 
 	apiKey := input.APIKey
 	user := input.User
@@ -5358,8 +5364,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		)
 	}
 
+	// zero-usage skip-db：上游未返回 usage（如 gpt-5.4-pro）时跳过 DB usage_log 写入，
+	// 避免 0-token 行污染统计/计费表；service_quota.Record 仍需在 applyUsageBilling 内执行
+	// 以保证按 RPM 维度的服务限额计数生效（balance/quota deduct 已被 cost==0 自然短路）。
+	skipUsageLog := isZeroOpenAIUsage(result, cost)
+
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		if !skipUsageLog {
+			writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		}
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
@@ -5376,6 +5389,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			IsSubscriptionBill:    isSubscriptionBilling,
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
+			ServiceQuotaRequest:   input.ServiceQuotaRequest,
+			InputTokens:           int64(actualInputTokens),
+			OutputTokens:          int64(result.Usage.OutputTokens),
+			CacheCreationTokens:   int64(result.Usage.CacheCreationInputTokens),
+			CacheReadTokens:       int64(result.Usage.CacheReadInputTokens),
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()
@@ -5383,9 +5401,27 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if billingErr != nil {
 		return billingErr
 	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	if !skipUsageLog {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	}
 
 	return nil
+}
+
+// isZeroOpenAIUsage 判断本次响应是否“无可记账用量”：所有 token 字段、image_count
+// 全 0 且 cost.TotalCost == 0。命中表示 DB usage_log 不需要落盘（避免空记录污染统计），
+// 但 service_quota / billing 链路仍由 caller 正常执行。
+func isZeroOpenAIUsage(result *OpenAIForwardResult, cost *CostBreakdown) bool {
+	if result == nil {
+		return true
+	}
+	allTokensZero := result.Usage.InputTokens == 0 && result.Usage.OutputTokens == 0 &&
+		result.Usage.CacheCreationInputTokens == 0 && result.Usage.CacheReadInputTokens == 0 &&
+		result.Usage.ImageOutputTokens == 0 && result.ImageCount == 0
+	if !allTokensZero {
+		return false
+	}
+	return cost == nil || cost.TotalCost == 0
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(

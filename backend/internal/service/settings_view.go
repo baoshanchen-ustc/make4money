@@ -114,6 +114,12 @@ type SystemSettings struct {
 	DefaultUserRPMLimit          int
 	DefaultSubscriptions         []DefaultSubscriptionSetting
 
+	// 用户每日配额限制（feature issue #1750）
+	UsageLimitEnabled         bool    // 总开关
+	DefaultUsageLimitEnabled  bool    // 用户 usage_limit_enabled=nil 时的回退
+	DefaultDailyUsageLimitUSD float64 // 新建用户默认 daily_usage_limit_usd（0=不下发）
+	ServiceQuotaEnabled       bool
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`
@@ -230,6 +236,7 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+	ServiceQuotaEnabled      bool `json:"service_quota_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
@@ -334,6 +341,8 @@ type RectifierSettings struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`    // Thinking Budget 整流
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`   // API Key 签名整流开关
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`  // API Key 自定义匹配关键词
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`       // Advisor Tool 整流开关
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`      // Advisor Tool 自定义匹配关键词
 }
 
 // DefaultRectifierSettings 返回默认的整流器配置（全部启用）
@@ -342,6 +351,8 @@ func DefaultRectifierSettings() *RectifierSettings {
 		Enabled:                  true,
 		ThinkingSignatureEnabled: true,
 		ThinkingBudgetEnabled:    true,
+		AdvisorToolEnabled:       true,
+		AdvisorToolPatterns:      []string{DefaultAdvisorToolPattern},
 	}
 }
 
