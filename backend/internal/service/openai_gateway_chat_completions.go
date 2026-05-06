@@ -373,8 +373,17 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	}
 
 	if finalResponse == nil {
-		writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
-		return nil, fmt.Errorf("upstream stream ended without terminal event")
+		if acc.HasContent() {
+			finalResponse = &apicompat.ResponsesResponse{
+				ID:     "resp_synthetic",
+				Object: "response",
+				Status: "completed",
+				Output: acc.BuildOutput(),
+			}
+		} else {
+			writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
+			return nil, fmt.Errorf("upstream stream ended without terminal event")
+		}
 	}
 
 	// When the terminal event has an empty output array, reconstruct from
