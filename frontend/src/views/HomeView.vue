@@ -12,38 +12,39 @@
     <div v-else v-html="homeContent"></div>
   </div>
 
-  <!-- Default Home Page -->
+  <!-- Default Home Page - AI Tech Theme -->
   <div
     v-else
-    class="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
+    class="relative flex min-h-screen flex-col overflow-hidden bg-[#0a0e1a]"
   >
-    <!-- Background Decorations -->
+    <!-- Animated Background -->
     <div class="pointer-events-none absolute inset-0 overflow-hidden">
+      <!-- Grid pattern -->
       <div
-        class="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-primary-400/20 blur-3xl"
+        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.04)_1px,transparent_1px)] bg-[size:48px_48px]"
       ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-primary-500/15 blur-3xl"
-      ></div>
-      <div
-        class="absolute left-1/3 top-1/4 h-72 w-72 rounded-full bg-primary-300/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-primary-400/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
-      ></div>
+      <!-- Glow orbs -->
+      <div class="absolute -right-32 -top-32 h-[500px] w-[500px] rounded-full bg-primary-500/10 blur-[120px] animate-pulse-slow"></div>
+      <div class="absolute -bottom-32 -left-32 h-[400px] w-[400px] rounded-full bg-blue-500/8 blur-[100px] animate-pulse-slow" style="animation-delay: 1s;"></div>
+      <div class="absolute left-1/2 top-1/3 h-[300px] w-[300px] rounded-full bg-primary-400/5 blur-[80px] animate-pulse-slow" style="animation-delay: 2s;"></div>
+      <!-- Floating particles -->
+      <div class="particle particle-1"></div>
+      <div class="particle particle-2"></div>
+      <div class="particle particle-3"></div>
+      <div class="particle particle-4"></div>
+      <div class="particle particle-5"></div>
+      <div class="particle particle-6"></div>
     </div>
 
     <!-- Header -->
     <header class="relative z-20 px-6 py-4">
       <nav class="mx-auto flex max-w-6xl items-center justify-between">
         <!-- Logo -->
-        <div class="flex items-center">
-          <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md">
+        <div class="flex items-center gap-3">
+          <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md ring-1 ring-white/10">
             <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
           </div>
+          <span class="text-lg font-bold text-white">{{ siteName }}</span>
         </div>
 
         <!-- Nav Actions -->
@@ -57,7 +58,7 @@
             :href="docUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white"
             :title="t('home.viewDocs')"
           >
             <Icon name="book" size="md" />
@@ -66,7 +67,7 @@
           <!-- Theme Toggle -->
           <button
             @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white"
             :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
           >
             <Icon v-if="isDark" name="sun" size="md" />
@@ -77,32 +78,19 @@
           <router-link
             v-if="isAuthenticated"
             :to="dashboardPath"
-            class="inline-flex items-center gap-1.5 rounded-full bg-gray-900 py-1 pl-1 pr-2.5 transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            class="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-primary-500/25 transition-all hover:shadow-primary-500/40 hover:scale-105"
           >
             <span
-              class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-[10px] font-semibold text-white"
+              class="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px] font-semibold"
             >
               {{ userInitial }}
             </span>
-            <span class="text-xs font-medium text-white">{{ t('home.dashboard') }}</span>
-            <svg
-              class="h-3 w-3 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
-              />
-            </svg>
+            <span>{{ t('home.dashboard') }}</span>
           </router-link>
           <router-link
             v-else
             to="/login"
-            class="inline-flex items-center rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            class="inline-flex items-center rounded-full bg-gradient-to-r from-primary-500 to-primary-600 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-primary-500/25 transition-all hover:shadow-primary-500/40 hover:scale-105"
           >
             {{ t('home.login') }}
           </router-link>
@@ -111,273 +99,437 @@
     </header>
 
     <!-- Main Content -->
-    <main class="relative z-10 flex-1 px-6 py-16">
-      <div class="mx-auto max-w-6xl">
-        <!-- Hero Section - Left/Right Layout -->
-        <div class="mb-12 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16">
-          <!-- Left: Text Content -->
-          <div class="flex-1 text-center lg:text-left">
-            <h1
-              class="mb-4 text-4xl font-bold text-gray-900 dark:text-white md:text-5xl lg:text-6xl"
-            >
-              {{ siteName }}
-            </h1>
-            <p class="mb-8 text-lg text-gray-600 dark:text-dark-300 md:text-xl">
-              {{ siteSubtitle }}
-            </p>
+    <main class="relative z-10 flex-1 px-6">
+      <!-- Hero Section -->
+      <section class="mx-auto max-w-6xl pt-16 pb-20">
+        <div class="flex flex-col items-center text-center">
+          <!-- Badge -->
+          <div class="mb-6 inline-flex items-center gap-2 rounded-full border border-primary-500/30 bg-primary-500/10 px-4 py-1.5 backdrop-blur-sm">
+            <span class="relative flex h-2 w-2">
+              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75"></span>
+              <span class="relative inline-flex h-2 w-2 rounded-full bg-primary-500"></span>
+            </span>
+            <span class="text-xs font-medium text-primary-300">GPT API 稳定中转服务</span>
+          </div>
 
-            <!-- CTA Button -->
+          <!-- Title -->
+          <h1 class="mb-6 text-4xl font-bold leading-tight text-white md:text-5xl lg:text-6xl">
+            <span class="bg-gradient-to-r from-white via-white to-gray-300 bg-clip-text text-transparent">{{ siteName }}</span>
+            <br />
+            <span class="bg-gradient-to-r from-primary-400 to-cyan-400 bg-clip-text text-transparent">智能 AI 中转站</span>
+          </h1>
+
+          <!-- Subtitle -->
+          <p class="mb-8 max-w-2xl text-lg text-gray-400 md:text-xl">
+            专注 GPT 系列模型的稳定中转服务，多节点负载均衡，99.9% 可用性保障，让你的 AI 应用永不掉线
+          </p>
+
+          <!-- CTA Buttons -->
+          <div class="flex flex-wrap items-center justify-center gap-4">
+            <router-link
+              :to="isAuthenticated ? dashboardPath : '/login'"
+              class="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-primary-500 to-primary-600 px-8 py-3.5 text-base font-semibold text-white shadow-xl shadow-primary-500/30 transition-all hover:shadow-primary-500/50 hover:scale-105"
+            >
+              {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
+              <Icon name="arrowRight" size="md" class="transition-transform group-hover:translate-x-1" :stroke-width="2" />
+            </router-link>
+            <a
+              v-if="docUrl"
+              :href="docUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-8 py-3.5 text-base font-medium text-gray-300 backdrop-blur-sm transition-all hover:bg-white/10 hover:text-white"
+            >
+              <Icon name="book" size="md" />
+              查看文档
+            </a>
+          </div>
+
+          <!-- Stats -->
+          <div class="mt-12 grid grid-cols-3 gap-8 md:gap-16">
+            <div class="text-center">
+              <div class="text-2xl font-bold text-white md:text-3xl">99.9%</div>
+              <div class="mt-1 text-sm text-gray-500">可用性</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-white md:text-3xl">&lt;100ms</div>
+              <div class="mt-1 text-sm text-gray-500">平均延迟</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-white md:text-3xl">24/7</div>
+              <div class="mt-1 text-sm text-gray-500">全天候服务</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features Section -->
+      <section class="mx-auto max-w-6xl py-16">
+        <div class="mb-12 text-center">
+          <h2 class="mb-3 text-3xl font-bold text-white">为什么选择我们</h2>
+          <p class="text-gray-400">专业的 GPT API 中转解决方案</p>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <!-- Feature 1 -->
+          <div class="group rounded-2xl border border-white/5 bg-white/[0.02] p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary-500/30 hover:bg-white/[0.05]">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500/20 to-primary-600/20 ring-1 ring-primary-500/30">
+              <Icon name="shield" size="lg" class="text-primary-400" />
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-white">稳定可靠</h3>
+            <p class="text-sm leading-relaxed text-gray-400">
+              多节点智能负载均衡，自动故障转移，确保服务 99.9% 可用性
+            </p>
+          </div>
+
+          <!-- Feature 2 -->
+          <div class="group rounded-2xl border border-white/5 bg-white/[0.02] p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary-500/30 hover:bg-white/[0.05]">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/20 ring-1 ring-blue-500/30">
+              <Icon name="bolt" size="lg" class="text-blue-400" />
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-white">极速响应</h3>
+            <p class="text-sm leading-relaxed text-gray-400">
+              优化网络链路，全球加速节点，API 请求延迟低至毫秒级
+            </p>
+          </div>
+
+          <!-- Feature 3 -->
+          <div class="group rounded-2xl border border-white/5 bg-white/[0.02] p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary-500/30 hover:bg-white/[0.05]">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-600/20 ring-1 ring-purple-500/30">
+              <Icon name="key" size="lg" class="text-purple-400" />
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-white">简单接入</h3>
+            <p class="text-sm leading-relaxed text-gray-400">
+              兼容 OpenAI API 格式，只需替换 Base URL 即可无缝切换
+            </p>
+          </div>
+
+          <!-- Feature 4 -->
+          <div class="group rounded-2xl border border-white/5 bg-white/[0.02] p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary-500/30 hover:bg-white/[0.05]">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/20 ring-1 ring-amber-500/30">
+              <Icon name="chart" size="lg" class="text-amber-400" />
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-white">用量透明</h3>
+            <p class="text-sm leading-relaxed text-gray-400">
+              实时用量统计，详细账单明细，每一笔消费清晰可见
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Supported Models Section -->
+      <section class="mx-auto max-w-6xl py-16">
+        <div class="mb-12 text-center">
+          <h2 class="mb-3 text-3xl font-bold text-white">支持的模型</h2>
+          <p class="text-gray-400">当前专注于 GPT 系列，提供最佳中转体验</p>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-center gap-4">
+          <!-- GPT-4o -->
+          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
+              <span class="text-sm font-bold text-white">G</span>
+            </div>
             <div>
-              <router-link
-                :to="isAuthenticated ? dashboardPath : '/login'"
-                class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
-              >
-                {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
-                <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
-              </router-link>
+              <span class="text-sm font-semibold text-white">GPT-4o</span>
+              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
             </div>
           </div>
 
-          <!-- Right: Terminal Animation -->
-          <div class="flex flex-1 justify-center lg:justify-end">
-            <div class="terminal-container">
-              <div class="terminal-window">
-                <!-- Window header -->
-                <div class="terminal-header">
-                  <div class="terminal-buttons">
-                    <span class="btn-close"></span>
-                    <span class="btn-minimize"></span>
-                    <span class="btn-maximize"></span>
-                  </div>
-                  <span class="terminal-title">terminal</span>
-                </div>
-                <!-- Terminal content -->
-                <div class="terminal-body">
-                  <div class="code-line line-1">
-                    <span class="code-prompt">$</span>
-                    <span class="code-cmd">curl</span>
-                    <span class="code-flag">-X POST</span>
-                    <span class="code-url">/v1/messages</span>
-                  </div>
-                  <div class="code-line line-2">
-                    <span class="code-comment"># Routing to upstream...</span>
-                  </div>
-                  <div class="code-line line-3">
-                    <span class="code-success">200 OK</span>
-                    <span class="code-response">{ "content": "Hello!" }</span>
-                  </div>
-                  <div class="code-line line-4">
-                    <span class="code-prompt">$</span>
-                    <span class="cursor"></span>
-                  </div>
-                </div>
+          <!-- GPT-4o-mini -->
+          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
+              <span class="text-sm font-bold text-white">G</span>
+            </div>
+            <div>
+              <span class="text-sm font-semibold text-white">GPT-4o-mini</span>
+              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
+            </div>
+          </div>
+
+          <!-- GPT-4.1 -->
+          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
+              <span class="text-sm font-bold text-white">G</span>
+            </div>
+            <div>
+              <span class="text-sm font-semibold text-white">GPT-4.1</span>
+              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
+            </div>
+          </div>
+
+          <!-- o1 -->
+          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
+              <span class="text-sm font-bold text-white">G</span>
+            </div>
+            <div>
+              <span class="text-sm font-semibold text-white">o1 / o3</span>
+              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
+            </div>
+          </div>
+
+          <!-- Codex -->
+          <div class="flex items-center gap-3 rounded-xl border border-primary-500/30 bg-primary-500/5 px-5 py-3 ring-1 ring-primary-500/10">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
+              <span class="text-sm font-bold text-white">C</span>
+            </div>
+            <div>
+              <span class="text-sm font-semibold text-white">Codex</span>
+              <span class="ml-2 rounded bg-primary-500/20 px-1.5 py-0.5 text-[10px] font-medium text-primary-400">可用</span>
+            </div>
+          </div>
+
+          <!-- More -->
+          <div class="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-5 py-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-gray-600 to-gray-700">
+              <span class="text-sm font-bold text-white">+</span>
+            </div>
+            <div>
+              <span class="text-sm font-medium text-gray-400">更多模型</span>
+              <span class="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">持续更新</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pricing Section - Monthly Card -->
+      <section class="mx-auto max-w-6xl py-16" id="pricing">
+        <div class="mb-12 text-center">
+          <h2 class="mb-3 text-3xl font-bold text-white">选择套餐</h2>
+          <p class="text-gray-400">灵活的计费方式，满足不同使用需求</p>
+        </div>
+
+        <div class="grid gap-6 md:grid-cols-3">
+          <!-- Plan 1: 基础月卡 -->
+          <div class="relative rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent p-8 backdrop-blur-sm transition-all duration-300 hover:border-primary-500/30 hover:shadow-lg hover:shadow-primary-500/5">
+            <div class="mb-6">
+              <h3 class="text-xl font-bold text-white">基础月卡</h3>
+              <p class="mt-1 text-sm text-gray-400">适合个人轻度使用</p>
+            </div>
+            <div class="mb-6">
+              <span class="text-4xl font-bold text-white">¥50</span>
+              <span class="text-gray-400">/月</span>
+            </div>
+            <ul class="mb-8 space-y-3">
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                200 美金额度/月
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                支持 GPT-4o-mini
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                基础速率限制
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                用量统计面板
+              </li>
+            </ul>
+            <router-link
+              :to="isAuthenticated ? '/payment' : '/login'"
+              class="block w-full rounded-xl border border-primary-500/30 bg-primary-500/10 py-3 text-center text-sm font-semibold text-primary-400 transition-all hover:bg-primary-500/20"
+            >
+              立即订阅
+            </router-link>
+          </div>
+
+          <!-- Plan 2: 专业月卡 (Popular) -->
+          <div class="relative rounded-2xl border border-primary-500/50 bg-gradient-to-b from-primary-500/10 to-transparent p-8 backdrop-blur-sm shadow-xl shadow-primary-500/10 transition-all duration-300 hover:shadow-primary-500/20">
+            <!-- Popular badge -->
+            <div class="absolute -top-3 left-1/2 -translate-x-1/2">
+              <span class="rounded-full bg-gradient-to-r from-primary-500 to-cyan-500 px-4 py-1 text-xs font-bold text-white shadow-lg shadow-primary-500/30">
+                最受欢迎
+              </span>
+            </div>
+            <div class="mb-6">
+              <h3 class="text-xl font-bold text-white">专业月卡</h3>
+              <p class="mt-1 text-sm text-gray-400">适合开发者日常使用</p>
+            </div>
+            <div class="mb-6">
+              <span class="text-4xl font-bold text-white">¥200</span>
+              <span class="text-gray-400">/月</span>
+            </div>
+            <ul class="mb-8 space-y-3">
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                1000 美金额度/月
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                支持全部 GPT 模型
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                更高速率限制
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                优先队列调度
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                详细用量分析
+              </li>
+            </ul>
+            <router-link
+              :to="isAuthenticated ? '/payment' : '/login'"
+              class="block w-full rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-primary-500/30 transition-all hover:shadow-primary-500/50 hover:scale-[1.02]"
+            >
+              立即订阅
+            </router-link>
+          </div>
+
+          <!-- Plan 3: 尊享月卡 -->
+          <div class="relative rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent p-8 backdrop-blur-sm transition-all duration-300 hover:border-primary-500/30 hover:shadow-lg hover:shadow-primary-500/5">
+            <div class="mb-6">
+              <h3 class="text-xl font-bold text-white">尊享月卡</h3>
+              <p class="mt-1 text-sm text-gray-400">适合团队与高频使用</p>
+            </div>
+            <div class="mb-6">
+              <span class="text-4xl font-bold text-white">¥500</span>
+              <span class="text-gray-400">/月</span>
+            </div>
+            <ul class="mb-8 space-y-3">
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                3000 美金额度/月
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                支持全部 GPT 模型
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                无速率限制
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                专属高速通道
+              </li>
+              <li class="flex items-center gap-2 text-sm text-gray-300">
+                <Icon name="check" size="sm" class="text-primary-400" :stroke-width="3" />
+                优先技术支持
+              </li>
+            </ul>
+            <router-link
+              :to="isAuthenticated ? '/payment' : '/login'"
+              class="block w-full rounded-xl border border-primary-500/30 bg-primary-500/10 py-3 text-center text-sm font-semibold text-primary-400 transition-all hover:bg-primary-500/20"
+            >
+              立即订阅
+            </router-link>
+          </div>
+        </div>
+
+        <!-- Additional note -->
+        <div class="mt-8 text-center">
+          <p class="text-sm text-gray-500">
+            所有套餐均支持按量计费模式 · 额度用完可随时加购 · 未使用额度不过期
+          </p>
+        </div>
+      </section>
+
+      <!-- How it works -->
+      <section class="mx-auto max-w-6xl py-16">
+        <div class="mb-12 text-center">
+          <h2 class="mb-3 text-3xl font-bold text-white">三步开始使用</h2>
+          <p class="text-gray-400">兼容 OpenAI 官方 API 格式，无缝切换</p>
+        </div>
+
+        <div class="grid gap-8 md:grid-cols-3">
+          <div class="text-center">
+            <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary-500/20 to-primary-600/20 ring-1 ring-primary-500/30">
+              <span class="text-xl font-bold text-primary-400">1</span>
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-white">注册账号</h3>
+            <p class="text-sm text-gray-400">创建账号并选择适合的套餐</p>
+          </div>
+          <div class="text-center">
+            <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary-500/20 to-primary-600/20 ring-1 ring-primary-500/30">
+              <span class="text-xl font-bold text-primary-400">2</span>
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-white">获取密钥</h3>
+            <p class="text-sm text-gray-400">在控制台生成你的 API Key</p>
+          </div>
+          <div class="text-center">
+            <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary-500/20 to-primary-600/20 ring-1 ring-primary-500/30">
+              <span class="text-xl font-bold text-primary-400">3</span>
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-white">开始调用</h3>
+            <p class="text-sm text-gray-400">替换 Base URL 即可使用</p>
+          </div>
+        </div>
+
+        <!-- Code Example -->
+        <div class="mt-12 mx-auto max-w-2xl">
+          <div class="terminal-window">
+            <!-- Window header -->
+            <div class="terminal-header">
+              <div class="terminal-buttons">
+                <span class="btn-close"></span>
+                <span class="btn-minimize"></span>
+                <span class="btn-maximize"></span>
+              </div>
+              <span class="terminal-title">API 调用示例</span>
+            </div>
+            <!-- Terminal content -->
+            <div class="terminal-body">
+              <div class="code-line line-1">
+                <span class="code-prompt">$</span>
+                <span class="code-cmd">curl</span>
+                <span class="code-flag">-X POST</span>
+                <span class="code-url">{{ siteName }}/v1/chat/completions</span>
+              </div>
+              <div class="code-line line-2">
+                <span class="code-flag">-H</span>
+                <span class="code-response">"Authorization: Bearer sk-xxx"</span>
+              </div>
+              <div class="code-line line-3">
+                <span class="code-flag">-d</span>
+                <span class="code-response">'{"model": "gpt-4o", "messages": [...]}'</span>
+              </div>
+              <div class="code-line line-4">
+                <span class="code-comment"># Routing to upstream...</span>
+              </div>
+              <div class="code-line line-5">
+                <span class="code-success">200 OK</span>
+                <span class="code-response">{ "choices": [...] }</span>
+              </div>
+              <div class="code-line line-6">
+                <span class="code-prompt">$</span>
+                <span class="cursor"></span>
               </div>
             </div>
           </div>
         </div>
+      </section>
 
-        <!-- Feature Tags - Centered -->
-        <div class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6">
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="swap" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.subscriptionToApi')
-            }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="shield" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.stickySession')
-            }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="chart" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.realtimeBilling')
-            }}</span>
+      <!-- CTA Section -->
+      <section class="mx-auto max-w-6xl py-16">
+        <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-primary-500/10 via-transparent to-cyan-500/10 p-12 text-center backdrop-blur-sm">
+          <div class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+          <div class="relative z-10">
+            <h2 class="mb-4 text-3xl font-bold text-white">准备好开始了吗？</h2>
+            <p class="mb-8 text-gray-400">注册即可体验稳定高速的 GPT API 中转服务</p>
+            <router-link
+              :to="isAuthenticated ? dashboardPath : '/login'"
+              class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-primary-500 to-primary-600 px-10 py-4 text-base font-semibold text-white shadow-xl shadow-primary-500/30 transition-all hover:shadow-primary-500/50 hover:scale-105"
+            >
+              {{ isAuthenticated ? '进入控制台' : '免费注册' }}
+              <Icon name="arrowRight" size="md" :stroke-width="2" />
+            </router-link>
           </div>
         </div>
-
-        <!-- Features Grid -->
-        <div class="mb-12 grid gap-6 md:grid-cols-3">
-          <!-- Feature 1: Unified Gateway -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-110"
-            >
-              <Icon name="server" size="lg" class="text-white" />
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.unifiedGateway') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.unifiedGatewayDesc') }}
-            </p>
-          </div>
-
-          <!-- Feature 2: Account Pool -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/30 transition-transform group-hover:scale-110"
-            >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
-                />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.multiAccount') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.multiAccountDesc') }}
-            </p>
-          </div>
-
-          <!-- Feature 3: Billing & Quota -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg shadow-purple-500/30 transition-transform group-hover:scale-110"
-            >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
-                />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.balanceQuota') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.balanceQuotaDesc') }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Supported Providers -->
-        <div class="mb-8 text-center">
-          <h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ t('home.providers.title') }}
-          </h2>
-          <p class="text-sm text-gray-600 dark:text-dark-400">
-            {{ t('home.providers.description') }}
-          </p>
-        </div>
-
-        <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
-          <!-- Claude - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-orange-500"
-            >
-              <span class="text-xs font-bold text-white">C</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.claude') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- GPT - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Gemini - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.gemini') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Antigravity - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-pink-600"
-            >
-              <span class="text-xs font-bold text-white">A</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.antigravity') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- More - Coming Soon -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-gray-200/50 bg-white/40 px-5 py-3 opacity-60 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/40"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-gray-500 to-gray-600"
-            >
-              <span class="text-xs font-bold text-white">+</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
-            <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
-              >{{ t('home.providers.soon') }}</span
-            >
-          </div>
-        </div>
-      </div>
+      </section>
     </main>
 
     <!-- Footer -->
-    <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
-      <div
-        class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left"
-      >
-        <p class="text-sm text-gray-500 dark:text-dark-400">
+    <footer class="relative z-10 border-t border-white/5 px-6 py-8">
+      <div class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left">
+        <p class="text-sm text-gray-500">
           &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
         </p>
         <div class="flex items-center gap-4">
@@ -386,17 +538,9 @@
             :href="docUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+            class="text-sm text-gray-500 transition-colors hover:text-primary-400"
           >
             {{ t('home.docs') }}
-          </a>
-          <a
-            :href="githubUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            GitHub
           </a>
         </div>
       </div>
@@ -419,7 +563,6 @@ const appStore = useAppStore()
 // Site settings - directly from appStore (already initialized from injected config)
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 
@@ -429,11 +572,8 @@ const isHomeContentUrl = computed(() => {
   return content.startsWith('http://') || content.startsWith('https://')
 })
 
-// Theme
-const isDark = ref(document.documentElement.classList.contains('dark'))
-
-// GitHub URL
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
+// Theme - always dark for this page
+const isDark = ref(true)
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)
@@ -457,14 +597,10 @@ function toggleTheme() {
 
 // Initialize theme
 function initTheme() {
-  const savedTheme = localStorage.getItem('theme')
-  if (
-    savedTheme === 'dark' ||
-    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  ) {
-    isDark.value = true
-    document.documentElement.classList.add('dark')
-  }
+  // Default to dark theme for this page
+  isDark.value = true
+  document.documentElement.classList.add('dark')
+  localStorage.setItem('theme', 'dark')
 }
 
 onMounted(() => {
@@ -481,28 +617,99 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Terminal Container */
-.terminal-container {
-  position: relative;
-  display: inline-block;
+/* Floating Particles */
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(20, 184, 166, 0.4);
+  animation: float-particle 15s infinite linear;
+}
+
+.particle-1 {
+  top: 20%;
+  left: 10%;
+  animation-delay: 0s;
+  animation-duration: 20s;
+}
+
+.particle-2 {
+  top: 60%;
+  left: 80%;
+  animation-delay: 3s;
+  animation-duration: 18s;
+  width: 3px;
+  height: 3px;
+}
+
+.particle-3 {
+  top: 40%;
+  left: 50%;
+  animation-delay: 6s;
+  animation-duration: 22s;
+  width: 2px;
+  height: 2px;
+  background: rgba(56, 189, 248, 0.3);
+}
+
+.particle-4 {
+  top: 80%;
+  left: 30%;
+  animation-delay: 9s;
+  animation-duration: 16s;
+  width: 3px;
+  height: 3px;
+  background: rgba(20, 184, 166, 0.3);
+}
+
+.particle-5 {
+  top: 10%;
+  left: 70%;
+  animation-delay: 12s;
+  animation-duration: 25s;
+  width: 2px;
+  height: 2px;
+  background: rgba(139, 92, 246, 0.3);
+}
+
+.particle-6 {
+  top: 50%;
+  left: 20%;
+  animation-delay: 4s;
+  animation-duration: 19s;
+  width: 3px;
+  height: 3px;
+  background: rgba(56, 189, 248, 0.25);
+}
+
+@keyframes float-particle {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(100px, -200px) scale(0.5);
+    opacity: 0;
+  }
 }
 
 /* Terminal Window */
 .terminal-window {
-  width: 420px;
   background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
   border-radius: 14px;
   box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 40px rgba(20, 184, 166, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   overflow: hidden;
-  transform: perspective(1000px) rotateX(2deg) rotateY(-2deg);
-  transition: transform 0.3s ease;
-}
-
-.terminal-window:hover {
-  transform: perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(-4px);
 }
 
 /* Terminal Header */
@@ -548,7 +755,7 @@ onMounted(() => {
 .terminal-body {
   padding: 20px 24px;
   font-family: ui-monospace, 'Fira Code', monospace;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 2;
 }
 
@@ -561,18 +768,12 @@ onMounted(() => {
   animation: line-appear 0.5s ease forwards;
 }
 
-.line-1 {
-  animation-delay: 0.3s;
-}
-.line-2 {
-  animation-delay: 1s;
-}
-.line-3 {
-  animation-delay: 1.8s;
-}
-.line-4 {
-  animation-delay: 2.5s;
-}
+.line-1 { animation-delay: 0.3s; }
+.line-2 { animation-delay: 0.8s; }
+.line-3 { animation-delay: 1.3s; }
+.line-4 { animation-delay: 1.8s; }
+.line-5 { animation-delay: 2.5s; }
+.line-6 { animation-delay: 3.2s; }
 
 @keyframes line-appear {
   from {
@@ -623,22 +824,11 @@ onMounted(() => {
 }
 
 @keyframes blink {
-  0%,
-  50% {
+  0%, 50% {
     opacity: 1;
   }
-  51%,
-  100% {
+  51%, 100% {
     opacity: 0;
   }
-}
-
-/* Dark mode adjustments */
-:deep(.dark) .terminal-window {
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(20, 184, 166, 0.2),
-    0 0 40px rgba(20, 184, 166, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 </style>
