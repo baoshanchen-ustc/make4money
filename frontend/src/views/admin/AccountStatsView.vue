@@ -190,7 +190,7 @@
                     </div>
                   </td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{{ user.email || '-' }}</td>
-                  <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ currentRequestsForUser(user.user_id) }}</td>
+                  <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ user.current_requests || 0 }}</td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ formatCost(user.account_cost) }}</td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ formatCost(user.user_cost) }}</td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm text-gray-500 dark:text-gray-400">{{ formatRelativeTime(user.last_used_at) }}</td>
@@ -290,7 +290,6 @@ const detailStats = ref<any>(null)
 const rangeUsers = ref<RecentAccountUser[]>([])
 const recentUsers = ref<RecentAccountUser[]>([])
 const detailUsersLoading = ref(false)
-const userConcurrencyByID = ref<Record<number, number>>({})
 
 // Auto refresh
 const autoRefreshDropdownRef = ref<HTMLElement | null>(null)
@@ -560,21 +559,15 @@ async function openDetail(account: any) {
 async function loadDetailUsers(accountId: number, options?: { silent?: boolean }) {
   if (!options?.silent) detailUsersLoading.value = true
   try {
-    const [rangeResult, recentResult, userConcurrencyResult] = await Promise.all([
+    const [rangeResult, recentResult] = await Promise.all([
       adminAPI.accounts.getRecentUsers(accountId, {
         start_date: startDate.value,
         end_date: endDate.value,
       }),
-      adminAPI.accounts.getRecentUsers(accountId),
-      adminAPI.ops.getUserConcurrencyStats()
+      adminAPI.accounts.getRecentUsers(accountId)
     ])
     rangeUsers.value = rangeResult.users || []
     recentUsers.value = recentResult.users || []
-    const nextConcurrency: Record<number, number> = {}
-    for (const [userID, info] of Object.entries(userConcurrencyResult.user || {})) {
-      nextConcurrency[Number(userID)] = info.current_in_use || 0
-    }
-    userConcurrencyByID.value = nextConcurrency
   } catch (err) {
     console.error('Failed to load account users:', err)
   } finally {
@@ -582,11 +575,8 @@ async function loadDetailUsers(accountId: number, options?: { silent?: boolean }
   }
 }
 
-function currentRequestsForUser(userID: number): number {
-  return userConcurrencyByID.value[userID] || 0
-}
-
 function isUserActive(user: RecentAccountUser): boolean {
+  if ((user.current_requests || 0) > 0) return true
   const lastUsed = new Date(user.last_used_at)
   const oneMinuteAgo = new Date(Date.now() - 60 * 1000)
   return lastUsed > oneMinuteAgo
