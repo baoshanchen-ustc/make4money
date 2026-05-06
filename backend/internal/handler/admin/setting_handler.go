@@ -12,11 +12,32 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+)
+
+// 错误码常量：与前端 i18n key（admin.setting.errors.* / common.errors.*）对齐。
+// 走 PR-A 字段级错误协议（task #33）。
+//
+// INVALID_REQUEST_BODY / INVALID_ID 是跨 handler 通用错误码，已提到 admin/common.go
+// 顶部（errReasonInvalidRequestBody / errReasonInvalidID）作为共享常量；这里的
+// errReasonSetting* 是 setting 模块特定的业务级 reason。
+const (
+	errReasonSettingTurnstileSiteKeyRequired = "TURNSTILE_SITE_KEY_REQUIRED"
+	errReasonSettingTurnstileSecretRequired  = "TURNSTILE_SECRET_REQUIRED"
+	errReasonSettingTOTPKeyMissing           = "TOTP_ENCRYPTION_KEY_MISSING"
+
+	// service 层 SetXxxSettings 校验失败时的兜底 reason（保留 WithCause 的链路便于排查）。
+	// 这些 reason 没细分到具体字段，因为底层 service 校验可能涉及多字段组合规则；
+	// 前端仅提示"X 设置无效"层级即可。
+	errReasonSettingOverloadCooldownInvalid = "OVERLOAD_COOLDOWN_INVALID"
+	errReasonSettingRectifierInvalid        = "RECTIFIER_SETTINGS_INVALID"
+	errReasonSettingBetaPolicyInvalid       = "BETA_POLICY_SETTINGS_INVALID"
+	errReasonSettingStreamTimeoutInvalid    = "STREAM_TIMEOUT_SETTINGS_INVALID"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -60,10 +81,13 @@ type SettingHandler struct {
 	opsService           *service.OpsService
 	paymentConfigService *service.PaymentConfigService
 	paymentService       *service.PaymentService
+	// serviceQuotaSvc 用于在 service_quota_enabled 总开关变更时失效 Redis 缓存。
+	// 没有它，开关切换后 ServiceQuota 中的 5min 启用快照缓存仍会返回旧值。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, serviceQuotaSvc service.ServiceQuotaService) *SettingHandler {
 	return &SettingHandler{
 		settingService:       settingService,
 		emailService:         emailService,
@@ -71,6 +95,7 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 		opsService:           opsService,
 		paymentConfigService: paymentConfigService,
 		paymentService:       paymentService,
+		serviceQuotaSvc:      serviceQuotaSvc,
 	}
 }
 
@@ -241,13 +266,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentCancelRateLimitWindow:           paymentCfg.CancelRateLimitWindow,
 		PaymentCancelRateLimitUnit:             paymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:             paymentCfg.CancelRateLimitMode,
-
-		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
-		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
-
-		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
-
-		AffiliateEnabled: settings.AffiliateEnabled,
+		ChannelMonitorEnabled:                  settings.ChannelMonitorEnabled,
+		ChannelMonitorDefaultIntervalSeconds:   settings.ChannelMonitorDefaultIntervalSeconds,
+		AvailableChannelsEnabled:               settings.AvailableChannelsEnabled,
+		ServiceQuotaEnabled:                    settings.ServiceQuotaEnabled,
+		AffiliateEnabled:                       settings.AffiliateEnabled,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
@@ -415,6 +438,8 @@ type UpdateSettingsRequest struct {
 	AuthSourceDefaultWeChatGrantOnFirstBind  *bool                             `json:"auth_source_default_wechat_grant_on_first_bind"`
 	ForceEmailOnThirdPartySignup             *bool                             `json:"force_email_on_third_party_signup"`
 
+	ServiceQuotaEnabled *bool `json:"service_quota_enabled"`
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`
@@ -505,8 +530,8 @@ type UpdateSettingsRequest struct {
 // PUT /api/v1/admin/settings
 func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	var req UpdateSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -601,13 +626,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.TurnstileEnabled {
 		// 检查必填字段
 		if req.TurnstileSiteKey == "" {
-			response.BadRequest(c, "Turnstile Site Key is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTurnstileSiteKeyRequired, "turnstile site key is required when enabled"))
 			return
 		}
 		// 如果未提供 secret key，使用已保存的值（留空保留当前值）
 		if req.TurnstileSecretKey == "" {
 			if previousSettings.TurnstileSecretKey == "" {
-				response.BadRequest(c, "Turnstile Secret Key is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTurnstileSecretRequired, "turnstile secret key is required when enabled"))
 				return
 			}
 			req.TurnstileSecretKey = previousSettings.TurnstileSecretKey
@@ -629,7 +654,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.TotpEnabled && !previousSettings.TotpEnabled {
 		// 尝试启用 TOTP，检查加密密钥是否已手动配置
 		if !h.settingService.IsTotpEncryptionKeyConfigured() {
-			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTOTPKeyMissing, "cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first").
+				WithMetadata(map[string]string{
+					"hint": "Generate a key with 'openssl rand -hex 32' and set it in your environment.",
+				}))
 			return
 		}
 	}
@@ -1222,17 +1250,23 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebatePerInviteeCap:     affiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:              req.DefaultUserRPMLimit,
 		DefaultSubscriptions:             defaultSubscriptions,
-		EnableModelFallback:              req.EnableModelFallback,
-		FallbackModelAnthropic:           req.FallbackModelAnthropic,
-		FallbackModelOpenAI:              req.FallbackModelOpenAI,
-		FallbackModelGemini:              req.FallbackModelGemini,
-		FallbackModelAntigravity:         req.FallbackModelAntigravity,
-		EnableIdentityPatch:              req.EnableIdentityPatch,
-		IdentityPatchPrompt:              req.IdentityPatchPrompt,
-		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
-		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:               req.BackendModeEnabled,
+		ServiceQuotaEnabled: func() bool {
+			if req.ServiceQuotaEnabled != nil {
+				return *req.ServiceQuotaEnabled
+			}
+			return previousSettings.ServiceQuotaEnabled
+		}(),
+		EnableModelFallback:         req.EnableModelFallback,
+		FallbackModelAnthropic:      req.FallbackModelAnthropic,
+		FallbackModelOpenAI:         req.FallbackModelOpenAI,
+		FallbackModelGemini:         req.FallbackModelGemini,
+		FallbackModelAntigravity:    req.FallbackModelAntigravity,
+		EnableIdentityPatch:         req.EnableIdentityPatch,
+		IdentityPatchPrompt:         req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:        req.MinClaudeCodeVersion,
+		MaxClaudeCodeVersion:        req.MaxClaudeCodeVersion,
+		AllowUngroupedKeyScheduling: req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:          req.BackendModeEnabled,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -1448,6 +1482,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	h.auditSettingsUpdate(c, previousSettings, settings, previousAuthSourceDefaults, authSourceDefaults, req)
 
+	// service_quota_enabled 总开关变化后，需要立即失效 Redis 缓存中的启用快照。
+	// 否则在缓存 TTL（5min）内，ServiceQuotaService 的 PreCheck 仍会读取旧值，
+	// 造成开关切换后 5 分钟内行为不一致。
+	if h.serviceQuotaSvc != nil && previousSettings != nil &&
+		previousSettings.ServiceQuotaEnabled != settings.ServiceQuotaEnabled {
+		h.serviceQuotaSvc.InvalidateEnabledCache(c.Request.Context())
+	}
+
 	// 重新获取设置返回
 	updatedSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -1609,13 +1651,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentCancelRateLimitWindow:           updatedPaymentCfg.CancelRateLimitWindow,
 		PaymentCancelRateLimitUnit:             updatedPaymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:             updatedPaymentCfg.CancelRateLimitMode,
-
-		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
-		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
-
-		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
-
-		AffiliateEnabled: updatedSettings.AffiliateEnabled,
+		ChannelMonitorEnabled:                  updatedSettings.ChannelMonitorEnabled,
+		ChannelMonitorDefaultIntervalSeconds:   updatedSettings.ChannelMonitorDefaultIntervalSeconds,
+		AvailableChannelsEnabled:               updatedSettings.AvailableChannelsEnabled,
+		ServiceQuotaEnabled:                    updatedSettings.ServiceQuotaEnabled,
+		AffiliateEnabled:                       updatedSettings.AffiliateEnabled,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -2001,6 +2041,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
 	}
+	if before.ServiceQuotaEnabled != after.ServiceQuotaEnabled {
+		changed = append(changed, "service_quota_enabled")
+	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
 	}
@@ -2207,8 +2250,8 @@ type TestSMTPRequest struct {
 // POST /api/v1/admin/settings/test-smtp
 func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	var req TestSMTPRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2275,8 +2318,8 @@ type SendTestEmailRequest struct {
 // POST /api/v1/admin/settings/send-test-email
 func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	var req SendTestEmailRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2435,8 +2478,8 @@ type UpdateOverloadCooldownSettingsRequest struct {
 // PUT /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	var req UpdateOverloadCooldownSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2446,7 +2489,9 @@ func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	}
 
 	if err := h.settingService.SetOverloadCooldownSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		// service 层校验错（如 cooldown_minutes 范围非法）：包成结构化 BadRequest 让前端按 reason i18n。
+		// WithCause 保留底层 error 链便于排查；前端只读 reason / metadata。
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOverloadCooldownInvalid, "overload cooldown settings invalid").WithCause(err))
 		return
 	}
 
@@ -2545,12 +2590,18 @@ func (h *SettingHandler) GetRectifierSettings(c *gin.Context) {
 	if patterns == nil {
 		patterns = []string{}
 	}
+	advisorPatterns := settings.AdvisorToolPatterns
+	if advisorPatterns == nil {
+		advisorPatterns = []string{}
+	}
 	response.Success(c, dto.RectifierSettings{
 		Enabled:                  settings.Enabled,
 		ThinkingSignatureEnabled: settings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    settings.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   settings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  patterns,
+		AdvisorToolEnabled:       settings.AdvisorToolEnabled,
+		AdvisorToolPatterns:      advisorPatterns,
 	})
 }
 
@@ -2561,35 +2612,29 @@ type UpdateRectifierSettingsRequest struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`
 }
 
 // UpdateRectifierSettings 更新请求整流器配置
 // PUT /api/v1/admin/settings/rectifier
 func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	var req UpdateRectifierSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	// 校验并清理自定义匹配关键词
-	const maxPatterns = 50
-	const maxPatternLen = 500
-	if len(req.APIKeySignaturePatterns) > maxPatterns {
-		response.BadRequest(c, "Too many signature patterns (max 50)")
+	cleanedSigPatterns, sigErr := cleanRectifierPatterns(req.APIKeySignaturePatterns)
+	if sigErr != nil {
+		response.BadRequest(c, sigErr.Error())
 		return
 	}
-	var cleanedPatterns []string
-	for _, p := range req.APIKeySignaturePatterns {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if len(p) > maxPatternLen {
-			response.BadRequest(c, "Signature pattern too long (max 500 characters)")
-			return
-		}
-		cleanedPatterns = append(cleanedPatterns, p)
+	cleanedAdvisorPatterns, advisorErr := cleanRectifierPatterns(req.AdvisorToolPatterns)
+	if advisorErr != nil {
+		response.BadRequest(c, advisorErr.Error())
+		return
 	}
 
 	settings := &service.RectifierSettings{
@@ -2597,11 +2642,13 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		ThinkingSignatureEnabled: req.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    req.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   req.APIKeySignatureEnabled,
-		APIKeySignaturePatterns:  cleanedPatterns,
+		APIKeySignaturePatterns:  cleanedSigPatterns,
+		AdvisorToolEnabled:       req.AdvisorToolEnabled,
+		AdvisorToolPatterns:      cleanedAdvisorPatterns,
 	}
 
 	if err := h.settingService.SetRectifierSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingRectifierInvalid, "rectifier settings invalid").WithCause(err))
 		return
 	}
 
@@ -2616,13 +2663,44 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	if updatedPatterns == nil {
 		updatedPatterns = []string{}
 	}
+	updatedAdvisorPatterns := updatedSettings.AdvisorToolPatterns
+	if updatedAdvisorPatterns == nil {
+		updatedAdvisorPatterns = []string{}
+	}
 	response.Success(c, dto.RectifierSettings{
 		Enabled:                  updatedSettings.Enabled,
 		ThinkingSignatureEnabled: updatedSettings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    updatedSettings.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   updatedSettings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  updatedPatterns,
+		AdvisorToolEnabled:       updatedSettings.AdvisorToolEnabled,
+		AdvisorToolPatterns:      updatedAdvisorPatterns,
 	})
+}
+
+const (
+	rectifierMaxPatterns   = 50
+	rectifierMaxPatternLen = 500
+)
+
+func cleanRectifierPatterns(input []string) ([]string, error) {
+	if len(input) > rectifierMaxPatterns {
+		return nil, fmt.Errorf("too many patterns (max %d)", rectifierMaxPatterns)
+	}
+	// 始终返回非 nil 切片，区分"用户清空"（[]）与"字段不存在"（nil），
+	// 让 GetRectifierSettings 仅对 nil 注入默认值。
+	cleaned := make([]string, 0, len(input))
+	for _, p := range input {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if len(p) > rectifierMaxPatternLen {
+			return nil, fmt.Errorf("pattern too long (max %d characters)", rectifierMaxPatternLen)
+		}
+		cleaned = append(cleaned, p)
+	}
+	return cleaned, nil
 }
 
 // GetBetaPolicySettings 获取 Beta 策略配置
@@ -2650,8 +2728,8 @@ type UpdateBetaPolicySettingsRequest struct {
 // PUT /api/v1/admin/settings/beta-policy
 func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 	var req UpdateBetaPolicySettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2662,7 +2740,7 @@ func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 
 	settings := &service.BetaPolicySettings{Rules: rules}
 	if err := h.settingService.SetBetaPolicySettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingBetaPolicyInvalid, "beta policy settings invalid").WithCause(err))
 		return
 	}
 
@@ -2693,8 +2771,8 @@ type UpdateStreamTimeoutSettingsRequest struct {
 // PUT /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	var req UpdateStreamTimeoutSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2707,7 +2785,7 @@ func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	}
 
 	if err := h.settingService.SetStreamTimeoutSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingStreamTimeoutInvalid, "stream timeout settings invalid").WithCause(err))
 		return
 	}
 
@@ -2742,8 +2820,8 @@ func (h *SettingHandler) GetWebSearchEmulationConfig(c *gin.Context) {
 // PUT /api/v1/admin/settings/web-search-emulation
 func (h *SettingHandler) UpdateWebSearchEmulationConfig(c *gin.Context) {
 	var cfg service.WebSearchEmulationConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &cfg, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2767,8 +2845,8 @@ func (h *SettingHandler) ResetWebSearchUsage(c *gin.Context) {
 	var req struct {
 		ProviderType string `json:"provider_type"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if req.ProviderType == "" {
@@ -2788,8 +2866,8 @@ func (h *SettingHandler) TestWebSearchEmulation(c *gin.Context) {
 	var req struct {
 		Query string `json:"query"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if strings.TrimSpace(req.Query) == "" {

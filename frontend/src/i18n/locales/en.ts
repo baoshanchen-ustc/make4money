@@ -246,6 +246,18 @@ export default {
   common: {
     loading: 'Loading...',
     submitting: 'Submitting...',
+    userSearch: {
+      typeToSearch: 'Type an email to search',
+      noMatches: 'No matching users'
+    },
+    entitySearch: {
+      typeToSearch: 'Type to search',
+      typeOrFocus: 'Type a keyword or focus to browse',
+      noMatches: 'No matches found'
+    },
+    tagInput: {
+      enterToAdd: 'Press Enter to add'
+    },
     justNow: 'just now',
     save: 'Save',
     saved: 'Saved successfully',
@@ -272,6 +284,7 @@ export default {
     yes: 'Yes',
     no: 'No',
     all: 'All',
+    global: 'Global',
     none: 'None',
     selectAll: 'Select all',
     noData: 'No data',
@@ -336,6 +349,77 @@ export default {
         minutes: '{m}m',
         withSuffix: '{time} to lift'
       }
+    },
+    // Common error code → label mapping (aligned with backend pkgerrors.Reason):
+    // admin/user views share these keys; handler returns reason and frontend
+    // looks up the localized label here.
+    errors: {
+      INVALID_REQUEST_BODY: 'Invalid request body',
+      INVALID_ID: 'Invalid resource ID',
+      SERVICE_QUOTA_UNAVAILABLE: 'Service quota feature unavailable',
+      // Account
+      INVALID_ACCOUNT_ID: 'Invalid account ID',
+      ACCOUNT_NOT_FOUND: 'Account not found',
+      ACCOUNT_DUPLICATE: 'Account already exists',
+      // User
+      INVALID_USER_ID: 'Invalid user ID',
+      USER_NOT_FOUND: 'User not found',
+      EMAIL_INVALID: 'Invalid email format',
+      BALANCE_INVALID: 'Invalid balance value',
+      // Group
+      INVALID_GROUP_ID: 'Invalid group ID',
+      GROUP_NOT_FOUND: 'Group not found',
+      GROUP_DUPLICATE: 'Group name already exists',
+      INVALID_GROUP_FILTER: 'Invalid group filter',
+      // Setting
+      INVALID_SETTING_KEY: 'Invalid setting key',
+      SETTING_REQUIRED: 'Setting required',
+      TURNSTILE_SITE_KEY_REQUIRED: 'Turnstile Site Key required',
+      TURNSTILE_SECRET_REQUIRED: 'Turnstile Secret required',
+      // Account additions (audit 8: backend uses these reasons but frontend missed translation)
+      INVALID_RATE_MULTIPLIER: 'Invalid rate multiplier',
+      ACCOUNT_IDS_REQUIRED: 'Account IDs required',
+      INVALID_EXTRA_FIELD: 'Invalid extra field',
+      NO_UPDATES_PROVIDED: 'No updates provided',
+      PRIVACY_UNSUPPORTED: 'Privacy setting unsupported',
+      MISSING_ACCESS_TOKEN: 'Missing access token',
+      TIER_REFRESH_UNSUPPORTED: 'Tier refresh unsupported',
+      TOTP_ENCRYPTION_KEY_MISSING: 'TOTP encryption key missing',
+      // Service quota (handler & service-layer reasons -> user-facing text)
+      SERVICE_QUOTA_MONITOR_UNAVAILABLE: 'Quota monitor unavailable',
+      SERVICE_QUOTA_INVALID_RULE: 'Invalid service quota rule',
+      SERVICE_QUOTA_INVALID_COUNTER_MODE: 'Invalid counter mode',
+      SERVICE_QUOTA_INVALID_LIMITERS: 'At least one limiter is required',
+      SERVICE_QUOTA_INVALID_LIMITER_TYPE: 'Invalid limiter type',
+      SERVICE_QUOTA_INVALID_LIMIT_VALUE: 'Invalid limit value',
+      SERVICE_QUOTA_INVALID_WINDOW_MODE: 'Invalid window mode',
+      SERVICE_QUOTA_DUPLICATE_LIMITER: 'Duplicate limiter configuration',
+      SERVICE_QUOTA_INVALID_TOKEN_COMPONENT: 'Invalid token component',
+      SERVICE_QUOTA_INVALID_PATHS: 'At least one path is required',
+      SERVICE_QUOTA_SCOPE_ACCOUNT_NOT_FOUND: 'Account not found',
+      SERVICE_QUOTA_SCOPE_GROUP_NOT_FOUND: 'Group not found',
+      SERVICE_QUOTA_SCOPE_CHANNEL_NOT_FOUND: 'Channel not found',
+      SERVICE_QUOTA_SCOPE_MISMATCH: 'Scope mismatch',
+      SERVICE_QUOTA_INVALID_RESET_TARGET: 'Invalid reset target',
+      // Auth & monitor common
+      UNAUTHENTICATED: 'Please sign in first',
+      SNAPSHOT_FAILED: 'Failed to load runtime data, please retry',
+      INVALID_QUERY_PARAM: 'Invalid query parameter'
+    }
+  },
+
+  // Generic field-level validation error codes → i18n labels.
+  // Dialogs go through fieldErrorI18nKeys(code, moduleNamespace): module-specific
+  // namespace (e.g. admin.serviceQuota.errors.*) is tried first, then this generic
+  // namespace as a fallback.
+  validation: {
+    fieldErrors: {
+      REQUIRED: 'Required',
+      MIN: 'Value too small',
+      MAX: 'Value too large',
+      ONEOF: 'Value not allowed',
+      MUST_BE_POSITIVE: 'Must be positive',
+      INVALID_VALUE: 'Invalid value'
     }
   },
 
@@ -382,6 +466,10 @@ export default {
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
+    serviceQuota: 'Service Quota',
+    serviceQuotaMonitor: 'Quota Monitor',
+    serviceQuotaConfig: 'Quota Rules',
+    myQuota: 'My Quotas',
   },
 
   // Auth
@@ -848,6 +936,9 @@ export default {
     imageCount: 'Image count',
     cacheRead: 'Read',
     cacheWrite: 'Write',
+    cacheHit: 'Cache read',
+    cacheCreate: 'Cache write',
+    cacheHitRate: 'Cache hit rate',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
     serviceTierFlex: 'Flex',
@@ -2771,7 +2862,7 @@ export default {
       resetQuota: 'Reset Quota',
       quotaLimit: 'Quota Limit',
       quotaLimitPlaceholder: '0 means unlimited',
-      quotaLimitHint: 'Set daily/weekly/total spending limits (USD). Anthropic API key accounts can also configure client affinity. Changing limits won\'t reset usage.',
+      quotaLimitHint: 'Set daily/weekly/total spending limits (USD). Changing limits won\'t reset usage.',
       quotaLimitToggle: 'Enable Quota Limit',
       quotaLimitToggleHint: 'When enabled, account will be paused when usage reaches the set limit',
       quotaDailyLimit: 'Daily Limit',
@@ -3011,7 +3102,7 @@ export default {
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
-        hint: 'Configure cost window, session limits, client affinity and other scheduling controls.',
+        hint: 'Configure cost windows, session limits and other scheduling controls.',
         windowCost: {
           label: '5h Window Cost Limit',
           hint: 'Limit account cost usage within the 5-hour window',
@@ -3057,7 +3148,7 @@ export default {
           label: 'TLS Fingerprint Simulation',
           hint: 'Simulate Node.js/Claude Code client TLS fingerprint',
           defaultProfile: 'Built-in Default',
-          randomProfile: 'Random'
+          randomProfile: 'Random',
         },
         sessionIdMasking: {
           label: 'Session ID Masking',
@@ -3974,6 +4065,183 @@ export default {
       failedToLoadUsages: 'Failed to load usage records'
     },
 
+
+    serviceQuota: {
+      title: 'Service Quota',
+      description: 'Manage layered RPM, TPM, TPD, daily USD spend, and concurrent request rules.',
+      createRule: 'Create Rule',
+      editRule: 'Edit Service Quota Rule',
+      deleteRule: 'Delete Service Quota Rule',
+      emptyTitle: 'No service quota rules yet',
+      emptyDescription: 'Create the first rule to add checks on top of the existing limits.',
+      userId: 'User ID: {id}',
+      unnamedRule: 'Unnamed rule #{id}',
+      loadError: 'Failed to load service quota rules',
+      saveSuccess: 'Service quota rule saved',
+      saveError: 'Failed to save service quota rule',
+      deleteSuccess: 'Service quota rule deleted',
+      deleteError: 'Failed to delete service quota rule',
+      toggleSuccess: 'Status updated',
+      toggleError: 'Failed to update status',
+      counterResetOnToggle: 'Counter reset for this rule',
+      deleteConfirm: 'Delete rule {name}? It will stop taking effect immediately.',
+      filters: {
+        allCounterModes: 'All Counter Modes',
+        allFallback: 'All Default States',
+        allStatus: 'All Status'
+      },
+      columns: {
+        status: 'Status',
+        name: 'Name',
+        limiters: 'Limiters',
+        paths: 'Paths',
+        counterMode: 'Counter Mode',
+        targetUsers: 'Bound Users',
+        fallback: 'Is Default',
+        type: 'Type',
+        window: 'Window',
+        limit: 'Limit',
+        actions: 'Actions'
+      },
+      targetUsersOverflow: '+{count} more',
+      scopeDetails: {
+        platform: 'Platform: {value}',
+        channel: 'Channel: {value}',
+        group: 'Group: {value}',
+        account: 'Account: {value}',
+        model: 'Model: {value}',
+        channelCount: 'Channels x{count}',
+        groupCount: 'Groups x{count}',
+        accountCount: 'Accounts x{count}',
+        allRequests: 'All requests'
+      },
+      limiters: {
+        rpm: 'RPM',
+        tpm: 'TPM',
+        tpd: 'TPD',
+        dailyUsd: 'Daily USD Spend',
+        concurrency: 'Concurrent Requests',
+        rpmCountOnArrival: {
+          label: 'Count on request arrival',
+          help: 'Off by default; only successful requests count toward RPM. When enabled, RPM increments as soon as the request is routed.'
+        }
+      },
+      counterModes: {
+        user: 'Specific Users',
+        perUser: 'All Users',
+        shared: 'Shared Global'
+      },
+      counterModeHints: {
+        user: 'Applies only to the listed users; each user has an independent counter',
+        perUser: 'Applies to all users in scope; one counter per user_id',
+        shared: 'Applies to all users in scope; everyone shares the same counter'
+      },
+      fallback: {
+        label: 'Default Rule',
+        hint: 'Limiters are dropped when another non-default rule covers the same limiter type',
+        yes: 'Default',
+        no: 'Regular'
+      },
+      windows: {
+        fixed: 'Fixed Window',
+        rolling: 'Rolling Window',
+        none: 'No Window'
+      },
+      form: {
+        name: 'Rule Name',
+        namePlaceholder: 'Optional label for this rule',
+        counterMode: 'Counter Mode',
+        fallback: 'Default Rule',
+        targetUserIds: 'Bound User IDs',
+        targetUserIdsPlaceholder: 'Comma-separated user IDs, e.g. 1,2,3',
+        targetUserIdsRequired: 'Required when counter mode is "Specific Users"',
+        limitersTitle: 'Limiters (a single rule can carry multiple)',
+        limitersHint: 'Each limiter type can appear once; concurrency has no window',
+        pathsTitle: 'Match Paths (rule fires when ANY path matches)',
+        pathsHint: 'Each path drills Platform → Channel → Group → Account → Model. Empty = no restriction on that dimension.',
+        platform: 'Platform',
+        platformPlaceholder: 'e.g. anthropic / openai / gemini',
+        channelId: 'Channel',
+        groupId: 'Group',
+        accountId: 'Account',
+        modelPattern: 'Model Pattern',
+        modelPatternPlaceholder: 'e.g. claude-opus-* or an exact model name',
+        modelPatternHint: 'Wildcard * supported, e.g. claude-* matches all claude models on this platform',
+        required: 'Required'
+      },
+      limiterEditor: {
+        empty: 'No limiter added yet. Click below to add one.',
+        add: 'Add Limiter'
+      },
+      tokenComponents: {
+        title: 'Counted Tokens',
+        input: 'Input',
+        output: 'Output',
+        cache_creation: 'Cache Write',
+        cache_read: 'Cache Read',
+        minOneRequired: 'Select at least 1 item'
+      },
+      pathEditor: {
+        empty: 'No path added yet. Click below to add one.',
+        add: 'Add Path',
+        pathIndex: 'Path #{index}'
+      },
+      errors: {
+        limitValueMustBePositive: 'Limit value must be greater than 0',
+        formInvalid: 'The form contains errors, please fix them before saving',
+        REQUIRED: 'Required',
+        INVALID_VALUE: 'Invalid value',
+        MUST_BE_POSITIVE: 'Must be greater than 0',
+        TARGET_USERS_REQUIRED: 'Select at least 1 user',
+        TOKEN_COMPONENTS_REQUIRED: 'Select at least 1 item',
+        PLATFORM_REQUIRED: 'Platform is required'
+      }
+    },
+
+    serviceQuotaMonitor: {
+      title: 'Quota Monitor',
+      description: 'Real-time view of current usage and load of all service limiters',
+      disabled: 'Service quota is disabled. Please enable it in Settings -> Features',
+      empty: 'No active service limiters',
+      truncated: 'Showing first {count} entries (truncated)',
+      loadError: 'Failed to load quota monitor',
+      notActive: 'Idle',
+      fallbackTag: 'Default',
+      resetIn: 'Resets in {seconds}s',
+      scopeHintNoUser: 'No user selected: showing per-user-targeted rules and shared rules; pick a user to also see per_user live counters',
+      scopeHintWithUser: 'User selected: showing rules targeting this user, shared rules, and this user\'s per_user counters',
+      asOf: 'Updated {seconds}s ago',
+      refresh: 'Refresh',
+      filters: {
+        rule: 'Rule',
+        user: 'User',
+        channel: 'Channel',
+        group: 'Group',
+        account: 'Account',
+        platform: 'Platform',
+        clear: 'Clear filters'
+      },
+      columns: {
+        rule: 'Rule',
+        path: 'Path',
+        limiter: 'Type',
+        window: 'Window',
+        usage: 'Usage',
+        counterMode: 'Limit Mode',
+        scopeUser: 'User',
+        isFallback: 'Is Default',
+        actions: 'Actions'
+      },
+      statusActive: 'Now',
+      refreshTitle: 'Refresh this limiter counter',
+      reset: 'Reset',
+      resetTitle: 'Clear this limiter counter',
+      resetConfirmTitle: 'Reset this limiter counter?',
+      resetConfirmMessage: 'This will clear the {limiter} counter for rule "{rule}". Exhausted quota becomes available immediately; concurrency slots are released (in-flight Release safely skips missing keys). This action cannot be undone.',
+      resetSuccess: 'Limiter counter reset',
+      resetError: 'Reset failed'
+    },
+
     // Usage Records
     usage: {
       title: 'Usage Records',
@@ -4862,6 +5130,14 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        serviceQuota: {
+          title: 'Service Quota',
+          description: 'When enabled, the Service Quota menu becomes visible and every request is additionally checked against RPM / TPM / TPD / Daily USD / Concurrency rules on top of the existing user quotas.',
+          configureLink: 'Go to service quota rule management',
+          enabled: 'Enable Service Quota',
+          enabledHint: 'When off, service quota rules are not evaluated.',
+          unrelatedRpmWarning: '⚠ Note: User-level RPM / Concurrency limits are completely independent from this feature and do not affect each other. To loosen or tighten per-user limits, configure them separately under User Management / User Groups; enabling this toggle will NOT automatically lift any user-level limit.',
+        },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
           description: 'Existing users invite new ones; the inviter earns a percentage rebate on the invitee’s recharges. Disabled by default.',
@@ -5577,6 +5853,7 @@ export default {
       rectifier: {
         title: 'Request Rectifier',
         description: 'Automatically fix request parameters and retry when upstream returns specific errors',
+        passthroughNotice: "Note: When an account has \"Anthropic API Key Passthrough\" enabled, rectifiers do NOT take effect for that account — passthrough preserves the original request body as-is.",
         enabled: 'Enable Request Rectifier',
         enabledHint: 'Master switch - disabling turns off all rectification features',
         thinkingSignature: 'Thinking Signature Rectifier',
@@ -5590,6 +5867,13 @@ export default {
         apikeyPatternsHint:
           'Additional keywords matched against the response body (case-insensitive). Built-in patterns always apply; use these for supplementary matching.',
         apikeyPatternPlaceholder: 'e.g., thinking_error',
+        advisorTool: 'Advisor Tool Rectifier',
+        advisorToolHint:
+          'Automatically strip the advisor-tool-2026-03-01 beta header and the advisor tool definition, then retry, when upstream does not recognise this beta (built-in patterns always apply)',
+        advisorToolPatterns: 'Custom Match Patterns',
+        advisorToolPatternsHint:
+          'Additional keywords matched against the response body (case-insensitive). Built-in patterns always apply; use these for supplementary matching.',
+        advisorToolPatternPlaceholder: 'e.g., advisor-tool',
         addPattern: 'Add Pattern',
         saved: 'Rectifier settings saved',
         saveFailed: 'Failed to save rectifier settings'
@@ -5980,6 +6264,30 @@ export default {
     resetIn: 'Resets in {time}',
     windowNotActive: 'Awaiting first use',
     usageOf: '{used} of {limit}'
+  },
+
+  // User Quota Monitor (user-side, reuses admin RuntimeTable)
+  userQuotaMonitor: {
+    title: 'My Quotas',
+    description: 'Real-time view of service limiters affecting you',
+    disabled: 'Service quota is currently disabled',
+    empty: 'You are not subject to any service quota rules right now',
+    emptyAfterFilter: 'No limiters match the current filters',
+    truncated: 'Showing first {count} entries (truncated)',
+    loadError: 'Failed to load my quota',
+    refresh: 'Refresh',
+    filters: {
+      rule: 'Rule',
+      platform: 'Platform',
+      scope: 'Scope',
+      scopeGlobal: 'Global only',
+      scopeMine: 'Mine only',
+      limiterType: 'Limiter Type',
+      status: 'Status',
+      statusExceeded: 'Exceeded',
+      statusHealthy: 'Healthy',
+      reset: 'Reset filters'
+    }
   },
 
   // Onboarding Tour

@@ -54,9 +54,14 @@ func TestAPIContracts(t *testing.T) {
 					"username": "alice",
 					"role": "user",
 					"balance": 12.5,
+					"balance_notify_enabled": false,
+					"balance_notify_extra_emails": null,
+					"balance_notify_threshold": null,
+					"balance_notify_threshold_type": "",
 					"concurrency": 5,
 					"rpm_limit": 0,
 					"status": "active",
+					"total_recharged": 0,
 					"allowed_groups": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
@@ -481,6 +486,8 @@ func TestAPIContracts(t *testing.T) {
 					"total_input_tokens": 15,
 					"total_output_tokens": 35,
 					"total_cache_tokens": 3,
+					"total_cache_read_tokens": 2,
+					"total_cache_creation_tokens": 1,
 					"total_tokens": 53,
 					"total_cost": 0.75,
 					"total_actual_cost": 0.75,
@@ -641,6 +648,7 @@ func TestAPIContracts(t *testing.T) {
 				"code": 0,
 				"message": "success",
 				"data": {
+					"service_quota_enabled": false,
 					"registration_enabled": true,
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
@@ -785,9 +793,9 @@ func TestAPIContracts(t *testing.T) {
 					"payment_cancel_rate_limit_unit": "",
 					"payment_cancel_rate_limit_window_mode": "",
 					"balance_low_notify_enabled": false,
-					"account_quota_notify_enabled": false,
 					"balance_low_notify_threshold": 0,
 					"balance_low_notify_recharge_url": "",
+					"account_quota_notify_enabled": false,
 					"account_quota_notify_emails": [],
 					"channel_monitor_enabled": true,
 					"channel_monitor_default_interval_seconds": 60,
@@ -853,6 +861,7 @@ func TestAPIContracts(t *testing.T) {
 				"code": 0,
 				"message": "success",
 				"data": {
+					"service_quota_enabled": false,
 					"registration_enabled": true,
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
@@ -1020,7 +1029,10 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_wechat_subscriptions": [],
 					"auth_source_default_wechat_grant_on_signup": false,
 					"auth_source_default_wechat_grant_on_first_bind": false,
-					"force_email_on_third_party_signup": false
+					"force_email_on_third_party_signup": false,
+					"channel_monitor_enabled": true,
+					"channel_monitor_default_interval_seconds": 60,
+					"available_channels_enabled": false
 				}
 			}`,
 		},
@@ -1133,8 +1145,8 @@ func newContractDeps(t *testing.T) *contractDeps {
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil)
-	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
+	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
@@ -1488,6 +1500,10 @@ func (s *stubAccountRepo) GetByCRSAccountID(ctx context.Context, crsAccountID st
 }
 
 func (s *stubAccountRepo) FindByExtraField(ctx context.Context, key string, value any) ([]service.Account, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) CountByTLSFingerprintProfile(ctx context.Context) (map[int64]int, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -2197,7 +2213,8 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 	var totalRequests int64
 	var totalInputTokens int64
 	var totalOutputTokens int64
-	var totalCacheTokens int64
+	var totalCacheReadTokens int64
+	var totalCacheCreationTokens int64
 	var totalCost float64
 	var totalActualCost float64
 	var totalDuration int64
@@ -2207,7 +2224,8 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 		totalRequests++
 		totalInputTokens += int64(log.InputTokens)
 		totalOutputTokens += int64(log.OutputTokens)
-		totalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
+		totalCacheReadTokens += int64(log.CacheReadTokens)
+		totalCacheCreationTokens += int64(log.CacheCreationTokens)
 		totalCost += log.TotalCost
 		totalActualCost += log.ActualCost
 		if log.DurationMs != nil {
@@ -2221,15 +2239,18 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 		avgDuration = float64(totalDuration) / float64(durationCount)
 	}
 
+	totalCacheTokens := totalCacheReadTokens + totalCacheCreationTokens
 	return &usagestats.UsageStats{
-		TotalRequests:     totalRequests,
-		TotalInputTokens:  totalInputTokens,
-		TotalOutputTokens: totalOutputTokens,
-		TotalCacheTokens:  totalCacheTokens,
-		TotalTokens:       totalInputTokens + totalOutputTokens + totalCacheTokens,
-		TotalCost:         totalCost,
-		TotalActualCost:   totalActualCost,
-		AverageDurationMs: avgDuration,
+		TotalRequests:            totalRequests,
+		TotalInputTokens:         totalInputTokens,
+		TotalOutputTokens:        totalOutputTokens,
+		TotalCacheReadTokens:     totalCacheReadTokens,
+		TotalCacheCreationTokens: totalCacheCreationTokens,
+		TotalCacheTokens:         totalCacheTokens,
+		TotalTokens:              totalInputTokens + totalOutputTokens + totalCacheTokens,
+		TotalCost:                totalCost,
+		TotalActualCost:          totalActualCost,
+		AverageDurationMs:        avgDuration,
 	}, nil
 }
 

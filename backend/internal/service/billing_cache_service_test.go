@@ -68,6 +68,22 @@ func (b *billingCacheWorkerStub) InvalidateAPIKeyRateLimit(ctx context.Context, 
 	return nil
 }
 
+func (b *billingCacheWorkerStub) GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error) {
+	return 0, nil
+}
+func (b *billingCacheWorkerStub) GetQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string) (float64, error) {
+	return 0, nil
+}
+func (b *billingCacheWorkerStub) IncrQuotaUsedTotal(ctx context.Context, userID int64, date string, delta float64) error {
+	return nil
+}
+func (b *billingCacheWorkerStub) IncrQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string, delta float64) error {
+	return nil
+}
+func (b *billingCacheWorkerStub) InvalidateQuotaConfig(ctx context.Context, userID int64) error {
+	return nil
+}
+
 func TestBillingCacheServiceQueueHighLoad(t *testing.T) {
 	cache := &billingCacheWorkerStub{}
 	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})

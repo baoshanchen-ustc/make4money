@@ -343,6 +343,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
@@ -1125,7 +1126,19 @@ const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
   toggleVisible(target.checked)
 }
-const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
+const handleBulkDelete = async () => {
+  if (!confirm(t('common.confirm'))) return
+  try {
+    await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id)))
+    clearSelection()
+    reload()
+  } catch (error: unknown) {
+    console.error('Failed to bulk delete accounts:', error)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
+  }
+}
 const handleBulkResetStatus = async () => {
   if (!confirm(t('common.confirm'))) return
   try {
@@ -1137,9 +1150,11 @@ const handleBulkResetStatus = async () => {
       clearSelection()
     }
     reload()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to bulk reset status:', error)
-    appStore.showError(String(error))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const handleBulkRefreshToken = async () => {
@@ -1153,9 +1168,11 @@ const handleBulkRefreshToken = async () => {
       clearSelection()
     }
     reload()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to bulk refresh token:', error)
-    appStore.showError(String(error))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
@@ -1255,9 +1272,11 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
       if (hasIds) clearSelection()
       else setSelectedIds(accountIds)
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to bulk toggle schedulable:', error)
-    appStore.showError(t('common.error'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const buildBulkEditFilterSnapshot = () => {
@@ -1442,8 +1461,10 @@ const handleExportData = async () => {
     link.click()
     URL.revokeObjectURL(url)
     appStore.showSuccess(t('admin.accounts.dataExported'))
-  } catch (error: any) {
-    appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+  } catch (error: unknown) {
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.dataExportFailed')),
+    )
   } finally {
     exportingData.value = false
     showExportDataDialog.value = false
@@ -1472,8 +1493,11 @@ const handleRefresh = async (a: Account) => {
     const updated = await adminAPI.accounts.refreshCredentials(a.id)
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to refresh credentials:', error)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const handleRecoverState = async (a: Account) => {
@@ -1482,9 +1506,11 @@ const handleRecoverState = async (a: Account) => {
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('admin.accounts.recoverStateSuccess'))
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to recover account state:', error)
-    appStore.showError(error?.message || t('admin.accounts.recoverStateFailed'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.recoverStateFailed')),
+    )
   }
 }
 const handleResetQuota = async (a: Account) => {
@@ -1493,8 +1519,11 @@ const handleResetQuota = async (a: Account) => {
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to reset quota:', error)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const handleSetPrivacy = async (a: Account) => {
@@ -1503,13 +1532,28 @@ const handleSetPrivacy = async (a: Account) => {
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to set privacy:', error)
-    appStore.showError(error?.response?.data?.message || t('admin.accounts.privacyFailed'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.privacyFailed')),
+    )
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
-const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
+const confirmDelete = async () => {
+  if (!deletingAcc.value) return
+  try {
+    await adminAPI.accounts.delete(deletingAcc.value.id)
+    showDeleteDialog.value = false
+    deletingAcc.value = null
+    reload()
+  } catch (error: unknown) {
+    console.error('Failed to delete account:', error)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
+  }
+}
 const handleToggleSchedulable = async (a: Account) => {
   const nextSchedulable = !a.schedulable
   togglingSchedulable.value = a.id
@@ -1517,9 +1561,11 @@ const handleToggleSchedulable = async (a: Account) => {
     const updated = await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
     updateSchedulableInList([a.id], updated?.schedulable ?? nextSchedulable)
     enterAutoRefreshSilentWindow()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to toggle schedulable:', error)
-    appStore.showError(t('admin.accounts.failedToToggleSchedulable'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.failedToToggleSchedulable')),
+    )
   } finally {
     togglingSchedulable.value = null
   }
