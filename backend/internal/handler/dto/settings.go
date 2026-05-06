@@ -200,6 +200,9 @@ type SystemSettings struct {
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
+	// Billing statement email config (JSON string)
+	BillingStatementEmailConfig string `json:"billing_statement_email_config"`
+
 	// OpenAI fast/flex policy
 	OpenAIFastPolicySettings *OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
 }
@@ -256,6 +259,12 @@ type PublicSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
+
+	BillingStatementEmailEnabled   bool   `json:"billing_statement_email_enabled"`
+	BillingStatementDailyEnabled   bool   `json:"billing_statement_daily_enabled"`
+	BillingStatementWeeklyEnabled  bool   `json:"billing_statement_weekly_enabled"`
+	BillingStatementMonthlyEnabled bool   `json:"billing_statement_monthly_enabled"`
+	ServerTimezone                 string `json:"server_timezone"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO
