@@ -5,7 +5,24 @@
       <span class="font-normal text-gray-400">{{ t('common.selectedCount', { count: modelValue.length }) }}</span>
     </label>
     <div
-      class="grid max-h-32 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-800"
+      v-if="isSearchable"
+      class="flex items-center gap-2 rounded-t-lg border border-b-0 border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-600 dark:bg-dark-800"
+    >
+      <Icon name="search" size="sm" class="shrink-0 text-gray-400" />
+      <input
+        v-model="searchText"
+        type="text"
+        :placeholder="t('common.searchPlaceholder')"
+        class="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder:text-dark-400"
+      />
+    </div>
+    <div
+      :class="[
+        'grid max-h-32 grid-cols-2 gap-1 overflow-y-auto p-2',
+        isSearchable
+          ? 'rounded-b-lg border border-t-0 border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'
+          : 'rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'
+      ]"
     >
       <label
         v-for="group in filteredGroups"
@@ -40,9 +57,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
+import Icon from '@/components/icons/Icon.vue'
 import type { AdminGroup, GroupPlatform } from '@/types'
 
 const { t } = useI18n()
@@ -52,14 +70,33 @@ interface Props {
   groups: AdminGroup[]
   platform?: GroupPlatform
   mixedScheduling?: boolean
+  searchable?: boolean | 'auto'
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  searchable: 'auto'
+})
 const emit = defineEmits<{
   'update:modelValue': [value: number[]]
 }>()
 
-const filteredGroups = computed(() => props.groups)
+const searchText = ref('')
+
+const isSearchable = computed(() => {
+  if (props.searchable === 'auto') return props.groups.length > 5
+  return props.searchable
+})
+
+const filteredGroups = computed(() => {
+  if (!isSearchable.value || !searchText.value) {
+    return props.groups
+  }
+
+  const q = searchText.value.toLowerCase()
+  return props.groups.filter(
+    (g) => g.name.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q)
+  )
+})
 
 const handleChange = (groupId: number, checked: boolean) => {
   const newValue = checked
