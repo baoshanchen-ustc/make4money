@@ -179,6 +179,35 @@ const (
 	defaultWeChatConnectFrontend = "/auth/wechat/callback"
 )
 
+func normalizeChannelAdminUsageScope(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "", ChannelAdminUsageScopeAuthorizedChannels:
+		return ChannelAdminUsageScopeAuthorizedChannels
+	case ChannelAdminUsageScopeAuthorizedGroups:
+		return ChannelAdminUsageScopeAuthorizedGroups
+	case ChannelAdminUsageScopeAll:
+		return ChannelAdminUsageScopeAll
+	default:
+		return ""
+	}
+}
+
+func validateChannelAdminUsageScope(raw string) (string, error) {
+	switch strings.TrimSpace(raw) {
+	case ChannelAdminUsageScopeAuthorizedChannels:
+		return ChannelAdminUsageScopeAuthorizedChannels, nil
+	case ChannelAdminUsageScopeAuthorizedGroups:
+		return ChannelAdminUsageScopeAuthorizedGroups, nil
+	case ChannelAdminUsageScopeAll:
+		return ChannelAdminUsageScopeAll, nil
+	default:
+		return "", infraerrors.BadRequest(
+			"INVALID_CHANNEL_ADMIN_USAGE_SCOPE",
+			"channel_admin_usage_scope must be one of: authorized_channels, authorized_groups, all",
+		)
+	}
+}
+
 func normalizeWeChatConnectModeSetting(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "mp":
@@ -1229,6 +1258,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
 
+	if settings.ChannelAdminUsageScopeProvided {
+		channelAdminUsageScope, err := validateChannelAdminUsageScope(settings.ChannelAdminUsageScope)
+		if err != nil {
+			return nil, err
+		}
+		settings.ChannelAdminUsageScope = channelAdminUsageScope
+		updates[SettingChannelAdminUsageScope] = channelAdminUsageScope
+	}
+
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
 
@@ -1900,6 +1938,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
 
+		// Channel admin usage scope
+		SettingChannelAdminUsageScope: ChannelAdminUsageScopeAuthorizedChannels,
+
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
@@ -2238,6 +2279,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
+	result.ChannelAdminUsageScope = normalizeChannelAdminUsageScope(settings[SettingChannelAdminUsageScope])
+	if result.ChannelAdminUsageScope == "" {
+		result.ChannelAdminUsageScope = ChannelAdminUsageScopeAuthorizedChannels
+	}
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

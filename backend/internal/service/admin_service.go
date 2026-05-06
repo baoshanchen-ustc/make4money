@@ -65,7 +65,7 @@ type AdminService interface {
 	ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error)
 
 	// Account management
-	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, scopedGroupIDs ...int64) ([]Account, int64, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -121,6 +121,7 @@ type CreateUserInput struct {
 	Balance       float64
 	Concurrency   int
 	RPMLimit      int
+	Role          string
 	AllowedGroups []int64
 }
 
@@ -133,6 +134,7 @@ type UpdateUserInput struct {
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
+	Role          *string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
@@ -294,6 +296,7 @@ type UpdateAccountInput struct {
 type BulkUpdateAccountsInput struct {
 	AccountIDs     []int64
 	Filters        *BulkUpdateAccountFilters
+	ScopedGroupIDs []int64
 	Name           string
 	ProxyID        *int64
 	Concurrency    *int
@@ -612,6 +615,7 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 			s.loadUserGroupRatesOneByOne(ctx, users)
 		}
 	}
+
 	return users, result.Total, nil
 }
 
@@ -627,6 +631,29 @@ func (s *adminServiceImpl) loadUserGroupRatesOneByOne(ctx context.Context, users
 		}
 		users[i].GroupRates = rates
 	}
+}
+
+func normalizeAdminUserRole(role string) (string, error) {
+	role = strings.TrimSpace(role)
+	if role == "" {
+		return RoleUser, nil
+	}
+	switch role {
+	case RoleUser, RoleAdmin, RoleChannelAdmin:
+		return role, nil
+	default:
+		return "", fmt.Errorf("invalid role: %s", role)
+	}
+}
+
+func (s *adminServiceImpl) entClientForContext(ctx context.Context) *dbent.Client {
+	if s == nil {
+		return nil
+	}
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return tx.Client()
+	}
+	return s.entClient
 }
 
 func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error) {
@@ -653,11 +680,16 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 }
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
+	role, err := normalizeAdminUserRole(input.Role)
+	if err != nil {
+		return nil, err
+	}
+
 	user := &User{
 		Email:         input.Email,
 		Username:      input.Username,
 		Notes:         input.Notes,
-		Role:          RoleUser, // Always create as regular user, never admin
+		Role:          role,
 		Balance:       input.Balance,
 		Concurrency:   input.Concurrency,
 		RPMLimit:      input.RPMLimit,
@@ -667,9 +699,11 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
 	}
+
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
 	}
+
 	s.assignDefaultSubscriptions(ctx, user.ID)
 	return user, nil
 }
@@ -689,6 +723,18 @@ func (s *adminServiceImpl) assignDefaultSubscriptions(ctx context.Context, userI
 			logger.LegacyPrintf("service.admin", "failed to assign default subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
 		}
 	}
+}
+
+func int64SlicesEqual(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error) {
@@ -715,6 +761,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	oldStatus := user.Status
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
+	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
 
 	if input.Email != "" {
 		user.Email = input.Email
@@ -734,6 +781,14 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if input.Status != "" {
 		user.Status = input.Status
+	}
+
+	if input.Role != nil {
+		role, err := normalizeAdminUserRole(*input.Role)
+		if err != nil {
+			return nil, err
+		}
+		user.Role = role
 	}
 
 	if input.Concurrency != nil {
@@ -759,10 +814,12 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		}
 	}
 
+	allowedGroupsChanged := !int64SlicesEqual(oldAllowedGroups, user.AllowedGroups)
+
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// 不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit {
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || allowedGroupsChanged || input.GroupRates != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -2063,9 +2120,9 @@ func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGrou
 }
 
 // Account management implementations
-func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
+func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, scopedGroupIDs ...int64) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
-	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
+	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode, scopedGroupIDs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -2323,7 +2380,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
-		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
+		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters, input.ScopedGroupIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -2445,22 +2502,14 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	return result, nil
 }
 
-func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filters *BulkUpdateAccountFilters) ([]int64, error) {
+func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filters *BulkUpdateAccountFilters, scopedGroupIDs []int64) ([]int64, error) {
 	if filters == nil {
 		return nil, nil
 	}
 
-	groupID := int64(0)
-	switch strings.TrimSpace(filters.Group) {
-	case "":
-	case "ungrouped":
-		groupID = AccountListGroupUngrouped
-	default:
-		parsedGroupID, err := strconv.ParseInt(strings.TrimSpace(filters.Group), 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid group filter: %w", err)
-		}
-		groupID = parsedGroupID
+	groupID, err := parseBulkUpdateGroupFilter(filters.Group)
+	if err != nil {
+		return nil, err
 	}
 
 	const pageSize = 500
@@ -2480,6 +2529,7 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 			filters.PrivacyMode,
 			"",
 			"",
+			scopedGroupIDs...,
 		)
 		if err != nil {
 			return nil, err
@@ -2491,6 +2541,21 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 			return accountIDs, nil
 		}
 		page++
+	}
+}
+
+func parseBulkUpdateGroupFilter(raw string) (int64, error) {
+	switch strings.TrimSpace(raw) {
+	case "":
+		return 0, nil
+	case "ungrouped":
+		return AccountListGroupUngrouped, nil
+	default:
+		parsedGroupID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || parsedGroupID <= 0 {
+			return 0, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter")
+		}
+		return parsedGroupID, nil
 	}
 }
 

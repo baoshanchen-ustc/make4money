@@ -6,6 +6,20 @@
 import { apiClient } from '../client'
 import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
 
+export type AdminUserRole = 'admin' | 'channel_admin' | 'user'
+
+export interface AdminUserUpsertPayload {
+  email: string
+  password?: string
+  role?: AdminUserRole
+  username?: string
+  notes?: string
+  balance?: number
+  concurrency?: number
+  rpm_limit?: number
+  allowed_groups?: number[] | null
+}
+
 export interface AdminBindAuthIdentityChannelRequest {
   channel: string
   channel_app_id: string
@@ -57,7 +71,7 @@ export async function list(
   pageSize: number = 20,
   filters?: {
     status?: 'active' | 'disabled'
-    role?: 'admin' | 'user'
+    role?: AdminUserRole
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
     attributes?: Record<number, string>  // attributeId -> value
@@ -112,13 +126,7 @@ export async function getById(id: number): Promise<AdminUser> {
  * @param userData - User data (email, password, etc.)
  * @returns Created user
  */
-export async function create(userData: {
-  email: string
-  password: string
-  balance?: number
-  concurrency?: number
-  allowed_groups?: number[] | null
-}): Promise<AdminUser> {
+export async function create(userData: AdminUserUpsertPayload): Promise<AdminUser> {
   const { data } = await apiClient.post<AdminUser>('/admin/users', userData)
   return data
 }

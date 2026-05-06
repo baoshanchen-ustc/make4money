@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -17,9 +19,10 @@ import (
 
 // GroupHandler handles admin group management
 type GroupHandler struct {
-	adminService         service.AdminService
-	dashboardService     *service.DashboardService
-	groupCapacityService *service.GroupCapacityService
+	adminService             service.AdminService
+	dashboardService         *service.DashboardService
+	groupCapacityService     *service.GroupCapacityService
+	channelAdminScopeService service.ChannelAdminScopeService
 }
 
 type optionalLimitField struct {
@@ -72,11 +75,12 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 }
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
+func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService, channelAdminScopeService service.ChannelAdminScopeService) *GroupHandler {
 	return &GroupHandler{
-		adminService:         adminService,
-		dashboardService:     dashboardService,
-		groupCapacityService: groupCapacityService,
+		adminService:             adminService,
+		dashboardService:         dashboardService,
+		groupCapacityService:     groupCapacityService,
+		channelAdminScopeService: channelAdminScopeService,
 	}
 }
 
@@ -205,6 +209,33 @@ func (h *GroupHandler) GetAll(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	if role, ok := middleware.GetUserRoleFromContext(c); ok && role == service.RoleChannelAdmin {
+		subject, subjectOK := middleware.GetAuthSubjectFromContext(c)
+		if !subjectOK || h.channelAdminScopeService == nil {
+			response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Forbidden"))
+			return
+		}
+
+		authorizedGroupIDs, err := h.channelAdminScopeService.AuthorizedGroupIDs(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		authorized := make(map[int64]struct{}, len(authorizedGroupIDs))
+		for _, id := range authorizedGroupIDs {
+			authorized[id] = struct{}{}
+		}
+
+		filtered := make([]service.Group, 0, len(groups))
+		for _, group := range groups {
+			if _, ok := authorized[group.ID]; ok {
+				filtered = append(filtered, group)
+			}
+		}
+		groups = filtered
 	}
 
 	outGroups := make([]dto.AdminGroup, 0, len(groups))

@@ -24,7 +24,7 @@
     <!-- Navigation -->
     <nav class="sidebar-nav scrollbar-hide">
       <!-- Admin View: Admin menu first, then personal menu -->
-      <template v-if="isAdmin">
+      <template v-if="canAccessAdminArea">
         <!-- Admin Section -->
         <div class="sidebar-section">
           <template v-for="item in adminNavItems" :key="item.path">
@@ -93,8 +93,8 @@
           </template>
         </div>
 
-        <!-- Personal Section for Admin (hidden in simple mode) -->
-        <div v-if="!authStore.isSimpleMode" class="sidebar-section">
+        <!-- Personal Section for Admin (hidden in simple mode; hidden for scoped admins in backend mode) -->
+        <div v-if="!authStore.isSimpleMode && (!appStore.backendModeEnabled || authStore.isAdmin)" class="sidebar-section">
           <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
             <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
               {{ t('nav.myAccount') }}
@@ -236,6 +236,7 @@ const adminSettingsStore = useAdminSettingsStore()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
+const canAccessAdminArea = computed(() => authStore.canAccessAdminArea)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
 // Track which parent nav groups are expanded
@@ -699,7 +700,12 @@ const customMenuItemsForAdmin = computed(() => {
 
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
-  const baseItems: NavItem[] = [
+  const scopedItems: NavItem[] = [
+    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
+  ]
+
+  const fullAdminOnlyItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
@@ -716,7 +722,6 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
@@ -734,26 +739,32 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
       ],
     },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
+    { path: '/admin/settings', label: t('nav.settings'), icon: CogIcon },
   ]
+
+  const baseItems = authStore.isAdmin
+    ? [
+        ...fullAdminOnlyItems,
+        ...customMenuItemsForAdmin.value.map((item): NavItem => ({
+          path: `/custom/${item.id}`,
+          label: item.label,
+          icon: null,
+          iconSvg: item.icon_svg,
+        })),
+        ...scopedItems,
+      ]
+    : scopedItems
 
   const visible = applyFeatureFlags(baseItems)
 
-  // 简单模式下，在系统设置前插入 API密钥
   if (authStore.isSimpleMode) {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
-    filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
-    filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-    for (const cm of customMenuItemsForAdmin.value) {
-      filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+    if (authStore.isAdmin) {
+      filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     }
     return filtered
   }
 
-  visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-  for (const cm of customMenuItemsForAdmin.value) {
-    visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
-  }
   return visible
 })
 

@@ -2056,7 +2056,7 @@
       <GroupSelector
         v-if="!authStore.isSimpleMode"
         v-model="form.group_ids"
-        :groups="groups"
+        :groups="scopedGroups"
         :platform="account?.platform"
         :mixed-scheduling="mixedScheduling"
         data-tour="account-form-groups"
@@ -2241,6 +2241,12 @@ const mixedChannelWarningDetails = ref<{ groupName: string; currentPlatform: str
 )
 const mixedChannelWarningRawMessage = ref('')
 const mixedChannelWarningAction = ref<(() => Promise<void>) | null>(null)
+const mixedChannelWarningMessageText = computed(() => {
+  if (mixedChannelWarningDetails.value) {
+    return t('admin.accounts.mixedChannelWarning', mixedChannelWarningDetails.value)
+  }
+  return mixedChannelWarningRawMessage.value
+})
 const antigravityMixedChannelConfirmed = ref(false)
 
 // Quota control state (Anthropic OAuth/SetupToken only)
@@ -2386,12 +2392,25 @@ const defaultBaseUrl = computed(() => {
   return 'https://api.anthropic.com'
 })
 
-const mixedChannelWarningMessageText = computed(() => {
-  if (mixedChannelWarningDetails.value) {
-    return t('admin.accounts.mixedChannelWarning', mixedChannelWarningDetails.value)
+const scopedGroups = computed(() => props.groups)
+
+const scopedGroupIds = computed(() => {
+  if (!authStore.isChannelAdmin) {
+    return form.group_ids
   }
-  return mixedChannelWarningRawMessage.value
+
+  const allowedGroupIds = new Set(scopedGroups.value.map((group) => group.id))
+  return form.group_ids.filter((groupId) => allowedGroupIds.has(groupId))
 })
+
+const hasUnauthorizedScopedGroupIds = (groupIds: number[]) => {
+  if (!authStore.isChannelAdmin) {
+    return false
+  }
+
+  const allowedGroupIds = new Set(scopedGroups.value.map((group) => group.id))
+  return groupIds.some((groupId) => !allowedGroupIds.has(groupId))
+}
 
 const form = reactive({
   name: '',
@@ -3139,7 +3158,7 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   try {
     const result = await adminAPI.accounts.checkMixedChannelRisk({
       platform: props.account.platform,
-      group_ids: form.group_ids,
+      group_ids: scopedGroupIds.value,
       account_id: props.account.id
     })
     if (!result.has_risk) {
@@ -3202,7 +3221,13 @@ const handleSubmit = async () => {
     return
   }
 
+  if (form.group_ids.length > 0 && hasUnauthorizedScopedGroupIds(form.group_ids)) {
+    appStore.showError(t('admin.accounts.failedToUpdate'))
+    return
+  }
+
   const updatePayload: Record<string, unknown> = { ...form }
+  updatePayload.group_ids = scopedGroupIds.value
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {

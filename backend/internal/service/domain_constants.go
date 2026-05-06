@@ -14,8 +14,16 @@ const (
 
 // Role constants
 const (
-	RoleAdmin = domain.RoleAdmin
-	RoleUser  = domain.RoleUser
+	RoleAdmin        = domain.RoleAdmin
+	RoleChannelAdmin = domain.RoleChannelAdmin
+	RoleUser         = domain.RoleUser
+)
+
+const (
+	SettingChannelAdminUsageScope            = domain.SettingChannelAdminUsageScope
+	ChannelAdminUsageScopeAuthorizedChannels = domain.ChannelAdminUsageScopeAuthorizedChannels
+	ChannelAdminUsageScopeAuthorizedGroups   = domain.ChannelAdminUsageScopeAuthorizedGroups
+	ChannelAdminUsageScopeAll                = domain.ChannelAdminUsageScopeAll
 )
 
 // Affiliate rebate settings

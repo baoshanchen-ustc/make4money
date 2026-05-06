@@ -138,6 +138,10 @@ type SystemSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// Channel admin usage scope
+	ChannelAdminUsageScope         string
+	ChannelAdminUsageScopeProvided bool
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string

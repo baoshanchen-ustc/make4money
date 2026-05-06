@@ -25,6 +25,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -45,24 +46,26 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 
 // AccountHandler handles admin account management
 type AccountHandler struct {
-	adminService            service.AdminService
-	oauthService            *service.OAuthService
-	openaiOAuthService      *service.OpenAIOAuthService
-	geminiOAuthService      *service.GeminiOAuthService
-	antigravityOAuthService *service.AntigravityOAuthService
-	rateLimitService        *service.RateLimitService
-	accountUsageService     *service.AccountUsageService
-	accountTestService      *service.AccountTestService
-	concurrencyService      *service.ConcurrencyService
-	crsSyncService          *service.CRSSyncService
-	sessionLimitCache       service.SessionLimitCache
-	rpmCache                service.RPMCache
-	tokenCacheInvalidator   service.TokenCacheInvalidator
+	adminService             service.AdminService
+	channelAdminScopeService service.ChannelAdminScopeService
+	oauthService             *service.OAuthService
+	openaiOAuthService       *service.OpenAIOAuthService
+	geminiOAuthService       *service.GeminiOAuthService
+	antigravityOAuthService  *service.AntigravityOAuthService
+	rateLimitService         *service.RateLimitService
+	accountUsageService      *service.AccountUsageService
+	accountTestService       *service.AccountTestService
+	concurrencyService       *service.ConcurrencyService
+	crsSyncService           *service.CRSSyncService
+	sessionLimitCache        service.SessionLimitCache
+	rpmCache                 service.RPMCache
+	tokenCacheInvalidator    service.TokenCacheInvalidator
 }
 
 // NewAccountHandler creates a new admin account handler
 func NewAccountHandler(
 	adminService service.AdminService,
+	channelAdminScopeService service.ChannelAdminScopeService,
 	oauthService *service.OAuthService,
 	openaiOAuthService *service.OpenAIOAuthService,
 	geminiOAuthService *service.GeminiOAuthService,
@@ -77,19 +80,20 @@ func NewAccountHandler(
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 ) *AccountHandler {
 	return &AccountHandler{
-		adminService:            adminService,
-		oauthService:            oauthService,
-		openaiOAuthService:      openaiOAuthService,
-		geminiOAuthService:      geminiOAuthService,
-		antigravityOAuthService: antigravityOAuthService,
-		rateLimitService:        rateLimitService,
-		accountUsageService:     accountUsageService,
-		accountTestService:      accountTestService,
-		concurrencyService:      concurrencyService,
-		crsSyncService:          crsSyncService,
-		sessionLimitCache:       sessionLimitCache,
-		rpmCache:                rpmCache,
-		tokenCacheInvalidator:   tokenCacheInvalidator,
+		adminService:             adminService,
+		channelAdminScopeService: channelAdminScopeService,
+		oauthService:             oauthService,
+		openaiOAuthService:       openaiOAuthService,
+		geminiOAuthService:       geminiOAuthService,
+		antigravityOAuthService:  antigravityOAuthService,
+		rateLimitService:         rateLimitService,
+		accountUsageService:      accountUsageService,
+		accountTestService:       accountTestService,
+		concurrencyService:       concurrencyService,
+		crsSyncService:           crsSyncService,
+		sessionLimitCache:        sessionLimitCache,
+		rpmCache:                 rpmCache,
+		tokenCacheInvalidator:    tokenCacheInvalidator,
 	}
 }
 
@@ -178,6 +182,107 @@ type AccountWithConcurrency struct {
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
+func (h *AccountHandler) currentAuth(c *gin.Context) (middleware.AuthSubject, string, bool) {
+	subject, subjectOK := middleware.GetAuthSubjectFromContext(c)
+	role, roleOK := middleware.GetUserRoleFromContext(c)
+	if !subjectOK || !roleOK {
+		return middleware.AuthSubject{}, "", false
+	}
+
+	switch role {
+	case service.RoleAdmin, service.RoleChannelAdmin:
+		return subject, role, true
+	default:
+		return middleware.AuthSubject{}, role, false
+	}
+}
+
+func (h *AccountHandler) requireAccountAdminRole(c *gin.Context) (middleware.AuthSubject, string, bool) {
+	subject, role, ok := h.currentAuth(c)
+	if !ok {
+		response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Forbidden"))
+		return middleware.AuthSubject{}, "", false
+	}
+	return subject, role, true
+}
+
+func (h *AccountHandler) ensureAccountAccess(c *gin.Context, accountID int64) bool {
+	subject, role, ok := h.requireAccountAdminRole(c)
+	if !ok {
+		return false
+	}
+	if role != service.RoleChannelAdmin {
+		return true
+	}
+	allowed, err := h.channelAdminScopeService.AccountInScope(c.Request.Context(), subject.UserID, accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return false
+	}
+	if !allowed {
+		response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Forbidden"))
+		return false
+	}
+	return true
+}
+
+func (h *AccountHandler) ensureManageAccountGroups(c *gin.Context, groupIDs []int64) bool {
+	subject, role, ok := h.requireAccountAdminRole(c)
+	if !ok {
+		return false
+	}
+	if role != service.RoleChannelAdmin {
+		return true
+	}
+	allowed, err := h.channelAdminScopeService.CanManageAccountGroups(c.Request.Context(), subject.UserID, groupIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return false
+	}
+	if !allowed {
+		response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Forbidden"))
+		return false
+	}
+	return true
+}
+
+func (h *AccountHandler) resolveCreateAccountGroupIDs(ctx context.Context, platform string, groupIDs []int64) ([]int64, error) {
+	if len(groupIDs) > 0 {
+		return groupIDs, nil
+	}
+
+	groups, err := h.adminService.GetAllGroupsByPlatform(ctx, platform)
+	if err != nil {
+		return nil, err
+	}
+
+	defaultGroupName := platform + "-default"
+	for _, group := range groups {
+		if group.Name == defaultGroupName {
+			return []int64{group.ID}, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (h *AccountHandler) effectiveCreateAccountGroupIDs(ctx context.Context, userID int64, role, platform string, groupIDs []int64) ([]int64, error) {
+	if role != service.RoleChannelAdmin {
+		return h.resolveCreateAccountGroupIDs(ctx, platform, groupIDs)
+	}
+	if len(groupIDs) == 0 {
+		return groupIDs, nil
+	}
+
+	allowed, err := h.channelAdminScopeService.CanManageAccountGroups(ctx, userID, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, infraerrors.Forbidden("FORBIDDEN", "Forbidden")
+	}
+	return groupIDs, nil
+}
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
 		Account:            dto.AccountFromService(account),
@@ -240,6 +345,11 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 
+	subject, role, ok := h.requireAccountAdminRole(c)
+	if !ok {
+		return
+	}
+
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
 		if groupIDStr == accountListGroupUngroupedQueryValue {
@@ -258,7 +368,17 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	var scopedGroupIDs []int64
+	if role == service.RoleChannelAdmin {
+		authorizedGroupIDs, err := h.channelAdminScopeService.AuthorizedGroupIDs(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		scopedGroupIDs = authorizedGroupIDs
+	}
+
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, scopedGroupIDs...)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -456,6 +576,9 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 		response.BadRequest(c, "Invalid account ID")
 		return
 	}
+	if !h.ensureAccountAccess(c, accountID) {
+		return
+	}
 
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
@@ -518,8 +641,17 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	subject, role, ok := h.requireAccountAdminRole(c)
+	if !ok {
+		return
+	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
+		return
+	}
+	effectiveGroupIDs, err := h.effectiveCreateAccountGroupIDs(c.Request.Context(), subject.UserID, role, req.Platform, req.GroupIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
@@ -527,6 +659,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
+	skipDefaultGroupBind := role == service.RoleChannelAdmin && len(req.GroupIDs) == 0
 
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
@@ -541,9 +674,10 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			Priority:              req.Priority,
 			RateMultiplier:        req.RateMultiplier,
 			LoadFactor:            req.LoadFactor,
-			GroupIDs:              req.GroupIDs,
+			GroupIDs:              effectiveGroupIDs,
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
+			SkipDefaultGroupBind:  skipDefaultGroupBind,
 			SkipMixedChannelCheck: skipCheck,
 		})
 		if execErr != nil {
@@ -588,6 +722,9 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "Invalid account ID")
 		return
 	}
+	if !h.ensureAccountAccess(c, accountID) {
+		return
+	}
 
 	var req UpdateAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -596,6 +733,9 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
+		return
+	}
+	if req.GroupIDs != nil && !h.ensureManageAccountGroups(c, *req.GroupIDs) {
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
@@ -646,6 +786,9 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if !h.ensureAccountAccess(c, accountID) {
 		return
 	}
 
@@ -1173,6 +1316,11 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 		return
 	}
 
+	subject, role, ok := h.requireAccountAdminRole(c)
+	if !ok {
+		return
+	}
+
 	executeAdminIdempotentJSON(c, "admin.accounts.batch_create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		success := 0
 		failed := 0
@@ -1192,10 +1340,22 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				continue
 			}
 
+			effectiveGroupIDs, err := h.effectiveCreateAccountGroupIDs(ctx, subject.UserID, role, item.Platform, item.GroupIDs)
+			if err != nil {
+				failed++
+				results = append(results, gin.H{
+					"name":    item.Name,
+					"success": false,
+					"error":   err.Error(),
+				})
+				continue
+			}
+
 			// base_rpm 输入校验：负值归零，超过 10000 截断
 			sanitizeExtraBaseRPM(item.Extra)
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
+			skipDefaultGroupBind := role == service.RoleChannelAdmin && len(item.GroupIDs) == 0
 
 			account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 				Name:                  item.Name,
@@ -1208,9 +1368,10 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				Concurrency:           item.Concurrency,
 				Priority:              item.Priority,
 				RateMultiplier:        item.RateMultiplier,
-				GroupIDs:              item.GroupIDs,
+				GroupIDs:              effectiveGroupIDs,
 				ExpiresAt:             item.ExpiresAt,
 				AutoPauseOnExpired:    item.AutoPauseOnExpired,
+				SkipDefaultGroupBind:  skipDefaultGroupBind,
 				SkipMixedChannelCheck: skipCheck,
 			})
 			if err != nil {
@@ -1383,6 +1544,27 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.BadRequest(c, "account_ids or filters is required")
 		return
 	}
+
+	subject, role, ok := h.requireAccountAdminRole(c)
+	if !ok {
+		return
+	}
+	if req.GroupIDs != nil && !h.ensureManageAccountGroups(c, *req.GroupIDs) {
+		return
+	}
+	if role == service.RoleChannelAdmin {
+		for _, accountID := range req.AccountIDs {
+			allowed, err := h.channelAdminScopeService.AccountInScope(c.Request.Context(), subject.UserID, accountID)
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			if !allowed {
+				response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Forbidden"))
+				return
+			}
+		}
+	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
@@ -1406,9 +1588,20 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		return
 	}
 
+	var scopedGroupIDs []int64
+	if role == service.RoleChannelAdmin && req.Filters != nil {
+		authorizedGroupIDs, err := h.channelAdminScopeService.AuthorizedGroupIDs(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		scopedGroupIDs = authorizedGroupIDs
+	}
+
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
 		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
+		ScopedGroupIDs:        scopedGroupIDs,
 		Name:                  req.Name,
 		ProxyID:               req.ProxyID,
 		Concurrency:           req.Concurrency,

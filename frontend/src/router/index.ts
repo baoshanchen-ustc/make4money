@@ -384,7 +384,11 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/admin/channels',
-    redirect: '/admin/channels/pricing'
+    redirect: '/admin/channels/pricing',
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+    }
   },
   {
     path: '/admin/channels/pricing',
@@ -439,7 +443,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/AccountsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiresScopedAdmin: true,
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
       descriptionKey: 'admin.accounts.description'
@@ -511,7 +515,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/UsageView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiresScopedAdmin: true,
       title: 'Usage Records',
       titleKey: 'admin.usage.title',
       descriptionKey: 'admin.usage.description'
@@ -653,6 +657,7 @@ router.beforeEach((to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const requiresScopedAdmin = to.meta.requiresScopedAdmin === true
 
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
@@ -697,6 +702,10 @@ router.beforeEach((to, _from, next) => {
     return
   }
 
+  if (requiresScopedAdmin && !authStore.canAccessAdminArea) {
+    next('/dashboard')
+    return
+  }
 
   // Check payment requirement (internal payment system only)
   if (to.meta.requiresPayment) {
@@ -724,14 +733,14 @@ router.beforeEach((to, _from, next) => {
     }
   }
 
-  // Backend mode: admin gets full access, non-admin blocked
+  // Backend mode: full admins have full access, scoped admins can access scoped admin routes
   if (appStore.backendModeEnabled) {
-    if (authStore.isAuthenticated && authStore.isAdmin) {
+    if (authStore.isAdmin) {
       next()
       return
     }
-    const isAllowed = isBackendModePublicRouteAllowed(to.path, authStore.hasPendingAuthSession)
-    if (!isAllowed) {
+
+    if (!(requiresScopedAdmin && authStore.canAccessAdminArea)) {
       next('/login')
       return
     }

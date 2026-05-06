@@ -66,6 +66,14 @@ func (u *User) IsAdmin() bool {
 	return u.Role == RoleAdmin
 }
 
+func (u *User) IsChannelAdmin() bool {
+	return u.Role == RoleChannelAdmin
+}
+
+func (u *User) IsScopedAdmin() bool {
+	return u.IsAdmin() || u.IsChannelAdmin()
+}
+
 func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }

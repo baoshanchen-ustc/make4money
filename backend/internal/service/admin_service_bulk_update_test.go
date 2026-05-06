@@ -5,9 +5,10 @@ package service
 import (
 	"context"
 	"errors"
-	"reflect"
+	"net/http"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -33,12 +34,13 @@ type accountRepoStubForBulkUpdate struct {
 	listCalled       bool
 	lastListParams   pagination.PaginationParams
 	lastListFilters  struct {
-		platform    string
-		accountType string
-		status      string
-		search      string
-		groupID     int64
-		privacyMode string
+		platform       string
+		accountType    string
+		status         string
+		search         string
+		groupID        int64
+		privacyMode    string
+		scopedGroupIDs []int64
 	}
 }
 
@@ -88,7 +90,7 @@ func (s *accountRepoStubForBulkUpdate) ListByGroup(_ context.Context, groupID in
 	return nil, nil
 }
 
-func (s *accountRepoStubForBulkUpdate) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
+func (s *accountRepoStubForBulkUpdate) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, scopedGroupIDs ...int64) ([]Account, *pagination.PaginationResult, error) {
 	s.listCalled = true
 	s.lastListParams = params
 	s.lastListFilters.platform = platform
@@ -97,6 +99,7 @@ func (s *accountRepoStubForBulkUpdate) ListWithFilters(_ context.Context, params
 	s.lastListFilters.search = search
 	s.lastListFilters.groupID = groupID
 	s.lastListFilters.privacyMode = privacyMode
+	s.lastListFilters.scopedGroupIDs = append([]int64(nil), scopedGroupIDs...)
 	if s.listErr != nil {
 		return nil, nil, s.listErr
 	}
@@ -204,45 +207,60 @@ func TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingCon
 	require.Empty(t, repo.bindGroupsCalls)
 }
 
-func TestAdminServiceBulkUpdateAccounts_ResolvesIDsFromFilters(t *testing.T) {
-	repo := &accountRepoStubForBulkUpdate{
-		listData: []Account{
-			{ID: 7},
-			{ID: 11},
-		},
-		listResult: &pagination.PaginationResult{Total: 2},
-	}
-	svc := &adminServiceImpl{accountRepo: repo}
+func TestAdminServiceBulkUpdateAccounts_RejectsInvalidNegativeGroupFilterBeforeMutation(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{}
+	service := &adminServiceImpl{accountRepo: repo}
 
 	schedulable := true
 	input := &BulkUpdateAccountsInput{
+		Filters: &BulkUpdateAccountFilters{
+			Group: "-2",
+		},
 		Schedulable: &schedulable,
 	}
 
-	filtersField := reflect.ValueOf(input).Elem().FieldByName("Filters")
-	require.True(t, filtersField.IsValid(), "BulkUpdateAccountsInput should expose Filters for filter-target bulk update")
-	require.Equal(t, reflect.Ptr, filtersField.Kind(), "BulkUpdateAccountsInput.Filters should be a pointer field")
+	result, err := service.BulkUpdateAccounts(context.Background(), input)
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.True(t, infraerrors.IsBadRequest(err))
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "INVALID_GROUP_FILTER", infraerrors.Reason(err))
+	require.Equal(t, "invalid group filter", infraerrors.Message(err))
+	require.False(t, repo.listCalled, "invalid filters should fail before querying accounts")
+	require.Empty(t, repo.bulkUpdateIDs, "invalid filters should fail before bulk mutation")
+	require.False(t, repo.getByIDsCalled, "invalid filters should fail before preloading accounts")
+	require.Empty(t, repo.bindGroupsCalls, "invalid filters should fail before group binding")
+}
 
-	filtersValue := reflect.New(filtersField.Type().Elem())
-	filtersValue.Elem().FieldByName("Platform").SetString(PlatformOpenAI)
-	filtersValue.Elem().FieldByName("Type").SetString(AccountTypeOAuth)
-	filtersValue.Elem().FieldByName("Status").SetString(StatusActive)
-	filtersValue.Elem().FieldByName("Group").SetString("12")
-	filtersValue.Elem().FieldByName("PrivacyMode").SetString(PrivacyModeCFBlocked)
-	filtersValue.Elem().FieldByName("Search").SetString("bulk-target")
-	filtersField.Set(filtersValue)
+func TestAdminServiceBulkUpdateAccounts_ResolvesIDsFromFiltersWithinScopedGroups(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		listData: []Account{
+			{ID: 21},
+			{ID: 34},
+		},
+		listResult: &pagination.PaginationResult{Total: 2},
+	}
+	service := &adminServiceImpl{accountRepo: repo}
 
-	result, err := svc.BulkUpdateAccounts(context.Background(), input)
+	schedulable := true
+	input := &BulkUpdateAccountsInput{
+		Filters: &BulkUpdateAccountFilters{
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Group:       "18",
+			PrivacyMode: PrivacyModeCFBlocked,
+			Search:      "scoped-target",
+		},
+		ScopedGroupIDs: []int64{301, 302},
+		Schedulable:    &schedulable,
+	}
+
+	result, err := service.BulkUpdateAccounts(context.Background(), input)
 	require.NoError(t, err)
 	require.True(t, repo.listCalled, "expected filter-target bulk update to resolve matching IDs via account list filters")
-	require.Equal(t, PlatformOpenAI, repo.lastListFilters.platform)
-	require.Equal(t, AccountTypeOAuth, repo.lastListFilters.accountType)
-	require.Equal(t, StatusActive, repo.lastListFilters.status)
-	require.Equal(t, "bulk-target", repo.lastListFilters.search)
-	require.Equal(t, int64(12), repo.lastListFilters.groupID)
-	require.Equal(t, PrivacyModeCFBlocked, repo.lastListFilters.privacyMode)
-	require.Equal(t, []int64{7, 11}, repo.bulkUpdateIDs)
+	require.Equal(t, []int64{301, 302}, repo.lastListFilters.scopedGroupIDs)
+	require.Equal(t, []int64{21, 34}, repo.bulkUpdateIDs)
 	require.Equal(t, 2, result.Success)
-	require.Equal(t, 0, result.Failed)
-	require.Equal(t, []int64{7, 11}, result.SuccessIDs)
+	require.Equal(t, []int64{21, 34}, result.SuccessIDs)
 }

@@ -12,8 +12,17 @@ const (
 
 // Role constants
 const (
-	RoleAdmin = "admin"
-	RoleUser  = "user"
+	RoleAdmin        = "admin"
+	RoleChannelAdmin = "channel_admin"
+	RoleUser         = "user"
+)
+
+// Channel admin usage scope constants
+const (
+	SettingChannelAdminUsageScope            = "channel_admin_usage_scope"
+	ChannelAdminUsageScopeAuthorizedChannels = "authorized_channels"
+	ChannelAdminUsageScopeAuthorizedGroups   = "authorized_groups"
+	ChannelAdminUsageScopeAll                = "all"
 )
 
 // Platform constants

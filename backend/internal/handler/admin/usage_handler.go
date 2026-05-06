@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -33,6 +34,8 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
+	channelAdminScopeService service.ChannelAdminScopeService,
+	settingService *service.SettingService,
 ) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
@@ -42,7 +45,30 @@ func NewUsageHandler(
 	}
 }
 
-// CreateUsageCleanupTaskRequest represents cleanup task creation request
+func (h *UsageHandler) currentAuth(c *gin.Context) (middleware.AuthSubject, string, bool) {
+	subject, subjectOK := middleware.GetAuthSubjectFromContext(c)
+	role, roleOK := middleware.GetUserRoleFromContext(c)
+	if !subjectOK || !roleOK {
+		return middleware.AuthSubject{}, "", false
+	}
+
+	switch role {
+	case service.RoleAdmin, service.RoleChannelAdmin:
+		return subject, role, true
+	default:
+		return middleware.AuthSubject{}, role, false
+	}
+}
+
+func (h *UsageHandler) requireUsageAdminRole(c *gin.Context) (middleware.AuthSubject, string, bool) {
+	subject, role, ok := h.currentAuth(c)
+	if !ok {
+		response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Forbidden"))
+		return middleware.AuthSubject{}, "", false
+	}
+	return subject, role, true
+}
+
 type CreateUsageCleanupTaskRequest struct {
 	StartDate   string  `json:"start_date"`
 	EndDate     string  `json:"end_date"`
@@ -60,6 +86,11 @@ type CreateUsageCleanupTaskRequest struct {
 // List handles listing all usage records with filters
 // GET /api/v1/admin/usage
 func (h *UsageHandler) List(c *gin.Context) {
+	_, _, ok := h.requireUsageAdminRole(c)
+	if !ok {
+		return
+	}
+
 	page, pageSize := response.ParsePagination(c)
 	exactTotal := false
 	if exactTotalRaw := strings.TrimSpace(c.Query("exact_total")); exactTotalRaw != "" {
@@ -202,6 +233,11 @@ func (h *UsageHandler) List(c *gin.Context) {
 // Stats handles getting usage statistics with filters
 // GET /api/v1/admin/usage/stats
 func (h *UsageHandler) Stats(c *gin.Context) {
+	_, _, ok := h.requireUsageAdminRole(c)
+	if !ok {
+		return
+	}
+
 	// Parse filters - same as List endpoint
 	var userID, apiKeyID, accountID, groupID int64
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
@@ -337,6 +373,15 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 // SearchUsers handles searching users by email keyword
 // GET /api/v1/admin/usage/search-users
 func (h *UsageHandler) SearchUsers(c *gin.Context) {
+	_, role, ok := h.requireUsageAdminRole(c)
+	if !ok {
+		return
+	}
+	if role == service.RoleChannelAdmin {
+		response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Forbidden"))
+		return
+	}
+
 	keyword := c.Query("q")
 	if keyword == "" {
 		response.Success(c, []any{})
@@ -370,6 +415,15 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 // SearchAPIKeys handles searching API keys by user
 // GET /api/v1/admin/usage/search-api-keys
 func (h *UsageHandler) SearchAPIKeys(c *gin.Context) {
+	_, role, ok := h.requireUsageAdminRole(c)
+	if !ok {
+		return
+	}
+	if role == service.RoleChannelAdmin {
+		response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Forbidden"))
+		return
+	}
+
 	userIDStr := c.Query("user_id")
 	keyword := c.Query("q")
 

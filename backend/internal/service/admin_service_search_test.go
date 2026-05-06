@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -13,19 +14,20 @@ import (
 type accountRepoStubForAdminList struct {
 	accountRepoStub
 
-	listWithFiltersCalls    int
-	listWithFiltersParams   pagination.PaginationParams
-	listWithFiltersPlatform string
-	listWithFiltersType     string
-	listWithFiltersStatus   string
-	listWithFiltersSearch   string
-	listWithFiltersPrivacy  string
-	listWithFiltersAccounts []Account
-	listWithFiltersResult   *pagination.PaginationResult
-	listWithFiltersErr      error
+	listWithFiltersCalls          int
+	listWithFiltersParams         pagination.PaginationParams
+	listWithFiltersPlatform       string
+	listWithFiltersType           string
+	listWithFiltersStatus         string
+	listWithFiltersSearch         string
+	listWithFiltersPrivacy        string
+	listWithFiltersScopedGroupIDs []int64
+	listWithFiltersAccounts       []Account
+	listWithFiltersResult         *pagination.PaginationResult
+	listWithFiltersErr            error
 }
 
-func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
+func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, scopedGroupIDs ...int64) ([]Account, *pagination.PaginationResult, error) {
 	s.listWithFiltersCalls++
 	s.listWithFiltersParams = params
 	s.listWithFiltersPlatform = platform
@@ -33,6 +35,8 @@ func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params 
 	s.listWithFiltersStatus = status
 	s.listWithFiltersSearch = search
 	s.listWithFiltersPrivacy = privacyMode
+	s.listWithFiltersScopedGroupIDs = append([]int64(nil), scopedGroupIDs...)
+	_ = groupID
 
 	if s.listWithFiltersErr != nil {
 		return nil, nil, s.listWithFiltersErr
@@ -197,6 +201,25 @@ func TestAdminService_ListAccounts_WithPrivacyMode(t *testing.T) {
 		require.Equal(t, int64(1), total)
 		require.Equal(t, []Account{{ID: 2, Name: "acc2"}}, accounts)
 		require.Equal(t, PrivacyModeCFBlocked, repo.listWithFiltersPrivacy)
+	})
+}
+
+func TestAdminService_ListAccounts_WithScopedGroupIDs(t *testing.T) {
+	t.Run("scoped_group_ids 参数正常传递到 repository 层", func(t *testing.T) {
+		repo := &accountRepoStubForAdminList{
+			listWithFiltersAccounts: []Account{{ID: 3, Name: "acc3"}},
+			listWithFiltersResult:   &pagination.PaginationResult{Total: 1},
+		}
+		svc := &adminServiceImpl{accountRepo: repo}
+
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "acc3", 9, PrivacyModeCFBlocked, "", "", 101, 202)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), total)
+		require.Equal(t, []Account{{ID: 3, Name: "acc3"}}, accounts)
+
+		field := reflect.ValueOf(repo).Elem().FieldByName("listWithFiltersScopedGroupIDs")
+		require.True(t, field.IsValid(), "accountRepoStubForAdminList should record scoped group IDs")
+		require.Equal(t, []int64{101, 202}, field.Interface())
 	})
 }
 
