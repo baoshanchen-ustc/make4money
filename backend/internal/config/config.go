@@ -1431,6 +1431,7 @@ func setDefaults() {
 		"api.kimi.com",
 		"open.bigmodel.cn",
 		"api.minimaxi.com",
+		"api.minimax.io",
 		"generativelanguage.googleapis.com",
 		"cloudcode-pa.googleapis.com",
 		"*.openai.azure.com",

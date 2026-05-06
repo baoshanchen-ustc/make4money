@@ -57,6 +57,16 @@ describe('useModelWhitelist', () => {
     })
   })
 
+  it('minimax 模型列表包含 M2.7 系列且排在前面', () => {
+    const models = getModelsByPlatform('minimax')
+
+    expect(models).toContain('MiniMax-M2.7')
+    expect(models).toContain('MiniMax-M2.7-highspeed')
+    expect(models).toContain('abab6.5-chat')
+    expect(models.indexOf('MiniMax-M2.7')).toBeLessThan(models.indexOf('abab6.5-chat'))
+    expect(models.indexOf('MiniMax-M2.7-highspeed')).toBeLessThan(models.indexOf('abab6.5-chat'))
+  })
+
   it('whitelist 模式会保留 GPT-5.4 官方快照的精确映射', () => {
     const mapping = buildModelMappingObject('whitelist', ['gpt-5.4-2026-03-05'], [])
 
