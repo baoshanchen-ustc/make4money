@@ -233,6 +233,8 @@ type PublicSettings struct {
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
+
+	ServerTimezone string `json:"server_timezone"`
 }
 
 type WeChatConnectOAuthConfig struct {

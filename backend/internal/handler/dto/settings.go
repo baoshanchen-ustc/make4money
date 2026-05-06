@@ -256,6 +256,8 @@ type PublicSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
+
+	ServerTimezone string `json:"server_timezone"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO
