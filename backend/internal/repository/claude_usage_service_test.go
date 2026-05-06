@@ -41,7 +41,8 @@ func (s *ClaudeUsageServiceSuite) TestFetchUsage_Success() {
 		_, _ = io.WriteString(w, `{
   "five_hour": {"utilization": 12.5, "resets_at": "2025-01-01T00:00:00Z"},
   "seven_day": {"utilization": 34.0, "resets_at": "2025-01-08T00:00:00Z"},
-  "seven_day_sonnet": {"utilization": 56.0, "resets_at": "2025-01-08T00:00:00Z"}
+  "seven_day_sonnet": {"utilization": 56.0, "resets_at": "2025-01-08T00:00:00Z"},
+  "seven_day_omelette": {"utilization": 78.0, "resets_at": "2025-01-08T00:00:00Z"}
 }`)
 	}))
 
@@ -55,6 +56,7 @@ func (s *ClaudeUsageServiceSuite) TestFetchUsage_Success() {
 	require.Equal(s.T(), 12.5, resp.FiveHour.Utilization, "FiveHour utilization mismatch")
 	require.Equal(s.T(), 34.0, resp.SevenDay.Utilization, "SevenDay utilization mismatch")
 	require.Equal(s.T(), 56.0, resp.SevenDaySonnet.Utilization, "SevenDaySonnet utilization mismatch")
+	require.Equal(s.T(), 78.0, resp.SevenDayOmelette.Utilization, "SevenDayOmelette utilization mismatch")
 
 	// Assertions on captured request data
 	require.Equal(s.T(), "Bearer at", captured.authorization, "Authorization header mismatch")

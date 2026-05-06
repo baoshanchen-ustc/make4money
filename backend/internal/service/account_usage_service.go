@@ -183,6 +183,7 @@ type UsageInfo struct {
 	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
 	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
 	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口
+	SevenDayOmelette   *UsageProgress `json:"seven_day_omelette,omitempty"`   // 7天 Claude Design 窗口
 	GeminiSharedDaily  *UsageProgress `json:"gemini_shared_daily,omitempty"`  // Gemini shared pool RPD (Google One / Code Assist)
 	GeminiProDaily     *UsageProgress `json:"gemini_pro_daily,omitempty"`     // Gemini Pro 日配额
 	GeminiFlashDaily   *UsageProgress `json:"gemini_flash_daily,omitempty"`   // Gemini Flash 日配额
@@ -238,6 +239,10 @@ type ClaudeUsageResponse struct {
 		Utilization float64 `json:"utilization"`
 		ResetsAt    string  `json:"resets_at"`
 	} `json:"seven_day_sonnet"`
+	SevenDayOmelette struct {
+		Utilization float64 `json:"utilization"`
+		ResetsAt    string  `json:"resets_at"`
+	} `json:"seven_day_omelette"`
 }
 
 // ClaudeUsageFetchOptions 包含获取 Claude 用量数据所需的所有选项
@@ -918,8 +923,8 @@ func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
 // 使用独立缓存（1 分钟），与 API 缓存分离
 func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
 	// 修复：即使 FiveHour 为 nil，也要尝试获取统计数据
-	// 因为 SevenDay/SevenDaySonnet 可能需要
-	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil {
+	// 因为 SevenDay/SevenDaySonnet/SevenDayOmelette 可能需要
+	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil && usage.SevenDayOmelette == nil {
 		return
 	}
 
@@ -1244,6 +1249,22 @@ func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedA
 			log.Printf("Failed to parse SevenDaySonnet.ResetsAt: %s, error: %v", resp.SevenDaySonnet.ResetsAt, err)
 			info.SevenDaySonnet = &UsageProgress{
 				Utilization: resp.SevenDaySonnet.Utilization,
+			}
+		}
+	}
+
+	// 7天 Claude Design 窗口（Anthropic 内部代号 omelette）
+	if resp.SevenDayOmelette.ResetsAt != "" {
+		if omeletteReset, err := parseTime(resp.SevenDayOmelette.ResetsAt); err == nil {
+			info.SevenDayOmelette = &UsageProgress{
+				Utilization:      resp.SevenDayOmelette.Utilization,
+				ResetsAt:         &omeletteReset,
+				RemainingSeconds: int(time.Until(omeletteReset).Seconds()),
+			}
+		} else {
+			log.Printf("Failed to parse SevenDayOmelette.ResetsAt: %s, error: %v", resp.SevenDayOmelette.ResetsAt, err)
+			info.SevenDayOmelette = &UsageProgress{
+				Utilization: resp.SevenDayOmelette.Utilization,
 			}
 		}
 	}

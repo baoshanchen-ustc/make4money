@@ -68,6 +68,15 @@
           color="purple"
         />
 
+        <!-- 7d Claude Design Window (OAuth only) -->
+        <UsageProgressBar
+          v-if="usageInfo.seven_day_omelette"
+          label="7d D"
+          :utilization="usageInfo.seven_day_omelette.utilization"
+          :resets-at="usageInfo.seven_day_omelette.resets_at"
+          color="amber"
+        />
+
         <!-- Passive sampling label + active query button -->
         <div class="flex items-center gap-1.5 mt-0.5">
           <span
