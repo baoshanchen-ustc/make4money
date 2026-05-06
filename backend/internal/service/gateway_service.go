@@ -4497,6 +4497,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		account.ID, account.Name, account.Platform, account.Type, tlsProfile, proxyURL)
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	body = StripEmptyTextBlocks(body)
+	// Pre-filter: drop thinking blocks with missing/invalid signatures (valid ones kept).
+	// Prevents the 400-then-retry cycle that otherwise invalidates prompt cache and doubles upstream cost.
+	body = FilterThinkingBlocks(body)
 
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, body)
@@ -4990,6 +4993,8 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	input.Body = StripEmptyTextBlocks(input.Body)
+	// Pre-filter: drop thinking blocks with missing/invalid signatures to prevent 400/retry/cache-miss cycle.
+	input.Body = FilterThinkingBlocks(input.Body)
 
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, input.Body)
@@ -8805,6 +8810,8 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	// Pre-filter: strip empty text blocks to prevent upstream 400.
 	body = StripEmptyTextBlocks(body)
+	// Pre-filter: drop thinking blocks with missing/invalid signatures to prevent 400/retry/cache-miss cycle.
+	body = FilterThinkingBlocks(body)
 
 	isClaudeCodeCT := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCodeCT
