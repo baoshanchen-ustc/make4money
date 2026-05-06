@@ -125,11 +125,16 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 				system, _ = json.Marshal(text)
 			}
 
-		case item.Type == "function_call":
-			// function_call → assistant message with tool_use block
+		case item.Type == "function_call",
+			item.Type == "custom_tool_call":
+			// function_call / custom_tool_call → assistant message with tool_use block
 			input := json.RawMessage("{}")
-			if item.Arguments != "" {
-				input = json.RawMessage(item.Arguments)
+			args := item.Arguments
+			if args == "" {
+				args = item.Input
+			}
+			if args != "" {
+				input, _ = json.Marshal(args)
 			}
 			block := AnthropicContentBlock{
 				Type:  "tool_use",
@@ -143,8 +148,9 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 				Content: blockJSON,
 			})
 
-		case item.Type == "function_call_output":
-			// function_call_output → user message with tool_result block
+		case item.Type == "function_call_output",
+			item.Type == "custom_tool_call_output":
+			// function_call_output / custom_tool_call_output → user message with tool_result block
 			outputContent := item.Output
 			if outputContent == "" {
 				outputContent = "(empty)"

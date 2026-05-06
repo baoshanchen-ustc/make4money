@@ -200,6 +200,7 @@ type ResponsesInputItem struct {
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"` // custom_tool_call uses "input" not "arguments"
 	ID        string `json:"id,omitempty"`
 
 	// type=function_call_output
