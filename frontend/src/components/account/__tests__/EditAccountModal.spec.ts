@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, getSettingsMock, getWebSearchEmulationConfigMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
-  checkMixedChannelRiskMock: vi.fn()
+  checkMixedChannelRiskMock: vi.fn(),
+  getSettingsMock: vi.fn(),
+  getWebSearchEmulationConfigMock: vi.fn()
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -28,8 +30,8 @@ vi.mock('@/api/admin', () => ({
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     settings: {
-      getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
-      getSettings: vi.fn().mockResolvedValue({})
+      getSettings: getSettingsMock,
+      getWebSearchEmulationConfig: getWebSearchEmulationConfigMock
     },
     tlsFingerprintProfiles: {
       list: vi.fn().mockResolvedValue([])
@@ -167,7 +169,11 @@ describe('EditAccountModal', () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
+    getSettingsMock.mockReset()
+    getWebSearchEmulationConfigMock.mockReset()
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    getSettingsMock.mockResolvedValue({ account_quota_notify_enabled: false })
+    getWebSearchEmulationConfigMock.mockResolvedValue({ enabled: false, providers: [] })
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
