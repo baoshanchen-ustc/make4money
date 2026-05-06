@@ -211,10 +211,15 @@ type ResponsesInputItem struct {
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"` // custom_tool_call uses "input" not "arguments"
 	ID        string `json:"id,omitempty"`
 
 	// type=function_call_output
 	Output string `json:"output,omitempty"`
+
+	// type=reasoning
+	EncryptedContent string          `json:"encrypted_content,omitempty"`
+	Summary          json.RawMessage `json:"summary,omitempty"`
 }
 
 // ResponsesContentPart is a typed content part in a Responses message.

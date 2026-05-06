@@ -118,18 +118,23 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 
 	for _, item := range items {
 		switch {
-		case item.Role == "system":
-			// System prompt → Anthropic system field
+		case item.Role == "system" || item.Role == "developer":
+			// System / developer prompt → Anthropic system field
 			text := extractTextFromContent(item.Content)
 			if text != "" {
 				system, _ = json.Marshal(text)
 			}
 
-		case item.Type == "function_call":
-			// function_call → assistant message with tool_use block
+		case item.Type == "function_call",
+			item.Type == "custom_tool_call":
+			// function_call / custom_tool_call → assistant message with tool_use block
 			input := json.RawMessage("{}")
-			if item.Arguments != "" {
-				input = json.RawMessage(item.Arguments)
+			args := item.Arguments
+			if args == "" {
+				args = item.Input
+			}
+			if args != "" {
+				input, _ = json.Marshal(args)
 			}
 			block := AnthropicContentBlock{
 				Type:  "tool_use",
@@ -143,8 +148,9 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 				Content: blockJSON,
 			})
 
-		case item.Type == "function_call_output":
-			// function_call_output → user message with tool_result block
+		case item.Type == "function_call_output",
+			item.Type == "custom_tool_call_output":
+			// function_call_output / custom_tool_call_output → user message with tool_result block
 			outputContent := item.Output
 			if outputContent == "" {
 				outputContent = "(empty)"
@@ -181,6 +187,24 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 				Content: content,
 			})
 
+		case item.Type == "reasoning":
+			// reasoning → assistant message with thinking block.
+			// mergeConsecutiveMessages will combine this with the
+			// following assistant text message.
+			thinkingText := extractSummaryText(item.Summary)
+			if thinkingText == "" {
+				thinkingText = "(thinking)"
+			}
+			block := AnthropicContentBlock{
+				Type:     "thinking",
+				Thinking: thinkingText,
+			}
+			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
+			messages = append(messages, AnthropicMessage{
+				Role:    "assistant",
+				Content: blockJSON,
+			})
+
 		default:
 			// Unknown role/type — attempt as user message
 			if item.Content != nil {
@@ -196,6 +220,28 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 	messages = mergeConsecutiveMessages(messages)
 
 	return system, messages, nil
+}
+
+// extractSummaryText extracts text from a reasoning summary field.
+// Summary is an array like [{"type":"summary_text","text":"..."}].
+func extractSummaryText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var items []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return ""
+	}
+	var texts []string
+	for _, item := range items {
+		if (item.Type == "summary_text" || item.Type == "text") && item.Text != "" {
+			texts = append(texts, item.Text)
+		}
+	}
+	return strings.Join(texts, "\n\n")
 }
 
 // extractTextFromContent extracts text from a content field that may be a
@@ -396,6 +442,16 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 				Name: "web_search",
 			})
 		case "function":
+			out = append(out, AnthropicTool{
+				Name:        t.Name,
+				Description: t.Description,
+				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
+			})
+		case "custom", "namespace", "tool_search", "local_shell",
+			"image_generation", "custom_tool_call":
+			// Codex-specific tool types. Anthropic only accepts
+			// "web_search_20250305" / "web_search_20260209" as
+			// type values; map these to function tools.
 			out = append(out, AnthropicTool{
 				Name:        t.Name,
 				Description: t.Description,
