@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type compatErrorWriter func(c *gin.Context, statusCode int, code, message string)
+type bedrockCompatErrorWriter func(c *gin.Context, statusCode int, code, message string)
 
 func (s *GatewayService) forwardCompatBedrockAnthropicStream(
 	ctx context.Context,
@@ -21,7 +21,7 @@ func (s *GatewayService) forwardCompatBedrockAnthropicStream(
 	anthropicBody []byte,
 	model string,
 	stream bool,
-	writeError compatErrorWriter,
+	writeError bedrockCompatErrorWriter,
 ) (*http.Response, string, error) {
 	region := bedrockRuntimeRegion(account)
 	mappedModel, ok := ResolveBedrockModelID(account, model)
@@ -85,7 +85,7 @@ func (s *GatewayService) handleCompatBedrockError(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
-	writeError compatErrorWriter,
+	writeError bedrockCompatErrorWriter,
 ) (*http.Response, error) {
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	_ = resp.Body.Close()

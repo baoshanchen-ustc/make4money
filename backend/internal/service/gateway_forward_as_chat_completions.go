@@ -104,6 +104,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 
 	// 7. Enforce cache_control block limit
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
+	reasoningEffort := extractCCReasoningEffortFromBody(body)
 
 	if account.IsBedrock() {
 		resp, bedrockModel, err := s.forwardCompatBedrockAnthropicStream(ctx, c, account, anthropicBody, mappedModel, reqStream, writeGatewayCCError)
@@ -190,9 +191,6 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		writeGatewayCCError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
-
-	// 13. Extract reasoning effort from CC request body
-	reasoningEffort := extractCCReasoningEffortFromBody(body)
 
 	// 14. Handle normal response
 	// Read Anthropic SSE → convert to Responses events → convert to CC format
