@@ -729,7 +729,6 @@ const toggleableColumns = computed(() =>
 const hiddenColumns = reactive<Set<string>>(new Set())
 
 // Default hidden columns (columns hidden by default on first load)
-const DEFAULT_HIDDEN_COLUMNS = ['notes', 'groups', 'subscriptions', 'usage', 'concurrency']
 const DEFAULT_HIDDEN_COLUMNS = ['notes', 'groups', 'subscriptions', 'usage', 'quota', 'concurrency']
 const REMOVED_COLUMNS = new Set(['last_login_at'])
 const FORCED_VISIBLE_COLUMNS = new Set(['last_active_at'])
@@ -1198,14 +1197,11 @@ const loadUsers = async () => {
         void loadUsersSecondaryData(userIds, signal, seq)
       }, 50)
     }
-  } catch (error: any) {
   } catch (error: unknown) {
     const errorInfo = error as { name?: string; code?: string }
     if (errorInfo?.name === 'AbortError' || errorInfo?.name === 'CanceledError' || errorInfo?.code === 'ERR_CANCELED') {
       return
     }
-    const message = error.response?.data?.detail || error.message || t('admin.users.failedToLoad')
-    appStore.showError(message)
     appStore.showError(
       extractI18nErrorMessage(error, t, 'common.errors', t('admin.users.failedToLoad')),
     )
@@ -1311,8 +1307,6 @@ const handleToggleStatus = async (user: AdminUser) => {
       newStatus === 'active' ? t('admin.users.userEnabled') : t('admin.users.userDisabled')
     )
     loadUsers()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
   } catch (error: unknown) {
     appStore.showError(
       extractI18nErrorMessage(error, t, 'common.errors', t('admin.users.failedToToggle')),
@@ -1367,8 +1361,6 @@ const confirmDelete = async () => {
     showDeleteDialog.value = false
     deletingUser.value = null
     loadUsers()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
   } catch (error: unknown) {
     appStore.showError(
       extractI18nErrorMessage(error, t, 'common.errors', t('admin.users.failedToDelete')),
