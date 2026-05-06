@@ -3241,7 +3241,6 @@ export default {
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',
-        hint: '配置费用窗口、会话限制、客户端亲和等调度控制。',
         hint: '配置费用窗口、会话限制等调度控制。',
         windowCost: {
           label: '5h窗口费用控制',

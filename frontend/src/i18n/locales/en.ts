@@ -2862,7 +2862,6 @@ export default {
       resetQuota: 'Reset Quota',
       quotaLimit: 'Quota Limit',
       quotaLimitPlaceholder: '0 means unlimited',
-      quotaLimitHint: 'Set daily/weekly/total spending limits (USD). Anthropic API key accounts can also configure client affinity. Changing limits won\'t reset usage.',
       quotaLimitHint: 'Set daily/weekly/total spending limits (USD). Changing limits won\'t reset usage.',
       quotaLimitToggle: 'Enable Quota Limit',
       quotaLimitToggleHint: 'When enabled, account will be paused when usage reaches the set limit',
@@ -3103,7 +3102,6 @@ export default {
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
-        hint: 'Configure cost window, session limits, client affinity and other scheduling controls.',
         hint: 'Configure cost windows, session limits and other scheduling controls.',
         windowCost: {
           label: '5h Window Cost Limit',
