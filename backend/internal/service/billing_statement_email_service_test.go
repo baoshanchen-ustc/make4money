@@ -67,7 +67,7 @@ func TestIsValidEmailForBilling(t *testing.T) {
 
 func TestBuildBillingStatementEmailHTML_Nil(t *testing.T) {
 	html := buildBillingStatementEmailHTML(nil)
-	if html != "<p>No data.</p>" {
+	if html != "<p>无数据 / No data.</p>" {
 		t.Errorf("expected no-data HTML for nil statement")
 	}
 }

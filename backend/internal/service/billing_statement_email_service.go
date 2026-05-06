@@ -332,9 +332,15 @@ func (s *BillingStatementEmailService) runOnce() {
 			continue
 		}
 
-		// Time to run this statement
-		s.setLastRunAt(ctx, d.kind, now)
+		// Time to run this statement. Only record last_run after the
+		// send cycle completes without the context being canceled/timing out,
+		// so interrupted runs remain eligible for retry on the next pass.
 		s.sendStatements(ctx, d.kind, d.name, now)
+		if ctx.Err() != nil {
+			log.Printf("[BillingStatement] send interrupted for kind=%s; last_run not updated: %v", d.kind, ctx.Err())
+			continue
+		}
+		s.setLastRunAt(ctx, d.kind, now)
 	}
 }
 
