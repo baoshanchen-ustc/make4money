@@ -197,8 +197,13 @@ const handleUserClick = async (userId: number) => {
     const user = await adminAPI.users.getById(userId)
     balanceHistoryUser.value = user
     showBalanceHistoryModal.value = true
-  } catch {
-    appStore.showError(t('admin.usage.failedToLoadUser'))
+  } catch (error: any) {
+    const status = error?.response?.status
+    if (status === 403 || status === 404) {
+      return
+    }
+    console.error('Failed to load user:', error)
+    appStore.showError(error?.message || t('admin.usage.failedToLoadUser'))
   }
 }
 

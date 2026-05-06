@@ -1705,8 +1705,9 @@ export default {
       password: 'Password',
       username: 'Username',
       notes: 'Notes',
-      enterEmail: 'Enter email',
-      enterPassword: 'Enter password',
+      authorizedGroups: 'Authorized Groups',
+      selectedGroupsCount: '{count} selected',
+      noGroupsAvailable: 'No groups available',
       enterUsername: 'Enter username (optional)',
       enterNotes: 'Enter notes (admin only)',
       notesHint: 'This note is only visible to administrators',
@@ -1847,6 +1848,7 @@ export default {
       totalRecharged: 'Total Recharged',
       roles: {
         admin: 'Admin',
+        channel_admin: 'Channel Admin',
         user: 'User'
       },
       // Settings Dropdowns
@@ -5046,6 +5048,11 @@ export default {
         defaultSubscriptionsEmpty: 'No default subscriptions configured.',
         defaultSubscriptionsDuplicate:
           'Duplicate subscription group: {groupId}. Each group can only appear once.',
+        channelAdminUsageScope: 'Channel Admin Usage Scope',
+        channelAdminUsageScopeHint: 'Choose which usage logs channel admins can access by default.',
+        channelAdminUsageScopeAuthorizedChannels: 'Authorized groups (default)',
+        channelAdminUsageScopeAuthorizedGroups: 'Authorized Groups',
+        channelAdminUsageScopeAll: 'All',
         subscriptionGroup: 'Subscription Group',
         subscriptionValidityDays: 'Validity (days)'
       },

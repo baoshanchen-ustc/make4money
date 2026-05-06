@@ -197,7 +197,6 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 		args = append(args, "%"+escapeLike(search)+"%")
 		argIdx++
 	}
-
 	whereClause := strings.Join(where, " AND ")
 
 	// 计数

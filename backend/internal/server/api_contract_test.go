@@ -1152,6 +1152,14 @@ func newContractDeps(t *testing.T) *contractDeps {
 		c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 		c.Next()
 	}
+	scopedAdminAuth := func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
+			UserID:      2,
+			Concurrency: 3,
+		})
+		c.Set(string(middleware.ContextKeyUserRole), service.RoleChannelAdmin)
+		c.Next()
+	}
 
 	r := gin.New()
 
@@ -1180,10 +1188,13 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Redeem.Use(jwtAuth)
 	v1Redeem.GET("/redeem/history", redeemHandler.GetHistory)
 
-	v1Admin := v1.Group("/admin")
-	v1Admin.Use(adminAuth)
-	v1Admin.GET("/settings", adminSettingHandler.GetSettings)
-	v1Admin.POST("/accounts/bulk-update", adminAccountHandler.BulkUpdate)
+	v1AdminOnly := v1.Group("/admin")
+	v1AdminOnly.Use(adminAuth)
+	v1AdminOnly.GET("/settings", adminSettingHandler.GetSettings)
+
+	v1ScopedAdmin := v1.Group("/admin")
+	v1ScopedAdmin.Use(scopedAdminAuth)
+	v1ScopedAdmin.POST("/accounts/bulk-update", adminAccountHandler.BulkUpdate)
 
 	return &contractDeps{
 		now:         now,
@@ -1503,7 +1514,16 @@ func (s *stubAccountRepo) List(ctx context.Context, params pagination.Pagination
 	return nil, nil, errors.New("not implemented")
 }
 
-func (s *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
+func (s *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, scopedGroupIDs ...int64) ([]service.Account, *pagination.PaginationResult, error) {
+	_ = ctx
+	_ = params
+	_ = platform
+	_ = accountType
+	_ = status
+	_ = search
+	_ = groupID
+	_ = privacyMode
+	_ = scopedGroupIDs
 	return nil, nil, errors.New("not implemented")
 }
 
@@ -2160,11 +2180,11 @@ func (r *stubUsageLogRepo) GetModelStatsWithFilters(ctx context.Context, startTi
 	return nil, errors.New("not implemented")
 }
 
-func (r *stubUsageLogRepo) GetEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]usagestats.EndpointStat, error) {
+func (r *stubUsageLogRepo) GetEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, filters usagestats.UsageLogFilters) ([]usagestats.EndpointStat, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (r *stubUsageLogRepo) GetUpstreamEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]usagestats.EndpointStat, error) {
+func (r *stubUsageLogRepo) GetUpstreamEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, filters usagestats.UsageLogFilters) ([]usagestats.EndpointStat, error) {
 	return nil, errors.New("not implemented")
 }
 

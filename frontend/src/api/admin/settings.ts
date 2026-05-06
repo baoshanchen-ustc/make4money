@@ -12,6 +12,10 @@ export interface DefaultSubscriptionSetting {
 }
 
 export type AuthSourceType = "email" | "linuxdo" | "oidc" | "wechat";
+export type ChannelAdminUsageScope =
+  | "authorized_channels"
+  | "authorized_groups"
+  | "all";
 
 export interface AuthSourceDefaultsValue {
   balance: number;
@@ -434,6 +438,7 @@ export interface SystemSettings {
 
   // 分组隔离
   allow_ungrouped_key_scheduling: boolean;
+  channel_admin_usage_scope: ChannelAdminUsageScope;
 
   // Gateway forwarding behavior
   enable_fingerprint_unification: boolean;
@@ -607,6 +612,7 @@ export interface UpdateSettingsRequest {
   min_claude_code_version?: string;
   max_claude_code_version?: string;
   allow_ungrouped_key_scheduling?: boolean;
+  channel_admin_usage_scope?: ChannelAdminUsageScope;
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;

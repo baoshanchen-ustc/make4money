@@ -254,3 +254,48 @@ func TestSettingService_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(
 	require.Equal(t, "INVALID_PAYMENT_VISIBLE_METHOD_SOURCE", infraerrors.Reason(err))
 	require.Nil(t, repo.updates)
 }
+
+func TestSettingService_UpdateSettings_ChannelAdminUsageScope_Persists(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		ChannelAdminUsageScope:         ChannelAdminUsageScopeAuthorizedGroups,
+		ChannelAdminUsageScopeProvided: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, ChannelAdminUsageScopeAuthorizedGroups, repo.updates[SettingChannelAdminUsageScope])
+}
+
+func TestSettingService_UpdateSettings_ChannelAdminUsageScope_RejectsInvalidValue(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		ChannelAdminUsageScope:         "bogus",
+		ChannelAdminUsageScopeProvided: true,
+	})
+	require.Error(t, err)
+	require.Equal(t, "INVALID_CHANNEL_ADMIN_USAGE_SCOPE", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
+}
+
+func TestSettingService_UpdateSettings_ChannelAdminUsageScope_RejectsExplicitBlankValue(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		ChannelAdminUsageScope:         " \t ",
+		ChannelAdminUsageScopeProvided: true,
+	})
+	require.Error(t, err)
+	require.Equal(t, "INVALID_CHANNEL_ADMIN_USAGE_SCOPE", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
+}
+
+func TestSettingService_ParseSettings_ChannelAdminUsageScope_DefaultsToAuthorizedChannels(t *testing.T) {
+	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
+
+	got := svc.parseSettings(map[string]string{})
+	require.Equal(t, ChannelAdminUsageScopeAuthorizedChannels, got.ChannelAdminUsageScope)
+}

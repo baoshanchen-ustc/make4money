@@ -13,94 +13,143 @@ func RegisterAdminRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
 	adminAuth middleware.AdminAuthMiddleware,
+	scopedAdminAuth middleware.ScopedAdminAuthMiddleware,
 ) {
-	admin := v1.Group("/admin")
-	admin.Use(gin.HandlerFunc(adminAuth))
-	{
-		// 仪表盘
-		registerDashboardRoutes(admin, h)
+	adminOnly := v1.Group("/admin")
+	adminOnly.Use(gin.HandlerFunc(adminAuth))
 
-		// 用户管理
-		registerUserManagementRoutes(admin, h)
+	scopedAdmin := v1.Group("/admin")
+	scopedAdmin.Use(gin.HandlerFunc(scopedAdminAuth))
 
-		// 分组管理
-		registerGroupRoutes(admin, h)
+	registerAdminOnlyRoutes(adminOnly, h)
+	registerScopedAdminRoutes(scopedAdmin, h)
+}
 
-		// 账号管理
-		registerAccountRoutes(admin, h)
+func registerAdminOnlyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	// 仪表盘
+	registerDashboardRoutes(admin, h)
 
-		// 公告管理
-		registerAnnouncementRoutes(admin, h)
+	// 用户管理
+	registerUserManagementRoutes(admin, h)
 
-		// OpenAI OAuth
-		registerOpenAIOAuthRoutes(admin, h)
+	// 分组管理
+	registerGroupRoutes(admin, h)
 
-		// Gemini OAuth
-		registerGeminiOAuthRoutes(admin, h)
+	// 公告管理
+	registerAnnouncementRoutes(admin, h)
 
-		// Antigravity OAuth
-		registerAntigravityOAuthRoutes(admin, h)
+	// OpenAI OAuth
+	registerOpenAIOAuthRoutes(admin, h)
 
-		// 代理管理
-		registerProxyRoutes(admin, h)
+	// Gemini OAuth
+	registerGeminiOAuthRoutes(admin, h)
 
-		// 卡密管理
-		registerRedeemCodeRoutes(admin, h)
+	// Antigravity OAuth
+	registerAntigravityOAuthRoutes(admin, h)
 
-		// 优惠码管理
-		registerPromoCodeRoutes(admin, h)
+	// 代理管理
+	registerProxyRoutes(admin, h)
 
-		// 系统设置
-		registerSettingsRoutes(admin, h)
+	// 卡密管理
+	registerRedeemCodeRoutes(admin, h)
 
-		// 数据管理
-		registerDataManagementRoutes(admin, h)
+	// 优惠码管理
+	registerPromoCodeRoutes(admin, h)
 
-		// 数据库备份恢复
-		registerBackupRoutes(admin, h)
+	// 系统设置
+	registerSettingsRoutes(admin, h)
 
-		// 运维监控（Ops）
-		registerOpsRoutes(admin, h)
+	// 数据管理
+	registerDataManagementRoutes(admin, h)
 
-		// 系统管理
-		registerSystemRoutes(admin, h)
+	// 数据库备份恢复
+	registerBackupRoutes(admin, h)
 
-		// 订阅管理
-		registerSubscriptionRoutes(admin, h)
+	// 运维监控（Ops）
+	registerOpsRoutes(admin, h)
 
-		// 使用记录管理
-		registerUsageRoutes(admin, h)
+	// 系统管理
+	registerSystemRoutes(admin, h)
 
-		// 用户属性管理
-		registerUserAttributeRoutes(admin, h)
+	// 订阅管理
+	registerSubscriptionRoutes(admin, h)
 
-		// 错误透传规则管理
-		registerErrorPassthroughRoutes(admin, h)
+	// 用户属性管理
+	registerUserAttributeRoutes(admin, h)
 
-		// TLS 指纹模板管理
-		registerTLSFingerprintProfileRoutes(admin, h)
+	// 错误透传规则管理
+	registerErrorPassthroughRoutes(admin, h)
 
-		// API Key 管理
-		registerAdminAPIKeyRoutes(admin, h)
+	// TLS 指纹模板管理
+	registerTLSFingerprintProfileRoutes(admin, h)
 
-		// 定时测试计划
-		registerScheduledTestRoutes(admin, h)
+	// API Key 管理
+	registerAdminAPIKeyRoutes(admin, h)
 
-		// 渠道管理
-		registerChannelRoutes(admin, h)
+	// 定时测试计划
+	registerScheduledTestRoutes(admin, h)
 
-		// 渠道监控
-		registerChannelMonitorRoutes(admin, h)
+	// 渠道管理
+	registerChannelRoutes(admin, h)
 
-		// 邀请返利（专属用户管理）
-		registerAffiliateRoutes(admin, h)
-	}
+	// 渠道监控
+	registerChannelMonitorRoutes(admin, h)
+
+	// 邀请返利（专属用户管理）
+	registerAffiliateRoutes(admin, h)
+}
+
+func registerScopedAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	// 仪表盘
+	registerScopedDashboardRoutes(admin, h)
+
+	// 账号管理
+	registerAccountRoutes(admin, h)
+
+	// 使用记录管理
+	registerUsageRoutes(admin, h)
+
+	// 账号管理需要读取渠道管理员授权分组
+	registerScopedGroupRoutes(admin, h)
+
+	// 账号管理需要读取可用代理节点
+	registerScopedProxyRoutes(admin, h)
 }
 
 func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
+	}
+}
+
+func registerScopedGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	groups := admin.Group("/groups")
+	{
+		groups.GET("/all", h.Admin.Group.GetAll)
+	}
+}
+
+func registerScopedProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	proxies := admin.Group("/proxies")
+	{
+		proxies.GET("/all", h.Admin.Proxy.GetAll)
+	}
+}
+
+func registerScopedDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	dashboard := admin.Group("/dashboard")
+	{
+		dashboard.GET("/snapshot-v2", h.Admin.Dashboard.GetSnapshotV2)
+		dashboard.GET("/stats", h.Admin.Dashboard.GetStats)
+		dashboard.GET("/realtime", h.Admin.Dashboard.GetRealtimeMetrics)
+		dashboard.GET("/trend", h.Admin.Dashboard.GetUsageTrend)
+		dashboard.GET("/models", h.Admin.Dashboard.GetModelStats)
+		dashboard.GET("/groups", h.Admin.Dashboard.GetGroupStats)
+		dashboard.GET("/api-keys-trend", h.Admin.Dashboard.GetAPIKeyUsageTrend)
+		dashboard.GET("/users-trend", h.Admin.Dashboard.GetUserUsageTrend)
+		dashboard.GET("/users-ranking", h.Admin.Dashboard.GetUserSpendingRanking)
+		dashboard.GET("/user-breakdown", h.Admin.Dashboard.GetUserBreakdown)
 	}
 }
 
@@ -197,18 +246,8 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	dashboard := admin.Group("/dashboard")
 	{
-		dashboard.GET("/snapshot-v2", h.Admin.Dashboard.GetSnapshotV2)
-		dashboard.GET("/stats", h.Admin.Dashboard.GetStats)
-		dashboard.GET("/realtime", h.Admin.Dashboard.GetRealtimeMetrics)
-		dashboard.GET("/trend", h.Admin.Dashboard.GetUsageTrend)
-		dashboard.GET("/models", h.Admin.Dashboard.GetModelStats)
-		dashboard.GET("/groups", h.Admin.Dashboard.GetGroupStats)
-		dashboard.GET("/api-keys-trend", h.Admin.Dashboard.GetAPIKeyUsageTrend)
-		dashboard.GET("/users-trend", h.Admin.Dashboard.GetUserUsageTrend)
-		dashboard.GET("/users-ranking", h.Admin.Dashboard.GetUserSpendingRanking)
 		dashboard.POST("/users-usage", h.Admin.Dashboard.GetBatchUsersUsage)
 		dashboard.POST("/api-keys-usage", h.Admin.Dashboard.GetBatchAPIKeysUsage)
-		dashboard.GET("/user-breakdown", h.Admin.Dashboard.GetUserBreakdown)
 		dashboard.POST("/aggregation/backfill", h.Admin.Dashboard.BackfillAggregation)
 	}
 }
@@ -239,7 +278,6 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	groups := admin.Group("/groups")
 	{
 		groups.GET("", h.Admin.Group.List)
-		groups.GET("/all", h.Admin.Group.GetAll)
 		groups.GET("/usage-summary", h.Admin.Group.GetUsageSummary)
 		groups.GET("/capacity-summary", h.Admin.Group.GetCapacitySummary)
 		groups.PUT("/sort-order", h.Admin.Group.UpdateSortOrder)
@@ -351,7 +389,6 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	proxies := admin.Group("/proxies")
 	{
 		proxies.GET("", h.Admin.Proxy.List)
-		proxies.GET("/all", h.Admin.Proxy.GetAll)
 		proxies.GET("/data", h.Admin.Proxy.ExportData)
 		proxies.POST("/data", h.Admin.Proxy.ImportData)
 		proxies.GET("/:id", h.Admin.Proxy.GetByID)

@@ -1396,7 +1396,7 @@ async function handleSubmit() {
     }
   }
 
-  const { group_ids, model_pricing, model_mapping, features_config } = formToAPI()
+  const apiPayload = formToAPI()
 
   submitting.value = true
   try {
@@ -1405,12 +1405,12 @@ async function handleSubmit() {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         status: form.status,
-        group_ids,
-        model_pricing,
-        model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
+        group_ids: apiPayload.group_ids,
+        model_pricing: apiPayload.model_pricing,
+        model_mapping: Object.keys(apiPayload.model_mapping).length > 0 ? apiPayload.model_mapping : {},
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
-        features_config,
+        features_config: apiPayload.features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()
       }
@@ -1420,12 +1420,12 @@ async function handleSubmit() {
       const req: CreateChannelRequest = {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
-        group_ids,
-        model_pricing,
-        model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
+        group_ids: apiPayload.group_ids,
+        model_pricing: apiPayload.model_pricing,
+        model_mapping: Object.keys(apiPayload.model_mapping).length > 0 ? apiPayload.model_mapping : {},
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
-        features_config,
+        features_config: apiPayload.features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()
       }
