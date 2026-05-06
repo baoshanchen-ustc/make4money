@@ -8478,7 +8478,7 @@ type RecordUsageLongContextInput struct {
 	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService         APIKeyQuotaUpdater // API Key 配额服务（可选）
 
-	ChannelUsageFields                         // 渠道映射信息（由 handler 在 Forward 前解析）
+	ChannelUsageFields                           // 渠道映射信息（由 handler 在 Forward 前解析）
 	ServiceQuotaRequest ServiceQuotaCheckRequest // 服务配额请求上下文
 }
 

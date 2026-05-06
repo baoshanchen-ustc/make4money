@@ -7471,13 +7471,6 @@ async function loadRectifierSettings() {
 async function saveRectifierSettings() {
   rectifierSaving.value = true;
   try {
-    const updated = await adminAPI.settings.updateRectifierSettings({
-      enabled: rectifierForm.enabled,
-      thinking_signature_enabled: rectifierForm.thinking_signature_enabled,
-      thinking_budget_enabled: rectifierForm.thinking_budget_enabled,
-      apikey_signature_enabled: rectifierForm.apikey_signature_enabled,
-    // 总开关 enabled=false 时，UI 隐藏所有子开关，但表单内仍保留旧值。
-    // 保存时强制把所有子开关一并置 false，避免下次开总开关时旧值自动恢复（违反用户预期）。
     const enabled = rectifierForm.enabled;
     const payload = {
       enabled,
@@ -7493,7 +7486,6 @@ async function saveRectifierSettings() {
       apikey_signature_patterns: rectifierForm.apikey_signature_patterns.filter(
         (p) => p.trim() !== "",
       ),
-    });
       advisor_tool_enabled: enabled
         ? rectifierForm.advisor_tool_enabled
         : false,
