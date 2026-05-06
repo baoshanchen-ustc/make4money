@@ -429,7 +429,35 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 	}
 }
 
-// --- ListByGroup / ListActive / ListByPlatform ---
+func (s *AccountRepoSuite) TestListWithFilters_ScopedGroupIDsEmptyReturnsUnassignedAccounts() {
+	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-empty-scope"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "scoped-account"})
+	unassigned := mustCreateAccount(s.T(), s.client, &service.Account{Name: "unassigned-account"})
+	mustBindAccountToGroup(s.T(), s.client, account.ID, group.ID, 1)
+
+	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "", "", 0, "", []int64{}...)
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 1)
+	s.Require().NotNil(page)
+	s.Require().Equal(int64(1), page.Total)
+	s.Require().Equal(unassigned.ID, accounts[0].ID)
+}
+
+func (s *AccountRepoSuite) TestListWithFilters_ScopedGroupIDsRestrictResults() {
+	allowedGroup := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-allowed-scope"})
+	otherGroup := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-other-scope"})
+	allowed := mustCreateAccount(s.T(), s.client, &service.Account{Name: "allowed-account"})
+	other := mustCreateAccount(s.T(), s.client, &service.Account{Name: "other-account"})
+	unassigned := mustCreateAccount(s.T(), s.client, &service.Account{Name: "unassigned-account"})
+	mustBindAccountToGroup(s.T(), s.client, allowed.ID, allowedGroup.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, other.ID, otherGroup.ID, 1)
+
+	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "", "", 0, "", allowedGroup.ID)
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 2)
+	s.Require().Equal(int64(2), page.Total)
+	s.Require().ElementsMatch([]int64{allowed.ID, unassigned.ID}, []int64{accounts[0].ID, accounts[1].ID})
+}
 
 func (s *AccountRepoSuite) TestListByGroup() {
 	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-list"})

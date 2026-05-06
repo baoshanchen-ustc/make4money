@@ -2739,7 +2739,7 @@
         <GroupSelector
           v-if="!authStore.isSimpleMode"
           v-model="form.group_ids"
-          :groups="groups"
+          :groups="scopedGroups"
           :platform="form.platform"
           :mixed-scheduling="mixedScheduling"
           data-tour="account-form-groups"
@@ -3158,6 +3158,41 @@ interface OAuthFlowExposed {
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+
+const scopedGroups = computed(() => props.groups)
+
+const resolveScopedCreateGroupIds = (groupIds: number[]): number[] | null => {
+  if (!authStore.isChannelAdmin) {
+    return groupIds
+  }
+
+  const allowedGroupIds = new Set(scopedGroups.value.map((group) => group.id))
+  const invalidGroupIds = groupIds.filter((groupId) => !allowedGroupIds.has(groupId))
+  if (invalidGroupIds.length > 0) {
+    appStore.showError(t('admin.accounts.failedToCreate'))
+    return null
+  }
+
+  return groupIds.filter((groupId) => allowedGroupIds.has(groupId))
+}
+
+const withScopedCreateGroupIds = <T extends { group_ids?: number[] }>(
+  payload: T
+): T | null => {
+  if (payload.group_ids === undefined) {
+    return payload
+  }
+
+  const group_ids = resolveScopedCreateGroupIds(payload.group_ids)
+  if (group_ids === null) {
+    return null
+  }
+
+  return {
+    ...payload,
+    group_ids
+  }
+}
 
 const oauthStepTitle = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
@@ -3945,10 +3980,15 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
     return true
   }
 
+  const scopedGroupIds = resolveScopedCreateGroupIds(form.group_ids)
+  if (scopedGroupIds === null) {
+    return false
+  }
+
   try {
     const result = await adminAPI.accounts.checkMixedChannelRisk({
       platform: form.platform,
-      group_ids: form.group_ids
+      group_ids: scopedGroupIds
     })
     if (!result.has_risk) {
       return true
@@ -3967,10 +4007,23 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   }
 }
 
+const createScopedAccount = async (payload: CreateAccountRequest) => {
+  const scopedPayload = withScopedCreateGroupIds(payload)
+  if (!scopedPayload) {
+    return false
+  }
+
+  await adminAPI.accounts.create(withAntigravityConfirmFlag(scopedPayload))
+  return true
+}
+
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const created = await createScopedAccount(payload)
+    if (!created) {
+      return
+    }
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -4597,25 +4650,24 @@ const handleOpenAIExchange = async (authCode: string) => {
       return
     }
 
-    if (shouldCreateOpenAI) {
-      await adminAPI.accounts.create({
-        name: form.name,
-        notes: form.notes,
-        platform: 'openai',
-        type: 'oauth',
-        credentials,
-        extra,
-        proxy_id: form.proxy_id,
-        concurrency: form.concurrency,
-        load_factor: form.load_factor ?? undefined,
-        priority: form.priority,
-        rate_multiplier: form.rate_multiplier,
-        group_ids: form.group_ids,
-        expires_at: form.expires_at,
-        auto_pause_on_expired: autoPauseOnExpired.value
-      })
-      appStore.showSuccess(t('admin.accounts.accountCreated'))
-    }
+    const created = await createScopedAccount({
+      name: form.name,
+      notes: form.notes,
+      platform: 'openai',
+      type: 'oauth',
+      credentials,
+      extra,
+      proxy_id: form.proxy_id,
+      concurrency: form.concurrency,
+      load_factor: form.load_factor ?? undefined,
+      priority: form.priority,
+      rate_multiplier: form.rate_multiplier,
+      group_ids: form.group_ids,
+      expires_at: form.expires_at,
+      auto_pause_on_expired: autoPauseOnExpired.value
+    })
+    if (!created) return
+    appStore.showSuccess(t('admin.accounts.accountCreated'))
 
     emit('created')
     handleClose()
@@ -4694,25 +4746,23 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const baseName = form.name || tokenInfo.email || 'OpenAI OAuth Account'
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
-        if (shouldCreateOpenAI) {
-          await adminAPI.accounts.create({
-            name: accountName,
-            notes: form.notes,
-            platform: 'openai',
-            type: 'oauth',
-            credentials,
-            extra,
-            proxy_id: form.proxy_id,
-            concurrency: form.concurrency,
-            load_factor: form.load_factor ?? undefined,
-            priority: form.priority,
-            rate_multiplier: form.rate_multiplier,
-            group_ids: form.group_ids,
-            expires_at: form.expires_at,
-            auto_pause_on_expired: autoPauseOnExpired.value
-          })
-        }
-
+        const created = await createScopedAccount({
+          name: accountName,
+          notes: form.notes,
+          platform: 'openai',
+          type: 'oauth',
+          credentials,
+          extra,
+          proxy_id: form.proxy_id,
+          concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        })
+        if (!created) continue
         successCount++
       } catch (error: any) {
         failedCount++
@@ -4792,8 +4842,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
 
-        // Note: Antigravity doesn't have buildExtraInfo, so we pass empty extra or rely on credentials
-        const createPayload = withAntigravityConfirmFlag({
+        const created = await createScopedAccount({
           name: accountName,
           notes: form.notes,
           platform: 'antigravity',
@@ -4809,7 +4858,9 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
-        await adminAPI.accounts.create(createPayload)
+        if (!created) {
+          continue
+        }
         successCount++
       } catch (error: any) {
         failedCount++
@@ -5134,7 +5185,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
 
-        await adminAPI.accounts.create({
+        const created = await createScopedAccount({
           name: accountName,
           notes: form.notes,
           platform: form.platform,
@@ -5150,6 +5201,9 @@ const handleCookieAuth = async (sessionKey: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
+        if (!created) {
+          continue
+        }
 
         successCount++
       } catch (error: any) {

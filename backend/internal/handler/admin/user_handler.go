@@ -36,6 +36,7 @@ func NewUserHandler(adminService service.AdminService, concurrencyService *servi
 type CreateUserRequest struct {
 	Email         string  `json:"email" binding:"required,email"`
 	Password      string  `json:"password" binding:"required,min=6"`
+	Role          string  `json:"role"`
 	Username      string  `json:"username"`
 	Notes         string  `json:"notes"`
 	Balance       float64 `json:"balance"`
@@ -55,6 +56,7 @@ type UpdateUserRequest struct {
 	Concurrency   *int     `json:"concurrency"`
 	RPMLimit      *int     `json:"rpm_limit"`
 	Status        string   `json:"status" binding:"omitempty,oneof=active disabled"`
+	Role          *string  `json:"role"`
 	AllowedGroups *[]int64 `json:"allowed_groups"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
@@ -241,6 +243,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 	user, err := h.adminService.CreateUser(c.Request.Context(), &service.CreateUserInput{
 		Email:         req.Email,
 		Password:      req.Password,
+		Role:          req.Role,
 		Username:      req.Username,
 		Notes:         req.Notes,
 		Balance:       req.Balance,
@@ -273,14 +276,15 @@ func (h *UserHandler) Update(c *gin.Context) {
 
 	// 使用指针类型直接传递，nil 表示未提供该字段
 	user, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
-		Email:         req.Email,
-		Password:      req.Password,
-		Username:      req.Username,
-		Notes:         req.Notes,
-		Balance:       req.Balance,
-		Concurrency:   req.Concurrency,
-		RPMLimit:      req.RPMLimit,
-		Status:        req.Status,
+		Email:                req.Email,
+		Password:             req.Password,
+		Username:             req.Username,
+		Notes:                req.Notes,
+		Balance:              req.Balance,
+		Concurrency:          req.Concurrency,
+		RPMLimit:             req.RPMLimit,
+		Status:               req.Status,
+		Role:                 req.Role,
 		AllowedGroups: req.AllowedGroups,
 		GroupRates:    req.GroupRates,
 	})

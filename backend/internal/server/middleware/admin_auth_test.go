@@ -4,6 +4,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -121,6 +122,200 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, w.Code)
 	})
+}
+
+func TestScopedAdminAuthMiddleware_AllowsChannelAdminJWT(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1}}
+	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil)
+
+	channelAdmin := &service.User{
+		ID:           7,
+		Email:        "channel-admin@example.com",
+		Role:         service.RoleChannelAdmin,
+		Status:       service.StatusActive,
+		TokenVersion: 1,
+		Concurrency:  3,
+	}
+
+	userRepo := &stubUserRepo{
+		getByID: func(ctx context.Context, id int64) (*service.User, error) {
+			if id != channelAdmin.ID {
+				return nil, service.ErrUserNotFound
+			}
+			clone := *channelAdmin
+			return &clone, nil
+		},
+	}
+	userService := service.NewUserService(userRepo, nil, nil, nil)
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewScopedAdminAuthMiddleware(authService, userService, nil)))
+	router.GET("/t", func(c *gin.Context) {
+		subject, ok := GetAuthSubjectFromContext(c)
+		require.True(t, ok)
+		role, ok := GetUserRoleFromContext(c)
+		require.True(t, ok)
+		c.JSON(http.StatusOK, gin.H{"user_id": subject.UserID, "role": role})
+	})
+
+	token, err := authService.GenerateToken(channelAdmin)
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, float64(7), body["user_id"])
+	require.Equal(t, service.RoleChannelAdmin, body["role"])
+}
+
+func TestAdminAuthMiddleware_RejectsChannelAdminJWT(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1}}
+	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil)
+
+	channelAdmin := &service.User{
+		ID:           7,
+		Email:        "channel-admin@example.com",
+		Role:         service.RoleChannelAdmin,
+		Status:       service.StatusActive,
+		TokenVersion: 1,
+		Concurrency:  3,
+	}
+
+	userRepo := &stubUserRepo{
+		getByID: func(ctx context.Context, id int64) (*service.User, error) {
+			if id != channelAdmin.ID {
+				return nil, service.ErrUserNotFound
+			}
+			clone := *channelAdmin
+			return &clone, nil
+		},
+	}
+	userService := service.NewUserService(userRepo, nil, nil, nil)
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(authService, userService, nil)))
+	router.GET("/t", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	token, err := authService.GenerateToken(channelAdmin)
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "FORBIDDEN")
+}
+
+func TestAdminRouteGroups_SplitScopedAndStrictAccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1}}
+	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil)
+
+	admin := &service.User{
+		ID:           1,
+		Email:        "admin@example.com",
+		Role:         service.RoleAdmin,
+		Status:       service.StatusActive,
+		TokenVersion: 1,
+		Concurrency:  5,
+	}
+	channelAdmin := &service.User{
+		ID:           7,
+		Email:        "channel-admin@example.com",
+		Role:         service.RoleChannelAdmin,
+		Status:       service.StatusActive,
+		TokenVersion: 1,
+		Concurrency:  3,
+	}
+
+	userRepo := &stubUserRepo{
+		getByID: func(ctx context.Context, id int64) (*service.User, error) {
+			switch id {
+			case admin.ID:
+				clone := *admin
+				return &clone, nil
+			case channelAdmin.ID:
+				clone := *channelAdmin
+				return &clone, nil
+			default:
+				return nil, service.ErrUserNotFound
+			}
+		},
+	}
+	userService := service.NewUserService(userRepo, nil, nil, nil)
+
+	router := gin.New()
+	v1 := router.Group("/api/v1")
+
+	adminOnly := v1.Group("/admin")
+	adminOnly.Use(gin.HandlerFunc(NewAdminAuthMiddleware(authService, userService, nil)))
+	adminOnly.GET("/settings", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"scope": "strict"})
+	})
+
+	scopedAdmin := v1.Group("/admin")
+	scopedAdmin.Use(gin.HandlerFunc(NewScopedAdminAuthMiddleware(authService, userService, nil)))
+	scopedAdmin.GET("/channels", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"scope": "channels"})
+	})
+	scopedAdmin.GET("/accounts", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"scope": "accounts"})
+	})
+	scopedAdmin.GET("/usage", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"scope": "usage"})
+	})
+
+	adminToken, err := authService.GenerateToken(admin)
+	require.NoError(t, err)
+	channelAdminToken, err := authService.GenerateToken(channelAdmin)
+	require.NoError(t, err)
+
+	for _, path := range []string{"/api/v1/admin/channels", "/api/v1/admin/accounts", "/api/v1/admin/usage"} {
+		t.Run("channel_admin_allows_"+path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer "+channelAdminToken)
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+		})
+	}
+
+	t.Run("channel_admin_rejects_strict_admin_route", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+		req.Header.Set("Authorization", "Bearer "+channelAdminToken)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusForbidden, w.Code)
+		require.Contains(t, w.Body.String(), "FORBIDDEN")
+	})
+
+	for _, path := range []string{"/api/v1/admin/settings", "/api/v1/admin/channels", "/api/v1/admin/accounts", "/api/v1/admin/usage"} {
+		t.Run("full_admin_allows_"+path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer "+adminToken)
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+		})
+	}
 }
 
 type stubUserRepo struct {

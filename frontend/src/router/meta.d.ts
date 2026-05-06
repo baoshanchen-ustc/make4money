@@ -20,6 +20,12 @@ declare module 'vue-router' {
     requiresAdmin?: boolean
 
     /**
+     * Whether this route requires full admin role or scoped admin role
+     * @default false
+     */
+    requiresScopedAdmin?: boolean
+
+    /**
      * Page title for this route
      */
     title?: string

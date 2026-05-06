@@ -28,8 +28,9 @@
                 v-model="filters.role"
                 :options="[
                   { value: '', label: t('admin.users.allRoles') },
-                  { value: 'admin', label: t('admin.users.admin') },
-                  { value: 'user', label: t('admin.users.user') }
+                  { value: 'admin', label: t('admin.users.roles.admin') },
+                  { value: 'channel_admin', label: t('admin.users.roles.channel_admin') },
+                  { value: 'user', label: t('admin.users.roles.user') }
                 ]"
                 @change="applyFilter"
               />
@@ -300,65 +301,86 @@
 
           <template #cell-groups="{ row }">
             <div v-if="allGroups.length > 0" class="flex flex-col gap-1">
-              <!-- 专属分组行 -->
-              <span
-                v-if="getUserGroups(row).exclusive.length > 0"
-                class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs"
-                @click.stop="toggleExpandedGroup(row.id)"
-              >
-                <Icon name="shield" size="xs" class="h-3.5 w-3.5 text-purple-500 dark:text-purple-400" />
-                <span class="font-medium text-purple-600 dark:text-purple-400">{{ getUserGroups(row).exclusive.length }}</span>
-                <span class="text-gray-500 dark:text-dark-400">{{ t('admin.users.exclusiveLabel') }}</span>
-                <!-- Hover tooltip（操作菜单未打开时显示） -->
+              <template v-if="row.role === 'channel_admin'">
                 <div
-                  v-if="expandedGroupUserId !== row.id"
-                  class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover/ex:opacity-100 dark:bg-dark-600"
+                  v-if="getUserGroups(row).assigned.length > 0"
+                  class="flex flex-wrap gap-1.5"
                 >
-                  <div class="absolute left-4 bottom-full border-4 border-transparent border-b-gray-900 dark:border-b-dark-600"></div>
-                  <div class="flex flex-col gap-0.5 whitespace-nowrap">
-                    <span v-for="g in getUserGroups(row).exclusive" :key="g.id">{{ g.name }}</span>
-                  </div>
-                </div>
-                <!-- 点击展开分组操作菜单 -->
-                <div
-                  v-if="expandedGroupUserId === row.id"
-                  class="absolute left-0 top-full z-50 mt-1.5 min-w-[160px] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-dark-600 dark:bg-dark-700"
-                >
-                  <div class="border-b border-gray-100 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:border-dark-600 dark:text-dark-400">
-                    {{ t('admin.users.clickToReplace') }}
-                  </div>
-                  <div
-                    v-for="g in getUserGroups(row).exclusive"
-                    :key="g.id"
-                    class="flex cursor-pointer items-center gap-2 px-3 py-2 text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:text-dark-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-400"
-                    @click.stop="openGroupReplace(row, g)"
+                  <span
+                    v-for="group in getUserGroups(row).assigned"
+                    :key="group.id"
+                    class="inline-flex items-center gap-1 rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
+                    :title="`${t('admin.groups.platforms.' + group.platform, group.platform)} · ID ${group.id}`"
                   >
-                    <Icon name="swap" size="xs" class="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-                    <span class="flex-1">{{ g.name }}</span>
-                  </div>
+                    <span class="font-medium">{{ group.name }}</span>
+                    <span class="text-primary-500/80 dark:text-primary-300/80">·</span>
+                    <span>{{ t('admin.groups.platforms.' + group.platform, group.platform) }}</span>
+                    <span class="text-primary-500/80 dark:text-primary-300/80">#{{ group.id }}</span>
+                  </span>
                 </div>
-              </span>
-              <!-- 公开分组行 -->
-              <span
-                v-if="getUserGroups(row).publicGroups.length > 0"
-                class="group/pub relative inline-flex cursor-default items-center gap-1 whitespace-nowrap text-xs"
-              >
-                <Icon name="globe" size="xs" class="h-3.5 w-3.5 text-gray-400 dark:text-dark-500" />
-                <span class="font-medium text-gray-600 dark:text-dark-300">{{ getUserGroups(row).publicGroups.length }}</span>
-                <span class="text-gray-400 dark:text-dark-500">{{ t('admin.users.publicLabel') }}</span>
-                <!-- Tooltip: 向下弹出 -->
-                <div class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover/pub:opacity-100 dark:bg-dark-600">
-                  <div class="absolute left-4 bottom-full border-4 border-transparent border-b-gray-900 dark:border-b-dark-600"></div>
-                  <div class="flex flex-col gap-0.5 whitespace-nowrap">
-                    <span v-for="g in getUserGroups(row).publicGroups" :key="g.id">{{ g.name }}</span>
+                <span v-else class="text-xs text-gray-400 dark:text-dark-500">-</span>
+              </template>
+              <template v-else>
+                <!-- 专属分组行 -->
+                <span
+                  v-if="getUserGroups(row).exclusive.length > 0"
+                  class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs"
+                  @click.stop="toggleExpandedGroup(row.id)"
+                >
+                  <Icon name="shield" size="xs" class="h-3.5 w-3.5 text-purple-500 dark:text-purple-400" />
+                  <span class="font-medium text-purple-600 dark:text-purple-400">{{ getUserGroups(row).exclusive.length }}</span>
+                  <span class="text-gray-500 dark:text-dark-400">{{ t('admin.users.exclusiveLabel') }}</span>
+                  <!-- Hover tooltip（操作菜单未打开时显示） -->
+                  <div
+                    v-if="expandedGroupUserId !== row.id"
+                    class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover/ex:opacity-100 dark:bg-dark-600"
+                  >
+                    <div class="absolute left-4 bottom-full border-4 border-transparent border-b-gray-900 dark:border-b-dark-600"></div>
+                    <div class="flex flex-col gap-0.5 whitespace-nowrap">
+                      <span v-for="g in getUserGroups(row).exclusive" :key="g.id">{{ g.name }}</span>
+                    </div>
                   </div>
-                </div>
-              </span>
-              <!-- 都没有 -->
-              <span
-                v-if="getUserGroups(row).exclusive.length === 0 && getUserGroups(row).publicGroups.length === 0"
-                class="text-xs text-gray-400 dark:text-dark-500"
-              >-</span>
+                  <!-- 点击展开分组操作菜单 -->
+                  <div
+                    v-if="expandedGroupUserId === row.id"
+                    class="absolute left-0 top-full z-50 mt-1.5 min-w-[160px] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-dark-600 dark:bg-dark-700"
+                  >
+                    <div class="border-b border-gray-100 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:border-dark-600 dark:text-dark-400">
+                      {{ t('admin.users.clickToReplace') }}
+                    </div>
+                    <div
+                      v-for="g in getUserGroups(row).exclusive"
+                      :key="g.id"
+                      class="flex cursor-pointer items-center gap-2 px-3 py-2 text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:text-dark-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-400"
+                      @click.stop="openGroupReplace(row, g)"
+                    >
+                      <Icon name="swap" size="xs" class="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
+                      <span class="flex-1">{{ g.name }}</span>
+                    </div>
+                  </div>
+                </span>
+                <!-- 公开分组行 -->
+                <span
+                  v-if="getUserGroups(row).publicGroups.length > 0"
+                  class="group/pub relative inline-flex cursor-default items-center gap-1 whitespace-nowrap text-xs"
+                >
+                  <Icon name="globe" size="xs" class="h-3.5 w-3.5 text-gray-400 dark:text-dark-500" />
+                  <span class="font-medium text-gray-600 dark:text-dark-300">{{ getUserGroups(row).publicGroups.length }}</span>
+                  <span class="text-gray-400 dark:text-dark-500">{{ t('admin.users.publicLabel') }}</span>
+                  <!-- Tooltip: 向下弹出 -->
+                  <div class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover/pub:opacity-100 dark:bg-dark-600">
+                    <div class="absolute left-4 bottom-full border-4 border-transparent border-b-gray-900 dark:border-b-dark-600"></div>
+                    <div class="flex flex-col gap-0.5 whitespace-nowrap">
+                      <span v-for="g in getUserGroups(row).publicGroups" :key="g.id">{{ g.name }}</span>
+                    </div>
+                  </div>
+                </span>
+                <!-- 都没有 -->
+                <span
+                  v-if="getUserGroups(row).exclusive.length === 0 && getUserGroups(row).publicGroups.length === 0"
+                  class="text-xs text-gray-400 dark:text-dark-500"
+                >-</span>
+              </template>
             </div>
             <span v-else class="text-xs text-gray-400 dark:text-dark-500">-</span>
           </template>
@@ -630,6 +652,7 @@ const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
+import type { AdminUserRole } from '@/api/admin/users'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -834,19 +857,25 @@ const loadAllGroups = async () => {
 }
 // Resolve user's accessible groups: exclusive groups first, then public groups
 const getUserGroups = (user: AdminUser) => {
+  const allowedGroupIds = new Set(user.allowed_groups ?? [])
+  const assigned: AdminGroup[] = []
   const exclusive: AdminGroup[] = []
   const publicGroups: AdminGroup[] = []
+
   for (const g of allGroups.value) {
+    if (allowedGroupIds.has(g.id)) {
+      assigned.push(g)
+    }
     if (g.status !== 'active' || g.subscription_type !== 'standard') continue
     if (g.is_exclusive) {
-      if (user.allowed_groups?.includes(g.id)) {
+      if (allowedGroupIds.has(g.id)) {
         exclusive.push(g)
       }
     } else {
       publicGroups.push(g)
     }
   }
-  return { exclusive, publicGroups }
+  return { assigned, exclusive, publicGroups }
 }
 
 // Group filter options: "All Groups" + active exclusive groups (value = group name for fuzzy match)
@@ -863,8 +892,8 @@ const groupFilterOptions = computed(() => {
 
 // Filter values (role, status, and custom attributes)
 const filters = reactive({
-  role: '',
-  status: '',
+  role: '' as '' | AdminUserRole,
+  status: '' as '' | 'active' | 'disabled',
   group: ''  // group name for fuzzy match, '' = all
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
@@ -1167,8 +1196,8 @@ const loadUsers = async () => {
       pagination.page,
       pagination.page_size,
       {
-        role: filters.role as any,
-        status: filters.status as any,
+        role: filters.role || undefined,
+        status: filters.status || undefined,
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,

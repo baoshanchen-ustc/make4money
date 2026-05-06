@@ -246,6 +246,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+		ChannelAdminUsageScope:   settings.ChannelAdminUsageScope,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 	}
@@ -492,7 +493,8 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorDefaultIntervalSeconds *int  `json:"channel_monitor_default_interval_seconds"`
 
 	// Available Channels feature switch (user-facing)
-	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+	AvailableChannelsEnabled *bool   `json:"available_channels_enabled"`
+	ChannelAdminUsageScope   *string `json:"channel_admin_usage_scope"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -1359,6 +1361,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		ChannelAdminUsageScope: func() string {
+			if req.ChannelAdminUsageScope != nil {
+				return *req.ChannelAdminUsageScope
+			}
+			return previousSettings.ChannelAdminUsageScope
+		}(),
+		ChannelAdminUsageScopeProvided: req.ChannelAdminUsageScope != nil,
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -1614,6 +1623,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		ChannelAdminUsageScope:   updatedSettings.ChannelAdminUsageScope,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 	}
@@ -2000,6 +2010,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
+	}
+	if before.ChannelAdminUsageScope != after.ChannelAdminUsageScope {
+		changed = append(changed, "channel_admin_usage_scope")
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")

@@ -13,6 +13,7 @@ type stubAdminService struct {
 	users                []service.User
 	apiKeys              []service.APIKey
 	groups               []service.Group
+	groupsByPlatform     map[string][]service.Group
 	accounts             []service.Account
 	proxies              []service.Proxy
 	proxyCounts          []service.ProxyWithAccountCount
@@ -21,8 +22,8 @@ type stubAdminService struct {
 	boundAuthIdentityFor int64
 	createdAccounts      []*service.CreateAccountInput
 	createdProxies       []*service.CreateProxyInput
-	updatedProxyIDs      []int64
-	updatedProxies       []*service.UpdateProxyInput
+	updatedAccountIDs      []int64
+	updatedAccounts       []*service.UpdateAccountInput
 	testedProxyIDs       []int64
 	createAccountErr     error
 	updateAccountErr     error
@@ -33,18 +34,21 @@ type stubAdminService struct {
 		platform  string
 		groupIDs  []int64
 	}
+	listAccountsFn   func(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, scopedGroupIDs ...int64) ([]service.Account, int64, error)
 	lastListAccounts struct {
-		platform    string
-		accountType string
-		status      string
-		search      string
-		groupID     int64
-		privacyMode string
-		sortBy      string
-		sortOrder   string
-		calls       int
+		platform       string
+		accountType    string
+		status         string
+		search         string
+		groupID        int64
+		privacyMode    string
+		sortBy         string
+		sortOrder      string
+		scopedGroupIDs []int64
+		calls          int
 	}
-	lastListUsers struct {
+	lastBulkUpdateAccounts *service.BulkUpdateAccountsInput
+	lastListUsers          struct {
 		page      int
 		pageSize  int
 		filters   service.UserListFilters
@@ -249,6 +253,9 @@ func (s *stubAdminService) GetAllGroups(ctx context.Context) ([]service.Group, e
 }
 
 func (s *stubAdminService) GetAllGroupsByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
+	if groups, ok := s.groupsByPlatform[platform]; ok {
+		return groups, nil
+	}
 	return s.groups, nil
 }
 
@@ -295,7 +302,7 @@ func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64,
 	return nil
 }
 
-func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
+func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, scopedGroupIDs ...int64) ([]service.Account, int64, error) {
 	s.lastListAccounts.platform = platform
 	s.lastListAccounts.accountType = accountType
 	s.lastListAccounts.status = status
@@ -304,7 +311,14 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 	s.lastListAccounts.privacyMode = privacyMode
 	s.lastListAccounts.sortBy = sortBy
 	s.lastListAccounts.sortOrder = sortOrder
+	s.lastListAccounts.scopedGroupIDs = append([]int64(nil), scopedGroupIDs...)
 	s.lastListAccounts.calls++
+	if s.listAccountsFn != nil {
+		return s.listAccountsFn(ctx, page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, scopedGroupIDs...)
+	}
+	_ = ctx
+	_ = page
+	_ = pageSize
 	return s.accounts, int64(len(s.accounts)), nil
 }
 
@@ -337,6 +351,10 @@ func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *s
 	if s.updateAccountErr != nil {
 		return nil, s.updateAccountErr
 	}
+	s.mu.Lock()
+	s.updatedAccountIDs = append(s.updatedAccountIDs, id)
+	s.updatedAccounts = append(s.updatedAccounts, input)
+	s.mu.Unlock()
 	account := service.Account{ID: id, Name: input.Name, Status: service.StatusActive}
 	return &account, nil
 }
@@ -365,6 +383,23 @@ func (s *stubAdminService) SetAccountSchedulable(ctx context.Context, id int64, 
 }
 
 func (s *stubAdminService) BulkUpdateAccounts(ctx context.Context, input *service.BulkUpdateAccountsInput) (*service.BulkUpdateAccountsResult, error) {
+	s.lastBulkUpdateAccounts = &service.BulkUpdateAccountsInput{
+		AccountIDs:            append([]int64(nil), input.AccountIDs...),
+		Filters:               input.Filters,
+		ScopedGroupIDs:        append([]int64(nil), input.ScopedGroupIDs...),
+		Name:                  input.Name,
+		ProxyID:               input.ProxyID,
+		Concurrency:           input.Concurrency,
+		Priority:              input.Priority,
+		RateMultiplier:        input.RateMultiplier,
+		LoadFactor:            input.LoadFactor,
+		Status:                input.Status,
+		Schedulable:           input.Schedulable,
+		GroupIDs:              input.GroupIDs,
+		Credentials:           input.Credentials,
+		Extra:                 input.Extra,
+		SkipMixedChannelCheck: input.SkipMixedChannelCheck,
+	}
 	if s.bulkUpdateAccountErr != nil {
 		return nil, s.bulkUpdateAccountErr
 	}

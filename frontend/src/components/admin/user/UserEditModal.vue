@@ -30,6 +30,45 @@
         <input v-model="form.username" type="text" class="input" />
       </div>
       <div>
+        <label class="input-label">{{ t('admin.users.columns.role') }}</label>
+        <Select v-model="form.role" :options="roleOptions" />
+      </div>
+      <div v-if="isChannelAdmin" class="space-y-3">
+        <div class="flex items-center justify-between gap-3">
+          <label class="input-label mb-0">{{ t('admin.users.columns.groups') }}</label>
+          <span class="text-xs text-gray-400 dark:text-dark-400">
+            {{ t('admin.users.selectedGroupsCount', { count: form.allowed_groups.length }) }}
+          </span>
+        </div>
+        <div v-if="groupsLoading" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-300">
+          {{ t('common.loading') }}
+        </div>
+        <div
+          v-else-if="availableGroups.length > 0"
+          class="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-gray-200 p-3 dark:border-dark-600"
+        >
+          <label
+            v-for="group in availableGroups"
+            :key="group.id"
+            class="flex cursor-pointer items-start gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-primary-200 hover:bg-primary-50 dark:hover:border-primary-800 dark:hover:bg-primary-900/20"
+          >
+            <input
+              :checked="form.allowed_groups.includes(group.id)"
+              type="checkbox"
+              class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              @change="toggleGroup(group.id)"
+            />
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ group.name }}</div>
+              <div class="mt-0.5 text-xs text-gray-500 dark:text-dark-300">
+                {{ t('admin.groups.platforms.' + group.platform, group.platform) }} · ID {{ group.id }}
+              </div>
+            </div>
+          </label>
+        </div>
+        <p v-else class="text-sm text-gray-500 dark:text-dark-300">{{ t('common.noGroupsAvailable') }}</p>
+      </div>
+      <div>
         <label class="input-label">{{ t('admin.users.notes') }}</label>
         <textarea v-model="form.notes" rows="3" class="input"></textarea>
       </div>
@@ -63,13 +102,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { computed, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
-import type { AdminUser, UserAttributeValuesMap } from '@/types'
+import type { AdminUserRole } from '@/api/admin/users'
+import type { AdminGroup, AdminUser, UpdateUserRequest, UserAttributeValuesMap } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -77,15 +118,77 @@ const props = defineProps<{ show: boolean, user: AdminUser | null }>()
 const emit = defineEmits(['close', 'success'])
 const { t } = useI18n(); const appStore = useAppStore(); const { copyToClipboard } = useClipboard()
 
+const roleOptions = computed(() => [
+  { value: 'admin', label: t('admin.users.roles.admin') },
+  { value: 'channel_admin', label: t('admin.users.roles.channel_admin') },
+  { value: 'user', label: t('admin.users.roles.user') }
+])
+
+const availableGroups = ref<AdminGroup[]>([])
+const groupsLoading = ref(false)
+const groupsLoaded = ref(false)
 const submitting = ref(false); const passwordCopied = ref(false)
-const form = reactive({ email: '', password: '', username: '', notes: '', concurrency: 1, rpm_limit: 0, customAttributes: {} as UserAttributeValuesMap })
+const form = reactive({
+  email: '',
+  password: '',
+  username: '',
+  notes: '',
+  role: 'user' as AdminUserRole,
+  allowed_groups: [] as number[],
+  concurrency: 1,
+  rpm_limit: 0,
+  customAttributes: {} as UserAttributeValuesMap
+})
+const isChannelAdmin = computed(() => form.role === 'channel_admin')
+
+const loadGroups = async () => {
+  if (groupsLoading.value || groupsLoaded.value) return
+  groupsLoading.value = true
+  try {
+    const groups = await adminAPI.groups.getAll()
+    availableGroups.value = groups.filter((group) => group.status === 'active')
+    groupsLoaded.value = true
+  } finally {
+    groupsLoading.value = false
+  }
+}
+
+const toggleGroup = (groupId: number) => {
+  const index = form.allowed_groups.indexOf(groupId)
+  if (index >= 0) {
+    form.allowed_groups.splice(index, 1)
+  } else {
+    form.allowed_groups.push(groupId)
+  }
+}
 
 watch(() => props.user, (u) => {
   if (u) {
-    Object.assign(form, { email: u.email, password: '', username: u.username || '', notes: u.notes || '', concurrency: u.concurrency, rpm_limit: u.rpm_limit ?? 0, customAttributes: {} })
+    Object.assign(form, {
+      email: u.email,
+      password: '',
+      username: u.username || '',
+      notes: u.notes || '',
+      role: u.role,
+      allowed_groups: [...(u.allowed_groups || [])],
+      concurrency: u.concurrency,
+      rpm_limit: u.rpm_limit ?? 0,
+      customAttributes: {}
+    })
     passwordCopied.value = false
+    if (u.role === 'channel_admin') {
+      void loadGroups()
+    }
   }
 }, { immediate: true })
+
+watch(isChannelAdmin, (enabled) => {
+  if (enabled) {
+    void loadGroups()
+    return
+  }
+  form.allowed_groups = []
+})
 
 const generatePassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*'
@@ -109,7 +212,15 @@ const handleUpdateUser = async () => {
   }
   submitting.value = true
   try {
-    const data: any = { email: form.email, username: form.username, notes: form.notes, concurrency: form.concurrency, rpm_limit: form.rpm_limit }
+    const data: UpdateUserRequest = {
+      email: form.email,
+      username: form.username,
+      notes: form.notes,
+      role: form.role,
+      concurrency: form.concurrency,
+      rpm_limit: form.rpm_limit,
+      allowed_groups: form.role === 'channel_admin' ? [...form.allowed_groups] : undefined
+    }
     if (form.password.trim()) data.password = form.password.trim()
     await adminAPI.users.update(props.user.id, data)
     if (Object.keys(form.customAttributes).length > 0) await adminAPI.userAttributes.updateUserAttributeValues(props.user.id, form.customAttributes)

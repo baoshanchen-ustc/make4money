@@ -2574,6 +2574,22 @@
                     {{ t("admin.settings.defaults.defaultUserRpmLimitHint") }}
                   </p>
                 </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.defaults.channelAdminUsageScope") }}
+                  </label>
+                  <Select
+                    v-model="form.channel_admin_usage_scope"
+                    :options="channelAdminUsageScopeOptions"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.defaults.channelAdminUsageScopeHint")
+                    }}
+                  </p>
+                </div>
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
@@ -5943,7 +5959,7 @@ const form = reactive<SettingsForm>({
   // Claude Code version check
   min_claude_code_version: "",
   max_claude_code_version: "",
-  // 分组隔离
+  channel_admin_usage_scope: "authorized_channels",
   allow_ungrouped_key_scheduling: false,
   openai_advanced_scheduler_enabled: false,
   // Gateway forwarding behavior
@@ -5969,6 +5985,21 @@ const form = reactive<SettingsForm>({
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
   buildAuthSourceDefaultsState({}),
 );
+
+const channelAdminUsageScopeOptions = computed(() => [
+  {
+    value: "authorized_channels",
+    label: t("admin.settings.defaults.channelAdminUsageScopeAuthorizedChannels"),
+  },
+  {
+    value: "authorized_groups",
+    label: t("admin.settings.defaults.channelAdminUsageScopeAuthorizedGroups"),
+  },
+  {
+    value: "all",
+    label: t("admin.settings.defaults.channelAdminUsageScopeAll"),
+  },
+]);
 
 const authSourceDefaultsMeta = computed(() => [
   {

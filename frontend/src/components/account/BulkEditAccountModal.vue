@@ -1030,7 +1030,7 @@
         <div id="bulk-edit-groups" :class="!enableGroups && 'pointer-events-none opacity-50'">
           <GroupSelector
             v-model="groupIds"
-            :groups="groups"
+            :groups="scopedGroups"
             aria-labelledby="bulk-edit-groups-label"
           />
         </div>
@@ -1092,6 +1092,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType, OpenAICompactMode } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1137,8 +1138,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
-
-// Platform awareness
+const authStore = useAuthStore()
 const targetMode = computed(() => props.target?.mode ?? 'selected')
 const targetPreviewCount = computed(() => props.target?.previewCount ?? props.accountIds.length)
 const targetSelectedPlatforms = computed(() => props.target?.selectedPlatforms ?? props.selectedPlatforms)
@@ -1242,6 +1242,24 @@ const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
+const scopedGroups = computed(() => props.groups)
+const scopedGroupIds = computed(() => {
+  if (!authStore.isChannelAdmin) {
+    return groupIds.value
+  }
+
+  const allowedGroupIds = new Set(scopedGroups.value.map((group) => group.id))
+  return groupIds.value.filter((groupId) => allowedGroupIds.has(groupId))
+})
+
+const hasUnauthorizedScopedGroupIds = (selectedGroupIds: number[]) => {
+  if (!authStore.isChannelAdmin) {
+    return false
+  }
+
+  const allowedGroupIds = new Set(scopedGroups.value.map((group) => group.id))
+  return selectedGroupIds.some((groupId) => !allowedGroupIds.has(groupId))
+}
 const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -1426,7 +1444,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableGroups.value) {
-    updates.group_ids = groupIds.value
+    updates.group_ids = scopedGroupIds.value
   }
 
   if (enableBaseUrl.value) {
@@ -1546,7 +1564,7 @@ const mixedChannelConfirmed = ref(false)
 // 多平台混合的情况由 submitBulkUpdate 的 409 catch 兜底
 const canPreCheck = () =>
   enableGroups.value &&
-  groupIds.value.length > 0 &&
+  scopedGroupIds.value.length > 0 &&
   targetSelectedPlatforms.value.length === 1 &&
   (targetSelectedPlatforms.value[0] === 'antigravity' || targetSelectedPlatforms.value[0] === 'anthropic')
 
@@ -1566,7 +1584,7 @@ const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise
   try {
     const result = await adminAPI.accounts.checkMixedChannelRisk({
       platform: targetSelectedPlatforms.value[0],
-      group_ids: groupIds.value
+      group_ids: scopedGroupIds.value
     })
     if (!result.has_risk) return true
 
@@ -1609,6 +1627,11 @@ const handleSubmit = async () => {
 
   if (!hasAnyFieldEnabled) {
     appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
+    return
+  }
+
+  if (enableGroups.value && groupIds.value.length > 0 && hasUnauthorizedScopedGroupIds(groupIds.value)) {
+    appStore.showError(t('admin.accounts.bulkEdit.failed'))
     return
   }
 

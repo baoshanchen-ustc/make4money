@@ -467,6 +467,84 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryListWithFiltersChannelIDsEmptyUsesExactPagination(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	filters := usagestats.UsageLogFilters{
+		ChannelIDs: []int64{},
+	}
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE 1 = 0").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE 1 = 0 ORDER BY id DESC LIMIT \\$1 OFFSET \\$2").
+		WithArgs(20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
+	require.NoError(t, err)
+	require.Empty(t, logs)
+	require.NotNil(t, page)
+	require.Equal(t, int64(0), page.Total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetStatsWithFiltersScopeSlicesAffectEndpointQueries(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	requestType := int16(service.RequestTypeSync)
+	stream := true
+	billingType := int8(service.BillingTypeBalance)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	filters := usagestats.UsageLogFilters{
+		ChannelID:   3,
+		ChannelIDs:  []int64{3, 5, 3, 0},
+		GroupID:     7,
+		GroupIDs:    []int64{7, 9},
+		RequestType: &requestType,
+		Stream:      &stream,
+		BillingType: &billingType,
+		StartTime:   &start,
+		EndTime:     &end,
+	}
+
+	mock.ExpectQuery("FROM usage_logs\\s+WHERE channel_id = \\$1 AND channel_id = ANY\\(\\$2\\) AND group_id = \\$3 AND group_id = ANY\\(\\$4\\) AND \\(request_type = \\$5 OR \\(request_type = 0 AND stream = FALSE AND openai_ws_mode = FALSE\\)\\) AND billing_type = \\$6 AND created_at >= \\$7 AND created_at < \\$8").
+		WithArgs(int64(3), sqlmock.AnyArg(), int64(7), sqlmock.AnyArg(), requestType, int16(billingType), start, end).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"total_requests",
+			"total_input_tokens",
+			"total_output_tokens",
+			"total_cache_tokens",
+			"total_cost",
+			"total_actual_cost",
+			"total_account_cost",
+			"avg_duration_ms",
+		}).AddRow(int64(1), int64(2), int64(3), int64(4), 1.2, 1.0, 1.2, 20.0))
+	mock.ExpectQuery("SELECT COALESCE\\(NULLIF\\(TRIM\\(inbound_endpoint\\), ''\\), 'unknown'\\) AS endpoint").
+		WithArgs(start, end, int64(3), sqlmock.AnyArg(), int64(7), sqlmock.AnyArg(), requestType, int16(billingType)).
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
+	mock.ExpectQuery("SELECT COALESCE\\(NULLIF\\(TRIM\\(upstream_endpoint\\), ''\\), 'unknown'\\) AS endpoint").
+		WithArgs(start, end, int64(3), sqlmock.AnyArg(), int64(7), sqlmock.AnyArg(), requestType, int16(billingType)).
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
+	mock.ExpectQuery("SELECT CONCAT\\(").
+		WithArgs(start, end, int64(3), sqlmock.AnyArg(), int64(7), sqlmock.AnyArg(), requestType, int16(billingType)).
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
+
+	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.TotalRequests)
+	require.Equal(t, int64(9), stats.TotalTokens)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestShouldUseFastUsageLogTotalDisablesForScopeSlices(t *testing.T) {
+	require.False(t, shouldUseFastUsageLogTotal(usagestats.UsageLogFilters{ChannelIDs: []int64{1}}))
+	require.False(t, shouldUseFastUsageLogTotal(usagestats.UsageLogFilters{GroupIDs: []int64{2}}))
+	require.True(t, shouldUseFastUsageLogTotal(usagestats.UsageLogFilters{}))
+}
+
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -50,6 +50,8 @@ vi.mock('@/api/auth', () => ({
 interface MockAuthState {
   isAuthenticated: boolean
   isAdmin: boolean
+  isChannelAdmin: boolean
+  canAccessAdminArea: boolean
   isSimpleMode: boolean
   backendModeEnabled: boolean
   hasPendingAuthSession: boolean
@@ -65,6 +67,7 @@ function simulateGuard(
 ): string | null {
   const requiresAuth = toMeta.requiresAuth !== false
   const requiresAdmin = toMeta.requiresAdmin === true
+  const requiresScopedAdmin = toMeta.requiresScopedAdmin === true
 
   // 不需要认证的路由
   if (!requiresAuth) {
@@ -108,6 +111,11 @@ function simulateGuard(
     return '/dashboard'
   }
 
+  // 需要完整管理员或 scoped admin 但都不是
+  if (requiresScopedAdmin && !authState.canAccessAdminArea) {
+    return '/dashboard'
+  }
+
   // 简易模式限制
   if (authState.isSimpleMode) {
     const restrictedPaths = [
@@ -122,25 +130,13 @@ function simulateGuard(
     }
   }
 
-  // Backend mode: admin gets full access, non-admin blocked
+  // Backend mode: full admins have full access, scoped admins can access scoped admin routes
   if (authState.backendModeEnabled) {
-    if (authState.isAuthenticated && authState.isAdmin) {
+    if (authState.isAdmin) {
       return null
     }
-    const allowed = ['/login', '/key-usage', '/setup', '/payment/result']
-    const callbackPaths = [
-      '/auth/callback',
-      '/auth/linuxdo/callback',
-      '/auth/oidc/callback',
-      '/auth/wechat/callback',
-      '/auth/wechat/payment/callback',
-    ]
-    const pendingAuthPaths = ['/register', '/email-verify']
-    const isAllowed =
-      allowed.some((path) => toPath === path || toPath.startsWith(path)) ||
-      callbackPaths.includes(toPath) ||
-      (authState.hasPendingAuthSession && pendingAuthPaths.includes(toPath))
-    if (!isAllowed) {
+
+    if (!(requiresScopedAdmin && authState.canAccessAdminArea)) {
       return '/login'
     }
   }
@@ -159,6 +155,8 @@ describe('路由守卫逻辑', () => {
     const authState: MockAuthState = {
       isAuthenticated: false,
       isAdmin: false,
+      isChannelAdmin: false,
+      canAccessAdminArea: false,
       isSimpleMode: false,
       backendModeEnabled: false,
       hasPendingAuthSession: false,
@@ -191,6 +189,8 @@ describe('路由守卫逻辑', () => {
     const authState: MockAuthState = {
       isAuthenticated: true,
       isAdmin: false,
+      isChannelAdmin: false,
+      canAccessAdminArea: false,
       isSimpleMode: false,
       backendModeEnabled: false,
       hasPendingAuthSession: false,
@@ -220,6 +220,11 @@ describe('路由守卫逻辑', () => {
       const redirect = simulateGuard('/admin/users', { requiresAdmin: true }, authState)
       expect(redirect).toBe('/dashboard')
     })
+
+    it('访问 scoped admin 页面被拒绝', () => {
+      const redirect = simulateGuard('/admin/accounts', { requiresScopedAdmin: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
   })
 
   // --- 已认证管理员 ---
@@ -228,6 +233,8 @@ describe('路由守卫逻辑', () => {
     const authState: MockAuthState = {
       isAuthenticated: true,
       isAdmin: true,
+      isChannelAdmin: false,
+      canAccessAdminArea: true,
       isSimpleMode: false,
       backendModeEnabled: false,
       hasPendingAuthSession: false,
@@ -243,9 +250,51 @@ describe('路由守卫逻辑', () => {
       expect(redirect).toBeNull()
     })
 
+    it('访问 scoped admin 页面允许通过', () => {
+      const redirect = simulateGuard('/admin/accounts', { requiresScopedAdmin: true }, authState)
+      expect(redirect).toBeNull()
+    })
+
     it('访问用户页面允许通过', () => {
       const redirect = simulateGuard('/dashboard', {}, authState)
       expect(redirect).toBeNull()
+    })
+  })
+
+  describe('已认证渠道管理员', () => {
+    const authState: MockAuthState = {
+      isAuthenticated: true,
+      isAdmin: false,
+      isChannelAdmin: true,
+      canAccessAdminArea: true,
+      isSimpleMode: false,
+      backendModeEnabled: false,
+      hasPendingAuthSession: false,
+    }
+
+    it('访问 /admin/accounts 允许通过', () => {
+      const redirect = simulateGuard('/admin/accounts', { requiresScopedAdmin: true }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('访问 /admin/usage 允许通过', () => {
+      const redirect = simulateGuard('/admin/usage', { requiresScopedAdmin: true }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('访问渠道页面被拒绝', () => {
+      const redirect = simulateGuard('/admin/channels/pricing', { requiresAdmin: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('访问完整管理员页面被拒绝', () => {
+      const redirect = simulateGuard('/admin/users', { requiresAdmin: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('访问 /login 重定向到 /dashboard', () => {
+      const redirect = simulateGuard('/login', { requiresAuth: false }, authState)
+      expect(redirect).toBe('/dashboard')
     })
   })
 
@@ -256,6 +305,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: true,
         backendModeEnabled: false,
         hasPendingAuthSession: false,
@@ -268,6 +319,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: true,
         backendModeEnabled: false,
         hasPendingAuthSession: false,
@@ -280,6 +333,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
+        isChannelAdmin: false,
+        canAccessAdminArea: true,
         isSimpleMode: true,
         backendModeEnabled: false,
         hasPendingAuthSession: false,
@@ -292,6 +347,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
+        isChannelAdmin: false,
+        canAccessAdminArea: true,
         isSimpleMode: true,
         backendModeEnabled: false,
         hasPendingAuthSession: false,
@@ -308,6 +365,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: true,
         backendModeEnabled: false,
         hasPendingAuthSession: false,
@@ -320,6 +379,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: true,
         backendModeEnabled: false,
         hasPendingAuthSession: false,
@@ -334,6 +395,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -346,6 +409,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -358,6 +423,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -370,6 +437,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -382,6 +451,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
+        isChannelAdmin: false,
+        canAccessAdminArea: true,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -394,6 +465,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: true,
+        isChannelAdmin: false,
+        canAccessAdminArea: true,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -406,6 +479,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -418,6 +493,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -430,6 +507,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -438,10 +517,40 @@ describe('路由守卫逻辑', () => {
       expect(redirect).toBeNull()
     })
 
+    it('channel admin authenticated: scoped admin route is allowed in backend mode', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isChannelAdmin: true,
+        canAccessAdminArea: true,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/admin/accounts', { requiresScopedAdmin: true }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('channel admin authenticated: admin-only route still redirects to /dashboard in backend mode', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isChannelAdmin: true,
+        canAccessAdminArea: true,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/admin/users', { requiresAdmin: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
     it('unauthenticated: callback routes are allowed', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -454,6 +563,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -466,6 +577,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,
@@ -478,6 +591,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: true,
@@ -490,6 +605,8 @@ describe('路由守卫逻辑', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
         isAdmin: false,
+        isChannelAdmin: false,
+        canAccessAdminArea: false,
         isSimpleMode: false,
         backendModeEnabled: true,
         hasPendingAuthSession: false,

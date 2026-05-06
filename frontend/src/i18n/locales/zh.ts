@@ -1731,7 +1731,9 @@ export default {
       password: '密码',
       username: '用户名',
       notes: '备注',
-      enterEmail: '请输入邮箱',
+      authorizedGroups: '授权分组',
+      selectedGroupsCount: '已选 {count} 个',
+      noGroupsAvailable: '暂无可用分组',
       enterPassword: '请输入密码',
       enterUsername: '请输入用户名（选填）',
       enterNotes: '请输入备注（仅管理员可见）',
@@ -1798,6 +1800,7 @@ export default {
       deleteConfirm: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
       roles: {
         admin: '管理员',
+        channel_admin: '渠道管理员',
         user: '用户'
       },
       form: {
@@ -5207,6 +5210,11 @@ export default {
         addDefaultSubscription: '添加默认订阅',
         defaultSubscriptionsEmpty: '未配置默认订阅。新用户不会自动获得订阅套餐。',
         defaultSubscriptionsDuplicate: '默认订阅存在重复分组：{groupId}。每个分组只能出现一次。',
+        channelAdminUsageScope: '渠道管理员用量范围',
+        channelAdminUsageScopeHint: '设置渠道管理员默认可访问的用量记录范围。',
+        channelAdminUsageScopeAuthorizedChannels: '授权分组（默认）',
+        channelAdminUsageScopeAuthorizedGroups: '授权分组',
+        channelAdminUsageScopeAll: '全部',
         subscriptionGroup: '订阅分组',
         subscriptionValidityDays: '有效期（天）'
       },
